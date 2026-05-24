@@ -32,13 +32,15 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
   late final KanbanCardRepository _repository;
   late KanbanCard _card;
   bool _isDirty = false;
-  bool _isPreview = false;
+  late bool _isPreview;
 
   @override
   void initState() {
     super.initState();
     _repository = ref.read(kanbanCardRepositoryProvider);
     _card = widget.card;
+    _isPreview = widget.card.sourceNoteId != null &&
+        (widget.card.description?.isNotEmpty ?? false);
     _titleController =
         TextEditingController(text: widget.card.title);
     _descController =
@@ -222,7 +224,6 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                     ),
                   ),
           ),
-          // Origin note link
           if (widget.card.sourceNoteId != null) ...[
             const SizedBox(height: 20),
             GestureDetector(
@@ -230,12 +231,30 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
               onTap: () {
                 ref.read(pendingNoteNavigationProvider.notifier).state =
                     widget.card.sourceNoteId;
-                Navigator.pop(context); // close card detail
-                Navigator.pop(context); // close kanban board → AppShell handles mode switch
+                Navigator.pop(context);
+                Navigator.pop(context);
               },
-              child: Text(
-                'Ver nota de origen →',
-                style: bodyS.copyWith(color: accentFlight),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: accentFlight.withAlpha(20),
+                  border: Border.all(color: accentFlight, width: borderWidth),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.description_outlined,
+                        size: 16, color: accentFlight),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Ver nota de origen',
+                        style: labelBold.copyWith(color: accentFlight),
+                      ),
+                    ),
+                    Icon(Icons.arrow_forward, size: 14, color: accentFlight),
+                  ],
+                ),
               ),
             ),
           ],

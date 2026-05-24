@@ -31,7 +31,7 @@ class FormatToolbar extends StatelessWidget {
     if (!sel.isValid) return;
     final text = ctrl.text;
     final selected = sel.textInside(text);
-    final wrapped = '::: $align\n\n$selected\n\n:::';
+    final wrapped = '::: $align\n$selected\n:::';
     final newText = text.replaceRange(sel.start, sel.end, wrapped);
     ctrl.value = TextEditingValue(
       text: newText,

@@ -43,6 +43,7 @@ class LocalTaskRepository implements TaskRepository {
         createdAt: Value(task.createdAt),
         expiresAt: task.expiresAt,
         trashedAt: Value(task.trashedAt),
+        dueDate: Value(task.dueDate),
       ),
     );
     return _rowToTask(row);
@@ -58,6 +59,7 @@ class LocalTaskRepository implements TaskRepository {
         folderId: Value(task.folderId),
         expiresAt: Value(task.expiresAt),
         trashedAt: Value(task.trashedAt),
+        dueDate: Value(task.dueDate),
       ),
     );
   }
@@ -81,6 +83,10 @@ class LocalTaskRepository implements TaskRepository {
   @override
   Future<int> runExpiryQueries() => _db.runExpiryQueries();
 
+  @override
+  Future<void> updateDueDate(int id, DateTime? dueDate) =>
+      _db.tasksDao.updateDueDate(id, dueDate);
+
   Task _rowToTask(TaskRow row) => Task(
         id: row.id,
         content: row.content,
@@ -89,5 +95,6 @@ class LocalTaskRepository implements TaskRepository {
         createdAt: row.createdAt,
         expiresAt: row.expiresAt,
         trashedAt: row.trashedAt,
+        dueDate: row.dueDate,
       );
 }

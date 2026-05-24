@@ -4,10 +4,15 @@ import '../../theme/app_tokens.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
+import '../../providers/note_providers.dart';
+import '../../providers/navigation_provider.dart';
 import '../../widgets/app_column_header.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/kanban_card.dart';
+import '../../../domain/models/folder.dart';
+import '../../../domain/models/note.dart';
+import '../../screens/flight/note_cell_model.dart';
 import 'kanban_card_tile.dart';
 import 'kanban_card_detail.dart';
 
@@ -120,6 +125,22 @@ class _KanbanHeader extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 6),
+          if (linkedFolders.isNotEmpty)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _showLinkedNotes(context),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: accentFlight,
+                  border: Border.all(color: accentFlight, width: 1),
+                ),
+                child: Icon(Icons.description_outlined, size: 16, color: paperLight),
+              ),
+            ),
+          if (linkedFolders.isNotEmpty)
+            const SizedBox(width: 6),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _showLinkFolders(context, ref),
@@ -127,13 +148,30 @@ class _KanbanHeader extends ConsumerWidget {
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                color: accentFlight,
-                border: Border.all(color: accentFlight, width: 1),
+                color: accentLab,
+                border: Border.all(color: accentLab, width: 1),
               ),
               child: Icon(Icons.folder_outlined, size: 16, color: paperLight),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showLinkedNotes(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => _LinkedNotesSheet(
+          space: space,
+          scrollController: scrollController,
+        ),
       ),
     );
   }
@@ -719,6 +757,277 @@ class _LinkFoldersSheet extends ConsumerWidget {
                   },
                 ),
               ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LinkedNotesSheet extends ConsumerWidget {
+  final LabSpace space;
+  final ScrollController scrollController;
+
+  const _LinkedNotesSheet({
+    required this.space,
+    required this.scrollController,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final linkedFolderIdsAsync = ref.watch(linkedFolderIdsProvider(space.id));
+    final linkedIds = linkedFolderIdsAsync.valueOrNull ?? [];
+    final foldersAsync = ref.watch(activeFoldersProvider);
+    final allFolders = foldersAsync.valueOrNull ?? [];
+    final linkedFolders =
+        allFolders.where((f) => linkedIds.contains(f.id)).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border(
+          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+        ),
+      ),
+      child: linkedFolders.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Vincula carpetas primero desde el botón de carpetas.',
+                style: bodyS.copyWith(color: inkGray),
+              ),
+            )
+          : ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    color: inkGray.withAlpha(60),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 16),
+                  child: Text(
+                    'NOTAS VINCULADAS',
+                    style: labelBold.copyWith(color: inkGray),
+                  ),
+                ),
+                for (final folder in linkedFolders)
+                  _FolderNoteSection(folder: folder, space: space),
+              ],
+            ),
+    );
+  }
+}
+
+class _FolderNoteSection extends ConsumerWidget {
+  final Folder folder;
+  final LabSpace space;
+
+  const _FolderNoteSection({required this.folder, required this.space});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notesAsync = ref.watch(notesByFolderProvider(folder.id));
+    final notes = (notesAsync.valueOrNull ?? [])
+        .where((n) => n.isActive)
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 8),
+          child: Row(
+            children: [
+              Container(width: 4, height: 16, color: folder.color),
+              const SizedBox(width: 8),
+              Text(folder.name,
+                  style: labelBold.copyWith(color: folder.color)),
+              const Spacer(),
+              Text('${notes.length}',
+                  style: mono.copyWith(color: inkGray, fontSize: 12)),
+            ],
+          ),
+        ),
+        if (notes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, bottom: 16),
+            child: Text('Sin notas',
+                style: bodyS.copyWith(color: inkGray)),
+          )
+        else
+          for (final note in notes)
+            _NoteRow(note: note, space: space),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+}
+
+class _NoteRow extends ConsumerWidget {
+  final Note note;
+  final LabSpace space;
+
+  const _NoteRow({required this.note, required this.space});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cardsAsync = ref.watch(kanbanCardsByNoteProvider(note.id));
+    final linkedCards = cardsAsync.valueOrNull ?? [];
+    final isLinked = linkedCards.any((c) => c.labSpaceId == space.id);
+
+    final snippet = cleanCellContent(note.rawMarkdown)
+        .replaceAll(RegExp(r'[#*_`\[\]>\-]'), '')
+        .trim();
+    final preview = snippet.length > 60 ? snippet.substring(0, 60) : snippet;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          ref.read(pendingNoteNavigationProvider.notifier).state = note.id;
+          Navigator.pop(context);
+          Navigator.pop(context);
+        },
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: cardBackground(context),
+            border: Border.all(color: inkColor(context), width: borderWidth),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(note.displayTitle,
+                        style: bodyM.copyWith(
+                          color: inkColor(context),
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    if (preview.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(preview,
+                          style: bodyS.copyWith(color: inkGray),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isLinked)
+                Icon(Icons.link, size: 14, color: accentLab)
+              else
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _showColumnPicker(context, ref),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: accentLab, width: 1),
+                    ),
+                    child: Icon(Icons.add, size: 14, color: accentLab),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showColumnPicker(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ColumnPickerSheet(
+        space: space,
+        note: note,
+      ),
+    );
+  }
+}
+
+class _ColumnPickerSheet extends ConsumerWidget {
+  final LabSpace space;
+  final Note note;
+
+  const _ColumnPickerSheet({required this.space, required this.note});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final columnsAsync = ref.watch(kanbanColumnsProvider(space.id));
+    final columns = columnsAsync.valueOrNull ?? [];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border(
+          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: Text('Enviar a columna',
+                  style: labelBold.copyWith(color: inkGray)),
+            ),
+            if (columns.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                child: Text('No hay columnas.',
+                    style: bodyS.copyWith(color: inkGray)),
+              )
+            else
+              ...columns.map((col) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      final cleaned = cleanCellContent(note.rawMarkdown);
+                      final snippet = cleaned.length > 200
+                          ? cleaned.substring(0, 200)
+                          : cleaned;
+                      await ref.read(kanbanCardRepositoryProvider).create(
+                            labSpaceId: space.id,
+                            columnId: col.id,
+                            title: note.displayTitle,
+                            description:
+                                snippet.isNotEmpty ? snippet : null,
+                            sourceNoteId: note.id,
+                          );
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Card creada en ${col.name}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 14),
+                      child: Text(col.name,
+                          style: bodyM.copyWith(color: inkColor(context))),
+                    ),
+                  )),
             const SizedBox(height: 8),
           ],
         ),

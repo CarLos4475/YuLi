@@ -30,3 +30,8 @@ final kanbanCardsBySpaceProvider =
 final linkedFolderIdsProvider = FutureProvider.family<List<int>, int>((ref, spaceId) {
   return ref.watch(labSpaceRepositoryProvider).getLinkedFolderIds(spaceId);
 });
+
+final kanbanCardsByNoteProvider =
+    StreamProvider.family<List<KanbanCard>, int>((ref, noteId) {
+  return ref.watch(kanbanCardRepositoryProvider).watchBySourceNoteId(noteId);
+});

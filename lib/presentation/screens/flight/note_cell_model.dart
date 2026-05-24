@@ -118,6 +118,15 @@ List<NoteCell> parseCells(String raw) {
       : cells;
 }
 
+String cleanCellContent(String raw) {
+  var cleaned = raw;
+  cleaned = cleaned.replaceAll(RegExp(r'<!-- CELL \w+ \S+.*?-->'), '');
+  cleaned = cleaned.replaceAll(RegExp(r':::\s*(left|center|right)\s*\n?'), '');
+  cleaned = cleaned.replaceAll(RegExp(r'^:::\s*$', multiLine: true), '');
+  cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return cleaned.trim();
+}
+
 String serializeCells(List<NoteCell> cells) {
   if (cells.length == 1 && cells[0].type == CellType.markdown) {
     return cells[0].content;

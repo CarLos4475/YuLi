@@ -11,11 +11,13 @@ import '../../utils/pdf_export.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
+import '../../providers/navigation_provider.dart';
 import '../../widgets/coach_mark.dart';
 import '../../widgets/fight_panel.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
+import '../../../domain/models/kanban_column.dart';
 import '../../../domain/repositories/note_repository.dart';
 import 'block_insert_menu.dart';
 import 'block_insert_panels.dart';
@@ -63,6 +65,14 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     _isPreview = widget.note.rawMarkdown.isNotEmpty;
   }
 
+  void _syncCellContent(String? cellId) {
+    if (cellId == null) return;
+    final cell = _cells.where((c) => c.id == cellId).firstOrNull;
+    if (cell != null && cell.type == CellType.markdown) {
+      cell.content = _textCtrls[cellId]?.text ?? '';
+    }
+  }
+
   void _createCellCtrls(NoteCell cell) {
     final ctrl = TextEditingController(text: cell.content);
     ctrl.addListener(_onContentChanged);
@@ -70,6 +80,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final fn = FocusNode();
     fn.addListener(() {
       if (fn.hasFocus && _activeCellId != cell.id) {
+        _syncCellContent(_activeCellId);
         setState(() => _activeCellId = cell.id);
       }
     });
@@ -185,27 +196,32 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   void _showSendToLab(BuildContext context) {
+    for (final cell in _cells) {
+      if (cell.type == CellType.markdown) {
+        cell.content = _textCtrls[cell.id]?.text ?? '';
+      }
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _SendNoteToKanbanSheet(
-        note: widget.note,
-        onLinked: (cardId) {
-          if (_activeCellId != null) {
-            final ctrl = _textCtrls[_activeCellId!];
-            if (ctrl != null) {
-              ctrl.text = '${ctrl.text}\n\n<!-- kanban:$cardId -->';
-            }
-          }
-          _save();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Nota vinculada a Kanban y ancla insertada'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        },
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => _SendNoteToKanbanSheet(
+          cells: _cells,
+          note: widget.note,
+          scrollController: scrollController,
+          onLinked: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Nota vinculada a Lab'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -223,12 +239,22 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
             Column(
               children: [
                 _NoteHeader(
+                  noteId: widget.note.id,
                   folder: widget.folder,
                   titleController: _titleController,
                   isDirty: _isDirty,
                   isPreview: _isPreview,
-                  onTogglePreview: () =>
-                      setState(() => _isPreview = !_isPreview),
+                  onTogglePreview: () {
+                    if (_isPreview) {
+                      _syncCellContent(_activeCellId);
+                      setState(() {
+                        _activeCellId = null;
+                        _isPreview = false;
+                      });
+                    } else {
+                      setState(() => _isPreview = true);
+                    }
+                  },
                   onLinkToLab: () => _showSendToLab(context),
                   onSave: _save,
                   onExportPdf: () => exportNoteToPdf(
@@ -295,6 +321,11 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   Widget _buildCell(BuildContext context, NoteCell cell) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drawingActive = _isDrawing || _scrollLockedCells.isNotEmpty;
+    final isEditing =
+        _activeCellId == cell.id && !drawingActive;
+
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 4, 0),
       child: Row(
@@ -320,61 +351,99 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       ),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (cell.type == CellType.markdown)
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: accentFlight, width: borderWidth),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                header,
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                  child: TextField(
-                    controller: _textCtrls[cell.id],
-                    focusNode: _focusNodes[cell.id],
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    style: bodyL.copyWith(color: inkColor(context)),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          DrawingCell(
-            header: header,
-            data: cell.drawingData ?? DrawingData(),
-            onChanged: (data) {
-              cell.drawingData = data;
-              _onContentChanged();
-            },
-            onDelete: () => _deleteCell(cell.id),
-            onDrawStart: () => setState(() => _isDrawing = true),
-            onDrawEnd: () => setState(() => _isDrawing = false),
-            onScrollLockChanged: (locked) {
-              setState(() {
-                if (locked) {
-                  _scrollLockedCells.add(cell.id);
-                } else {
-                  _scrollLockedCells.remove(cell.id);
-                }
-              });
-            },
+    if (cell.type == CellType.markdown) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isEditing ? accentFlight : inkGray.withAlpha(40),
+            width: borderWidth,
           ),
-      ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: isEditing
+                  ? Padding(
+                      key: ValueKey('edit-${cell.id}'),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: TextField(
+                        controller: _textCtrls[cell.id],
+                        focusNode: _focusNodes[cell.id],
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        style: bodyL.copyWith(color: inkColor(context)),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    )
+                  : GestureDetector(
+                      key: ValueKey('compiled-${cell.id}'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: drawingActive
+                          ? null
+                          : () {
+                              _syncCellContent(_activeCellId);
+                              setState(() => _activeCellId = cell.id);
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                _focusNodes[cell.id]?.requestFocus();
+                              });
+                            },
+                      child: IgnorePointer(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                          child: cell.content.trim().isEmpty
+                              ? Text('Toca para editar',
+                                  style: bodyS.copyWith(color: inkGray))
+                              : _MarkdownPreview(
+                                  content: cell.content, isDark: isDark),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return DrawingCell(
+      header: header,
+      data: cell.drawingData ?? DrawingData(),
+      onChanged: (data) {
+        cell.drawingData = data;
+        _onContentChanged();
+      },
+      onDelete: () => _deleteCell(cell.id),
+      onDrawStart: () {
+        _syncCellContent(_activeCellId);
+        if (_activeCellId != null) _focusNodes[_activeCellId!]?.unfocus();
+        setState(() {
+          _isDrawing = true;
+          _activeCellId = null;
+        });
+      },
+      onDrawEnd: () => setState(() => _isDrawing = false),
+      onScrollLockChanged: (locked) {
+        setState(() {
+          if (locked) {
+            _syncCellContent(_activeCellId);
+            if (_activeCellId != null) _focusNodes[_activeCellId!]?.unfocus();
+            _scrollLockedCells.add(cell.id);
+            _activeCellId = null;
+          } else {
+            _scrollLockedCells.remove(cell.id);
+          }
+        });
+      },
     );
   }
 
@@ -473,7 +542,8 @@ class _DotGridPainter extends CustomPainter {
   bool shouldRepaint(_DotGridPainter old) => old.isDark != isDark;
 }
 
-class _NoteHeader extends StatelessWidget {
+class _NoteHeader extends ConsumerWidget {
+  final int noteId;
   final Folder folder;
   final TextEditingController titleController;
   final bool isDirty;
@@ -485,6 +555,7 @@ class _NoteHeader extends StatelessWidget {
   final VoidCallback onBack;
 
   const _NoteHeader({
+    required this.noteId,
     required this.folder,
     required this.titleController,
     required this.isDirty,
@@ -497,7 +568,11 @@ class _NoteHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final linkedCardsAsync = ref.watch(kanbanCardsByNoteProvider(noteId));
+    final linkedCards = linkedCardsAsync.valueOrNull ?? [];
+    final uniqueSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
+
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: BoxDecoration(
@@ -506,111 +581,168 @@ class _NoteHeader extends StatelessWidget {
           bottom: BorderSide(color: inkColor(context), width: borderWidth),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onBack,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child:
-                  Icon(Icons.arrow_back, color: inkColor(context), size: 20),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: TextField(
-              controller: titleController,
-              style: displayL.copyWith(color: folder.color),
-              decoration: InputDecoration(
-                hintText: 'Sin título',
-                hintStyle: displayL.copyWith(color: inkGray),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onSave,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: isDirty ? accentFlight : Colors.transparent,
-                border: Border.all(
-                  color: isDirty ? accentFlight : inkGray.withAlpha(80),
-                  width: 1,
+          Row(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onBack,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child:
+                      Icon(Icons.arrow_back, color: inkColor(context), size: 20),
                 ),
               ),
-              child: Icon(Icons.check, size: 16,
-                  color: isDirty ? paperLight : inkGray.withAlpha(80)),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onTogglePreview,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: isPreview ? accentLab : Colors.transparent,
-                border: Border.all(
-                  color: isPreview ? accentLab : inkGray.withAlpha(80),
-                  width: 1,
-                ),
-              ),
-              child: Icon(
-                isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
-                size: 16,
-                color: isPreview ? paperLight : inkGray.withAlpha(80),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onLinkToLab,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: accentFlight,
-                border: Border.all(color: accentFlight, width: 1),
-              ),
-              child: Icon(Icons.link, size: 16, color: paperLight),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onExportPdf,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: accentJournal,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: const [
-                  BoxShadow(
-                    color: inkBlack,
-                    offset: shadowOffset,
-                    blurRadius: shadowBlurRadius,
+              const SizedBox(width: 4),
+              Expanded(
+                child: TextField(
+                  controller: titleController,
+                  style: displayL.copyWith(color: folder.color),
+                  decoration: InputDecoration(
+                    hintText: 'Sin título',
+                    hintStyle: displayL.copyWith(color: inkGray),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
-                ],
+                ),
               ),
-              child: const Icon(
-                Icons.picture_as_pdf,
-                size: 16,
-                color: paperLight,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onSave,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: isDirty ? accentFlight : Colors.transparent,
+                    border: Border.all(
+                      color: isDirty ? accentFlight : inkGray.withAlpha(80),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(Icons.check, size: 16,
+                      color: isDirty ? paperLight : inkGray.withAlpha(80)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTogglePreview,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: isPreview ? accentLab : Colors.transparent,
+                    border: Border.all(
+                      color: isPreview ? accentLab : inkGray.withAlpha(80),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
+                    size: 16,
+                    color: isPreview ? paperLight : inkGray.withAlpha(80),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onLinkToLab,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: accentFlight,
+                    border: Border.all(color: accentFlight, width: 1),
+                  ),
+                  child: Icon(Icons.link, size: 16, color: paperLight),
+                ),
+              ),
+              const SizedBox(width: 6),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onExportPdf,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: accentJournal,
+                    border: Border.all(color: inkBlack, width: borderWidth),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: inkBlack,
+                        offset: shadowOffset,
+                        blurRadius: shadowBlurRadius,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.picture_as_pdf,
+                    size: 16,
+                    color: paperLight,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (uniqueSpaceIds.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 40),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: uniqueSpaceIds.map((spaceId) =>
+                  _LabBadge(spaceId: spaceId),
+                ).toList(),
               ),
             ),
-          ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _LabBadge extends ConsumerWidget {
+  final int spaceId;
+
+  const _LabBadge({required this.spaceId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spaceAsync = ref.watch(labSpaceByIdProvider(spaceId));
+    final space = spaceAsync.valueOrNull;
+    if (space == null) return const SizedBox.shrink();
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        ref.read(pendingLabSpaceNavigationProvider.notifier).state = spaceId;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: space.accentColor.withAlpha(30),
+          border: Border.all(color: space.accentColor, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.science_outlined, size: 10, color: space.accentColor),
+            const SizedBox(width: 4),
+            Text(
+              space.name,
+              style: labelBold.copyWith(color: space.accentColor, fontSize: 10),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -954,15 +1086,32 @@ class AlignmentNode extends SpanNode {
       'right' => TextAlign.right,
       _ => TextAlign.left,
     };
-    final style = parentStyle ?? config.p.textStyle;
+    final trimmed = textContent.trim();
+    if (trimmed.isEmpty) return const TextSpan();
+
+    final generator = MarkdownGenerator(
+      linesMargin: const EdgeInsets.symmetric(vertical: 2),
+      inlineSyntaxList: [LatexSyntax()],
+      blockSyntaxList: [const LatexBlockSyntax()],
+      richTextBuilder: (span) => Text.rich(span, textAlign: textAlignment),
+      generators: [
+        SpanNodeGeneratorWithTag(
+          tag: 'latex',
+          generator: (e, cfg, visitor) =>
+              LatexNode(e.attributes, e.textContent, cfg),
+        ),
+      ],
+    );
+
+    final widgets = generator.buildWidgets(trimmed, config: config);
+
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
       child: SizedBox(
         width: double.infinity,
-        child: Text(
-          textContent,
-          textAlign: textAlignment,
-          style: style,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: widgets,
         ),
       ),
     );
@@ -999,20 +1148,49 @@ class AlignmentBlockSyntax extends m.BlockSyntax {
 
 // ─── Kanban linking ──────────────────────────────────────────────────────────
 
-class _SendNoteToKanbanSheet extends ConsumerWidget {
+class _SendNoteToKanbanSheet extends ConsumerStatefulWidget {
+  final List<NoteCell> cells;
   final Note note;
-  final ValueChanged<int> onLinked;
+  final ScrollController scrollController;
+  final VoidCallback onLinked;
 
   const _SendNoteToKanbanSheet({
+    required this.cells,
     required this.note,
+    required this.scrollController,
     required this.onLinked,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final spacesAsync = ref.watch(activeLabSpacesProvider);
-    final spaces = spacesAsync.valueOrNull ?? [];
+  ConsumerState<_SendNoteToKanbanSheet> createState() =>
+      _SendNoteToKanbanSheetState();
+}
 
+class _SendNoteToKanbanSheetState
+    extends ConsumerState<_SendNoteToKanbanSheet> {
+  final Set<String> _selectedIds = {};
+  bool _pickingSpace = false;
+
+  List<NoteCell> get _textCells =>
+      widget.cells.where((c) => c.type == CellType.markdown).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    for (final cell in _textCells) {
+      if (cell.content.trim().isNotEmpty) _selectedIds.add(cell.id);
+    }
+  }
+
+  String _buildDescription() {
+    final selected =
+        _textCells.where((c) => _selectedIds.contains(c.id)).toList();
+    final joined = selected.map((c) => c.content).join('\n\n---\n\n');
+    return cleanCellContent(joined);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: paperColor(context),
@@ -1020,51 +1198,213 @@ class _SendNoteToKanbanSheet extends ConsumerWidget {
           top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
         ),
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Text('Vincular a Lab Space',
-                  style: labelBold.copyWith(color: inkGray)),
-            ),
-            if (spaces.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      child: _pickingSpace
+          ? _buildSpacePicker(context)
+          : _buildCellPicker(context),
+    );
+  }
+
+  Widget _buildCellPicker(BuildContext context) {
+    final cells = _textCells;
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      children: [
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 12),
+            color: inkGray.withAlpha(60),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 12),
+          child: Text('SELECCIONA CELDAS',
+              style: labelBold.copyWith(color: inkGray)),
+        ),
+        if (cells.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child:
+                Text('Sin celdas de texto.', style: bodyS.copyWith(color: inkGray)),
+          )
+        else
+          for (var i = 0; i < cells.length; i++)
+            _buildCellRow(context, cells[i], i + 1),
+        const SizedBox(height: 12),
+        if (_selectedIds.isNotEmpty)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _pickingSpace = true),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: accentFlight,
+                border: Border.all(color: accentFlight, width: 1),
+              ),
+              child: Center(
                 child: Text(
-                    'No hay Lab Spaces activos. Crea uno primero.',
-                    style: bodyS.copyWith(color: inkGray)),
-              )
-            else
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: spaces
-                      .map((space) => _SpaceNoteLinkRow(
-                          note: note, space: space, onLinked: onLinked))
-                      .toList(),
+                  'Continuar →',
+                  style: labelBold.copyWith(color: paperLight),
                 ),
               ),
-            const SizedBox(height: 8),
-          ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCellRow(BuildContext context, NoteCell cell, int number) {
+    final isSelected = _selectedIds.contains(cell.id);
+    final preview = cleanCellContent(cell.content).replaceAll('\n', ' ');
+    final truncated =
+        preview.length > 80 ? preview.substring(0, 80) : preview;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            _selectedIds.remove(cell.id);
+          } else {
+            _selectedIds.add(cell.id);
+          }
+        });
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? accentFlight.withAlpha(15)
+                : cardBackground(context),
+            border: Border.all(
+              color: isSelected ? accentFlight : inkGray.withAlpha(40),
+              width: borderWidth,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                margin: const EdgeInsets.only(top: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isSelected ? accentFlight : inkColor(context),
+                    width: borderWidth,
+                  ),
+                ),
+                child: isSelected
+                    ? Center(
+                        child: Container(
+                            width: 8, height: 8, color: accentFlight))
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Celda $number',
+                        style: labelBold.copyWith(
+                            color: inkColor(context), fontSize: 12)),
+                    if (truncated.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(truncated,
+                          style: bodyS.copyWith(color: inkGray),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _buildSpacePicker(BuildContext context) {
+    final spacesAsync = ref.watch(activeLabSpacesProvider);
+    final spaces = spacesAsync.valueOrNull ?? [];
+
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      children: [
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 12),
+            color: inkGray.withAlpha(60),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 8, bottom: 4),
+          child: Row(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _pickingSpace = false),
+                child: Icon(Icons.arrow_back, size: 16, color: inkGray),
+              ),
+              const SizedBox(width: 8),
+              Text('VINCULAR A LAB SPACE',
+                  style: labelBold.copyWith(color: inkGray)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          child: Text(
+            '${_selectedIds.length} celda${_selectedIds.length == 1 ? '' : 's'}',
+            style: bodyS.copyWith(color: accentFlight),
+          ),
+        ),
+        if (spaces.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text('No hay Lab Spaces activos. Crea uno primero.',
+                style: bodyS.copyWith(color: inkGray)),
+          )
+        else
+          for (final space in spaces)
+            _SpaceColumnPicker(
+              space: space,
+              onColumnSelected: (col) => _createCard(col, space),
+            ),
+      ],
+    );
+  }
+
+  Future<void> _createCard(KanbanColumn col, LabSpace space) async {
+    final description = _buildDescription();
+    await ref.read(kanbanCardRepositoryProvider).create(
+          labSpaceId: space.id,
+          columnId: col.id,
+          title: widget.note.displayTitle,
+          description: description.isNotEmpty ? description : null,
+          sourceNoteId: widget.note.id,
+        );
+    widget.onLinked();
+    if (mounted) Navigator.pop(context);
+  }
 }
 
-class _SpaceNoteLinkRow extends ConsumerWidget {
-  final Note note;
+class _SpaceColumnPicker extends ConsumerWidget {
   final LabSpace space;
-  final ValueChanged<int> onLinked;
+  final ValueChanged<KanbanColumn> onColumnSelected;
 
-  const _SpaceNoteLinkRow({
-    required this.note,
+  const _SpaceColumnPicker({
     required this.space,
-    required this.onLinked,
+    required this.onColumnSelected,
   });
 
   @override
@@ -1073,26 +1413,16 @@ class _SpaceNoteLinkRow extends ConsumerWidget {
     final columns = columnsAsync.valueOrNull ?? [];
 
     return ExpansionTile(
-      tilePadding: const EdgeInsets.symmetric(horizontal: 24),
+      tilePadding: const EdgeInsets.symmetric(horizontal: 8),
       title: Text(space.name,
           style: bodyM.copyWith(
               color: space.accentColor, fontWeight: FontWeight.w700)),
       children: columns
           .map((col) => GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  final card =
-                      await ref.read(kanbanCardRepositoryProvider).create(
-                            labSpaceId: space.id,
-                            columnId: col.id,
-                            title: note.displayTitle,
-                            sourceNoteId: note.id,
-                          );
-                  onLinked(card.id);
-                  if (context.mounted) Navigator.pop(context);
-                },
+                onTap: () => onColumnSelected(col),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
+                  padding: const EdgeInsets.fromLTRB(32, 10, 24, 10),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(col.name,

@@ -19,4 +19,5 @@ abstract class KanbanCardRepository {
   Future<void> delete(int id);
   Future<void> moveToColumn(int cardId, int newColumnId, int newPosition);
   Future<void> reorderInColumn(int columnId, List<int> orderedIds);
+  Stream<List<KanbanCard>> watchBySourceNoteId(int noteId);
 }

@@ -4,16 +4,48 @@ import '../../theme/app_tokens.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/navigation_provider.dart';
 import '../../widgets/coach_mark.dart';
 import '../../../domain/models/folder.dart';
 import 'folder_detail_screen.dart';
+import 'note_editor_screen.dart';
 import 'new_folder_dialog.dart';
 
-class FlightScreen extends ConsumerWidget {
+class FlightScreen extends ConsumerStatefulWidget {
   const FlightScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FlightScreen> createState() => _FlightScreenState();
+}
+
+class _FlightScreenState extends ConsumerState<FlightScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pendingNoteId = ref.read(pendingNoteNavigationProvider);
+      if (pendingNoteId != null) {
+        ref.read(pendingNoteNavigationProvider.notifier).state = null;
+        _navigateToPendingNote(pendingNoteId);
+      }
+    });
+  }
+
+  Future<void> _navigateToPendingNote(int noteId) async {
+    final note = await ref.read(noteRepositoryProvider).getById(noteId);
+    if (note == null || !mounted) return;
+    final folder = await ref.read(folderRepositoryProvider).getById(note.folderId);
+    if (folder == null || !mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NoteEditorScreen(note: note, folder: folder),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final foldersAsync = ref.watch(activeFoldersProvider);
 
     return CustomScrollView(

@@ -149,16 +149,46 @@ class PanelTaskTile extends ConsumerWidget {
       contentSpan = TextSpan(text: task.content, style: defaultStyle);
     }
 
+    Widget? dateChip;
+    if (task.dueDate != null) {
+      final color = _dueDateColor(task.dueDate!);
+      dateChip = Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: inkBlack, width: borderWidth),
+          boxShadow: const [
+            BoxShadow(
+              color: inkBlack,
+              offset: shadowOffset,
+              blurRadius: shadowBlurRadius,
+            ),
+          ],
+        ),
+        child: Text(
+          _formatDueDate(task.dueDate!),
+          style: labelBold.copyWith(color: paperLight, fontSize: 10),
+        ),
+      );
+    }
+
     return AppCard(
       padding: const EdgeInsets.all(10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: onTapText,
-              child: Text.rich(
-                contentSpan,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(contentSpan),
+                  if (dateChip != null) dateChip,
+                ],
               ),
             ),
           ),
@@ -173,5 +203,29 @@ class PanelTaskTile extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Color _dueDateColor(DateTime dueDate) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diff = due.difference(today).inDays;
+
+    if (diff < 0) return accentFight;
+    if (diff <= 1) return folderPalette[3];
+    return inkGray;
+  }
+
+  String _formatDueDate(DateTime dueDate) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diff = dueDay.difference(today).inDays;
+    final time =
+        '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
+
+    if (diff == 0) return 'Hoy $time';
+    if (diff == 1) return 'Mañana $time';
+    return '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')} $time';
   }
 }

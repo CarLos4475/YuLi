@@ -82,6 +82,10 @@ class LocalKanbanRepository implements KanbanCardRepository {
   Future<void> reorderInColumn(int columnId, List<int> orderedIds) =>
       _db.kanbanDao.reorderInColumn(columnId, orderedIds);
 
+  @override
+  Stream<List<KanbanCard>> watchBySourceNoteId(int noteId) =>
+      _db.kanbanDao.watchBySourceNoteId(noteId).map((rows) => rows.map(_rowToCard).toList());
+
   KanbanCard _rowToCard(KanbanCardRow row) => KanbanCard(
         id: row.id,
         labSpaceId: row.labSpaceId,

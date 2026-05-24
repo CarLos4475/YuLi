@@ -3,16 +3,45 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/navigation_provider.dart';
 import '../../widgets/coach_mark.dart';
 import 'lab_space_detail_screen.dart';
 import 'new_lab_space_dialog.dart';
 import '../../../domain/models/lab_space.dart';
 
-class LabScreen extends ConsumerWidget {
+class LabScreen extends ConsumerStatefulWidget {
   const LabScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LabScreen> createState() => _LabScreenState();
+}
+
+class _LabScreenState extends ConsumerState<LabScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pendingSpaceId = ref.read(pendingLabSpaceNavigationProvider);
+      if (pendingSpaceId != null) {
+        ref.read(pendingLabSpaceNavigationProvider.notifier).state = null;
+        _navigateToPendingSpace(pendingSpaceId);
+      }
+    });
+  }
+
+  Future<void> _navigateToPendingSpace(int spaceId) async {
+    final space = await ref.read(labSpaceRepositoryProvider).getById(spaceId);
+    if (space == null || !mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LabSpaceDetailScreen(space: space),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final spacesAsync = ref.watch(activeLabSpacesProvider);
 
     return CustomScrollView(

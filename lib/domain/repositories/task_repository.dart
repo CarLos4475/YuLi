@@ -14,4 +14,5 @@ abstract class TaskRepository {
   Future<void> deleteFromTrash(int id);
   Future<int> runExpiryQueries();
   Stream<List<Task>> watchTrashed();
+  Future<void> updateDueDate(int id, DateTime? dueDate);
 }

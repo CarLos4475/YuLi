@@ -62,4 +62,9 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
         .get();
     return count.length;
   }
+
+  Stream<List<KanbanCardRow>> watchBySourceNoteId(int noteId) =>
+      (select(kanbanCards)
+            ..where((c) => c.sourceNoteId.equals(noteId)))
+          .watch();
 }

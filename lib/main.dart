@@ -100,6 +100,11 @@ class _AppShellState extends ConsumerState<AppShell> {
           ref.read(currentModeProvider.notifier).state = AppMode.flight;
         }
       });
+      ref.listenManual(pendingLabSpaceNavigationProvider, (_, spaceId) {
+        if (spaceId != null) {
+          ref.read(currentModeProvider.notifier).state = AppMode.lab;
+        }
+      });
     });
   }
 

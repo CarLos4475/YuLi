@@ -47,7 +47,16 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from == 1) {
+            await m.addColumn(tasks, tasks.dueDate);
+          }
+        },
+      );
 
   static QueryExecutor _openConnection() {
     return driftDatabase(
@@ -129,5 +138,23 @@ class AppDatabase extends _$AppDatabase {
         seenAt: DateTime.now(),
       ),
     );
+  }
+
+  Future<void> cleanKanbanAnchors() async {
+    final rows = await (select(notes)
+          ..where((n) => n.rawMarkdown.like('%<!-- kanban:%')))
+        .get();
+    for (final row in rows) {
+      final cleaned =
+          row.rawMarkdown.replaceAll(RegExp(r'\n*<!-- kanban:\d+ -->'), '');
+      if (cleaned != row.rawMarkdown) {
+        await (update(notes)..where((n) => n.id.equals(row.id))).write(
+          NotesCompanion(
+            rawMarkdown: Value(cleaned),
+            sizeBytes: Value(cleaned.length),
+          ),
+        );
+      }
+    }
   }
 }

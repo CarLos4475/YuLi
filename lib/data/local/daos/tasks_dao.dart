@@ -74,4 +74,8 @@ class TasksDao extends DatabaseAccessor<AppDatabase> with _$TasksDaoMixin {
         ..where((t) => t.status.equals('trash'))
         ..orderBy([(t) => OrderingTerm.desc(t.trashedAt)]))
       .watch();
+
+  Future<void> updateDueDate(int id, DateTime? dueDate) =>
+      (update(tasks)..where((t) => t.id.equals(id)))
+          .write(TasksCompanion(dueDate: Value(dueDate)));
 }

@@ -434,6 +434,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dueDateMeta = const VerificationMeta(
+    'dueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dueDate = GeneratedColumn<DateTime>(
+    'due_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -443,6 +454,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
     createdAt,
     expiresAt,
     trashedAt,
+    dueDate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -501,6 +513,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
         trashedAt.isAcceptableOrUnknown(data['trashed_at']!, _trashedAtMeta),
       );
     }
+    if (data.containsKey('due_date')) {
+      context.handle(
+        _dueDateMeta,
+        dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
     return context;
   }
 
@@ -543,6 +561,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}trashed_at'],
       ),
+      dueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}due_date'],
+      ),
     );
   }
 
@@ -560,6 +582,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
   final DateTime createdAt;
   final DateTime expiresAt;
   final DateTime? trashedAt;
+  final DateTime? dueDate;
   const TaskRow({
     required this.id,
     required this.content,
@@ -568,6 +591,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     required this.createdAt,
     required this.expiresAt,
     this.trashedAt,
+    this.dueDate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -582,6 +606,9 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     map['expires_at'] = Variable<DateTime>(expiresAt);
     if (!nullToAbsent || trashedAt != null) {
       map['trashed_at'] = Variable<DateTime>(trashedAt);
+    }
+    if (!nullToAbsent || dueDate != null) {
+      map['due_date'] = Variable<DateTime>(dueDate);
     }
     return map;
   }
@@ -601,6 +628,10 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           trashedAt == null && nullToAbsent
               ? const Value.absent()
               : Value(trashedAt),
+      dueDate:
+          dueDate == null && nullToAbsent
+              ? const Value.absent()
+              : Value(dueDate),
     );
   }
 
@@ -617,6 +648,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
       trashedAt: serializer.fromJson<DateTime?>(json['trashedAt']),
+      dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
     );
   }
   @override
@@ -630,6 +662,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'expiresAt': serializer.toJson<DateTime>(expiresAt),
       'trashedAt': serializer.toJson<DateTime?>(trashedAt),
+      'dueDate': serializer.toJson<DateTime?>(dueDate),
     };
   }
 
@@ -641,6 +674,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     DateTime? createdAt,
     DateTime? expiresAt,
     Value<DateTime?> trashedAt = const Value.absent(),
+    Value<DateTime?> dueDate = const Value.absent(),
   }) => TaskRow(
     id: id ?? this.id,
     content: content ?? this.content,
@@ -649,6 +683,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     createdAt: createdAt ?? this.createdAt,
     expiresAt: expiresAt ?? this.expiresAt,
     trashedAt: trashedAt.present ? trashedAt.value : this.trashedAt,
+    dueDate: dueDate.present ? dueDate.value : this.dueDate,
   );
   TaskRow copyWithCompanion(TasksCompanion data) {
     return TaskRow(
@@ -659,6 +694,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
       trashedAt: data.trashedAt.present ? data.trashedAt.value : this.trashedAt,
+      dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
     );
   }
 
@@ -671,7 +707,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           ..write('folderId: $folderId, ')
           ..write('createdAt: $createdAt, ')
           ..write('expiresAt: $expiresAt, ')
-          ..write('trashedAt: $trashedAt')
+          ..write('trashedAt: $trashedAt, ')
+          ..write('dueDate: $dueDate')
           ..write(')'))
         .toString();
   }
@@ -685,6 +722,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     createdAt,
     expiresAt,
     trashedAt,
+    dueDate,
   );
   @override
   bool operator ==(Object other) =>
@@ -696,7 +734,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           other.folderId == this.folderId &&
           other.createdAt == this.createdAt &&
           other.expiresAt == this.expiresAt &&
-          other.trashedAt == this.trashedAt);
+          other.trashedAt == this.trashedAt &&
+          other.dueDate == this.dueDate);
 }
 
 class TasksCompanion extends UpdateCompanion<TaskRow> {
@@ -707,6 +746,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
   final Value<DateTime> createdAt;
   final Value<DateTime> expiresAt;
   final Value<DateTime?> trashedAt;
+  final Value<DateTime?> dueDate;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.content = const Value.absent(),
@@ -715,6 +755,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     this.createdAt = const Value.absent(),
     this.expiresAt = const Value.absent(),
     this.trashedAt = const Value.absent(),
+    this.dueDate = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -724,6 +765,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     this.createdAt = const Value.absent(),
     required DateTime expiresAt,
     this.trashedAt = const Value.absent(),
+    this.dueDate = const Value.absent(),
   }) : content = Value(content),
        status = Value(status),
        expiresAt = Value(expiresAt);
@@ -735,6 +777,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? expiresAt,
     Expression<DateTime>? trashedAt,
+    Expression<DateTime>? dueDate,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -744,6 +787,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
       if (createdAt != null) 'created_at': createdAt,
       if (expiresAt != null) 'expires_at': expiresAt,
       if (trashedAt != null) 'trashed_at': trashedAt,
+      if (dueDate != null) 'due_date': dueDate,
     });
   }
 
@@ -755,6 +799,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     Value<DateTime>? createdAt,
     Value<DateTime>? expiresAt,
     Value<DateTime?>? trashedAt,
+    Value<DateTime?>? dueDate,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -764,6 +809,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
       createdAt: createdAt ?? this.createdAt,
       expiresAt: expiresAt ?? this.expiresAt,
       trashedAt: trashedAt ?? this.trashedAt,
+      dueDate: dueDate ?? this.dueDate,
     );
   }
 
@@ -791,6 +837,9 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     if (trashedAt.present) {
       map['trashed_at'] = Variable<DateTime>(trashedAt.value);
     }
+    if (dueDate.present) {
+      map['due_date'] = Variable<DateTime>(dueDate.value);
+    }
     return map;
   }
 
@@ -803,7 +852,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
           ..write('folderId: $folderId, ')
           ..write('createdAt: $createdAt, ')
           ..write('expiresAt: $expiresAt, ')
-          ..write('trashedAt: $trashedAt')
+          ..write('trashedAt: $trashedAt, ')
+          ..write('dueDate: $dueDate')
           ..write(')'))
         .toString();
   }
@@ -4850,6 +4900,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       Value<DateTime> createdAt,
       required DateTime expiresAt,
       Value<DateTime?> trashedAt,
+      Value<DateTime?> dueDate,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
     TasksCompanion Function({
@@ -4860,6 +4911,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> expiresAt,
       Value<DateTime?> trashedAt,
+      Value<DateTime?> dueDate,
     });
 
 final class $$TasksTableReferences
@@ -4955,6 +5007,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<DateTime> get trashedAt => $composableBuilder(
     column: $table.trashedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5071,6 +5128,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$FoldersTableOrderingComposer get folderId {
     final $$FoldersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -5121,6 +5183,9 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<DateTime> get trashedAt =>
       $composableBuilder(column: $table.trashedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get dueDate =>
+      $composableBuilder(column: $table.dueDate, builder: (column) => column);
 
   $$FoldersTableAnnotationComposer get folderId {
     final $$FoldersTableAnnotationComposer composer = $composerBuilder(
@@ -5235,6 +5300,7 @@ class $$TasksTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> expiresAt = const Value.absent(),
                 Value<DateTime?> trashedAt = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 content: content,
@@ -5243,6 +5309,7 @@ class $$TasksTableTableManager
                 createdAt: createdAt,
                 expiresAt: expiresAt,
                 trashedAt: trashedAt,
+                dueDate: dueDate,
               ),
           createCompanionCallback:
               ({
@@ -5253,6 +5320,7 @@ class $$TasksTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 required DateTime expiresAt,
                 Value<DateTime?> trashedAt = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 content: content,
@@ -5261,6 +5329,7 @@ class $$TasksTableTableManager
                 createdAt: createdAt,
                 expiresAt: expiresAt,
                 trashedAt: trashedAt,
+                dueDate: dueDate,
               ),
           withReferenceMapper:
               (p0) =>

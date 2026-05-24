@@ -149,7 +149,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
   }
 }
 
-class _CardContent extends StatelessWidget {
+class _CardContent extends ConsumerWidget {
   final Task task;
   final Folder? folder;
   final Color borderColor;
@@ -163,7 +163,7 @@ class _CardContent extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final doneBackground = desaturate(accentFight, amount: 0.85)
         .withAlpha(60);
 
@@ -181,7 +181,7 @@ class _CardContent extends StatelessWidget {
       final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
       final matches = regex.allMatches(text).toList();
       final targetClean = removeAccents(folder!.name.toLowerCase());
-      
+
       final validMatches = matches.where((m) {
         final matchedName = m.group(1)!;
         return removeAccents(matchedName.toLowerCase()) == targetClean;
@@ -231,32 +231,184 @@ class _CardContent extends StatelessWidget {
       contentSpan = TextSpan(text: task.content, style: defaultStyle);
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDone ? doneBackground : cardBackground(context),
-        border: Border.all(color: borderColor, width: borderWidth),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  contentSpan,
+    Widget? dateChip;
+    if (task.dueDate != null) {
+      final color = _dueDateColor(task.dueDate!);
+      dateChip = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: inkBlack, width: borderWidth),
+          boxShadow: const [
+            BoxShadow(
+              color: inkBlack,
+              offset: shadowOffset,
+              blurRadius: shadowBlurRadius,
+            ),
+          ],
+        ),
+        child: Text(
+          _formatDueDate(task.dueDate!),
+          style: labelBold.copyWith(color: paperLight, fontSize: 10),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: isDone ? doneBackground : cardBackground(context),
+            border: Border.all(color: borderColor, width: borderWidth),
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(contentSpan),
+                    if (dateChip != null) ...[
+                      const SizedBox(height: 6),
+                      dateChip,
+                    ],
+                  ],
                 ),
+              ),
+              if (folder != null) ...[
+                const SizedBox(width: 8),
+                AppTag(label: folder!.name, color: folder!.color),
               ],
+            ],
+          ),
+        ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            onTap: () => _pickDueDate(context, ref),
+            behavior: HitTestBehavior.opaque,
+            child: Icon(
+              task.dueDate != null
+                  ? Icons.access_time_filled
+                  : Icons.access_time,
+              size: 16,
+              color: task.dueDate != null ? accentFight : inkBlack,
             ),
           ),
-          if (folder != null) ...[
-            const SizedBox(width: 8),
-            AppTag(label: folder!.name, color: folder!.color),
+        ),
+      ],
+    );
+  }
+
+  Color _dueDateColor(DateTime dueDate) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diff = due.difference(today).inDays;
+
+    if (diff < 0) return accentFight;
+    if (diff <= 1) return folderPalette[3];
+    return inkGray;
+  }
+
+  String _formatDueDate(DateTime dueDate) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diff = dueDay.difference(today).inDays;
+    final time =
+        '${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
+
+    if (diff == 0) return 'Hoy $time';
+    if (diff == 1) return 'Mañana $time';
+    return '${dueDate.day.toString().padLeft(2, '0')}/${dueDate.month.toString().padLeft(2, '0')} $time';
+  }
+
+  Future<void> _pickDueDate(BuildContext context, WidgetRef ref) async {
+    if (task.dueDate != null) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: paperColor(ctx),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.zero,
+          ),
+          title: Text(
+            'Fecha límite',
+            style: displayM.copyWith(color: inkColor(ctx)),
+          ),
+          content: Text(
+            'Actual: ${task.dueDate!.day.toString().padLeft(2, '0')}/${task.dueDate!.month.toString().padLeft(2, '0')}/${task.dueDate!.year} ${task.dueDate!.hour.toString().padLeft(2, '0')}:${task.dueDate!.minute.toString().padLeft(2, '0')}',
+            style: bodyM.copyWith(color: inkColor(ctx)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'clear'),
+              child: Text(
+                'BORRAR',
+                style: labelBold.copyWith(color: accentFight),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'change'),
+              child: Text(
+                'CAMBIAR',
+                style: labelBold.copyWith(color: inkColor(ctx)),
+              ),
+            ),
           ],
-        ],
+        ),
+      );
+
+      if (action == 'clear') {
+        await ref.read(taskRepositoryProvider).updateDueDate(task.id, null);
+        return;
+      }
+      if (action != 'change') return;
+    }
+
+    if (!context.mounted) return;
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: task.dueDate ?? now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365 * 5)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          datePickerTheme: const DatePickerThemeData(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          ),
+        ),
+        child: child!,
       ),
     );
+    if (picked == null) return;
+
+    if (!context.mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: task.dueDate != null
+          ? TimeOfDay.fromDateTime(task.dueDate!)
+          : const TimeOfDay(hour: 12, minute: 0),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          timePickerTheme: const TimePickerThemeData(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null) return;
+
+    final dt = DateTime(
+      picked.year, picked.month, picked.day, time.hour, time.minute,
+    );
+    await ref.read(taskRepositoryProvider).updateDueDate(task.id, dt);
   }
 }
 

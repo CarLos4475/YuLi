@@ -76,10 +76,15 @@ final deletedLabSpacesProvider = StreamProvider<List<LabSpace>>((ref) {
 final expiryResultProvider = FutureProvider<int>((ref) async {
   final db = ref.watch(databaseProvider);
   try {
-    return await db.runExpiryQueries().timeout(
+    final result = await db.runExpiryQueries().timeout(
       const Duration(seconds: 8),
       onTimeout: () => 0,
     );
+    if (!await db.hasSeenOnboarding('kanban_anchor_cleanup')) {
+      await db.cleanKanbanAnchors();
+      await db.markOnboardingSeen('kanban_anchor_cleanup');
+    }
+    return result;
   } catch (_) {
     return 0;
   }

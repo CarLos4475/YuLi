@@ -50,6 +50,34 @@ class KanbanCardTile extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
+                        if (card.sourceNoteId != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Icon(Icons.description_outlined,
+                                    size: 12, color: accentFlight),
+                                const SizedBox(width: 4),
+                                Text('Nota',
+                                    style: bodyS.copyWith(
+                                        color: accentFlight, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        if (card.originTaskId != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Icon(Icons.flash_on,
+                                    size: 12, color: accentFight),
+                                const SizedBox(width: 4),
+                                Text('Tarea',
+                                    style: bodyS.copyWith(
+                                        color: accentFight, fontSize: 10)),
+                              ],
+                            ),
+                          ),
                         if (card.dueDate != null) ...[
                           const SizedBox(height: 4),
                           Text(
