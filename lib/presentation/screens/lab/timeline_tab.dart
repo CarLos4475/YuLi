@@ -20,10 +20,26 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
     with AutomaticKeepAliveClientMixin {
   final TransformationController _transformationController =
       TransformationController();
-  bool _initialFitDone = false;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    SchedulerBinding.instance.addPostFrameCallback((_) => _fitTimeline());
+  }
+
+  void _fitTimeline() {
+    if (!mounted) return;
+    if (widget.space.startDate == null || widget.space.dueDate == null) return;
+    final totalDays = widget.space.dueDate!.difference(widget.space.startDate!).inDays + 1;
+    if (totalDays <= 0) return;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final totalWidth = screenWidth + (totalDays * 4.0);
+    final scale = screenWidth / totalWidth;
+    _transformationController.value = Matrix4.diagonal3Values(scale, scale, 1);
+  }
 
   @override
   void dispose() {
@@ -46,17 +62,6 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
         widget.space;
     if (reactiveSpace.startDate == null || reactiveSpace.dueDate == null) {
       return _NoDatesMessage(ink: ink, accentColor: reactiveSpace.accentColor);
-    }
-
-    if (!_initialFitDone) {
-      _initialFitDone = true;
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        final totalDays = reactiveSpace.dueDate!.difference(reactiveSpace.startDate!).inDays + 1;
-        final screenWidth = MediaQuery.of(context).size.width;
-        final totalWidth = screenWidth + (totalDays * 4.0);
-        final scale = screenWidth / totalWidth;
-        _transformationController.value = Matrix4.diagonal3Values(scale, scale, 1);
-      });
     }
 
     return columnsAsync.when(
