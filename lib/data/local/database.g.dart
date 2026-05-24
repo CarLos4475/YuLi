@@ -1,0 +1,9405 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'database.dart';
+
+// ignore_for_file: type=lint
+class $FoldersTable extends Folders with TableInfo<$FoldersTable, FolderRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FoldersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, color, createdAt, deletedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'folders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FolderRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FolderRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FolderRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      name:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}name'],
+          )!,
+      color:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}color'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+    );
+  }
+
+  @override
+  $FoldersTable createAlias(String alias) {
+    return $FoldersTable(attachedDatabase, alias);
+  }
+}
+
+class FolderRow extends DataClass implements Insertable<FolderRow> {
+  final int id;
+  final String name;
+  final String color;
+  final DateTime createdAt;
+  final DateTime? deletedAt;
+  const FolderRow({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.createdAt,
+    this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['color'] = Variable<String>(color);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  FoldersCompanion toCompanion(bool nullToAbsent) {
+    return FoldersCompanion(
+      id: Value(id),
+      name: Value(name),
+      color: Value(color),
+      createdAt: Value(createdAt),
+      deletedAt:
+          deletedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(deletedAt),
+    );
+  }
+
+  factory FolderRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FolderRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      color: serializer.fromJson<String>(json['color']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'color': serializer.toJson<String>(color),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  FolderRow copyWith({
+    int? id,
+    String? name,
+    String? color,
+    DateTime? createdAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+  }) => FolderRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    color: color ?? this.color,
+    createdAt: createdAt ?? this.createdAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+  );
+  FolderRow copyWithCompanion(FoldersCompanion data) {
+    return FolderRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      color: data.color.present ? data.color.value : this.color,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FolderRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, color, createdAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FolderRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.color == this.color &&
+          other.createdAt == this.createdAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class FoldersCompanion extends UpdateCompanion<FolderRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String> color;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> deletedAt;
+  const FoldersCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.color = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  FoldersCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required String color,
+    this.createdAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  }) : name = Value(name),
+       color = Value(color);
+  static Insertable<FolderRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? color,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (color != null) 'color': color,
+      if (createdAt != null) 'created_at': createdAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  FoldersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String>? color,
+    Value<DateTime>? createdAt,
+    Value<DateTime?>? deletedAt,
+  }) {
+    return FoldersCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      createdAt: createdAt ?? this.createdAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FoldersCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TasksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<int> folderId = GeneratedColumn<int>(
+    'folder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES folders (id)',
+    ),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _expiresAtMeta = const VerificationMeta(
+    'expiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+    'expires_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _trashedAtMeta = const VerificationMeta(
+    'trashedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> trashedAt = GeneratedColumn<DateTime>(
+    'trashed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    content,
+    status,
+    folderId,
+    createdAt,
+    expiresAt,
+    trashedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'tasks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TaskRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(
+        _expiresAtMeta,
+        expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_expiresAtMeta);
+    }
+    if (data.containsKey('trashed_at')) {
+      context.handle(
+        _trashedAtMeta,
+        trashedAt.isAcceptableOrUnknown(data['trashed_at']!, _trashedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TaskRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TaskRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      content:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}content'],
+          )!,
+      status:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}status'],
+          )!,
+      folderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}folder_id'],
+      ),
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      expiresAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}expires_at'],
+          )!,
+      trashedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}trashed_at'],
+      ),
+    );
+  }
+
+  @override
+  $TasksTable createAlias(String alias) {
+    return $TasksTable(attachedDatabase, alias);
+  }
+}
+
+class TaskRow extends DataClass implements Insertable<TaskRow> {
+  final int id;
+  final String content;
+  final String status;
+  final int? folderId;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final DateTime? trashedAt;
+  const TaskRow({
+    required this.id,
+    required this.content,
+    required this.status,
+    this.folderId,
+    required this.createdAt,
+    required this.expiresAt,
+    this.trashedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['content'] = Variable<String>(content);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || folderId != null) {
+      map['folder_id'] = Variable<int>(folderId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['expires_at'] = Variable<DateTime>(expiresAt);
+    if (!nullToAbsent || trashedAt != null) {
+      map['trashed_at'] = Variable<DateTime>(trashedAt);
+    }
+    return map;
+  }
+
+  TasksCompanion toCompanion(bool nullToAbsent) {
+    return TasksCompanion(
+      id: Value(id),
+      content: Value(content),
+      status: Value(status),
+      folderId:
+          folderId == null && nullToAbsent
+              ? const Value.absent()
+              : Value(folderId),
+      createdAt: Value(createdAt),
+      expiresAt: Value(expiresAt),
+      trashedAt:
+          trashedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(trashedAt),
+    );
+  }
+
+  factory TaskRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TaskRow(
+      id: serializer.fromJson<int>(json['id']),
+      content: serializer.fromJson<String>(json['content']),
+      status: serializer.fromJson<String>(json['status']),
+      folderId: serializer.fromJson<int?>(json['folderId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
+      trashedAt: serializer.fromJson<DateTime?>(json['trashedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'content': serializer.toJson<String>(content),
+      'status': serializer.toJson<String>(status),
+      'folderId': serializer.toJson<int?>(folderId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'expiresAt': serializer.toJson<DateTime>(expiresAt),
+      'trashedAt': serializer.toJson<DateTime?>(trashedAt),
+    };
+  }
+
+  TaskRow copyWith({
+    int? id,
+    String? content,
+    String? status,
+    Value<int?> folderId = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    Value<DateTime?> trashedAt = const Value.absent(),
+  }) => TaskRow(
+    id: id ?? this.id,
+    content: content ?? this.content,
+    status: status ?? this.status,
+    folderId: folderId.present ? folderId.value : this.folderId,
+    createdAt: createdAt ?? this.createdAt,
+    expiresAt: expiresAt ?? this.expiresAt,
+    trashedAt: trashedAt.present ? trashedAt.value : this.trashedAt,
+  );
+  TaskRow copyWithCompanion(TasksCompanion data) {
+    return TaskRow(
+      id: data.id.present ? data.id.value : this.id,
+      content: data.content.present ? data.content.value : this.content,
+      status: data.status.present ? data.status.value : this.status,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+      trashedAt: data.trashedAt.present ? data.trashedAt.value : this.trashedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaskRow(')
+          ..write('id: $id, ')
+          ..write('content: $content, ')
+          ..write('status: $status, ')
+          ..write('folderId: $folderId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('trashedAt: $trashedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    content,
+    status,
+    folderId,
+    createdAt,
+    expiresAt,
+    trashedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TaskRow &&
+          other.id == this.id &&
+          other.content == this.content &&
+          other.status == this.status &&
+          other.folderId == this.folderId &&
+          other.createdAt == this.createdAt &&
+          other.expiresAt == this.expiresAt &&
+          other.trashedAt == this.trashedAt);
+}
+
+class TasksCompanion extends UpdateCompanion<TaskRow> {
+  final Value<int> id;
+  final Value<String> content;
+  final Value<String> status;
+  final Value<int?> folderId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> expiresAt;
+  final Value<DateTime?> trashedAt;
+  const TasksCompanion({
+    this.id = const Value.absent(),
+    this.content = const Value.absent(),
+    this.status = const Value.absent(),
+    this.folderId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.trashedAt = const Value.absent(),
+  });
+  TasksCompanion.insert({
+    this.id = const Value.absent(),
+    required String content,
+    required String status,
+    this.folderId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    required DateTime expiresAt,
+    this.trashedAt = const Value.absent(),
+  }) : content = Value(content),
+       status = Value(status),
+       expiresAt = Value(expiresAt);
+  static Insertable<TaskRow> custom({
+    Expression<int>? id,
+    Expression<String>? content,
+    Expression<String>? status,
+    Expression<int>? folderId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? expiresAt,
+    Expression<DateTime>? trashedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (content != null) 'content': content,
+      if (status != null) 'status': status,
+      if (folderId != null) 'folder_id': folderId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (expiresAt != null) 'expires_at': expiresAt,
+      if (trashedAt != null) 'trashed_at': trashedAt,
+    });
+  }
+
+  TasksCompanion copyWith({
+    Value<int>? id,
+    Value<String>? content,
+    Value<String>? status,
+    Value<int?>? folderId,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? expiresAt,
+    Value<DateTime?>? trashedAt,
+  }) {
+    return TasksCompanion(
+      id: id ?? this.id,
+      content: content ?? this.content,
+      status: status ?? this.status,
+      folderId: folderId ?? this.folderId,
+      createdAt: createdAt ?? this.createdAt,
+      expiresAt: expiresAt ?? this.expiresAt,
+      trashedAt: trashedAt ?? this.trashedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (folderId.present) {
+      map['folder_id'] = Variable<int>(folderId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
+    if (trashedAt.present) {
+      map['trashed_at'] = Variable<DateTime>(trashedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TasksCompanion(')
+          ..write('id: $id, ')
+          ..write('content: $content, ')
+          ..write('status: $status, ')
+          ..write('folderId: $folderId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('trashedAt: $trashedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NotesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<int> folderId = GeneratedColumn<int>(
+    'folder_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES folders (id)',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rawMarkdownMeta = const VerificationMeta(
+    'rawMarkdown',
+  );
+  @override
+  late final GeneratedColumn<String> rawMarkdown = GeneratedColumn<String>(
+    'raw_markdown',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    folderId,
+    title,
+    rawMarkdown,
+    sizeBytes,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'notes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_folderIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('raw_markdown')) {
+      context.handle(
+        _rawMarkdownMeta,
+        rawMarkdown.isAcceptableOrUnknown(
+          data['raw_markdown']!,
+          _rawMarkdownMeta,
+        ),
+      );
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NoteRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      folderId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}folder_id'],
+          )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      rawMarkdown:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}raw_markdown'],
+          )!,
+      sizeBytes:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}size_bytes'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      updatedAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}updated_at'],
+          )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+    );
+  }
+
+  @override
+  $NotesTable createAlias(String alias) {
+    return $NotesTable(attachedDatabase, alias);
+  }
+}
+
+class NoteRow extends DataClass implements Insertable<NoteRow> {
+  final int id;
+  final int folderId;
+  final String? title;
+  final String rawMarkdown;
+  final int sizeBytes;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+  const NoteRow({
+    required this.id,
+    required this.folderId,
+    this.title,
+    required this.rawMarkdown,
+    required this.sizeBytes,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['folder_id'] = Variable<int>(folderId);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    map['raw_markdown'] = Variable<String>(rawMarkdown);
+    map['size_bytes'] = Variable<int>(sizeBytes);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  NotesCompanion toCompanion(bool nullToAbsent) {
+    return NotesCompanion(
+      id: Value(id),
+      folderId: Value(folderId),
+      title:
+          title == null && nullToAbsent ? const Value.absent() : Value(title),
+      rawMarkdown: Value(rawMarkdown),
+      sizeBytes: Value(sizeBytes),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt:
+          deletedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(deletedAt),
+    );
+  }
+
+  factory NoteRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteRow(
+      id: serializer.fromJson<int>(json['id']),
+      folderId: serializer.fromJson<int>(json['folderId']),
+      title: serializer.fromJson<String?>(json['title']),
+      rawMarkdown: serializer.fromJson<String>(json['rawMarkdown']),
+      sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'folderId': serializer.toJson<int>(folderId),
+      'title': serializer.toJson<String?>(title),
+      'rawMarkdown': serializer.toJson<String>(rawMarkdown),
+      'sizeBytes': serializer.toJson<int>(sizeBytes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  NoteRow copyWith({
+    int? id,
+    int? folderId,
+    Value<String?> title = const Value.absent(),
+    String? rawMarkdown,
+    int? sizeBytes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+  }) => NoteRow(
+    id: id ?? this.id,
+    folderId: folderId ?? this.folderId,
+    title: title.present ? title.value : this.title,
+    rawMarkdown: rawMarkdown ?? this.rawMarkdown,
+    sizeBytes: sizeBytes ?? this.sizeBytes,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+  );
+  NoteRow copyWithCompanion(NotesCompanion data) {
+    return NoteRow(
+      id: data.id.present ? data.id.value : this.id,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
+      title: data.title.present ? data.title.value : this.title,
+      rawMarkdown:
+          data.rawMarkdown.present ? data.rawMarkdown.value : this.rawMarkdown,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteRow(')
+          ..write('id: $id, ')
+          ..write('folderId: $folderId, ')
+          ..write('title: $title, ')
+          ..write('rawMarkdown: $rawMarkdown, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    folderId,
+    title,
+    rawMarkdown,
+    sizeBytes,
+    createdAt,
+    updatedAt,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteRow &&
+          other.id == this.id &&
+          other.folderId == this.folderId &&
+          other.title == this.title &&
+          other.rawMarkdown == this.rawMarkdown &&
+          other.sizeBytes == this.sizeBytes &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class NotesCompanion extends UpdateCompanion<NoteRow> {
+  final Value<int> id;
+  final Value<int> folderId;
+  final Value<String?> title;
+  final Value<String> rawMarkdown;
+  final Value<int> sizeBytes;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  const NotesCompanion({
+    this.id = const Value.absent(),
+    this.folderId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.rawMarkdown = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  NotesCompanion.insert({
+    this.id = const Value.absent(),
+    required int folderId,
+    this.title = const Value.absent(),
+    this.rawMarkdown = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  }) : folderId = Value(folderId);
+  static Insertable<NoteRow> custom({
+    Expression<int>? id,
+    Expression<int>? folderId,
+    Expression<String>? title,
+    Expression<String>? rawMarkdown,
+    Expression<int>? sizeBytes,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (folderId != null) 'folder_id': folderId,
+      if (title != null) 'title': title,
+      if (rawMarkdown != null) 'raw_markdown': rawMarkdown,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  NotesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? folderId,
+    Value<String?>? title,
+    Value<String>? rawMarkdown,
+    Value<int>? sizeBytes,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+  }) {
+    return NotesCompanion(
+      id: id ?? this.id,
+      folderId: folderId ?? this.folderId,
+      title: title ?? this.title,
+      rawMarkdown: rawMarkdown ?? this.rawMarkdown,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (folderId.present) {
+      map['folder_id'] = Variable<int>(folderId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (rawMarkdown.present) {
+      map['raw_markdown'] = Variable<String>(rawMarkdown.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NotesCompanion(')
+          ..write('id: $id, ')
+          ..write('folderId: $folderId, ')
+          ..write('title: $title, ')
+          ..write('rawMarkdown: $rawMarkdown, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NoteImagesTable extends NoteImages
+    with TableInfo<$NoteImagesTable, NoteImageRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NoteImagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _filenameMeta = const VerificationMeta(
+    'filename',
+  );
+  @override
+  late final GeneratedColumn<String> filename = GeneratedColumn<String>(
+    'filename',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _filePathMeta = const VerificationMeta(
+    'filePath',
+  );
+  @override
+  late final GeneratedColumn<String> filePath = GeneratedColumn<String>(
+    'file_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    noteId,
+    filename,
+    filePath,
+    sizeBytes,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'note_images';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteImageRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('filename')) {
+      context.handle(
+        _filenameMeta,
+        filename.isAcceptableOrUnknown(data['filename']!, _filenameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_filenameMeta);
+    }
+    if (data.containsKey('file_path')) {
+      context.handle(
+        _filePathMeta,
+        filePath.isAcceptableOrUnknown(data['file_path']!, _filePathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_filePathMeta);
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sizeBytesMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NoteImageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteImageRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      noteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}note_id'],
+          )!,
+      filename:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}filename'],
+          )!,
+      filePath:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}file_path'],
+          )!,
+      sizeBytes:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}size_bytes'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $NoteImagesTable createAlias(String alias) {
+    return $NoteImagesTable(attachedDatabase, alias);
+  }
+}
+
+class NoteImageRow extends DataClass implements Insertable<NoteImageRow> {
+  final int id;
+  final int noteId;
+  final String filename;
+  final String filePath;
+  final int sizeBytes;
+  final DateTime createdAt;
+  const NoteImageRow({
+    required this.id,
+    required this.noteId,
+    required this.filename,
+    required this.filePath,
+    required this.sizeBytes,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['note_id'] = Variable<int>(noteId);
+    map['filename'] = Variable<String>(filename);
+    map['file_path'] = Variable<String>(filePath);
+    map['size_bytes'] = Variable<int>(sizeBytes);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  NoteImagesCompanion toCompanion(bool nullToAbsent) {
+    return NoteImagesCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      filename: Value(filename),
+      filePath: Value(filePath),
+      sizeBytes: Value(sizeBytes),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory NoteImageRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteImageRow(
+      id: serializer.fromJson<int>(json['id']),
+      noteId: serializer.fromJson<int>(json['noteId']),
+      filename: serializer.fromJson<String>(json['filename']),
+      filePath: serializer.fromJson<String>(json['filePath']),
+      sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'noteId': serializer.toJson<int>(noteId),
+      'filename': serializer.toJson<String>(filename),
+      'filePath': serializer.toJson<String>(filePath),
+      'sizeBytes': serializer.toJson<int>(sizeBytes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  NoteImageRow copyWith({
+    int? id,
+    int? noteId,
+    String? filename,
+    String? filePath,
+    int? sizeBytes,
+    DateTime? createdAt,
+  }) => NoteImageRow(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    filename: filename ?? this.filename,
+    filePath: filePath ?? this.filePath,
+    sizeBytes: sizeBytes ?? this.sizeBytes,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  NoteImageRow copyWithCompanion(NoteImagesCompanion data) {
+    return NoteImageRow(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      filename: data.filename.present ? data.filename.value : this.filename,
+      filePath: data.filePath.present ? data.filePath.value : this.filePath,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteImageRow(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('filename: $filename, ')
+          ..write('filePath: $filePath, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, noteId, filename, filePath, sizeBytes, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteImageRow &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.filename == this.filename &&
+          other.filePath == this.filePath &&
+          other.sizeBytes == this.sizeBytes &&
+          other.createdAt == this.createdAt);
+}
+
+class NoteImagesCompanion extends UpdateCompanion<NoteImageRow> {
+  final Value<int> id;
+  final Value<int> noteId;
+  final Value<String> filename;
+  final Value<String> filePath;
+  final Value<int> sizeBytes;
+  final Value<DateTime> createdAt;
+  const NoteImagesCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.filename = const Value.absent(),
+    this.filePath = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  NoteImagesCompanion.insert({
+    this.id = const Value.absent(),
+    required int noteId,
+    required String filename,
+    required String filePath,
+    required int sizeBytes,
+    this.createdAt = const Value.absent(),
+  }) : noteId = Value(noteId),
+       filename = Value(filename),
+       filePath = Value(filePath),
+       sizeBytes = Value(sizeBytes);
+  static Insertable<NoteImageRow> custom({
+    Expression<int>? id,
+    Expression<int>? noteId,
+    Expression<String>? filename,
+    Expression<String>? filePath,
+    Expression<int>? sizeBytes,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (filename != null) 'filename': filename,
+      if (filePath != null) 'file_path': filePath,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  NoteImagesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? noteId,
+    Value<String>? filename,
+    Value<String>? filePath,
+    Value<int>? sizeBytes,
+    Value<DateTime>? createdAt,
+  }) {
+    return NoteImagesCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      filename: filename ?? this.filename,
+      filePath: filePath ?? this.filePath,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (filename.present) {
+      map['filename'] = Variable<String>(filename.value);
+    }
+    if (filePath.present) {
+      map['file_path'] = Variable<String>(filePath.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteImagesCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('filename: $filename, ')
+          ..write('filePath: $filePath, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NoteVersionsTable extends NoteVersions
+    with TableInfo<$NoteVersionsTable, NoteVersionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NoteVersionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _rawMarkdownMeta = const VerificationMeta(
+    'rawMarkdown',
+  );
+  @override
+  late final GeneratedColumn<String> rawMarkdown = GeneratedColumn<String>(
+    'raw_markdown',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _savedAtMeta = const VerificationMeta(
+    'savedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> savedAt = GeneratedColumn<DateTime>(
+    'saved_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, noteId, rawMarkdown, savedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'note_versions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteVersionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('raw_markdown')) {
+      context.handle(
+        _rawMarkdownMeta,
+        rawMarkdown.isAcceptableOrUnknown(
+          data['raw_markdown']!,
+          _rawMarkdownMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_rawMarkdownMeta);
+    }
+    if (data.containsKey('saved_at')) {
+      context.handle(
+        _savedAtMeta,
+        savedAt.isAcceptableOrUnknown(data['saved_at']!, _savedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NoteVersionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteVersionRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      noteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}note_id'],
+          )!,
+      rawMarkdown:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}raw_markdown'],
+          )!,
+      savedAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}saved_at'],
+          )!,
+    );
+  }
+
+  @override
+  $NoteVersionsTable createAlias(String alias) {
+    return $NoteVersionsTable(attachedDatabase, alias);
+  }
+}
+
+class NoteVersionRow extends DataClass implements Insertable<NoteVersionRow> {
+  final int id;
+  final int noteId;
+  final String rawMarkdown;
+  final DateTime savedAt;
+  const NoteVersionRow({
+    required this.id,
+    required this.noteId,
+    required this.rawMarkdown,
+    required this.savedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['note_id'] = Variable<int>(noteId);
+    map['raw_markdown'] = Variable<String>(rawMarkdown);
+    map['saved_at'] = Variable<DateTime>(savedAt);
+    return map;
+  }
+
+  NoteVersionsCompanion toCompanion(bool nullToAbsent) {
+    return NoteVersionsCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      rawMarkdown: Value(rawMarkdown),
+      savedAt: Value(savedAt),
+    );
+  }
+
+  factory NoteVersionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteVersionRow(
+      id: serializer.fromJson<int>(json['id']),
+      noteId: serializer.fromJson<int>(json['noteId']),
+      rawMarkdown: serializer.fromJson<String>(json['rawMarkdown']),
+      savedAt: serializer.fromJson<DateTime>(json['savedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'noteId': serializer.toJson<int>(noteId),
+      'rawMarkdown': serializer.toJson<String>(rawMarkdown),
+      'savedAt': serializer.toJson<DateTime>(savedAt),
+    };
+  }
+
+  NoteVersionRow copyWith({
+    int? id,
+    int? noteId,
+    String? rawMarkdown,
+    DateTime? savedAt,
+  }) => NoteVersionRow(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    rawMarkdown: rawMarkdown ?? this.rawMarkdown,
+    savedAt: savedAt ?? this.savedAt,
+  );
+  NoteVersionRow copyWithCompanion(NoteVersionsCompanion data) {
+    return NoteVersionRow(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      rawMarkdown:
+          data.rawMarkdown.present ? data.rawMarkdown.value : this.rawMarkdown,
+      savedAt: data.savedAt.present ? data.savedAt.value : this.savedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteVersionRow(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('rawMarkdown: $rawMarkdown, ')
+          ..write('savedAt: $savedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, noteId, rawMarkdown, savedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteVersionRow &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.rawMarkdown == this.rawMarkdown &&
+          other.savedAt == this.savedAt);
+}
+
+class NoteVersionsCompanion extends UpdateCompanion<NoteVersionRow> {
+  final Value<int> id;
+  final Value<int> noteId;
+  final Value<String> rawMarkdown;
+  final Value<DateTime> savedAt;
+  const NoteVersionsCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.rawMarkdown = const Value.absent(),
+    this.savedAt = const Value.absent(),
+  });
+  NoteVersionsCompanion.insert({
+    this.id = const Value.absent(),
+    required int noteId,
+    required String rawMarkdown,
+    this.savedAt = const Value.absent(),
+  }) : noteId = Value(noteId),
+       rawMarkdown = Value(rawMarkdown);
+  static Insertable<NoteVersionRow> custom({
+    Expression<int>? id,
+    Expression<int>? noteId,
+    Expression<String>? rawMarkdown,
+    Expression<DateTime>? savedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (rawMarkdown != null) 'raw_markdown': rawMarkdown,
+      if (savedAt != null) 'saved_at': savedAt,
+    });
+  }
+
+  NoteVersionsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? noteId,
+    Value<String>? rawMarkdown,
+    Value<DateTime>? savedAt,
+  }) {
+    return NoteVersionsCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      rawMarkdown: rawMarkdown ?? this.rawMarkdown,
+      savedAt: savedAt ?? this.savedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (rawMarkdown.present) {
+      map['raw_markdown'] = Variable<String>(rawMarkdown.value);
+    }
+    if (savedAt.present) {
+      map['saved_at'] = Variable<DateTime>(savedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteVersionsCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('rawMarkdown: $rawMarkdown, ')
+          ..write('savedAt: $savedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NoteTaskLinksTable extends NoteTaskLinks
+    with TableInfo<$NoteTaskLinksTable, NoteTaskLinkRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NoteTaskLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _taskIdMeta = const VerificationMeta('taskId');
+  @override
+  late final GeneratedColumn<int> taskId = GeneratedColumn<int>(
+    'task_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tasks (id)',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [noteId, taskId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'note_task_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteTaskLinkRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('task_id')) {
+      context.handle(
+        _taskIdMeta,
+        taskId.isAcceptableOrUnknown(data['task_id']!, _taskIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_taskIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {noteId, taskId};
+  @override
+  NoteTaskLinkRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteTaskLinkRow(
+      noteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}note_id'],
+          )!,
+      taskId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}task_id'],
+          )!,
+    );
+  }
+
+  @override
+  $NoteTaskLinksTable createAlias(String alias) {
+    return $NoteTaskLinksTable(attachedDatabase, alias);
+  }
+}
+
+class NoteTaskLinkRow extends DataClass implements Insertable<NoteTaskLinkRow> {
+  final int noteId;
+  final int taskId;
+  const NoteTaskLinkRow({required this.noteId, required this.taskId});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['note_id'] = Variable<int>(noteId);
+    map['task_id'] = Variable<int>(taskId);
+    return map;
+  }
+
+  NoteTaskLinksCompanion toCompanion(bool nullToAbsent) {
+    return NoteTaskLinksCompanion(noteId: Value(noteId), taskId: Value(taskId));
+  }
+
+  factory NoteTaskLinkRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteTaskLinkRow(
+      noteId: serializer.fromJson<int>(json['noteId']),
+      taskId: serializer.fromJson<int>(json['taskId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'noteId': serializer.toJson<int>(noteId),
+      'taskId': serializer.toJson<int>(taskId),
+    };
+  }
+
+  NoteTaskLinkRow copyWith({int? noteId, int? taskId}) => NoteTaskLinkRow(
+    noteId: noteId ?? this.noteId,
+    taskId: taskId ?? this.taskId,
+  );
+  NoteTaskLinkRow copyWithCompanion(NoteTaskLinksCompanion data) {
+    return NoteTaskLinkRow(
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      taskId: data.taskId.present ? data.taskId.value : this.taskId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteTaskLinkRow(')
+          ..write('noteId: $noteId, ')
+          ..write('taskId: $taskId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(noteId, taskId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteTaskLinkRow &&
+          other.noteId == this.noteId &&
+          other.taskId == this.taskId);
+}
+
+class NoteTaskLinksCompanion extends UpdateCompanion<NoteTaskLinkRow> {
+  final Value<int> noteId;
+  final Value<int> taskId;
+  final Value<int> rowid;
+  const NoteTaskLinksCompanion({
+    this.noteId = const Value.absent(),
+    this.taskId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NoteTaskLinksCompanion.insert({
+    required int noteId,
+    required int taskId,
+    this.rowid = const Value.absent(),
+  }) : noteId = Value(noteId),
+       taskId = Value(taskId);
+  static Insertable<NoteTaskLinkRow> custom({
+    Expression<int>? noteId,
+    Expression<int>? taskId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (noteId != null) 'note_id': noteId,
+      if (taskId != null) 'task_id': taskId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NoteTaskLinksCompanion copyWith({
+    Value<int>? noteId,
+    Value<int>? taskId,
+    Value<int>? rowid,
+  }) {
+    return NoteTaskLinksCompanion(
+      noteId: noteId ?? this.noteId,
+      taskId: taskId ?? this.taskId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (taskId.present) {
+      map['task_id'] = Variable<int>(taskId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteTaskLinksCompanion(')
+          ..write('noteId: $noteId, ')
+          ..write('taskId: $taskId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LabSpacesTable extends LabSpaces
+    with TableInfo<$LabSpacesTable, LabSpaceRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LabSpacesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _accentColorMeta = const VerificationMeta(
+    'accentColor',
+  );
+  @override
+  late final GeneratedColumn<String> accentColor = GeneratedColumn<String>(
+    'accent_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('active'),
+  );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startDate = GeneratedColumn<DateTime>(
+    'start_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dueDateMeta = const VerificationMeta(
+    'dueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dueDate = GeneratedColumn<DateTime>(
+    'due_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    accentColor,
+    status,
+    startDate,
+    dueDate,
+    createdAt,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'lab_spaces';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LabSpaceRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('accent_color')) {
+      context.handle(
+        _accentColorMeta,
+        accentColor.isAcceptableOrUnknown(
+          data['accent_color']!,
+          _accentColorMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accentColorMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
+      );
+    }
+    if (data.containsKey('due_date')) {
+      context.handle(
+        _dueDateMeta,
+        dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LabSpaceRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LabSpaceRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      name:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}name'],
+          )!,
+      accentColor:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}accent_color'],
+          )!,
+      status:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}status'],
+          )!,
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}start_date'],
+      ),
+      dueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}due_date'],
+      ),
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+    );
+  }
+
+  @override
+  $LabSpacesTable createAlias(String alias) {
+    return $LabSpacesTable(attachedDatabase, alias);
+  }
+}
+
+class LabSpaceRow extends DataClass implements Insertable<LabSpaceRow> {
+  final int id;
+  final String name;
+  final String accentColor;
+  final String status;
+  final DateTime? startDate;
+  final DateTime? dueDate;
+  final DateTime createdAt;
+  final DateTime? deletedAt;
+  const LabSpaceRow({
+    required this.id,
+    required this.name,
+    required this.accentColor,
+    required this.status,
+    this.startDate,
+    this.dueDate,
+    required this.createdAt,
+    this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['accent_color'] = Variable<String>(accentColor);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || startDate != null) {
+      map['start_date'] = Variable<DateTime>(startDate);
+    }
+    if (!nullToAbsent || dueDate != null) {
+      map['due_date'] = Variable<DateTime>(dueDate);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  LabSpacesCompanion toCompanion(bool nullToAbsent) {
+    return LabSpacesCompanion(
+      id: Value(id),
+      name: Value(name),
+      accentColor: Value(accentColor),
+      status: Value(status),
+      startDate:
+          startDate == null && nullToAbsent
+              ? const Value.absent()
+              : Value(startDate),
+      dueDate:
+          dueDate == null && nullToAbsent
+              ? const Value.absent()
+              : Value(dueDate),
+      createdAt: Value(createdAt),
+      deletedAt:
+          deletedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(deletedAt),
+    );
+  }
+
+  factory LabSpaceRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LabSpaceRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      accentColor: serializer.fromJson<String>(json['accentColor']),
+      status: serializer.fromJson<String>(json['status']),
+      startDate: serializer.fromJson<DateTime?>(json['startDate']),
+      dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'accentColor': serializer.toJson<String>(accentColor),
+      'status': serializer.toJson<String>(status),
+      'startDate': serializer.toJson<DateTime?>(startDate),
+      'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  LabSpaceRow copyWith({
+    int? id,
+    String? name,
+    String? accentColor,
+    String? status,
+    Value<DateTime?> startDate = const Value.absent(),
+    Value<DateTime?> dueDate = const Value.absent(),
+    DateTime? createdAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+  }) => LabSpaceRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    accentColor: accentColor ?? this.accentColor,
+    status: status ?? this.status,
+    startDate: startDate.present ? startDate.value : this.startDate,
+    dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    createdAt: createdAt ?? this.createdAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+  );
+  LabSpaceRow copyWithCompanion(LabSpacesCompanion data) {
+    return LabSpaceRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      accentColor:
+          data.accentColor.present ? data.accentColor.value : this.accentColor,
+      status: data.status.present ? data.status.value : this.status,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LabSpaceRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('accentColor: $accentColor, ')
+          ..write('status: $status, ')
+          ..write('startDate: $startDate, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    accentColor,
+    status,
+    startDate,
+    dueDate,
+    createdAt,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LabSpaceRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.accentColor == this.accentColor &&
+          other.status == this.status &&
+          other.startDate == this.startDate &&
+          other.dueDate == this.dueDate &&
+          other.createdAt == this.createdAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class LabSpacesCompanion extends UpdateCompanion<LabSpaceRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String> accentColor;
+  final Value<String> status;
+  final Value<DateTime?> startDate;
+  final Value<DateTime?> dueDate;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> deletedAt;
+  const LabSpacesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.accentColor = const Value.absent(),
+    this.status = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.dueDate = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  LabSpacesCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required String accentColor,
+    this.status = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.dueDate = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  }) : name = Value(name),
+       accentColor = Value(accentColor);
+  static Insertable<LabSpaceRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? accentColor,
+    Expression<String>? status,
+    Expression<DateTime>? startDate,
+    Expression<DateTime>? dueDate,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (accentColor != null) 'accent_color': accentColor,
+      if (status != null) 'status': status,
+      if (startDate != null) 'start_date': startDate,
+      if (dueDate != null) 'due_date': dueDate,
+      if (createdAt != null) 'created_at': createdAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  LabSpacesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String>? accentColor,
+    Value<String>? status,
+    Value<DateTime?>? startDate,
+    Value<DateTime?>? dueDate,
+    Value<DateTime>? createdAt,
+    Value<DateTime?>? deletedAt,
+  }) {
+    return LabSpacesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      accentColor: accentColor ?? this.accentColor,
+      status: status ?? this.status,
+      startDate: startDate ?? this.startDate,
+      dueDate: dueDate ?? this.dueDate,
+      createdAt: createdAt ?? this.createdAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (accentColor.present) {
+      map['accent_color'] = Variable<String>(accentColor.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<DateTime>(startDate.value);
+    }
+    if (dueDate.present) {
+      map['due_date'] = Variable<DateTime>(dueDate.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LabSpacesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('accentColor: $accentColor, ')
+          ..write('status: $status, ')
+          ..write('startDate: $startDate, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $KanbanColumnsTable extends KanbanColumns
+    with TableInfo<$KanbanColumnsTable, KanbanColumnRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $KanbanColumnsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isDefaultMeta = const VerificationMeta(
+    'isDefault',
+  );
+  @override
+  late final GeneratedColumn<bool> isDefault = GeneratedColumn<bool>(
+    'is_default',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_default" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    labSpaceId,
+    name,
+    position,
+    isDefault,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'kanban_columns';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<KanbanColumnRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_labSpaceIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('is_default')) {
+      context.handle(
+        _isDefaultMeta,
+        isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  KanbanColumnRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return KanbanColumnRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      name:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}name'],
+          )!,
+      position:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}position'],
+          )!,
+      isDefault:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}is_default'],
+          )!,
+    );
+  }
+
+  @override
+  $KanbanColumnsTable createAlias(String alias) {
+    return $KanbanColumnsTable(attachedDatabase, alias);
+  }
+}
+
+class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
+  final int id;
+  final int labSpaceId;
+  final String name;
+  final int position;
+  final bool isDefault;
+  const KanbanColumnRow({
+    required this.id,
+    required this.labSpaceId,
+    required this.name,
+    required this.position,
+    required this.isDefault,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    map['name'] = Variable<String>(name);
+    map['position'] = Variable<int>(position);
+    map['is_default'] = Variable<bool>(isDefault);
+    return map;
+  }
+
+  KanbanColumnsCompanion toCompanion(bool nullToAbsent) {
+    return KanbanColumnsCompanion(
+      id: Value(id),
+      labSpaceId: Value(labSpaceId),
+      name: Value(name),
+      position: Value(position),
+      isDefault: Value(isDefault),
+    );
+  }
+
+  factory KanbanColumnRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return KanbanColumnRow(
+      id: serializer.fromJson<int>(json['id']),
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      name: serializer.fromJson<String>(json['name']),
+      position: serializer.fromJson<int>(json['position']),
+      isDefault: serializer.fromJson<bool>(json['isDefault']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'name': serializer.toJson<String>(name),
+      'position': serializer.toJson<int>(position),
+      'isDefault': serializer.toJson<bool>(isDefault),
+    };
+  }
+
+  KanbanColumnRow copyWith({
+    int? id,
+    int? labSpaceId,
+    String? name,
+    int? position,
+    bool? isDefault,
+  }) => KanbanColumnRow(
+    id: id ?? this.id,
+    labSpaceId: labSpaceId ?? this.labSpaceId,
+    name: name ?? this.name,
+    position: position ?? this.position,
+    isDefault: isDefault ?? this.isDefault,
+  );
+  KanbanColumnRow copyWithCompanion(KanbanColumnsCompanion data) {
+    return KanbanColumnRow(
+      id: data.id.present ? data.id.value : this.id,
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      name: data.name.present ? data.name.value : this.name,
+      position: data.position.present ? data.position.value : this.position,
+      isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanColumnRow(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('name: $name, ')
+          ..write('position: $position, ')
+          ..write('isDefault: $isDefault')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, labSpaceId, name, position, isDefault);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is KanbanColumnRow &&
+          other.id == this.id &&
+          other.labSpaceId == this.labSpaceId &&
+          other.name == this.name &&
+          other.position == this.position &&
+          other.isDefault == this.isDefault);
+}
+
+class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
+  final Value<int> id;
+  final Value<int> labSpaceId;
+  final Value<String> name;
+  final Value<int> position;
+  final Value<bool> isDefault;
+  const KanbanColumnsCompanion({
+    this.id = const Value.absent(),
+    this.labSpaceId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.position = const Value.absent(),
+    this.isDefault = const Value.absent(),
+  });
+  KanbanColumnsCompanion.insert({
+    this.id = const Value.absent(),
+    required int labSpaceId,
+    required String name,
+    required int position,
+    this.isDefault = const Value.absent(),
+  }) : labSpaceId = Value(labSpaceId),
+       name = Value(name),
+       position = Value(position);
+  static Insertable<KanbanColumnRow> custom({
+    Expression<int>? id,
+    Expression<int>? labSpaceId,
+    Expression<String>? name,
+    Expression<int>? position,
+    Expression<bool>? isDefault,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (name != null) 'name': name,
+      if (position != null) 'position': position,
+      if (isDefault != null) 'is_default': isDefault,
+    });
+  }
+
+  KanbanColumnsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? labSpaceId,
+    Value<String>? name,
+    Value<int>? position,
+    Value<bool>? isDefault,
+  }) {
+    return KanbanColumnsCompanion(
+      id: id ?? this.id,
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      name: name ?? this.name,
+      position: position ?? this.position,
+      isDefault: isDefault ?? this.isDefault,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (isDefault.present) {
+      map['is_default'] = Variable<bool>(isDefault.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanColumnsCompanion(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('name: $name, ')
+          ..write('position: $position, ')
+          ..write('isDefault: $isDefault')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $KanbanCardsTable extends KanbanCards
+    with TableInfo<$KanbanCardsTable, KanbanCardRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $KanbanCardsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _columnIdMeta = const VerificationMeta(
+    'columnId',
+  );
+  @override
+  late final GeneratedColumn<int> columnId = GeneratedColumn<int>(
+    'column_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES kanban_columns (id)',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<String> priority = GeneratedColumn<String>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('none'),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dueDateMeta = const VerificationMeta(
+    'dueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dueDate = GeneratedColumn<DateTime>(
+    'due_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceNoteIdMeta = const VerificationMeta(
+    'sourceNoteId',
+  );
+  @override
+  late final GeneratedColumn<int> sourceNoteId = GeneratedColumn<int>(
+    'source_note_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _sourceAnchorMeta = const VerificationMeta(
+    'sourceAnchor',
+  );
+  @override
+  late final GeneratedColumn<String> sourceAnchor = GeneratedColumn<String>(
+    'source_anchor',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _originTaskIdMeta = const VerificationMeta(
+    'originTaskId',
+  );
+  @override
+  late final GeneratedColumn<int> originTaskId = GeneratedColumn<int>(
+    'origin_task_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tasks (id)',
+    ),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    labSpaceId,
+    columnId,
+    title,
+    description,
+    priority,
+    position,
+    dueDate,
+    sourceNoteId,
+    sourceAnchor,
+    originTaskId,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'kanban_cards';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<KanbanCardRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_labSpaceIdMeta);
+    }
+    if (data.containsKey('column_id')) {
+      context.handle(
+        _columnIdMeta,
+        columnId.isAcceptableOrUnknown(data['column_id']!, _columnIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_columnIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('due_date')) {
+      context.handle(
+        _dueDateMeta,
+        dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
+    if (data.containsKey('source_note_id')) {
+      context.handle(
+        _sourceNoteIdMeta,
+        sourceNoteId.isAcceptableOrUnknown(
+          data['source_note_id']!,
+          _sourceNoteIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_anchor')) {
+      context.handle(
+        _sourceAnchorMeta,
+        sourceAnchor.isAcceptableOrUnknown(
+          data['source_anchor']!,
+          _sourceAnchorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('origin_task_id')) {
+      context.handle(
+        _originTaskIdMeta,
+        originTaskId.isAcceptableOrUnknown(
+          data['origin_task_id']!,
+          _originTaskIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  KanbanCardRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return KanbanCardRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      columnId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}column_id'],
+          )!,
+      title:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}title'],
+          )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      priority:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}priority'],
+          )!,
+      position:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}position'],
+          )!,
+      dueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}due_date'],
+      ),
+      sourceNoteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}source_note_id'],
+      ),
+      sourceAnchor: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_anchor'],
+      ),
+      originTaskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}origin_task_id'],
+      ),
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $KanbanCardsTable createAlias(String alias) {
+    return $KanbanCardsTable(attachedDatabase, alias);
+  }
+}
+
+class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
+  final int id;
+  final int labSpaceId;
+  final int columnId;
+  final String title;
+  final String? description;
+  final String priority;
+  final int position;
+  final DateTime? dueDate;
+  final int? sourceNoteId;
+  final String? sourceAnchor;
+  final int? originTaskId;
+  final DateTime createdAt;
+  const KanbanCardRow({
+    required this.id,
+    required this.labSpaceId,
+    required this.columnId,
+    required this.title,
+    this.description,
+    required this.priority,
+    required this.position,
+    this.dueDate,
+    this.sourceNoteId,
+    this.sourceAnchor,
+    this.originTaskId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    map['column_id'] = Variable<int>(columnId);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['priority'] = Variable<String>(priority);
+    map['position'] = Variable<int>(position);
+    if (!nullToAbsent || dueDate != null) {
+      map['due_date'] = Variable<DateTime>(dueDate);
+    }
+    if (!nullToAbsent || sourceNoteId != null) {
+      map['source_note_id'] = Variable<int>(sourceNoteId);
+    }
+    if (!nullToAbsent || sourceAnchor != null) {
+      map['source_anchor'] = Variable<String>(sourceAnchor);
+    }
+    if (!nullToAbsent || originTaskId != null) {
+      map['origin_task_id'] = Variable<int>(originTaskId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  KanbanCardsCompanion toCompanion(bool nullToAbsent) {
+    return KanbanCardsCompanion(
+      id: Value(id),
+      labSpaceId: Value(labSpaceId),
+      columnId: Value(columnId),
+      title: Value(title),
+      description:
+          description == null && nullToAbsent
+              ? const Value.absent()
+              : Value(description),
+      priority: Value(priority),
+      position: Value(position),
+      dueDate:
+          dueDate == null && nullToAbsent
+              ? const Value.absent()
+              : Value(dueDate),
+      sourceNoteId:
+          sourceNoteId == null && nullToAbsent
+              ? const Value.absent()
+              : Value(sourceNoteId),
+      sourceAnchor:
+          sourceAnchor == null && nullToAbsent
+              ? const Value.absent()
+              : Value(sourceAnchor),
+      originTaskId:
+          originTaskId == null && nullToAbsent
+              ? const Value.absent()
+              : Value(originTaskId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory KanbanCardRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return KanbanCardRow(
+      id: serializer.fromJson<int>(json['id']),
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      columnId: serializer.fromJson<int>(json['columnId']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String?>(json['description']),
+      priority: serializer.fromJson<String>(json['priority']),
+      position: serializer.fromJson<int>(json['position']),
+      dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      sourceNoteId: serializer.fromJson<int?>(json['sourceNoteId']),
+      sourceAnchor: serializer.fromJson<String?>(json['sourceAnchor']),
+      originTaskId: serializer.fromJson<int?>(json['originTaskId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'columnId': serializer.toJson<int>(columnId),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String?>(description),
+      'priority': serializer.toJson<String>(priority),
+      'position': serializer.toJson<int>(position),
+      'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'sourceNoteId': serializer.toJson<int?>(sourceNoteId),
+      'sourceAnchor': serializer.toJson<String?>(sourceAnchor),
+      'originTaskId': serializer.toJson<int?>(originTaskId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  KanbanCardRow copyWith({
+    int? id,
+    int? labSpaceId,
+    int? columnId,
+    String? title,
+    Value<String?> description = const Value.absent(),
+    String? priority,
+    int? position,
+    Value<DateTime?> dueDate = const Value.absent(),
+    Value<int?> sourceNoteId = const Value.absent(),
+    Value<String?> sourceAnchor = const Value.absent(),
+    Value<int?> originTaskId = const Value.absent(),
+    DateTime? createdAt,
+  }) => KanbanCardRow(
+    id: id ?? this.id,
+    labSpaceId: labSpaceId ?? this.labSpaceId,
+    columnId: columnId ?? this.columnId,
+    title: title ?? this.title,
+    description: description.present ? description.value : this.description,
+    priority: priority ?? this.priority,
+    position: position ?? this.position,
+    dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    sourceNoteId: sourceNoteId.present ? sourceNoteId.value : this.sourceNoteId,
+    sourceAnchor: sourceAnchor.present ? sourceAnchor.value : this.sourceAnchor,
+    originTaskId: originTaskId.present ? originTaskId.value : this.originTaskId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  KanbanCardRow copyWithCompanion(KanbanCardsCompanion data) {
+    return KanbanCardRow(
+      id: data.id.present ? data.id.value : this.id,
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      columnId: data.columnId.present ? data.columnId.value : this.columnId,
+      title: data.title.present ? data.title.value : this.title,
+      description:
+          data.description.present ? data.description.value : this.description,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      position: data.position.present ? data.position.value : this.position,
+      dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      sourceNoteId:
+          data.sourceNoteId.present
+              ? data.sourceNoteId.value
+              : this.sourceNoteId,
+      sourceAnchor:
+          data.sourceAnchor.present
+              ? data.sourceAnchor.value
+              : this.sourceAnchor,
+      originTaskId:
+          data.originTaskId.present
+              ? data.originTaskId.value
+              : this.originTaskId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanCardRow(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('columnId: $columnId, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('priority: $priority, ')
+          ..write('position: $position, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('sourceNoteId: $sourceNoteId, ')
+          ..write('sourceAnchor: $sourceAnchor, ')
+          ..write('originTaskId: $originTaskId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    labSpaceId,
+    columnId,
+    title,
+    description,
+    priority,
+    position,
+    dueDate,
+    sourceNoteId,
+    sourceAnchor,
+    originTaskId,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is KanbanCardRow &&
+          other.id == this.id &&
+          other.labSpaceId == this.labSpaceId &&
+          other.columnId == this.columnId &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.priority == this.priority &&
+          other.position == this.position &&
+          other.dueDate == this.dueDate &&
+          other.sourceNoteId == this.sourceNoteId &&
+          other.sourceAnchor == this.sourceAnchor &&
+          other.originTaskId == this.originTaskId &&
+          other.createdAt == this.createdAt);
+}
+
+class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
+  final Value<int> id;
+  final Value<int> labSpaceId;
+  final Value<int> columnId;
+  final Value<String> title;
+  final Value<String?> description;
+  final Value<String> priority;
+  final Value<int> position;
+  final Value<DateTime?> dueDate;
+  final Value<int?> sourceNoteId;
+  final Value<String?> sourceAnchor;
+  final Value<int?> originTaskId;
+  final Value<DateTime> createdAt;
+  const KanbanCardsCompanion({
+    this.id = const Value.absent(),
+    this.labSpaceId = const Value.absent(),
+    this.columnId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.position = const Value.absent(),
+    this.dueDate = const Value.absent(),
+    this.sourceNoteId = const Value.absent(),
+    this.sourceAnchor = const Value.absent(),
+    this.originTaskId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  KanbanCardsCompanion.insert({
+    this.id = const Value.absent(),
+    required int labSpaceId,
+    required int columnId,
+    required String title,
+    this.description = const Value.absent(),
+    this.priority = const Value.absent(),
+    required int position,
+    this.dueDate = const Value.absent(),
+    this.sourceNoteId = const Value.absent(),
+    this.sourceAnchor = const Value.absent(),
+    this.originTaskId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : labSpaceId = Value(labSpaceId),
+       columnId = Value(columnId),
+       title = Value(title),
+       position = Value(position);
+  static Insertable<KanbanCardRow> custom({
+    Expression<int>? id,
+    Expression<int>? labSpaceId,
+    Expression<int>? columnId,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<String>? priority,
+    Expression<int>? position,
+    Expression<DateTime>? dueDate,
+    Expression<int>? sourceNoteId,
+    Expression<String>? sourceAnchor,
+    Expression<int>? originTaskId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (columnId != null) 'column_id': columnId,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (priority != null) 'priority': priority,
+      if (position != null) 'position': position,
+      if (dueDate != null) 'due_date': dueDate,
+      if (sourceNoteId != null) 'source_note_id': sourceNoteId,
+      if (sourceAnchor != null) 'source_anchor': sourceAnchor,
+      if (originTaskId != null) 'origin_task_id': originTaskId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  KanbanCardsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? labSpaceId,
+    Value<int>? columnId,
+    Value<String>? title,
+    Value<String?>? description,
+    Value<String>? priority,
+    Value<int>? position,
+    Value<DateTime?>? dueDate,
+    Value<int?>? sourceNoteId,
+    Value<String?>? sourceAnchor,
+    Value<int?>? originTaskId,
+    Value<DateTime>? createdAt,
+  }) {
+    return KanbanCardsCompanion(
+      id: id ?? this.id,
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      columnId: columnId ?? this.columnId,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      priority: priority ?? this.priority,
+      position: position ?? this.position,
+      dueDate: dueDate ?? this.dueDate,
+      sourceNoteId: sourceNoteId ?? this.sourceNoteId,
+      sourceAnchor: sourceAnchor ?? this.sourceAnchor,
+      originTaskId: originTaskId ?? this.originTaskId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (columnId.present) {
+      map['column_id'] = Variable<int>(columnId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<String>(priority.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (dueDate.present) {
+      map['due_date'] = Variable<DateTime>(dueDate.value);
+    }
+    if (sourceNoteId.present) {
+      map['source_note_id'] = Variable<int>(sourceNoteId.value);
+    }
+    if (sourceAnchor.present) {
+      map['source_anchor'] = Variable<String>(sourceAnchor.value);
+    }
+    if (originTaskId.present) {
+      map['origin_task_id'] = Variable<int>(originTaskId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanCardsCompanion(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('columnId: $columnId, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('priority: $priority, ')
+          ..write('position: $position, ')
+          ..write('dueDate: $dueDate, ')
+          ..write('sourceNoteId: $sourceNoteId, ')
+          ..write('sourceAnchor: $sourceAnchor, ')
+          ..write('originTaskId: $originTaskId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SpaceFolderLinksTable extends SpaceFolderLinks
+    with TableInfo<$SpaceFolderLinksTable, SpaceFolderLinkRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SpaceFolderLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<int> folderId = GeneratedColumn<int>(
+    'folder_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES folders (id)',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [labSpaceId, folderId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'space_folder_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SpaceFolderLinkRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_labSpaceIdMeta);
+    }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_folderIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {labSpaceId, folderId};
+  @override
+  SpaceFolderLinkRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SpaceFolderLinkRow(
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      folderId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}folder_id'],
+          )!,
+    );
+  }
+
+  @override
+  $SpaceFolderLinksTable createAlias(String alias) {
+    return $SpaceFolderLinksTable(attachedDatabase, alias);
+  }
+}
+
+class SpaceFolderLinkRow extends DataClass
+    implements Insertable<SpaceFolderLinkRow> {
+  final int labSpaceId;
+  final int folderId;
+  const SpaceFolderLinkRow({required this.labSpaceId, required this.folderId});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    map['folder_id'] = Variable<int>(folderId);
+    return map;
+  }
+
+  SpaceFolderLinksCompanion toCompanion(bool nullToAbsent) {
+    return SpaceFolderLinksCompanion(
+      labSpaceId: Value(labSpaceId),
+      folderId: Value(folderId),
+    );
+  }
+
+  factory SpaceFolderLinkRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SpaceFolderLinkRow(
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      folderId: serializer.fromJson<int>(json['folderId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'folderId': serializer.toJson<int>(folderId),
+    };
+  }
+
+  SpaceFolderLinkRow copyWith({int? labSpaceId, int? folderId}) =>
+      SpaceFolderLinkRow(
+        labSpaceId: labSpaceId ?? this.labSpaceId,
+        folderId: folderId ?? this.folderId,
+      );
+  SpaceFolderLinkRow copyWithCompanion(SpaceFolderLinksCompanion data) {
+    return SpaceFolderLinkRow(
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SpaceFolderLinkRow(')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('folderId: $folderId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(labSpaceId, folderId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SpaceFolderLinkRow &&
+          other.labSpaceId == this.labSpaceId &&
+          other.folderId == this.folderId);
+}
+
+class SpaceFolderLinksCompanion extends UpdateCompanion<SpaceFolderLinkRow> {
+  final Value<int> labSpaceId;
+  final Value<int> folderId;
+  final Value<int> rowid;
+  const SpaceFolderLinksCompanion({
+    this.labSpaceId = const Value.absent(),
+    this.folderId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SpaceFolderLinksCompanion.insert({
+    required int labSpaceId,
+    required int folderId,
+    this.rowid = const Value.absent(),
+  }) : labSpaceId = Value(labSpaceId),
+       folderId = Value(folderId);
+  static Insertable<SpaceFolderLinkRow> custom({
+    Expression<int>? labSpaceId,
+    Expression<int>? folderId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (folderId != null) 'folder_id': folderId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SpaceFolderLinksCompanion copyWith({
+    Value<int>? labSpaceId,
+    Value<int>? folderId,
+    Value<int>? rowid,
+  }) {
+    return SpaceFolderLinksCompanion(
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      folderId: folderId ?? this.folderId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (folderId.present) {
+      map['folder_id'] = Variable<int>(folderId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SpaceFolderLinksCompanion(')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('folderId: $folderId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OnboardingFlagsTable extends OnboardingFlags
+    with TableInfo<$OnboardingFlagsTable, OnboardingFlagRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OnboardingFlagsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _seenAtMeta = const VerificationMeta('seenAt');
+  @override
+  late final GeneratedColumn<DateTime> seenAt = GeneratedColumn<DateTime>(
+    'seen_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, seenAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'onboarding_flags';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OnboardingFlagRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('seen_at')) {
+      context.handle(
+        _seenAtMeta,
+        seenAt.isAcceptableOrUnknown(data['seen_at']!, _seenAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_seenAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  OnboardingFlagRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OnboardingFlagRow(
+      key:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}key'],
+          )!,
+      seenAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}seen_at'],
+          )!,
+    );
+  }
+
+  @override
+  $OnboardingFlagsTable createAlias(String alias) {
+    return $OnboardingFlagsTable(attachedDatabase, alias);
+  }
+}
+
+class OnboardingFlagRow extends DataClass
+    implements Insertable<OnboardingFlagRow> {
+  final String key;
+  final DateTime seenAt;
+  const OnboardingFlagRow({required this.key, required this.seenAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['seen_at'] = Variable<DateTime>(seenAt);
+    return map;
+  }
+
+  OnboardingFlagsCompanion toCompanion(bool nullToAbsent) {
+    return OnboardingFlagsCompanion(key: Value(key), seenAt: Value(seenAt));
+  }
+
+  factory OnboardingFlagRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OnboardingFlagRow(
+      key: serializer.fromJson<String>(json['key']),
+      seenAt: serializer.fromJson<DateTime>(json['seenAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'seenAt': serializer.toJson<DateTime>(seenAt),
+    };
+  }
+
+  OnboardingFlagRow copyWith({String? key, DateTime? seenAt}) =>
+      OnboardingFlagRow(key: key ?? this.key, seenAt: seenAt ?? this.seenAt);
+  OnboardingFlagRow copyWithCompanion(OnboardingFlagsCompanion data) {
+    return OnboardingFlagRow(
+      key: data.key.present ? data.key.value : this.key,
+      seenAt: data.seenAt.present ? data.seenAt.value : this.seenAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OnboardingFlagRow(')
+          ..write('key: $key, ')
+          ..write('seenAt: $seenAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, seenAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OnboardingFlagRow &&
+          other.key == this.key &&
+          other.seenAt == this.seenAt);
+}
+
+class OnboardingFlagsCompanion extends UpdateCompanion<OnboardingFlagRow> {
+  final Value<String> key;
+  final Value<DateTime> seenAt;
+  final Value<int> rowid;
+  const OnboardingFlagsCompanion({
+    this.key = const Value.absent(),
+    this.seenAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OnboardingFlagsCompanion.insert({
+    required String key,
+    required DateTime seenAt,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       seenAt = Value(seenAt);
+  static Insertable<OnboardingFlagRow> custom({
+    Expression<String>? key,
+    Expression<DateTime>? seenAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (seenAt != null) 'seen_at': seenAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OnboardingFlagsCompanion copyWith({
+    Value<String>? key,
+    Value<DateTime>? seenAt,
+    Value<int>? rowid,
+  }) {
+    return OnboardingFlagsCompanion(
+      key: key ?? this.key,
+      seenAt: seenAt ?? this.seenAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (seenAt.present) {
+      map['seen_at'] = Variable<DateTime>(seenAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OnboardingFlagsCompanion(')
+          ..write('key: $key, ')
+          ..write('seenAt: $seenAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+abstract class _$AppDatabase extends GeneratedDatabase {
+  _$AppDatabase(QueryExecutor e) : super(e);
+  $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $FoldersTable folders = $FoldersTable(this);
+  late final $TasksTable tasks = $TasksTable(this);
+  late final $NotesTable notes = $NotesTable(this);
+  late final $NoteImagesTable noteImages = $NoteImagesTable(this);
+  late final $NoteVersionsTable noteVersions = $NoteVersionsTable(this);
+  late final $NoteTaskLinksTable noteTaskLinks = $NoteTaskLinksTable(this);
+  late final $LabSpacesTable labSpaces = $LabSpacesTable(this);
+  late final $KanbanColumnsTable kanbanColumns = $KanbanColumnsTable(this);
+  late final $KanbanCardsTable kanbanCards = $KanbanCardsTable(this);
+  late final $SpaceFolderLinksTable spaceFolderLinks = $SpaceFolderLinksTable(
+    this,
+  );
+  late final $OnboardingFlagsTable onboardingFlags = $OnboardingFlagsTable(
+    this,
+  );
+  late final TasksDao tasksDao = TasksDao(this as AppDatabase);
+  late final NotesDao notesDao = NotesDao(this as AppDatabase);
+  late final FoldersDao foldersDao = FoldersDao(this as AppDatabase);
+  late final LabSpacesDao labSpacesDao = LabSpacesDao(this as AppDatabase);
+  late final KanbanDao kanbanDao = KanbanDao(this as AppDatabase);
+  @override
+  Iterable<TableInfo<Table, Object?>> get allTables =>
+      allSchemaEntities.whereType<TableInfo<Table, Object?>>();
+  @override
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    folders,
+    tasks,
+    notes,
+    noteImages,
+    noteVersions,
+    noteTaskLinks,
+    labSpaces,
+    kanbanColumns,
+    kanbanCards,
+    spaceFolderLinks,
+    onboardingFlags,
+  ];
+}
+
+typedef $$FoldersTableCreateCompanionBuilder =
+    FoldersCompanion Function({
+      Value<int> id,
+      required String name,
+      required String color,
+      Value<DateTime> createdAt,
+      Value<DateTime?> deletedAt,
+    });
+typedef $$FoldersTableUpdateCompanionBuilder =
+    FoldersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String> color,
+      Value<DateTime> createdAt,
+      Value<DateTime?> deletedAt,
+    });
+
+final class $$FoldersTableReferences
+    extends BaseReferences<_$AppDatabase, $FoldersTable, FolderRow> {
+  $$FoldersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$TasksTable, List<TaskRow>> _tasksRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.tasks,
+    aliasName: $_aliasNameGenerator(db.folders.id, db.tasks.folderId),
+  );
+
+  $$TasksTableProcessedTableManager get tasksRefs {
+    final manager = $$TasksTableTableManager(
+      $_db,
+      $_db.tasks,
+    ).filter((f) => f.folderId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_tasksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$NotesTable, List<NoteRow>> _notesRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.notes,
+    aliasName: $_aliasNameGenerator(db.folders.id, db.notes.folderId),
+  );
+
+  $$NotesTableProcessedTableManager get notesRefs {
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.folderId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_notesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$SpaceFolderLinksTable, List<SpaceFolderLinkRow>>
+  _spaceFolderLinksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.spaceFolderLinks,
+    aliasName: $_aliasNameGenerator(
+      db.folders.id,
+      db.spaceFolderLinks.folderId,
+    ),
+  );
+
+  $$SpaceFolderLinksTableProcessedTableManager get spaceFolderLinksRefs {
+    final manager = $$SpaceFolderLinksTableTableManager(
+      $_db,
+      $_db.spaceFolderLinks,
+    ).filter((f) => f.folderId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _spaceFolderLinksRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$FoldersTableFilterComposer
+    extends Composer<_$AppDatabase, $FoldersTable> {
+  $$FoldersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> tasksRefs(
+    Expression<bool> Function($$TasksTableFilterComposer f) f,
+  ) {
+    final $$TasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableFilterComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> notesRefs(
+    Expression<bool> Function($$NotesTableFilterComposer f) f,
+  ) {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> spaceFolderLinksRefs(
+    Expression<bool> Function($$SpaceFolderLinksTableFilterComposer f) f,
+  ) {
+    final $$SpaceFolderLinksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.spaceFolderLinks,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpaceFolderLinksTableFilterComposer(
+            $db: $db,
+            $table: $db.spaceFolderLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$FoldersTableOrderingComposer
+    extends Composer<_$AppDatabase, $FoldersTable> {
+  $$FoldersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FoldersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FoldersTable> {
+  $$FoldersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  Expression<T> tasksRefs<T extends Object>(
+    Expression<T> Function($$TasksTableAnnotationComposer a) f,
+  ) {
+    final $$TasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> notesRefs<T extends Object>(
+    Expression<T> Function($$NotesTableAnnotationComposer a) f,
+  ) {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> spaceFolderLinksRefs<T extends Object>(
+    Expression<T> Function($$SpaceFolderLinksTableAnnotationComposer a) f,
+  ) {
+    final $$SpaceFolderLinksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.spaceFolderLinks,
+      getReferencedColumn: (t) => t.folderId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpaceFolderLinksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.spaceFolderLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$FoldersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FoldersTable,
+          FolderRow,
+          $$FoldersTableFilterComposer,
+          $$FoldersTableOrderingComposer,
+          $$FoldersTableAnnotationComposer,
+          $$FoldersTableCreateCompanionBuilder,
+          $$FoldersTableUpdateCompanionBuilder,
+          (FolderRow, $$FoldersTableReferences),
+          FolderRow,
+          PrefetchHooks Function({
+            bool tasksRefs,
+            bool notesRefs,
+            bool spaceFolderLinksRefs,
+          })
+        > {
+  $$FoldersTableTableManager(_$AppDatabase db, $FoldersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$FoldersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$FoldersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$FoldersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+              }) => FoldersCompanion(
+                id: id,
+                name: name,
+                color: color,
+                createdAt: createdAt,
+                deletedAt: deletedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required String color,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+              }) => FoldersCompanion.insert(
+                id: id,
+                name: name,
+                color: color,
+                createdAt: createdAt,
+                deletedAt: deletedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$FoldersTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            tasksRefs = false,
+            notesRefs = false,
+            spaceFolderLinksRefs = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (tasksRefs) db.tasks,
+                if (notesRefs) db.notes,
+                if (spaceFolderLinksRefs) db.spaceFolderLinks,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (tasksRefs)
+                    await $_getPrefetchedData<
+                      FolderRow,
+                      $FoldersTable,
+                      TaskRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$FoldersTableReferences._tasksRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$FoldersTableReferences(db, table, p0).tasksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.folderId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (notesRefs)
+                    await $_getPrefetchedData<
+                      FolderRow,
+                      $FoldersTable,
+                      NoteRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$FoldersTableReferences._notesRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$FoldersTableReferences(db, table, p0).notesRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.folderId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (spaceFolderLinksRefs)
+                    await $_getPrefetchedData<
+                      FolderRow,
+                      $FoldersTable,
+                      SpaceFolderLinkRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$FoldersTableReferences
+                          ._spaceFolderLinksRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$FoldersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).spaceFolderLinksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.folderId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FoldersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FoldersTable,
+      FolderRow,
+      $$FoldersTableFilterComposer,
+      $$FoldersTableOrderingComposer,
+      $$FoldersTableAnnotationComposer,
+      $$FoldersTableCreateCompanionBuilder,
+      $$FoldersTableUpdateCompanionBuilder,
+      (FolderRow, $$FoldersTableReferences),
+      FolderRow,
+      PrefetchHooks Function({
+        bool tasksRefs,
+        bool notesRefs,
+        bool spaceFolderLinksRefs,
+      })
+    >;
+typedef $$TasksTableCreateCompanionBuilder =
+    TasksCompanion Function({
+      Value<int> id,
+      required String content,
+      required String status,
+      Value<int?> folderId,
+      Value<DateTime> createdAt,
+      required DateTime expiresAt,
+      Value<DateTime?> trashedAt,
+    });
+typedef $$TasksTableUpdateCompanionBuilder =
+    TasksCompanion Function({
+      Value<int> id,
+      Value<String> content,
+      Value<String> status,
+      Value<int?> folderId,
+      Value<DateTime> createdAt,
+      Value<DateTime> expiresAt,
+      Value<DateTime?> trashedAt,
+    });
+
+final class $$TasksTableReferences
+    extends BaseReferences<_$AppDatabase, $TasksTable, TaskRow> {
+  $$TasksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $FoldersTable _folderIdTable(_$AppDatabase db) => db.folders
+      .createAlias($_aliasNameGenerator(db.tasks.folderId, db.folders.id));
+
+  $$FoldersTableProcessedTableManager? get folderId {
+    final $_column = $_itemColumn<int>('folder_id');
+    if ($_column == null) return null;
+    final manager = $$FoldersTableTableManager(
+      $_db,
+      $_db.folders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$NoteTaskLinksTable, List<NoteTaskLinkRow>>
+  _noteTaskLinksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.noteTaskLinks,
+    aliasName: $_aliasNameGenerator(db.tasks.id, db.noteTaskLinks.taskId),
+  );
+
+  $$NoteTaskLinksTableProcessedTableManager get noteTaskLinksRefs {
+    final manager = $$NoteTaskLinksTableTableManager(
+      $_db,
+      $_db.noteTaskLinks,
+    ).filter((f) => f.taskId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_noteTaskLinksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$KanbanCardsTable, List<KanbanCardRow>>
+  _kanbanCardsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.kanbanCards,
+    aliasName: $_aliasNameGenerator(db.tasks.id, db.kanbanCards.originTaskId),
+  );
+
+  $$KanbanCardsTableProcessedTableManager get kanbanCardsRefs {
+    final manager = $$KanbanCardsTableTableManager(
+      $_db,
+      $_db.kanbanCards,
+    ).filter((f) => f.originTaskId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_kanbanCardsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
+  $$TasksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get trashedAt => $composableBuilder(
+    column: $table.trashedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FoldersTableFilterComposer get folderId {
+    final $$FoldersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableFilterComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> noteTaskLinksRefs(
+    Expression<bool> Function($$NoteTaskLinksTableFilterComposer f) f,
+  ) {
+    final $$NoteTaskLinksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteTaskLinks,
+      getReferencedColumn: (t) => t.taskId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteTaskLinksTableFilterComposer(
+            $db: $db,
+            $table: $db.noteTaskLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> kanbanCardsRefs(
+    Expression<bool> Function($$KanbanCardsTableFilterComposer f) f,
+  ) {
+    final $$KanbanCardsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.originTaskId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableFilterComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$TasksTableOrderingComposer
+    extends Composer<_$AppDatabase, $TasksTable> {
+  $$TasksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get trashedAt => $composableBuilder(
+    column: $table.trashedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FoldersTableOrderingComposer get folderId {
+    final $$FoldersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableOrderingComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TasksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TasksTable> {
+  $$TasksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get trashedAt =>
+      $composableBuilder(column: $table.trashedAt, builder: (column) => column);
+
+  $$FoldersTableAnnotationComposer get folderId {
+    final $$FoldersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> noteTaskLinksRefs<T extends Object>(
+    Expression<T> Function($$NoteTaskLinksTableAnnotationComposer a) f,
+  ) {
+    final $$NoteTaskLinksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteTaskLinks,
+      getReferencedColumn: (t) => t.taskId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteTaskLinksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteTaskLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> kanbanCardsRefs<T extends Object>(
+    Expression<T> Function($$KanbanCardsTableAnnotationComposer a) f,
+  ) {
+    final $$KanbanCardsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.originTaskId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$TasksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TasksTable,
+          TaskRow,
+          $$TasksTableFilterComposer,
+          $$TasksTableOrderingComposer,
+          $$TasksTableAnnotationComposer,
+          $$TasksTableCreateCompanionBuilder,
+          $$TasksTableUpdateCompanionBuilder,
+          (TaskRow, $$TasksTableReferences),
+          TaskRow,
+          PrefetchHooks Function({
+            bool folderId,
+            bool noteTaskLinksRefs,
+            bool kanbanCardsRefs,
+          })
+        > {
+  $$TasksTableTableManager(_$AppDatabase db, $TasksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$TasksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$TasksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$TasksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> content = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int?> folderId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> expiresAt = const Value.absent(),
+                Value<DateTime?> trashedAt = const Value.absent(),
+              }) => TasksCompanion(
+                id: id,
+                content: content,
+                status: status,
+                folderId: folderId,
+                createdAt: createdAt,
+                expiresAt: expiresAt,
+                trashedAt: trashedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String content,
+                required String status,
+                Value<int?> folderId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                required DateTime expiresAt,
+                Value<DateTime?> trashedAt = const Value.absent(),
+              }) => TasksCompanion.insert(
+                id: id,
+                content: content,
+                status: status,
+                folderId: folderId,
+                createdAt: createdAt,
+                expiresAt: expiresAt,
+                trashedAt: trashedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$TasksTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            folderId = false,
+            noteTaskLinksRefs = false,
+            kanbanCardsRefs = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (noteTaskLinksRefs) db.noteTaskLinks,
+                if (kanbanCardsRefs) db.kanbanCards,
+              ],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (folderId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.folderId,
+                            referencedTable: $$TasksTableReferences
+                                ._folderIdTable(db),
+                            referencedColumn:
+                                $$TasksTableReferences._folderIdTable(db).id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (noteTaskLinksRefs)
+                    await $_getPrefetchedData<
+                      TaskRow,
+                      $TasksTable,
+                      NoteTaskLinkRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$TasksTableReferences
+                          ._noteTaskLinksRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$TasksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).noteTaskLinksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) =>
+                              referencedItems.where((e) => e.taskId == item.id),
+                      typedResults: items,
+                    ),
+                  if (kanbanCardsRefs)
+                    await $_getPrefetchedData<
+                      TaskRow,
+                      $TasksTable,
+                      KanbanCardRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$TasksTableReferences
+                          ._kanbanCardsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$TasksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).kanbanCardsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.originTaskId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$TasksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TasksTable,
+      TaskRow,
+      $$TasksTableFilterComposer,
+      $$TasksTableOrderingComposer,
+      $$TasksTableAnnotationComposer,
+      $$TasksTableCreateCompanionBuilder,
+      $$TasksTableUpdateCompanionBuilder,
+      (TaskRow, $$TasksTableReferences),
+      TaskRow,
+      PrefetchHooks Function({
+        bool folderId,
+        bool noteTaskLinksRefs,
+        bool kanbanCardsRefs,
+      })
+    >;
+typedef $$NotesTableCreateCompanionBuilder =
+    NotesCompanion Function({
+      Value<int> id,
+      required int folderId,
+      Value<String?> title,
+      Value<String> rawMarkdown,
+      Value<int> sizeBytes,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+    });
+typedef $$NotesTableUpdateCompanionBuilder =
+    NotesCompanion Function({
+      Value<int> id,
+      Value<int> folderId,
+      Value<String?> title,
+      Value<String> rawMarkdown,
+      Value<int> sizeBytes,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+    });
+
+final class $$NotesTableReferences
+    extends BaseReferences<_$AppDatabase, $NotesTable, NoteRow> {
+  $$NotesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $FoldersTable _folderIdTable(_$AppDatabase db) => db.folders
+      .createAlias($_aliasNameGenerator(db.notes.folderId, db.folders.id));
+
+  $$FoldersTableProcessedTableManager get folderId {
+    final $_column = $_itemColumn<int>('folder_id')!;
+
+    final manager = $$FoldersTableTableManager(
+      $_db,
+      $_db.folders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$NoteImagesTable, List<NoteImageRow>>
+  _noteImagesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.noteImages,
+    aliasName: $_aliasNameGenerator(db.notes.id, db.noteImages.noteId),
+  );
+
+  $$NoteImagesTableProcessedTableManager get noteImagesRefs {
+    final manager = $$NoteImagesTableTableManager(
+      $_db,
+      $_db.noteImages,
+    ).filter((f) => f.noteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_noteImagesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$NoteVersionsTable, List<NoteVersionRow>>
+  _noteVersionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.noteVersions,
+    aliasName: $_aliasNameGenerator(db.notes.id, db.noteVersions.noteId),
+  );
+
+  $$NoteVersionsTableProcessedTableManager get noteVersionsRefs {
+    final manager = $$NoteVersionsTableTableManager(
+      $_db,
+      $_db.noteVersions,
+    ).filter((f) => f.noteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_noteVersionsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$NoteTaskLinksTable, List<NoteTaskLinkRow>>
+  _noteTaskLinksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.noteTaskLinks,
+    aliasName: $_aliasNameGenerator(db.notes.id, db.noteTaskLinks.noteId),
+  );
+
+  $$NoteTaskLinksTableProcessedTableManager get noteTaskLinksRefs {
+    final manager = $$NoteTaskLinksTableTableManager(
+      $_db,
+      $_db.noteTaskLinks,
+    ).filter((f) => f.noteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_noteTaskLinksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$KanbanCardsTable, List<KanbanCardRow>>
+  _kanbanCardsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.kanbanCards,
+    aliasName: $_aliasNameGenerator(db.notes.id, db.kanbanCards.sourceNoteId),
+  );
+
+  $$KanbanCardsTableProcessedTableManager get kanbanCardsRefs {
+    final manager = $$KanbanCardsTableTableManager(
+      $_db,
+      $_db.kanbanCards,
+    ).filter((f) => f.sourceNoteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_kanbanCardsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
+  $$NotesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rawMarkdown => $composableBuilder(
+    column: $table.rawMarkdown,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FoldersTableFilterComposer get folderId {
+    final $$FoldersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableFilterComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> noteImagesRefs(
+    Expression<bool> Function($$NoteImagesTableFilterComposer f) f,
+  ) {
+    final $$NoteImagesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteImages,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteImagesTableFilterComposer(
+            $db: $db,
+            $table: $db.noteImages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> noteVersionsRefs(
+    Expression<bool> Function($$NoteVersionsTableFilterComposer f) f,
+  ) {
+    final $$NoteVersionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteVersions,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteVersionsTableFilterComposer(
+            $db: $db,
+            $table: $db.noteVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> noteTaskLinksRefs(
+    Expression<bool> Function($$NoteTaskLinksTableFilterComposer f) f,
+  ) {
+    final $$NoteTaskLinksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteTaskLinks,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteTaskLinksTableFilterComposer(
+            $db: $db,
+            $table: $db.noteTaskLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> kanbanCardsRefs(
+    Expression<bool> Function($$KanbanCardsTableFilterComposer f) f,
+  ) {
+    final $$KanbanCardsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.sourceNoteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableFilterComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$NotesTableOrderingComposer
+    extends Composer<_$AppDatabase, $NotesTable> {
+  $$NotesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rawMarkdown => $composableBuilder(
+    column: $table.rawMarkdown,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FoldersTableOrderingComposer get folderId {
+    final $$FoldersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableOrderingComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NotesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NotesTable> {
+  $$NotesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get rawMarkdown => $composableBuilder(
+    column: $table.rawMarkdown,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  $$FoldersTableAnnotationComposer get folderId {
+    final $$FoldersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> noteImagesRefs<T extends Object>(
+    Expression<T> Function($$NoteImagesTableAnnotationComposer a) f,
+  ) {
+    final $$NoteImagesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteImages,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteImagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteImages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> noteVersionsRefs<T extends Object>(
+    Expression<T> Function($$NoteVersionsTableAnnotationComposer a) f,
+  ) {
+    final $$NoteVersionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteVersions,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteVersionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteVersions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> noteTaskLinksRefs<T extends Object>(
+    Expression<T> Function($$NoteTaskLinksTableAnnotationComposer a) f,
+  ) {
+    final $$NoteTaskLinksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteTaskLinks,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteTaskLinksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteTaskLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> kanbanCardsRefs<T extends Object>(
+    Expression<T> Function($$KanbanCardsTableAnnotationComposer a) f,
+  ) {
+    final $$KanbanCardsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.sourceNoteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$NotesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NotesTable,
+          NoteRow,
+          $$NotesTableFilterComposer,
+          $$NotesTableOrderingComposer,
+          $$NotesTableAnnotationComposer,
+          $$NotesTableCreateCompanionBuilder,
+          $$NotesTableUpdateCompanionBuilder,
+          (NoteRow, $$NotesTableReferences),
+          NoteRow,
+          PrefetchHooks Function({
+            bool folderId,
+            bool noteImagesRefs,
+            bool noteVersionsRefs,
+            bool noteTaskLinksRefs,
+            bool kanbanCardsRefs,
+          })
+        > {
+  $$NotesTableTableManager(_$AppDatabase db, $NotesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$NotesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$NotesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$NotesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> folderId = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String> rawMarkdown = const Value.absent(),
+                Value<int> sizeBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+              }) => NotesCompanion(
+                id: id,
+                folderId: folderId,
+                title: title,
+                rawMarkdown: rawMarkdown,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int folderId,
+                Value<String?> title = const Value.absent(),
+                Value<String> rawMarkdown = const Value.absent(),
+                Value<int> sizeBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+              }) => NotesCompanion.insert(
+                id: id,
+                folderId: folderId,
+                title: title,
+                rawMarkdown: rawMarkdown,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$NotesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            folderId = false,
+            noteImagesRefs = false,
+            noteVersionsRefs = false,
+            noteTaskLinksRefs = false,
+            kanbanCardsRefs = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (noteImagesRefs) db.noteImages,
+                if (noteVersionsRefs) db.noteVersions,
+                if (noteTaskLinksRefs) db.noteTaskLinks,
+                if (kanbanCardsRefs) db.kanbanCards,
+              ],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (folderId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.folderId,
+                            referencedTable: $$NotesTableReferences
+                                ._folderIdTable(db),
+                            referencedColumn:
+                                $$NotesTableReferences._folderIdTable(db).id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (noteImagesRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      NoteImageRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._noteImagesRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).noteImagesRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) =>
+                              referencedItems.where((e) => e.noteId == item.id),
+                      typedResults: items,
+                    ),
+                  if (noteVersionsRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      NoteVersionRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._noteVersionsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).noteVersionsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) =>
+                              referencedItems.where((e) => e.noteId == item.id),
+                      typedResults: items,
+                    ),
+                  if (noteTaskLinksRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      NoteTaskLinkRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._noteTaskLinksRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).noteTaskLinksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) =>
+                              referencedItems.where((e) => e.noteId == item.id),
+                      typedResults: items,
+                    ),
+                  if (kanbanCardsRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      KanbanCardRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._kanbanCardsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).kanbanCardsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.sourceNoteId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NotesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NotesTable,
+      NoteRow,
+      $$NotesTableFilterComposer,
+      $$NotesTableOrderingComposer,
+      $$NotesTableAnnotationComposer,
+      $$NotesTableCreateCompanionBuilder,
+      $$NotesTableUpdateCompanionBuilder,
+      (NoteRow, $$NotesTableReferences),
+      NoteRow,
+      PrefetchHooks Function({
+        bool folderId,
+        bool noteImagesRefs,
+        bool noteVersionsRefs,
+        bool noteTaskLinksRefs,
+        bool kanbanCardsRefs,
+      })
+    >;
+typedef $$NoteImagesTableCreateCompanionBuilder =
+    NoteImagesCompanion Function({
+      Value<int> id,
+      required int noteId,
+      required String filename,
+      required String filePath,
+      required int sizeBytes,
+      Value<DateTime> createdAt,
+    });
+typedef $$NoteImagesTableUpdateCompanionBuilder =
+    NoteImagesCompanion Function({
+      Value<int> id,
+      Value<int> noteId,
+      Value<String> filename,
+      Value<String> filePath,
+      Value<int> sizeBytes,
+      Value<DateTime> createdAt,
+    });
+
+final class $$NoteImagesTableReferences
+    extends BaseReferences<_$AppDatabase, $NoteImagesTable, NoteImageRow> {
+  $$NoteImagesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NotesTable _noteIdTable(_$AppDatabase db) => db.notes.createAlias(
+    $_aliasNameGenerator(db.noteImages.noteId, db.notes.id),
+  );
+
+  $$NotesTableProcessedTableManager get noteId {
+    final $_column = $_itemColumn<int>('note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_noteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NoteImagesTableFilterComposer
+    extends Composer<_$AppDatabase, $NoteImagesTable> {
+  $$NoteImagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filePath => $composableBuilder(
+    column: $table.filePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NotesTableFilterComposer get noteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteImagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $NoteImagesTable> {
+  $$NoteImagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filePath => $composableBuilder(
+    column: $table.filePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NotesTableOrderingComposer get noteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteImagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NoteImagesTable> {
+  $$NoteImagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get filename =>
+      $composableBuilder(column: $table.filename, builder: (column) => column);
+
+  GeneratedColumn<String> get filePath =>
+      $composableBuilder(column: $table.filePath, builder: (column) => column);
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$NotesTableAnnotationComposer get noteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteImagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NoteImagesTable,
+          NoteImageRow,
+          $$NoteImagesTableFilterComposer,
+          $$NoteImagesTableOrderingComposer,
+          $$NoteImagesTableAnnotationComposer,
+          $$NoteImagesTableCreateCompanionBuilder,
+          $$NoteImagesTableUpdateCompanionBuilder,
+          (NoteImageRow, $$NoteImagesTableReferences),
+          NoteImageRow,
+          PrefetchHooks Function({bool noteId})
+        > {
+  $$NoteImagesTableTableManager(_$AppDatabase db, $NoteImagesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$NoteImagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$NoteImagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$NoteImagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
+                Value<String> filename = const Value.absent(),
+                Value<String> filePath = const Value.absent(),
+                Value<int> sizeBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => NoteImagesCompanion(
+                id: id,
+                noteId: noteId,
+                filename: filename,
+                filePath: filePath,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int noteId,
+                required String filename,
+                required String filePath,
+                required int sizeBytes,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => NoteImagesCompanion.insert(
+                id: id,
+                noteId: noteId,
+                filename: filename,
+                filePath: filePath,
+                sizeBytes: sizeBytes,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$NoteImagesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({noteId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (noteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.noteId,
+                            referencedTable: $$NoteImagesTableReferences
+                                ._noteIdTable(db),
+                            referencedColumn:
+                                $$NoteImagesTableReferences._noteIdTable(db).id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NoteImagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NoteImagesTable,
+      NoteImageRow,
+      $$NoteImagesTableFilterComposer,
+      $$NoteImagesTableOrderingComposer,
+      $$NoteImagesTableAnnotationComposer,
+      $$NoteImagesTableCreateCompanionBuilder,
+      $$NoteImagesTableUpdateCompanionBuilder,
+      (NoteImageRow, $$NoteImagesTableReferences),
+      NoteImageRow,
+      PrefetchHooks Function({bool noteId})
+    >;
+typedef $$NoteVersionsTableCreateCompanionBuilder =
+    NoteVersionsCompanion Function({
+      Value<int> id,
+      required int noteId,
+      required String rawMarkdown,
+      Value<DateTime> savedAt,
+    });
+typedef $$NoteVersionsTableUpdateCompanionBuilder =
+    NoteVersionsCompanion Function({
+      Value<int> id,
+      Value<int> noteId,
+      Value<String> rawMarkdown,
+      Value<DateTime> savedAt,
+    });
+
+final class $$NoteVersionsTableReferences
+    extends BaseReferences<_$AppDatabase, $NoteVersionsTable, NoteVersionRow> {
+  $$NoteVersionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NotesTable _noteIdTable(_$AppDatabase db) => db.notes.createAlias(
+    $_aliasNameGenerator(db.noteVersions.noteId, db.notes.id),
+  );
+
+  $$NotesTableProcessedTableManager get noteId {
+    final $_column = $_itemColumn<int>('note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_noteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NoteVersionsTableFilterComposer
+    extends Composer<_$AppDatabase, $NoteVersionsTable> {
+  $$NoteVersionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rawMarkdown => $composableBuilder(
+    column: $table.rawMarkdown,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NotesTableFilterComposer get noteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteVersionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $NoteVersionsTable> {
+  $$NoteVersionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rawMarkdown => $composableBuilder(
+    column: $table.rawMarkdown,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NotesTableOrderingComposer get noteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteVersionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NoteVersionsTable> {
+  $$NoteVersionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get rawMarkdown => $composableBuilder(
+    column: $table.rawMarkdown,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get savedAt =>
+      $composableBuilder(column: $table.savedAt, builder: (column) => column);
+
+  $$NotesTableAnnotationComposer get noteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteVersionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NoteVersionsTable,
+          NoteVersionRow,
+          $$NoteVersionsTableFilterComposer,
+          $$NoteVersionsTableOrderingComposer,
+          $$NoteVersionsTableAnnotationComposer,
+          $$NoteVersionsTableCreateCompanionBuilder,
+          $$NoteVersionsTableUpdateCompanionBuilder,
+          (NoteVersionRow, $$NoteVersionsTableReferences),
+          NoteVersionRow,
+          PrefetchHooks Function({bool noteId})
+        > {
+  $$NoteVersionsTableTableManager(_$AppDatabase db, $NoteVersionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$NoteVersionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$NoteVersionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () =>
+                  $$NoteVersionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
+                Value<String> rawMarkdown = const Value.absent(),
+                Value<DateTime> savedAt = const Value.absent(),
+              }) => NoteVersionsCompanion(
+                id: id,
+                noteId: noteId,
+                rawMarkdown: rawMarkdown,
+                savedAt: savedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int noteId,
+                required String rawMarkdown,
+                Value<DateTime> savedAt = const Value.absent(),
+              }) => NoteVersionsCompanion.insert(
+                id: id,
+                noteId: noteId,
+                rawMarkdown: rawMarkdown,
+                savedAt: savedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$NoteVersionsTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({noteId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (noteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.noteId,
+                            referencedTable: $$NoteVersionsTableReferences
+                                ._noteIdTable(db),
+                            referencedColumn:
+                                $$NoteVersionsTableReferences
+                                    ._noteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NoteVersionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NoteVersionsTable,
+      NoteVersionRow,
+      $$NoteVersionsTableFilterComposer,
+      $$NoteVersionsTableOrderingComposer,
+      $$NoteVersionsTableAnnotationComposer,
+      $$NoteVersionsTableCreateCompanionBuilder,
+      $$NoteVersionsTableUpdateCompanionBuilder,
+      (NoteVersionRow, $$NoteVersionsTableReferences),
+      NoteVersionRow,
+      PrefetchHooks Function({bool noteId})
+    >;
+typedef $$NoteTaskLinksTableCreateCompanionBuilder =
+    NoteTaskLinksCompanion Function({
+      required int noteId,
+      required int taskId,
+      Value<int> rowid,
+    });
+typedef $$NoteTaskLinksTableUpdateCompanionBuilder =
+    NoteTaskLinksCompanion Function({
+      Value<int> noteId,
+      Value<int> taskId,
+      Value<int> rowid,
+    });
+
+final class $$NoteTaskLinksTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $NoteTaskLinksTable, NoteTaskLinkRow> {
+  $$NoteTaskLinksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $NotesTable _noteIdTable(_$AppDatabase db) => db.notes.createAlias(
+    $_aliasNameGenerator(db.noteTaskLinks.noteId, db.notes.id),
+  );
+
+  $$NotesTableProcessedTableManager get noteId {
+    final $_column = $_itemColumn<int>('note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_noteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $TasksTable _taskIdTable(_$AppDatabase db) => db.tasks.createAlias(
+    $_aliasNameGenerator(db.noteTaskLinks.taskId, db.tasks.id),
+  );
+
+  $$TasksTableProcessedTableManager get taskId {
+    final $_column = $_itemColumn<int>('task_id')!;
+
+    final manager = $$TasksTableTableManager(
+      $_db,
+      $_db.tasks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_taskIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NoteTaskLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $NoteTaskLinksTable> {
+  $$NoteTaskLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$NotesTableFilterComposer get noteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TasksTableFilterComposer get taskId {
+    final $$TasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.taskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableFilterComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteTaskLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $NoteTaskLinksTable> {
+  $$NoteTaskLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$NotesTableOrderingComposer get noteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TasksTableOrderingComposer get taskId {
+    final $$TasksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.taskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableOrderingComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteTaskLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NoteTaskLinksTable> {
+  $$NoteTaskLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$NotesTableAnnotationComposer get noteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TasksTableAnnotationComposer get taskId {
+    final $$TasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.taskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteTaskLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NoteTaskLinksTable,
+          NoteTaskLinkRow,
+          $$NoteTaskLinksTableFilterComposer,
+          $$NoteTaskLinksTableOrderingComposer,
+          $$NoteTaskLinksTableAnnotationComposer,
+          $$NoteTaskLinksTableCreateCompanionBuilder,
+          $$NoteTaskLinksTableUpdateCompanionBuilder,
+          (NoteTaskLinkRow, $$NoteTaskLinksTableReferences),
+          NoteTaskLinkRow,
+          PrefetchHooks Function({bool noteId, bool taskId})
+        > {
+  $$NoteTaskLinksTableTableManager(_$AppDatabase db, $NoteTaskLinksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$NoteTaskLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () =>
+                  $$NoteTaskLinksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$NoteTaskLinksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> noteId = const Value.absent(),
+                Value<int> taskId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NoteTaskLinksCompanion(
+                noteId: noteId,
+                taskId: taskId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int noteId,
+                required int taskId,
+                Value<int> rowid = const Value.absent(),
+              }) => NoteTaskLinksCompanion.insert(
+                noteId: noteId,
+                taskId: taskId,
+                rowid: rowid,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$NoteTaskLinksTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({noteId = false, taskId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (noteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.noteId,
+                            referencedTable: $$NoteTaskLinksTableReferences
+                                ._noteIdTable(db),
+                            referencedColumn:
+                                $$NoteTaskLinksTableReferences
+                                    ._noteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+                if (taskId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.taskId,
+                            referencedTable: $$NoteTaskLinksTableReferences
+                                ._taskIdTable(db),
+                            referencedColumn:
+                                $$NoteTaskLinksTableReferences
+                                    ._taskIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NoteTaskLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NoteTaskLinksTable,
+      NoteTaskLinkRow,
+      $$NoteTaskLinksTableFilterComposer,
+      $$NoteTaskLinksTableOrderingComposer,
+      $$NoteTaskLinksTableAnnotationComposer,
+      $$NoteTaskLinksTableCreateCompanionBuilder,
+      $$NoteTaskLinksTableUpdateCompanionBuilder,
+      (NoteTaskLinkRow, $$NoteTaskLinksTableReferences),
+      NoteTaskLinkRow,
+      PrefetchHooks Function({bool noteId, bool taskId})
+    >;
+typedef $$LabSpacesTableCreateCompanionBuilder =
+    LabSpacesCompanion Function({
+      Value<int> id,
+      required String name,
+      required String accentColor,
+      Value<String> status,
+      Value<DateTime?> startDate,
+      Value<DateTime?> dueDate,
+      Value<DateTime> createdAt,
+      Value<DateTime?> deletedAt,
+    });
+typedef $$LabSpacesTableUpdateCompanionBuilder =
+    LabSpacesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String> accentColor,
+      Value<String> status,
+      Value<DateTime?> startDate,
+      Value<DateTime?> dueDate,
+      Value<DateTime> createdAt,
+      Value<DateTime?> deletedAt,
+    });
+
+final class $$LabSpacesTableReferences
+    extends BaseReferences<_$AppDatabase, $LabSpacesTable, LabSpaceRow> {
+  $$LabSpacesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$KanbanColumnsTable, List<KanbanColumnRow>>
+  _kanbanColumnsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.kanbanColumns,
+    aliasName: $_aliasNameGenerator(
+      db.labSpaces.id,
+      db.kanbanColumns.labSpaceId,
+    ),
+  );
+
+  $$KanbanColumnsTableProcessedTableManager get kanbanColumnsRefs {
+    final manager = $$KanbanColumnsTableTableManager(
+      $_db,
+      $_db.kanbanColumns,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_kanbanColumnsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$KanbanCardsTable, List<KanbanCardRow>>
+  _kanbanCardsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.kanbanCards,
+    aliasName: $_aliasNameGenerator(db.labSpaces.id, db.kanbanCards.labSpaceId),
+  );
+
+  $$KanbanCardsTableProcessedTableManager get kanbanCardsRefs {
+    final manager = $$KanbanCardsTableTableManager(
+      $_db,
+      $_db.kanbanCards,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_kanbanCardsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$SpaceFolderLinksTable, List<SpaceFolderLinkRow>>
+  _spaceFolderLinksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.spaceFolderLinks,
+    aliasName: $_aliasNameGenerator(
+      db.labSpaces.id,
+      db.spaceFolderLinks.labSpaceId,
+    ),
+  );
+
+  $$SpaceFolderLinksTableProcessedTableManager get spaceFolderLinksRefs {
+    final manager = $$SpaceFolderLinksTableTableManager(
+      $_db,
+      $_db.spaceFolderLinks,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _spaceFolderLinksRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$LabSpacesTableFilterComposer
+    extends Composer<_$AppDatabase, $LabSpacesTable> {
+  $$LabSpacesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> kanbanColumnsRefs(
+    Expression<bool> Function($$KanbanColumnsTableFilterComposer f) f,
+  ) {
+    final $$KanbanColumnsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanColumns,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanColumnsTableFilterComposer(
+            $db: $db,
+            $table: $db.kanbanColumns,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> kanbanCardsRefs(
+    Expression<bool> Function($$KanbanCardsTableFilterComposer f) f,
+  ) {
+    final $$KanbanCardsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableFilterComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> spaceFolderLinksRefs(
+    Expression<bool> Function($$SpaceFolderLinksTableFilterComposer f) f,
+  ) {
+    final $$SpaceFolderLinksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.spaceFolderLinks,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpaceFolderLinksTableFilterComposer(
+            $db: $db,
+            $table: $db.spaceFolderLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$LabSpacesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LabSpacesTable> {
+  $$LabSpacesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LabSpacesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LabSpacesTable> {
+  $$LabSpacesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get accentColor => $composableBuilder(
+    column: $table.accentColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get dueDate =>
+      $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  Expression<T> kanbanColumnsRefs<T extends Object>(
+    Expression<T> Function($$KanbanColumnsTableAnnotationComposer a) f,
+  ) {
+    final $$KanbanColumnsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanColumns,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanColumnsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.kanbanColumns,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> kanbanCardsRefs<T extends Object>(
+    Expression<T> Function($$KanbanCardsTableAnnotationComposer a) f,
+  ) {
+    final $$KanbanCardsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> spaceFolderLinksRefs<T extends Object>(
+    Expression<T> Function($$SpaceFolderLinksTableAnnotationComposer a) f,
+  ) {
+    final $$SpaceFolderLinksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.spaceFolderLinks,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpaceFolderLinksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.spaceFolderLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$LabSpacesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LabSpacesTable,
+          LabSpaceRow,
+          $$LabSpacesTableFilterComposer,
+          $$LabSpacesTableOrderingComposer,
+          $$LabSpacesTableAnnotationComposer,
+          $$LabSpacesTableCreateCompanionBuilder,
+          $$LabSpacesTableUpdateCompanionBuilder,
+          (LabSpaceRow, $$LabSpacesTableReferences),
+          LabSpaceRow,
+          PrefetchHooks Function({
+            bool kanbanColumnsRefs,
+            bool kanbanCardsRefs,
+            bool spaceFolderLinksRefs,
+          })
+        > {
+  $$LabSpacesTableTableManager(_$AppDatabase db, $LabSpacesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$LabSpacesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$LabSpacesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$LabSpacesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> accentColor = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<DateTime?> startDate = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+              }) => LabSpacesCompanion(
+                id: id,
+                name: name,
+                accentColor: accentColor,
+                status: status,
+                startDate: startDate,
+                dueDate: dueDate,
+                createdAt: createdAt,
+                deletedAt: deletedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required String accentColor,
+                Value<String> status = const Value.absent(),
+                Value<DateTime?> startDate = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+              }) => LabSpacesCompanion.insert(
+                id: id,
+                name: name,
+                accentColor: accentColor,
+                status: status,
+                startDate: startDate,
+                dueDate: dueDate,
+                createdAt: createdAt,
+                deletedAt: deletedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$LabSpacesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            kanbanColumnsRefs = false,
+            kanbanCardsRefs = false,
+            spaceFolderLinksRefs = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (kanbanColumnsRefs) db.kanbanColumns,
+                if (kanbanCardsRefs) db.kanbanCards,
+                if (spaceFolderLinksRefs) db.spaceFolderLinks,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (kanbanColumnsRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      KanbanColumnRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._kanbanColumnsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).kanbanColumnsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (kanbanCardsRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      KanbanCardRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._kanbanCardsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).kanbanCardsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (spaceFolderLinksRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      SpaceFolderLinkRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._spaceFolderLinksRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).spaceFolderLinksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$LabSpacesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LabSpacesTable,
+      LabSpaceRow,
+      $$LabSpacesTableFilterComposer,
+      $$LabSpacesTableOrderingComposer,
+      $$LabSpacesTableAnnotationComposer,
+      $$LabSpacesTableCreateCompanionBuilder,
+      $$LabSpacesTableUpdateCompanionBuilder,
+      (LabSpaceRow, $$LabSpacesTableReferences),
+      LabSpaceRow,
+      PrefetchHooks Function({
+        bool kanbanColumnsRefs,
+        bool kanbanCardsRefs,
+        bool spaceFolderLinksRefs,
+      })
+    >;
+typedef $$KanbanColumnsTableCreateCompanionBuilder =
+    KanbanColumnsCompanion Function({
+      Value<int> id,
+      required int labSpaceId,
+      required String name,
+      required int position,
+      Value<bool> isDefault,
+    });
+typedef $$KanbanColumnsTableUpdateCompanionBuilder =
+    KanbanColumnsCompanion Function({
+      Value<int> id,
+      Value<int> labSpaceId,
+      Value<String> name,
+      Value<int> position,
+      Value<bool> isDefault,
+    });
+
+final class $$KanbanColumnsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $KanbanColumnsTable, KanbanColumnRow> {
+  $$KanbanColumnsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(db.kanbanColumns.labSpaceId, db.labSpaces.id),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$KanbanCardsTable, List<KanbanCardRow>>
+  _kanbanCardsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.kanbanCards,
+    aliasName: $_aliasNameGenerator(
+      db.kanbanColumns.id,
+      db.kanbanCards.columnId,
+    ),
+  );
+
+  $$KanbanCardsTableProcessedTableManager get kanbanCardsRefs {
+    final manager = $$KanbanCardsTableTableManager(
+      $_db,
+      $_db.kanbanCards,
+    ).filter((f) => f.columnId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_kanbanCardsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$KanbanColumnsTableFilterComposer
+    extends Composer<_$AppDatabase, $KanbanColumnsTable> {
+  $$KanbanColumnsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> kanbanCardsRefs(
+    Expression<bool> Function($$KanbanCardsTableFilterComposer f) f,
+  ) {
+    final $$KanbanCardsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.columnId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableFilterComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$KanbanColumnsTableOrderingComposer
+    extends Composer<_$AppDatabase, $KanbanColumnsTable> {
+  $$KanbanColumnsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$KanbanColumnsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $KanbanColumnsTable> {
+  $$KanbanColumnsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDefault =>
+      $composableBuilder(column: $table.isDefault, builder: (column) => column);
+
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> kanbanCardsRefs<T extends Object>(
+    Expression<T> Function($$KanbanCardsTableAnnotationComposer a) f,
+  ) {
+    final $$KanbanCardsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.kanbanCards,
+      getReferencedColumn: (t) => t.columnId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanCardsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$KanbanColumnsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $KanbanColumnsTable,
+          KanbanColumnRow,
+          $$KanbanColumnsTableFilterComposer,
+          $$KanbanColumnsTableOrderingComposer,
+          $$KanbanColumnsTableAnnotationComposer,
+          $$KanbanColumnsTableCreateCompanionBuilder,
+          $$KanbanColumnsTableUpdateCompanionBuilder,
+          (KanbanColumnRow, $$KanbanColumnsTableReferences),
+          KanbanColumnRow,
+          PrefetchHooks Function({bool labSpaceId, bool kanbanCardsRefs})
+        > {
+  $$KanbanColumnsTableTableManager(_$AppDatabase db, $KanbanColumnsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$KanbanColumnsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () =>
+                  $$KanbanColumnsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$KanbanColumnsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> labSpaceId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<bool> isDefault = const Value.absent(),
+              }) => KanbanColumnsCompanion(
+                id: id,
+                labSpaceId: labSpaceId,
+                name: name,
+                position: position,
+                isDefault: isDefault,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int labSpaceId,
+                required String name,
+                required int position,
+                Value<bool> isDefault = const Value.absent(),
+              }) => KanbanColumnsCompanion.insert(
+                id: id,
+                labSpaceId: labSpaceId,
+                name: name,
+                position: position,
+                isDefault: isDefault,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$KanbanColumnsTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            labSpaceId = false,
+            kanbanCardsRefs = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (kanbanCardsRefs) db.kanbanCards],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable: $$KanbanColumnsTableReferences
+                                ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$KanbanColumnsTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (kanbanCardsRefs)
+                    await $_getPrefetchedData<
+                      KanbanColumnRow,
+                      $KanbanColumnsTable,
+                      KanbanCardRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$KanbanColumnsTableReferences
+                          ._kanbanCardsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$KanbanColumnsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).kanbanCardsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.columnId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$KanbanColumnsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $KanbanColumnsTable,
+      KanbanColumnRow,
+      $$KanbanColumnsTableFilterComposer,
+      $$KanbanColumnsTableOrderingComposer,
+      $$KanbanColumnsTableAnnotationComposer,
+      $$KanbanColumnsTableCreateCompanionBuilder,
+      $$KanbanColumnsTableUpdateCompanionBuilder,
+      (KanbanColumnRow, $$KanbanColumnsTableReferences),
+      KanbanColumnRow,
+      PrefetchHooks Function({bool labSpaceId, bool kanbanCardsRefs})
+    >;
+typedef $$KanbanCardsTableCreateCompanionBuilder =
+    KanbanCardsCompanion Function({
+      Value<int> id,
+      required int labSpaceId,
+      required int columnId,
+      required String title,
+      Value<String?> description,
+      Value<String> priority,
+      required int position,
+      Value<DateTime?> dueDate,
+      Value<int?> sourceNoteId,
+      Value<String?> sourceAnchor,
+      Value<int?> originTaskId,
+      Value<DateTime> createdAt,
+    });
+typedef $$KanbanCardsTableUpdateCompanionBuilder =
+    KanbanCardsCompanion Function({
+      Value<int> id,
+      Value<int> labSpaceId,
+      Value<int> columnId,
+      Value<String> title,
+      Value<String?> description,
+      Value<String> priority,
+      Value<int> position,
+      Value<DateTime?> dueDate,
+      Value<int?> sourceNoteId,
+      Value<String?> sourceAnchor,
+      Value<int?> originTaskId,
+      Value<DateTime> createdAt,
+    });
+
+final class $$KanbanCardsTableReferences
+    extends BaseReferences<_$AppDatabase, $KanbanCardsTable, KanbanCardRow> {
+  $$KanbanCardsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(db.kanbanCards.labSpaceId, db.labSpaces.id),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $KanbanColumnsTable _columnIdTable(_$AppDatabase db) =>
+      db.kanbanColumns.createAlias(
+        $_aliasNameGenerator(db.kanbanCards.columnId, db.kanbanColumns.id),
+      );
+
+  $$KanbanColumnsTableProcessedTableManager get columnId {
+    final $_column = $_itemColumn<int>('column_id')!;
+
+    final manager = $$KanbanColumnsTableTableManager(
+      $_db,
+      $_db.kanbanColumns,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_columnIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $NotesTable _sourceNoteIdTable(_$AppDatabase db) =>
+      db.notes.createAlias(
+        $_aliasNameGenerator(db.kanbanCards.sourceNoteId, db.notes.id),
+      );
+
+  $$NotesTableProcessedTableManager? get sourceNoteId {
+    final $_column = $_itemColumn<int>('source_note_id');
+    if ($_column == null) return null;
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sourceNoteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $TasksTable _originTaskIdTable(_$AppDatabase db) =>
+      db.tasks.createAlias(
+        $_aliasNameGenerator(db.kanbanCards.originTaskId, db.tasks.id),
+      );
+
+  $$TasksTableProcessedTableManager? get originTaskId {
+    final $_column = $_itemColumn<int>('origin_task_id');
+    if ($_column == null) return null;
+    final manager = $$TasksTableTableManager(
+      $_db,
+      $_db.tasks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_originTaskIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$KanbanCardsTableFilterComposer
+    extends Composer<_$AppDatabase, $KanbanCardsTable> {
+  $$KanbanCardsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceAnchor => $composableBuilder(
+    column: $table.sourceAnchor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$KanbanColumnsTableFilterComposer get columnId {
+    final $$KanbanColumnsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.columnId,
+      referencedTable: $db.kanbanColumns,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanColumnsTableFilterComposer(
+            $db: $db,
+            $table: $db.kanbanColumns,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableFilterComposer get sourceNoteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TasksTableFilterComposer get originTaskId {
+    final $$TasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.originTaskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableFilterComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$KanbanCardsTableOrderingComposer
+    extends Composer<_$AppDatabase, $KanbanCardsTable> {
+  $$KanbanCardsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceAnchor => $composableBuilder(
+    column: $table.sourceAnchor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$KanbanColumnsTableOrderingComposer get columnId {
+    final $$KanbanColumnsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.columnId,
+      referencedTable: $db.kanbanColumns,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanColumnsTableOrderingComposer(
+            $db: $db,
+            $table: $db.kanbanColumns,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableOrderingComposer get sourceNoteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TasksTableOrderingComposer get originTaskId {
+    final $$TasksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.originTaskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableOrderingComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$KanbanCardsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $KanbanCardsTable> {
+  $$KanbanCardsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get dueDate =>
+      $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceAnchor => $composableBuilder(
+    column: $table.sourceAnchor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$KanbanColumnsTableAnnotationComposer get columnId {
+    final $$KanbanColumnsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.columnId,
+      referencedTable: $db.kanbanColumns,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$KanbanColumnsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.kanbanColumns,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableAnnotationComposer get sourceNoteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TasksTableAnnotationComposer get originTaskId {
+    final $$TasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.originTaskId,
+      referencedTable: $db.tasks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$KanbanCardsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $KanbanCardsTable,
+          KanbanCardRow,
+          $$KanbanCardsTableFilterComposer,
+          $$KanbanCardsTableOrderingComposer,
+          $$KanbanCardsTableAnnotationComposer,
+          $$KanbanCardsTableCreateCompanionBuilder,
+          $$KanbanCardsTableUpdateCompanionBuilder,
+          (KanbanCardRow, $$KanbanCardsTableReferences),
+          KanbanCardRow,
+          PrefetchHooks Function({
+            bool labSpaceId,
+            bool columnId,
+            bool sourceNoteId,
+            bool originTaskId,
+          })
+        > {
+  $$KanbanCardsTableTableManager(_$AppDatabase db, $KanbanCardsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$KanbanCardsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$KanbanCardsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () =>
+                  $$KanbanCardsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> labSpaceId = const Value.absent(),
+                Value<int> columnId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<String> priority = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
+                Value<int?> sourceNoteId = const Value.absent(),
+                Value<String?> sourceAnchor = const Value.absent(),
+                Value<int?> originTaskId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => KanbanCardsCompanion(
+                id: id,
+                labSpaceId: labSpaceId,
+                columnId: columnId,
+                title: title,
+                description: description,
+                priority: priority,
+                position: position,
+                dueDate: dueDate,
+                sourceNoteId: sourceNoteId,
+                sourceAnchor: sourceAnchor,
+                originTaskId: originTaskId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int labSpaceId,
+                required int columnId,
+                required String title,
+                Value<String?> description = const Value.absent(),
+                Value<String> priority = const Value.absent(),
+                required int position,
+                Value<DateTime?> dueDate = const Value.absent(),
+                Value<int?> sourceNoteId = const Value.absent(),
+                Value<String?> sourceAnchor = const Value.absent(),
+                Value<int?> originTaskId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => KanbanCardsCompanion.insert(
+                id: id,
+                labSpaceId: labSpaceId,
+                columnId: columnId,
+                title: title,
+                description: description,
+                priority: priority,
+                position: position,
+                dueDate: dueDate,
+                sourceNoteId: sourceNoteId,
+                sourceAnchor: sourceAnchor,
+                originTaskId: originTaskId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$KanbanCardsTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            labSpaceId = false,
+            columnId = false,
+            sourceNoteId = false,
+            originTaskId = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable: $$KanbanCardsTableReferences
+                                ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$KanbanCardsTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+                if (columnId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.columnId,
+                            referencedTable: $$KanbanCardsTableReferences
+                                ._columnIdTable(db),
+                            referencedColumn:
+                                $$KanbanCardsTableReferences
+                                    ._columnIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+                if (sourceNoteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.sourceNoteId,
+                            referencedTable: $$KanbanCardsTableReferences
+                                ._sourceNoteIdTable(db),
+                            referencedColumn:
+                                $$KanbanCardsTableReferences
+                                    ._sourceNoteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+                if (originTaskId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.originTaskId,
+                            referencedTable: $$KanbanCardsTableReferences
+                                ._originTaskIdTable(db),
+                            referencedColumn:
+                                $$KanbanCardsTableReferences
+                                    ._originTaskIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$KanbanCardsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $KanbanCardsTable,
+      KanbanCardRow,
+      $$KanbanCardsTableFilterComposer,
+      $$KanbanCardsTableOrderingComposer,
+      $$KanbanCardsTableAnnotationComposer,
+      $$KanbanCardsTableCreateCompanionBuilder,
+      $$KanbanCardsTableUpdateCompanionBuilder,
+      (KanbanCardRow, $$KanbanCardsTableReferences),
+      KanbanCardRow,
+      PrefetchHooks Function({
+        bool labSpaceId,
+        bool columnId,
+        bool sourceNoteId,
+        bool originTaskId,
+      })
+    >;
+typedef $$SpaceFolderLinksTableCreateCompanionBuilder =
+    SpaceFolderLinksCompanion Function({
+      required int labSpaceId,
+      required int folderId,
+      Value<int> rowid,
+    });
+typedef $$SpaceFolderLinksTableUpdateCompanionBuilder =
+    SpaceFolderLinksCompanion Function({
+      Value<int> labSpaceId,
+      Value<int> folderId,
+      Value<int> rowid,
+    });
+
+final class $$SpaceFolderLinksTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $SpaceFolderLinksTable,
+          SpaceFolderLinkRow
+        > {
+  $$SpaceFolderLinksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(db.spaceFolderLinks.labSpaceId, db.labSpaces.id),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $FoldersTable _folderIdTable(_$AppDatabase db) =>
+      db.folders.createAlias(
+        $_aliasNameGenerator(db.spaceFolderLinks.folderId, db.folders.id),
+      );
+
+  $$FoldersTableProcessedTableManager get folderId {
+    final $_column = $_itemColumn<int>('folder_id')!;
+
+    final manager = $$FoldersTableTableManager(
+      $_db,
+      $_db.folders,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$SpaceFolderLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $SpaceFolderLinksTable> {
+  $$SpaceFolderLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FoldersTableFilterComposer get folderId {
+    final $$FoldersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableFilterComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SpaceFolderLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $SpaceFolderLinksTable> {
+  $$SpaceFolderLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FoldersTableOrderingComposer get folderId {
+    final $$FoldersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableOrderingComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SpaceFolderLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SpaceFolderLinksTable> {
+  $$SpaceFolderLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$FoldersTableAnnotationComposer get folderId {
+    final $$FoldersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.folderId,
+      referencedTable: $db.folders,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FoldersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SpaceFolderLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SpaceFolderLinksTable,
+          SpaceFolderLinkRow,
+          $$SpaceFolderLinksTableFilterComposer,
+          $$SpaceFolderLinksTableOrderingComposer,
+          $$SpaceFolderLinksTableAnnotationComposer,
+          $$SpaceFolderLinksTableCreateCompanionBuilder,
+          $$SpaceFolderLinksTableUpdateCompanionBuilder,
+          (SpaceFolderLinkRow, $$SpaceFolderLinksTableReferences),
+          SpaceFolderLinkRow,
+          PrefetchHooks Function({bool labSpaceId, bool folderId})
+        > {
+  $$SpaceFolderLinksTableTableManager(
+    _$AppDatabase db,
+    $SpaceFolderLinksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () =>
+                  $$SpaceFolderLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$SpaceFolderLinksTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$SpaceFolderLinksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> labSpaceId = const Value.absent(),
+                Value<int> folderId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SpaceFolderLinksCompanion(
+                labSpaceId: labSpaceId,
+                folderId: folderId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int labSpaceId,
+                required int folderId,
+                Value<int> rowid = const Value.absent(),
+              }) => SpaceFolderLinksCompanion.insert(
+                labSpaceId: labSpaceId,
+                folderId: folderId,
+                rowid: rowid,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$SpaceFolderLinksTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({labSpaceId = false, folderId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable: $$SpaceFolderLinksTableReferences
+                                ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$SpaceFolderLinksTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+                if (folderId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.folderId,
+                            referencedTable: $$SpaceFolderLinksTableReferences
+                                ._folderIdTable(db),
+                            referencedColumn:
+                                $$SpaceFolderLinksTableReferences
+                                    ._folderIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SpaceFolderLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SpaceFolderLinksTable,
+      SpaceFolderLinkRow,
+      $$SpaceFolderLinksTableFilterComposer,
+      $$SpaceFolderLinksTableOrderingComposer,
+      $$SpaceFolderLinksTableAnnotationComposer,
+      $$SpaceFolderLinksTableCreateCompanionBuilder,
+      $$SpaceFolderLinksTableUpdateCompanionBuilder,
+      (SpaceFolderLinkRow, $$SpaceFolderLinksTableReferences),
+      SpaceFolderLinkRow,
+      PrefetchHooks Function({bool labSpaceId, bool folderId})
+    >;
+typedef $$OnboardingFlagsTableCreateCompanionBuilder =
+    OnboardingFlagsCompanion Function({
+      required String key,
+      required DateTime seenAt,
+      Value<int> rowid,
+    });
+typedef $$OnboardingFlagsTableUpdateCompanionBuilder =
+    OnboardingFlagsCompanion Function({
+      Value<String> key,
+      Value<DateTime> seenAt,
+      Value<int> rowid,
+    });
+
+class $$OnboardingFlagsTableFilterComposer
+    extends Composer<_$AppDatabase, $OnboardingFlagsTable> {
+  $$OnboardingFlagsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get seenAt => $composableBuilder(
+    column: $table.seenAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OnboardingFlagsTableOrderingComposer
+    extends Composer<_$AppDatabase, $OnboardingFlagsTable> {
+  $$OnboardingFlagsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get seenAt => $composableBuilder(
+    column: $table.seenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OnboardingFlagsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OnboardingFlagsTable> {
+  $$OnboardingFlagsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get seenAt =>
+      $composableBuilder(column: $table.seenAt, builder: (column) => column);
+}
+
+class $$OnboardingFlagsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OnboardingFlagsTable,
+          OnboardingFlagRow,
+          $$OnboardingFlagsTableFilterComposer,
+          $$OnboardingFlagsTableOrderingComposer,
+          $$OnboardingFlagsTableAnnotationComposer,
+          $$OnboardingFlagsTableCreateCompanionBuilder,
+          $$OnboardingFlagsTableUpdateCompanionBuilder,
+          (
+            OnboardingFlagRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OnboardingFlagsTable,
+              OnboardingFlagRow
+            >,
+          ),
+          OnboardingFlagRow,
+          PrefetchHooks Function()
+        > {
+  $$OnboardingFlagsTableTableManager(
+    _$AppDatabase db,
+    $OnboardingFlagsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () =>
+                  $$OnboardingFlagsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$OnboardingFlagsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$OnboardingFlagsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<DateTime> seenAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OnboardingFlagsCompanion(
+                key: key,
+                seenAt: seenAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                required DateTime seenAt,
+                Value<int> rowid = const Value.absent(),
+              }) => OnboardingFlagsCompanion.insert(
+                key: key,
+                seenAt: seenAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          BaseReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OnboardingFlagsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OnboardingFlagsTable,
+      OnboardingFlagRow,
+      $$OnboardingFlagsTableFilterComposer,
+      $$OnboardingFlagsTableOrderingComposer,
+      $$OnboardingFlagsTableAnnotationComposer,
+      $$OnboardingFlagsTableCreateCompanionBuilder,
+      $$OnboardingFlagsTableUpdateCompanionBuilder,
+      (
+        OnboardingFlagRow,
+        BaseReferences<_$AppDatabase, $OnboardingFlagsTable, OnboardingFlagRow>,
+      ),
+      OnboardingFlagRow,
+      PrefetchHooks Function()
+    >;
+
+class $AppDatabaseManager {
+  final _$AppDatabase _db;
+  $AppDatabaseManager(this._db);
+  $$FoldersTableTableManager get folders =>
+      $$FoldersTableTableManager(_db, _db.folders);
+  $$TasksTableTableManager get tasks =>
+      $$TasksTableTableManager(_db, _db.tasks);
+  $$NotesTableTableManager get notes =>
+      $$NotesTableTableManager(_db, _db.notes);
+  $$NoteImagesTableTableManager get noteImages =>
+      $$NoteImagesTableTableManager(_db, _db.noteImages);
+  $$NoteVersionsTableTableManager get noteVersions =>
+      $$NoteVersionsTableTableManager(_db, _db.noteVersions);
+  $$NoteTaskLinksTableTableManager get noteTaskLinks =>
+      $$NoteTaskLinksTableTableManager(_db, _db.noteTaskLinks);
+  $$LabSpacesTableTableManager get labSpaces =>
+      $$LabSpacesTableTableManager(_db, _db.labSpaces);
+  $$KanbanColumnsTableTableManager get kanbanColumns =>
+      $$KanbanColumnsTableTableManager(_db, _db.kanbanColumns);
+  $$KanbanCardsTableTableManager get kanbanCards =>
+      $$KanbanCardsTableTableManager(_db, _db.kanbanCards);
+  $$SpaceFolderLinksTableTableManager get spaceFolderLinks =>
+      $$SpaceFolderLinksTableTableManager(_db, _db.spaceFolderLinks);
+  $$OnboardingFlagsTableTableManager get onboardingFlags =>
+      $$OnboardingFlagsTableTableManager(_db, _db.onboardingFlags);
+}

@@ -1,0 +1,86 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/local/database.dart';
+import '../../data/repositories/local/local_task_repository.dart';
+import '../../data/repositories/local/local_folder_repository.dart';
+import '../../data/repositories/local/local_note_repository.dart';
+import '../../data/repositories/local/local_lab_space_repository.dart';
+import '../../data/repositories/local/local_kanban_repository.dart';
+import '../../domain/repositories/task_repository.dart';
+import '../../domain/repositories/folder_repository.dart';
+import '../../domain/repositories/note_repository.dart';
+import '../../domain/repositories/lab_space_repository.dart';
+import '../../domain/repositories/kanban_card_repository.dart';
+import '../../domain/models/task.dart' as domainTask;
+import '../../domain/models/folder.dart';
+import '../../domain/models/note.dart' as domainNote;
+import '../../domain/models/lab_space.dart';
+
+// ─── App mode ─────────────────────────────────────────────────────────────────
+
+enum AppMode { home, fight, flight, lab }
+
+final currentModeProvider = StateProvider<AppMode>((ref) => AppMode.home);
+
+// ─── Database ─────────────────────────────────────────────────────────────────
+
+final databaseProvider = Provider<AppDatabase>((ref) {
+  final db = AppDatabase();
+  ref.onDispose(db.close);
+  return db;
+});
+
+// ─── Repositories ─────────────────────────────────────────────────────────────
+
+final taskRepositoryProvider = Provider<TaskRepository>((ref) {
+  return LocalTaskRepository(ref.watch(databaseProvider));
+});
+
+final folderRepositoryProvider = Provider<FolderRepository>((ref) {
+  return LocalFolderRepository(ref.watch(databaseProvider));
+});
+
+final noteRepositoryProvider = Provider<NoteRepository>((ref) {
+  return LocalNoteRepository(ref.watch(databaseProvider));
+});
+
+final labSpaceRepositoryProvider = Provider<LabSpaceRepository>((ref) {
+  return LocalLabSpaceRepository(ref.watch(databaseProvider));
+});
+
+final kanbanCardRepositoryProvider = Provider<KanbanCardRepository>((ref) {
+  return LocalKanbanRepository(ref.watch(databaseProvider));
+});
+
+// ─── Trash ────────────────────────────────────────────────────────────────────
+
+final trashedTasksProvider = StreamProvider<List<domainTask.Task>>((ref) {
+  return ref.watch(taskRepositoryProvider).watchTrashed();
+});
+
+final deletedFoldersProvider = StreamProvider<List<Folder>>((ref) {
+  return ref.watch(folderRepositoryProvider).watchDeleted();
+});
+
+final deletedNotesProvider = StreamProvider<List<domainNote.Note>>((ref) {
+  return ref.watch(noteRepositoryProvider).watchDeleted();
+});
+
+final deletedLabSpacesProvider = StreamProvider<List<LabSpace>>((ref) {
+  return ref.watch(labSpaceRepositoryProvider).watchDeleted();
+});
+
+// ─── Expiry ───────────────────────────────────────────────────────────────────
+
+/// Runs expiry queries and returns the number of tasks archived.
+/// Used at startup to decide whether to show the AppBanner.
+final expiryResultProvider = FutureProvider<int>((ref) async {
+  final db = ref.watch(databaseProvider);
+  try {
+    return await db.runExpiryQueries().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => 0,
+    );
+  } catch (_) {
+    return 0;
+  }
+});

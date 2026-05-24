@@ -1,0 +1,371 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../theme/app_tokens.dart';
+import '../../providers/database_providers.dart';
+import '../../providers/folder_providers.dart';
+import '../../providers/lab_space_providers.dart';
+import '../../widgets/app_tag.dart';
+import '../../../domain/models/task.dart';
+import '../../../domain/models/folder.dart';
+import '../../../domain/models/lab_space.dart';
+
+class TaskCard extends ConsumerStatefulWidget {
+  final Task task;
+  final bool isYesterday;
+  final bool isDone;
+
+  const TaskCard({
+    super.key,
+    required this.task,
+    required this.isYesterday,
+    this.isDone = false,
+  });
+
+  @override
+  ConsumerState<TaskCard> createState() => _TaskCardState();
+}
+
+class _TaskCardState extends ConsumerState<TaskCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _fadeController;
+  late final Animation<double> _fadeAnimation;
+  bool _completing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _complete() async {
+    if (_completing) return;
+    setState(() => _completing = true);
+
+    final reducedMotion =
+        MediaQuery.of(context).disableAnimations;
+
+    if (!reducedMotion) {
+      HapticFeedback.mediumImpact();
+      await ref.read(taskRepositoryProvider).markDone(widget.task.id);
+      await _fadeController.forward();
+    } else {
+      await ref.read(taskRepositoryProvider).markDone(widget.task.id);
+    }
+  }
+
+  Future<void> _rescue() async {
+    await ref.read(taskRepositoryProvider).rescueToday(widget.task.id);
+  }
+
+  Future<void> _delete() async {
+    await ref.read(taskRepositoryProvider).moveToTrash(widget.task.id);
+  }
+
+  void _showSendToKanban(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _SendToKanbanSheet(task: widget.task),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final task = widget.task;
+    final folderAsync = task.folderId != null
+        ? ref.watch(folderByIdProvider(task.folderId!))
+        : null;
+    final folder = folderAsync?.valueOrNull;
+
+    final borderCol = widget.isYesterday
+        ? inkGray
+        : inkColor(context);
+
+    Widget card = AnimatedBuilder(
+      animation: _fadeAnimation,
+      builder: (context, child) => Opacity(
+        opacity: _fadeAnimation.value,
+        child: child,
+      ),
+      child: _CardContent(
+        task: task,
+        folder: folder,
+        borderColor: borderCol,
+        isDone: widget.isDone || _completing,
+      ),
+    );
+
+    if (widget.isDone) return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: card,
+    );
+
+    // Long-press to send to Kanban
+    card = GestureDetector(
+      onLongPress: () => _showSendToKanban(context),
+      child: card,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Dismissible(
+        key: ValueKey(task.id),
+        direction: DismissDirection.horizontal,
+        confirmDismiss: (direction) async {
+          if (direction == DismissDirection.startToEnd) {
+            await _complete();
+          } else {
+            await _delete();
+          }
+          return false;
+        },
+        background: _SwipeBackground(
+          color: Colors.green,
+          alignment: Alignment.centerLeft,
+          icon: Icons.check,
+        ),
+        secondaryBackground: _SwipeBackground(
+          color: accentFight,
+          alignment: Alignment.centerRight,
+          icon: Icons.delete_outline,
+        ),
+        child: card,
+      ),
+    );
+  }
+}
+
+class _CardContent extends StatelessWidget {
+  final Task task;
+  final Folder? folder;
+  final Color borderColor;
+  final bool isDone;
+
+  const _CardContent({
+    required this.task,
+    required this.folder,
+    required this.borderColor,
+    required this.isDone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final doneBackground = desaturate(accentFight, amount: 0.85)
+        .withAlpha(60);
+
+    final defaultStyle = bodyL.copyWith(
+      color: inkColor(context),
+      decoration: isDone ? TextDecoration.lineThrough : null,
+      decorationThickness: 3.0,
+      decorationColor: inkColor(context),
+    );
+
+    InlineSpan contentSpan;
+
+    if (folder != null) {
+      final text = task.content;
+      final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
+      final matches = regex.allMatches(text).toList();
+      final targetClean = removeAccents(folder!.name.toLowerCase());
+      
+      final validMatches = matches.where((m) {
+        final matchedName = m.group(1)!;
+        return removeAccents(matchedName.toLowerCase()) == targetClean;
+      }).toList();
+
+      if (validMatches.isEmpty) {
+        contentSpan = TextSpan(text: text, style: defaultStyle);
+      } else {
+        final folderColor = isDone ? desaturate(folder!.color) : folder!.color;
+        final spans = <InlineSpan>[];
+        int lastIndex = 0;
+
+        final mentionStyle = defaultStyle.copyWith(
+          color: folderColor,
+          fontWeight: FontWeight.bold,
+          decoration: isDone ? TextDecoration.lineThrough : null,
+          decorationThickness: 3.0,
+          decorationColor: folderColor,
+        );
+
+        for (final match in validMatches) {
+          if (match.start > lastIndex) {
+            spans.add(TextSpan(
+              text: text.substring(lastIndex, match.start),
+              style: defaultStyle,
+            ));
+          }
+          final matchedText = match.group(0)!;
+          final folderPart = matchedText.substring(1);
+          spans.add(TextSpan(
+            text: folderPart,
+            style: mentionStyle,
+          ));
+          lastIndex = match.end;
+        }
+
+        if (lastIndex < text.length) {
+          spans.add(TextSpan(
+            text: text.substring(lastIndex),
+            style: defaultStyle,
+          ));
+        }
+
+        contentSpan = TextSpan(children: spans);
+      }
+    } else {
+      contentSpan = TextSpan(text: task.content, style: defaultStyle);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDone ? doneBackground : cardBackground(context),
+        border: Border.all(color: borderColor, width: borderWidth),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  contentSpan,
+                ),
+              ],
+            ),
+          ),
+          if (folder != null) ...[
+            const SizedBox(width: 8),
+            AppTag(label: folder!.name, color: folder!.color),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SwipeBackground extends StatelessWidget {
+  final Color color;
+  final Alignment alignment;
+  final IconData icon;
+
+  const _SwipeBackground({
+    required this.color,
+    required this.alignment,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: color,
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Icon(icon, color: inkColor(context), size: 24),
+    );
+  }
+}
+
+/// Bottom sheet to send a Fight task to a Kanban column.
+class _SendToKanbanSheet extends ConsumerWidget {
+  final Task task;
+  const _SendToKanbanSheet({required this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spacesAsync = ref.watch(activeLabSpacesProvider);
+    final spaces = spacesAsync.valueOrNull ?? [];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border(
+          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: Text(
+                'Enviar a Lab',
+                style: labelBold.copyWith(color: inkGray),
+              ),
+            ),
+            if (spaces.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                child: Text(
+                  'No hay Lab Spaces. Crea uno primero.',
+                  style: bodyS.copyWith(color: inkGray),
+                ),
+              )
+            else
+              ...spaces.map((space) => _SpaceRow(task: task, space: space)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SpaceRow extends ConsumerWidget {
+  final Task task;
+  final LabSpace space;
+  const _SpaceRow({required this.task, required this.space});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final columnsAsync = ref.watch(kanbanColumnsProvider(space.id));
+    final columns = columnsAsync.valueOrNull ?? [];
+
+    return ExpansionTile(
+      tilePadding: const EdgeInsets.symmetric(horizontal: 24),
+      title: Text(space.name,
+          style: bodyM.copyWith(color: space.accentColor, fontWeight: FontWeight.w700)),
+      children: columns.map((col) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () async {
+            await ref.read(kanbanCardRepositoryProvider).create(
+                  labSpaceId: space.id,
+                  columnId: col.id,
+                  title: task.content,
+                  originTaskId: task.id,
+                );
+            if (context.mounted) Navigator.pop(context);
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(col.name,
+                  style: bodyM.copyWith(color: inkColor(context))),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}

@@ -1,0 +1,177 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/app_tokens.dart';
+import '../providers/database_providers.dart';
+import '../providers/task_providers.dart';
+import '../providers/folder_providers.dart';
+import 'app_card.dart';
+import '../../domain/models/task.dart';
+import '../../domain/models/folder.dart';
+
+class FightPanel extends ConsumerWidget {
+  final int folderId;
+  final ScrollController scrollController;
+  final void Function(Task) onTapTask;
+
+  const FightPanel({
+    super.key,
+    required this.folderId,
+    required this.scrollController,
+    required this.onTapTask,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasksAsync = ref.watch(pendingTasksForFolderProvider(folderId));
+    final tasks = tasksAsync.valueOrNull ?? [];
+    final folderAsync = ref.watch(folderByIdProvider(folderId));
+    final folder = folderAsync.valueOrNull;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border(
+          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 4,
+            width: 40,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            color: inkGray,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'FIGHT — tareas de esta carpeta (toca para seleccionar)',
+                style: labelBold.copyWith(color: inkGray),
+              ),
+            ),
+          ),
+          Expanded(
+            child: tasks.isEmpty
+                ? Center(
+                    child: Text(
+                      'Sin tareas pendientes',
+                      style: bodyS.copyWith(color: inkGray),
+                    ),
+                  )
+                : ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    itemCount: tasks.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) => PanelTaskTile(
+                      task: tasks[i],
+                      folder: folder,
+                      onTapText: () => onTapTask(tasks[i]),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PanelTaskTile extends ConsumerWidget {
+  final Task task;
+  final Folder? folder;
+  final VoidCallback onTapText;
+
+  const PanelTaskTile({
+    super.key,
+    required this.task,
+    required this.folder,
+    required this.onTapText,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final folder = this.folder;
+    final defaultStyle = bodyM.copyWith(color: inkColor(context));
+
+    InlineSpan contentSpan;
+
+    if (folder != null) {
+      final text = task.content;
+      final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
+      final matches = regex.allMatches(text).toList();
+      final targetClean = removeAccents(folder.name.toLowerCase());
+      
+      final validMatches = matches.where((m) {
+        final matchedName = m.group(1)!;
+        return removeAccents(matchedName.toLowerCase()) == targetClean;
+      }).toList();
+
+      if (validMatches.isEmpty) {
+        contentSpan = TextSpan(text: text, style: defaultStyle);
+      } else {
+        final folderColor = folder.color;
+        final spans = <InlineSpan>[];
+        int lastIndex = 0;
+
+        final mentionStyle = defaultStyle.copyWith(
+          color: folderColor,
+          fontWeight: FontWeight.bold,
+        );
+
+        for (final match in validMatches) {
+          if (match.start > lastIndex) {
+            spans.add(TextSpan(
+              text: text.substring(lastIndex, match.start),
+              style: defaultStyle,
+            ));
+          }
+          final matchedText = match.group(0)!;
+          final folderPart = matchedText.substring(1);
+          spans.add(TextSpan(
+            text: folderPart,
+            style: mentionStyle,
+          ));
+          lastIndex = match.end;
+        }
+
+        if (lastIndex < text.length) {
+          spans.add(TextSpan(
+            text: text.substring(lastIndex),
+            style: defaultStyle,
+          ));
+        }
+
+        contentSpan = TextSpan(children: spans);
+      }
+    } else {
+      contentSpan = TextSpan(text: task.content, style: defaultStyle);
+    }
+
+    return AppCard(
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTapText,
+              child: Text.rich(
+                contentSpan,
+              ),
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => ref.read(taskRepositoryProvider).markDone(task.id),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(Icons.check, color: accentFight, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

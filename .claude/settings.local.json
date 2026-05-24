@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item *)",
+      "Bash(dart analyze *)",
+      "Bash(Select-String *)",
+      "Bash(flutter analyze *)"
+    ]
+  }
+}

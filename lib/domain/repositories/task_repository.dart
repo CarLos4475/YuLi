@@ -1,0 +1,17 @@
+import '../models/task.dart';
+
+abstract class TaskRepository {
+  Stream<List<Task>> watchPending();
+  Stream<List<Task>> watchYesterday();
+  Stream<List<Task>> watchDoneToday();
+  Future<List<Task>> getPendingForFolder(int folderId);
+  Stream<List<Task>> watchPendingForFolder(int folderId);
+  Future<Task> save(Task task);
+  Future<void> update(Task task);
+  Future<void> markDone(int id);
+  Future<void> rescueToday(int id);
+  Future<void> moveToTrash(int id);
+  Future<void> deleteFromTrash(int id);
+  Future<int> runExpiryQueries();
+  Stream<List<Task>> watchTrashed();
+}
