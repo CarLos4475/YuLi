@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/lab_space_providers.dart';
@@ -57,22 +58,22 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
             final withDate = cards.where((c) => c.dueDate != null).toList();
             final noDate = cards.where((c) => c.dueDate == null).toList();
 
-            if (_transformationController.value.getColumn(0)[0] == 1.0) {
-              final totalDays = reactiveSpace.dueDate!.difference(reactiveSpace.startDate!).inDays + 1;
-              final screenWidth = MediaQuery.of(context).size.width;
-              final totalWidth = screenWidth + (totalDays * 4.0);
-              _transformationController.value = Matrix4.diagonal3Values(
-                screenWidth / totalWidth,
-                screenWidth / totalWidth,
-                1,
-              );
-            }
+            const tH = 40.0;
+            const lH = 80.0;
+            final totalH = tH + (columns.length * lH);
+            final availH = MediaQuery.of(context).size.height * 0.5;
+            final zoom = (availH / totalH).clamp(1.2, 2.0);
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _transformationController.value = Matrix4.diagonal3Values(zoom, zoom, 1);
+            });
 
             return Column(
               children: [
                 // Timeline zoom area
                 Expanded(
                   child: _TimelineViewer(
+                    key: ValueKey('${reactiveSpace.id}_${columns.length}_${withDate.length}'),
                     space: reactiveSpace,
                     columns: columns,
                     cards: withDate,
@@ -167,6 +168,7 @@ class _TimelineViewer extends StatelessWidget {
   final void Function(KanbanCard) onCardTap;
 
   const _TimelineViewer({
+    super.key,
     required this.space,
     required this.columns,
     required this.cards,
@@ -182,7 +184,7 @@ class _TimelineViewer extends StatelessWidget {
     const headerHeight = 40.0;
     final totalHeight = headerHeight + (columns.length * laneHeight);
     final minWidth = MediaQuery.of(context).size.width;
-    final totalWidth = minWidth + (totalDays * 4.0);
+    final totalWidth = minWidth;
     final dayWidth = totalWidth / totalDays;
     final paper = paperColor(context);
 
