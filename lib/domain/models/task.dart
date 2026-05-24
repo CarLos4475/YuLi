@@ -32,6 +32,7 @@ class Task {
   final DateTime expiresAt;
   final DateTime? trashedAt;
   final DateTime? dueDate;
+  final DateTime? completedAt;
 
   const Task({
     required this.id,
@@ -42,6 +43,7 @@ class Task {
     required this.expiresAt,
     this.trashedAt,
     this.dueDate,
+    this.completedAt,
   });
 
   Task copyWith({
@@ -56,6 +58,8 @@ class Task {
     bool clearTrashedAt = false,
     DateTime? dueDate,
     bool clearDueDate = false,
+    DateTime? completedAt,
+    bool clearCompletedAt = false,
   }) {
     return Task(
       id: id ?? this.id,
@@ -66,6 +70,7 @@ class Task {
       expiresAt: expiresAt ?? this.expiresAt,
       trashedAt: clearTrashedAt ? null : (trashedAt ?? this.trashedAt),
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+      completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
     );
   }
 }

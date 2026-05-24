@@ -91,9 +91,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
         : null;
     final folder = folderAsync?.valueOrNull;
 
-    final borderCol = widget.isYesterday
-        ? inkGray
-        : inkColor(context);
+    final borderCol = inkColor(context);
 
     Widget card = AnimatedBuilder(
       animation: _fadeAnimation,
@@ -111,7 +109,20 @@ class _TaskCardState extends ConsumerState<TaskCard>
 
     if (widget.isDone) return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: card,
+      child: Dismissible(
+        key: ValueKey('done_${task.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          await _delete();
+          return false;
+        },
+        secondaryBackground: _SwipeBackground(
+          color: accentFight,
+          alignment: Alignment.centerRight,
+          icon: Icons.delete_outline,
+        ),
+        child: card,
+      ),
     );
 
     // Long-press to send to Kanban
@@ -290,12 +301,27 @@ class _CardContent extends ConsumerWidget {
           child: GestureDetector(
             onTap: () => _pickDueDate(context, ref),
             behavior: HitTestBehavior.opaque,
-            child: Icon(
-              task.dueDate != null
-                  ? Icons.access_time_filled
-                  : Icons.access_time,
-              size: 16,
-              color: task.dueDate != null ? accentFight : inkBlack,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: task.dueDate != null ? accentFight : paperColor(context),
+                border: Border.all(color: inkBlack, width: borderWidth),
+                boxShadow: const [
+                  BoxShadow(
+                    color: inkBlack,
+                    offset: shadowOffset,
+                    blurRadius: shadowBlurRadius,
+                  ),
+                ],
+              ),
+              child: Icon(
+                task.dueDate != null
+                    ? Icons.access_time_filled
+                    : Icons.access_time,
+                size: 12,
+                color: task.dueDate != null ? paperLight : inkBlack,
+              ),
             ),
           ),
         ),
@@ -505,6 +531,7 @@ class _SpaceRow extends ConsumerWidget {
                   columnId: col.id,
                   title: task.content,
                   originTaskId: task.id,
+                  dueDate: task.dueDate,
                 );
             if (context.mounted) Navigator.pop(context);
           },

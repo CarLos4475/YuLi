@@ -5,11 +5,14 @@ import '../../data/repositories/local/local_folder_repository.dart';
 import '../../data/repositories/local/local_note_repository.dart';
 import '../../data/repositories/local/local_lab_space_repository.dart';
 import '../../data/repositories/local/local_kanban_repository.dart';
+import '../../data/repositories/local/local_notification_repository.dart';
+import '../../domain/repositories/notification_repository.dart';
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/repositories/folder_repository.dart';
 import '../../domain/repositories/note_repository.dart';
 import '../../domain/repositories/lab_space_repository.dart';
 import '../../domain/repositories/kanban_card_repository.dart';
+import '../../domain/models/notification_item.dart';
 import '../../domain/models/task.dart' as domainTask;
 import '../../domain/models/folder.dart';
 import '../../domain/models/note.dart' as domainNote;
@@ -67,6 +70,16 @@ final deletedNotesProvider = StreamProvider<List<domainNote.Note>>((ref) {
 
 final deletedLabSpacesProvider = StreamProvider<List<LabSpace>>((ref) {
   return ref.watch(labSpaceRepositoryProvider).watchDeleted();
+});
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
+  return LocalNotificationRepository(ref.watch(databaseProvider));
+});
+
+final notificationsProvider = StreamProvider<List<NotificationItem>>((ref) {
+  return ref.watch(notificationRepositoryProvider).watchAll();
 });
 
 // ─── Expiry ───────────────────────────────────────────────────────────────────

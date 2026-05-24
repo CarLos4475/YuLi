@@ -44,6 +44,7 @@ class LocalTaskRepository implements TaskRepository {
         expiresAt: task.expiresAt,
         trashedAt: Value(task.trashedAt),
         dueDate: Value(task.dueDate),
+        completedAt: Value(task.completedAt),
       ),
     );
     return _rowToTask(row);
@@ -60,6 +61,7 @@ class LocalTaskRepository implements TaskRepository {
         expiresAt: Value(task.expiresAt),
         trashedAt: Value(task.trashedAt),
         dueDate: Value(task.dueDate),
+        completedAt: Value(task.completedAt),
       ),
     );
   }
@@ -96,5 +98,6 @@ class LocalTaskRepository implements TaskRepository {
         expiresAt: row.expiresAt,
         trashedAt: row.trashedAt,
         dueDate: row.dueDate,
+        completedAt: row.completedAt,
       );
 }

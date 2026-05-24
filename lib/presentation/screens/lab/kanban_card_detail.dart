@@ -453,34 +453,62 @@ class _DueDateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _pickDate(context),
-      child: Row(
-        children: [
-          Icon(Icons.calendar_today_outlined,
-              size: 14, color: inkGray),
-          const SizedBox(width: 8),
-          Text(
-            card.dueDate != null
-                ? _formatDate(card.dueDate!)
-                : 'Agregar fecha límite',
-            style: bodyS.copyWith(color: inkGray),
+    return Row(
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _pickDate(context),
+          child: Row(
+            children: [
+              if (card.dueDate == null) ...[
+                Icon(Icons.calendar_today_outlined,
+                    size: 14, color: inkGray),
+                const SizedBox(width: 8),
+                Text(
+                  'Agregar fecha límite',
+                  style: bodyS.copyWith(color: inkGray),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: card.dueDate!.isBefore(DateTime.now())
+                        ? accentFight
+                        : folderPalette[3],
+                    border: Border.all(color: inkBlack, width: borderWidth),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: inkBlack,
+                        offset: shadowOffset,
+                        blurRadius: shadowBlurRadius,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    _formatDate(card.dueDate!),
+                    style: labelBold.copyWith(
+                      color: paperLight,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
-          if (card.dueDate != null) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                final updated = card.copyWith(clearDueDate: true);
-                repo.update(updated);
-                onChanged(updated);
-              },
-              child: const Icon(Icons.close, size: 14, color: inkGray),
-            ),
-          ],
+        ),
+        if (card.dueDate != null) ...[
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              final updated = card.copyWith(clearDueDate: true);
+              repo.update(updated);
+              onChanged(updated);
+            },
+            child: Icon(Icons.close, size: 14, color: inkGray),
+          ),
         ],
-      ),
+      ],
     );
   }
 

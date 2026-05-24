@@ -47,7 +47,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
     return _rowToSpace(row);
   }
 
-  static const _defaultColumns = ['Backlog', 'En Proceso', 'Entregado'];
+  static const _defaultColumns = ['Backlog', 'En Proceso', 'Entregado', 'Vencido'];
 
   @override
   Future<void> update(LabSpace space) async {

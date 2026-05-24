@@ -64,6 +64,81 @@ class _LabScreenState extends ConsumerState<LabScreen> {
 }
 
 class _LabHeader extends StatelessWidget {
+  void _showHelpDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: paperColor(ctx),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
+        ),
+        contentPadding: EdgeInsets.zero,
+        content: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: inkBlack, width: borderWidth),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('LAB', style: displayM.copyWith(color: accentLab)),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.pop(ctx),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: paperColor(ctx),
+                        border: Border.all(color: inkBlack, width: borderWidth),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: inkBlack,
+                            offset: shadowOffset,
+                            blurRadius: shadowBlurRadius,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.close, size: 14, color: inkBlack),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _HelpSection(
+                label: 'SPACES',
+                body: 'Cada space es un proyecto. Toca un space para abrir su '
+                    'tablero Kanban con columnas y tarjetas.',
+              ),
+              const SizedBox(height: 12),
+              _HelpSection(
+                label: 'COLUMNAS',
+                body: 'Por defecto se crean: Backlog, En Proceso, Entregado y '
+                    'Vencido. Puedes agregar, renombrar o eliminar columnas.',
+              ),
+              const SizedBox(height: 12),
+              _HelpSection(
+                label: 'FECHA LÍMITE',
+                body: 'Asigna fecha a una tarjeta para que se mueva '
+                    'automáticamente a la columna Vencido cuando expire.',
+              ),
+              const SizedBox(height: 12),
+              _HelpSection(
+                label: 'NOTAS FLIGHT',
+                body: 'Las notas de Flight se vinculan a espacios desde el editor. '
+                    'Las tareas de Fight se envían a columnas con long press.',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -77,11 +152,63 @@ class _LabHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('LAB', style: displayXL.copyWith(color: inkLight)),
-          const SizedBox(height: 2),
-          Text('Modo de proyectos', style: bodyS.copyWith(color: inkLight.withAlpha(180))),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('LAB', style: displayXL.copyWith(color: inkLight)),
+                    const SizedBox(height: 2),
+                    Text('Modo de proyectos',
+                        style: bodyS.copyWith(color: inkLight.withAlpha(180))),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showHelpDialog(context),
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: paperColor(context),
+                    border: Border.all(color: inkBlack, width: borderWidth),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: inkBlack,
+                        offset: shadowOffset,
+                        blurRadius: shadowBlurRadius,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.question_mark, size: 18, color: inkBlack),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _HelpSection extends StatelessWidget {
+  final String label;
+  final String body;
+
+  const _HelpSection({required this.label, required this.body});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: labelBold.copyWith(color: accentLab)),
+        const SizedBox(height: 2),
+        Text(body, style: bodyM.copyWith(color: inkColor(context))),
+      ],
     );
   }
 }

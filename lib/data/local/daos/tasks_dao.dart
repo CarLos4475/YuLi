@@ -24,8 +24,8 @@ class TasksDao extends DatabaseAccessor<AppDatabase> with _$TasksDaoMixin {
     return (select(tasks)
           ..where((t) =>
               t.status.equals('done') &
-              t.createdAt.isBiggerOrEqualValue(startOfDay))
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+              t.completedAt.isBiggerOrEqualValue(startOfDay))
+          ..orderBy([(t) => OrderingTerm.desc(t.completedAt)]))
         .watch();
   }
 
@@ -52,8 +52,12 @@ class TasksDao extends DatabaseAccessor<AppDatabase> with _$TasksDaoMixin {
       (update(tasks)..where((t) => t.id.equals(row.id.value))).write(row);
 
   Future<void> markDone(int id) =>
-      (update(tasks)..where((t) => t.id.equals(id)))
-          .write(const TasksCompanion(status: Value('done')));
+      (update(tasks)..where((t) => t.id.equals(id))).write(
+        TasksCompanion(
+          status: const Value('done'),
+          completedAt: Value(DateTime.now()),
+        ),
+      );
 
   Future<void> rescueToday(int id) =>
       (update(tasks)..where((t) => t.id.equals(id)))

@@ -12,11 +12,13 @@ import 'tables/kanban_columns_table.dart';
 import 'tables/kanban_cards_table.dart';
 import 'tables/space_folder_links_table.dart';
 import 'tables/onboarding_flags_table.dart';
+import 'tables/notifications_table.dart';
 import 'daos/tasks_dao.dart';
 import 'daos/notes_dao.dart';
 import 'daos/folders_dao.dart';
 import 'daos/lab_spaces_dao.dart';
 import 'daos/kanban_dao.dart';
+import 'daos/notifications_dao.dart';
 
 part 'database.g.dart';
 
@@ -33,6 +35,7 @@ part 'database.g.dart';
     KanbanCards,
     SpaceFolderLinks,
     OnboardingFlags,
+    Notifications,
   ],
   daos: [
     TasksDao,
@@ -40,6 +43,7 @@ part 'database.g.dart';
     FoldersDao,
     LabSpacesDao,
     KanbanDao,
+    NotificationsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -47,13 +51,16 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (Migrator m, int from, int to) async {
           if (from == 1) {
             await m.addColumn(tasks, tasks.dueDate);
+          }
+          if (from == 1 || from == 2) {
+            await m.addColumn(tasks, tasks.completedAt);
           }
         },
       );
@@ -72,29 +79,62 @@ class AppDatabase extends _$AppDatabase {
     int archivedCount = 0;
 
     await transaction(() async {
-      // 1. pending → yesterday
+      // 1a. pending → yesterday (sin dueDate: basado en created_at)
       await customUpdate(
         "UPDATE tasks SET status = 'yesterday' "
-        "WHERE status = 'pending' AND date(created_at, 'unixepoch') < date('now')",
+        "WHERE status = 'pending' AND due_date IS NULL "
+        "AND date(created_at, 'unixepoch') < date('now')",
         updates: {tasks},
         updateKind: UpdateKind.update,
       );
 
-      // 2. yesterday → archived_failed
+      // 1b. pending → yesterday (con dueDate: basado en due_date, compara timestamp exacto)
+      await customUpdate(
+        "UPDATE tasks SET status = 'yesterday' "
+        "WHERE status = 'pending' AND due_date IS NOT NULL "
+        "AND datetime(due_date, 'unixepoch') < datetime('now')",
+        updates: {tasks},
+        updateKind: UpdateKind.update,
+      );
+
+      // 2a. yesterday → archived_failed (sin dueDate: basado en created_at)
       await customUpdate(
         "UPDATE tasks SET status = 'archived_failed' "
-        "WHERE status = 'yesterday' AND date(created_at, 'unixepoch') < date('now', '-1 day')",
+        "WHERE status = 'yesterday' AND due_date IS NULL "
+        "AND date(created_at, 'unixepoch') < date('now', '-1 day')",
         updates: {tasks},
         updateKind: UpdateKind.update,
       );
 
-      // 3. archived_failed → trash
-      archivedCount = await customUpdate(
-        "UPDATE tasks SET status = 'trash', trashed_at = datetime('now') "
-        "WHERE status = 'archived_failed'",
+      // 2b. yesterday → archived_failed (con dueDate: basado en due_date, compara timestamp exacto)
+      await customUpdate(
+        "UPDATE tasks SET status = 'archived_failed' "
+        "WHERE status = 'yesterday' AND due_date IS NOT NULL "
+        "AND datetime(due_date, 'unixepoch') < datetime('now', '-1 day')",
         updates: {tasks},
         updateKind: UpdateKind.update,
       );
+
+      // 3. archived_failed → trash + notificar
+      final toTrash = await (select(tasks)
+            ..where((t) => t.status.equals('archived_failed')))
+            .get();
+      if (toTrash.isNotEmpty) {
+        for (final t in toTrash) {
+          final msg = t.content.length > 80
+              ? '${t.content.substring(0, 80)}...'
+              : t.content;
+          await into(notifications).insert(
+            NotificationsCompanion.insert(message: 'Tarea a la papelera: $msg'),
+          );
+        }
+        archivedCount = await customUpdate(
+          "UPDATE tasks SET status = 'trash', trashed_at = datetime('now') "
+          "WHERE status = 'archived_failed'",
+          updates: {tasks},
+          updateKind: UpdateKind.update,
+        );
+      }
 
       // 4. trash → permanent delete (7-day grace period)
       await customUpdate(
@@ -104,7 +144,25 @@ class AppDatabase extends _$AppDatabase {
         updateKind: UpdateKind.delete,
       );
 
-      // 5. Folders permanent delete (7-day grace period)
+      // 5. Kanban cards: move overdue cards to "Vencido" column
+      await customUpdate(
+        "UPDATE kanban_cards SET column_id = ("
+        "SELECT kc.id FROM kanban_columns kc "
+        "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.name = 'Vencido'"
+        ") WHERE kanban_cards.due_date IS NOT NULL "
+        "AND datetime(kanban_cards.due_date, 'unixepoch') < datetime('now') "
+        "AND kanban_cards.column_id NOT IN ("
+        "SELECT kc2.id FROM kanban_columns kc2 "
+        "WHERE kc2.lab_space_id = kanban_cards.lab_space_id AND kc2.name = 'Vencido'"
+        ") AND EXISTS ("
+        "SELECT 1 FROM kanban_columns kc3 "
+        "WHERE kc3.lab_space_id = kanban_cards.lab_space_id AND kc3.name = 'Vencido'"
+        ")",
+        updates: {kanbanCards},
+        updateKind: UpdateKind.update,
+      );
+
+      // 6. Folders permanent delete (7-day grace period)
       await customUpdate(
         "DELETE FROM folders WHERE deleted_at IS NOT NULL "
         "AND date(deleted_at, 'unixepoch') < date('now', '-7 days')",
@@ -112,7 +170,7 @@ class AppDatabase extends _$AppDatabase {
         updateKind: UpdateKind.delete,
       );
 
-      // 6. Lab spaces permanent delete (7-day grace period)
+      // 7. Lab spaces permanent delete (7-day grace period)
       await customUpdate(
         "DELETE FROM lab_spaces WHERE deleted_at IS NOT NULL "
         "AND date(deleted_at, 'unixepoch') < date('now', '-7 days')",

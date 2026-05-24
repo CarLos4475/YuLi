@@ -67,22 +67,48 @@ class KanbanCardTile extends StatelessWidget {
                         if (card.originTaskId != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: Row(
-                              children: [
-                                Icon(Icons.flash_on,
-                                    size: 12, color: accentFight),
-                                const SizedBox(width: 4),
-                                Text('Tarea',
-                                    style: bodyS.copyWith(
-                                        color: accentFight, fontSize: 10)),
-                              ],
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: accentFight,
+                                border: Border.all(color: inkBlack, width: borderWidth),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: inkBlack,
+                                    offset: shadowOffset,
+                                    blurRadius: shadowBlurRadius,
+                                  ),
+                                ],
+                              ),
+                              child: Text('Tarea',
+                                  style: labelBold.copyWith(
+                                      color: paperLight, fontSize: 9)),
                             ),
                           ),
                         if (card.dueDate != null) ...[
                           const SizedBox(height: 4),
-                          Text(
-                            _formatDate(card.dueDate!),
-                            style: bodyS.copyWith(color: inkGray),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: card.dueDate!.isBefore(DateTime.now())
+                                  ? accentFight
+                                  : folderPalette[3],
+                              border: Border.all(color: inkBlack, width: borderWidth),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: inkBlack,
+                                  offset: shadowOffset,
+                                  blurRadius: shadowBlurRadius,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              _formatDate(card.dueDate!),
+                              style: labelBold.copyWith(
+                                color: paperLight,
+                                fontSize: 9,
+                              ),
+                            ),
                           ),
                         ],
                         if (card.description != null &&

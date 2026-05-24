@@ -13,4 +13,5 @@ class Tasks extends Table {
   DateTimeColumn get expiresAt => dateTime()();
   DateTimeColumn get trashedAt => dateTime().nullable()();
   DateTimeColumn get dueDate => dateTime().nullable()();
+  DateTimeColumn get completedAt => dateTime().nullable()();
 }

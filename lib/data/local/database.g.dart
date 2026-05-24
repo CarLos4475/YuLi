@@ -445,6 +445,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _completedAtMeta = const VerificationMeta(
+    'completedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> completedAt = GeneratedColumn<DateTime>(
+    'completed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -455,6 +466,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
     expiresAt,
     trashedAt,
     dueDate,
+    completedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -519,6 +531,15 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
         dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
       );
     }
+    if (data.containsKey('completed_at')) {
+      context.handle(
+        _completedAtMeta,
+        completedAt.isAcceptableOrUnknown(
+          data['completed_at']!,
+          _completedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -565,6 +586,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}due_date'],
       ),
+      completedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}completed_at'],
+      ),
     );
   }
 
@@ -583,6 +608,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
   final DateTime expiresAt;
   final DateTime? trashedAt;
   final DateTime? dueDate;
+  final DateTime? completedAt;
   const TaskRow({
     required this.id,
     required this.content,
@@ -592,6 +618,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     required this.expiresAt,
     this.trashedAt,
     this.dueDate,
+    this.completedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -609,6 +636,9 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     }
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<DateTime>(dueDate);
+    }
+    if (!nullToAbsent || completedAt != null) {
+      map['completed_at'] = Variable<DateTime>(completedAt);
     }
     return map;
   }
@@ -632,6 +662,10 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           dueDate == null && nullToAbsent
               ? const Value.absent()
               : Value(dueDate),
+      completedAt:
+          completedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(completedAt),
     );
   }
 
@@ -649,6 +683,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
       trashedAt: serializer.fromJson<DateTime?>(json['trashedAt']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
     );
   }
   @override
@@ -663,6 +698,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       'expiresAt': serializer.toJson<DateTime>(expiresAt),
       'trashedAt': serializer.toJson<DateTime?>(trashedAt),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'completedAt': serializer.toJson<DateTime?>(completedAt),
     };
   }
 
@@ -675,6 +711,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     DateTime? expiresAt,
     Value<DateTime?> trashedAt = const Value.absent(),
     Value<DateTime?> dueDate = const Value.absent(),
+    Value<DateTime?> completedAt = const Value.absent(),
   }) => TaskRow(
     id: id ?? this.id,
     content: content ?? this.content,
@@ -684,6 +721,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     expiresAt: expiresAt ?? this.expiresAt,
     trashedAt: trashedAt.present ? trashedAt.value : this.trashedAt,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    completedAt: completedAt.present ? completedAt.value : this.completedAt,
   );
   TaskRow copyWithCompanion(TasksCompanion data) {
     return TaskRow(
@@ -695,6 +733,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
       trashedAt: data.trashedAt.present ? data.trashedAt.value : this.trashedAt,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      completedAt:
+          data.completedAt.present ? data.completedAt.value : this.completedAt,
     );
   }
 
@@ -708,7 +748,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           ..write('createdAt: $createdAt, ')
           ..write('expiresAt: $expiresAt, ')
           ..write('trashedAt: $trashedAt, ')
-          ..write('dueDate: $dueDate')
+          ..write('dueDate: $dueDate, ')
+          ..write('completedAt: $completedAt')
           ..write(')'))
         .toString();
   }
@@ -723,6 +764,7 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     expiresAt,
     trashedAt,
     dueDate,
+    completedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -735,7 +777,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           other.createdAt == this.createdAt &&
           other.expiresAt == this.expiresAt &&
           other.trashedAt == this.trashedAt &&
-          other.dueDate == this.dueDate);
+          other.dueDate == this.dueDate &&
+          other.completedAt == this.completedAt);
 }
 
 class TasksCompanion extends UpdateCompanion<TaskRow> {
@@ -747,6 +790,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
   final Value<DateTime> expiresAt;
   final Value<DateTime?> trashedAt;
   final Value<DateTime?> dueDate;
+  final Value<DateTime?> completedAt;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.content = const Value.absent(),
@@ -756,6 +800,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     this.expiresAt = const Value.absent(),
     this.trashedAt = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.completedAt = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -766,6 +811,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     required DateTime expiresAt,
     this.trashedAt = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.completedAt = const Value.absent(),
   }) : content = Value(content),
        status = Value(status),
        expiresAt = Value(expiresAt);
@@ -778,6 +824,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     Expression<DateTime>? expiresAt,
     Expression<DateTime>? trashedAt,
     Expression<DateTime>? dueDate,
+    Expression<DateTime>? completedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -788,6 +835,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
       if (expiresAt != null) 'expires_at': expiresAt,
       if (trashedAt != null) 'trashed_at': trashedAt,
       if (dueDate != null) 'due_date': dueDate,
+      if (completedAt != null) 'completed_at': completedAt,
     });
   }
 
@@ -800,6 +848,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     Value<DateTime>? expiresAt,
     Value<DateTime?>? trashedAt,
     Value<DateTime?>? dueDate,
+    Value<DateTime?>? completedAt,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -810,6 +859,7 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
       expiresAt: expiresAt ?? this.expiresAt,
       trashedAt: trashedAt ?? this.trashedAt,
       dueDate: dueDate ?? this.dueDate,
+      completedAt: completedAt ?? this.completedAt,
     );
   }
 
@@ -840,6 +890,9 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     if (dueDate.present) {
       map['due_date'] = Variable<DateTime>(dueDate.value);
     }
+    if (completedAt.present) {
+      map['completed_at'] = Variable<DateTime>(completedAt.value);
+    }
     return map;
   }
 
@@ -853,7 +906,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
           ..write('createdAt: $createdAt, ')
           ..write('expiresAt: $expiresAt, ')
           ..write('trashedAt: $trashedAt, ')
-          ..write('dueDate: $dueDate')
+          ..write('dueDate: $dueDate, ')
+          ..write('completedAt: $completedAt')
           ..write(')'))
         .toString();
   }
@@ -4352,6 +4406,258 @@ class OnboardingFlagsCompanion extends UpdateCompanion<OnboardingFlagRow> {
   }
 }
 
+class $NotificationsTable extends Notifications
+    with TableInfo<$NotificationsTable, NotificationRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NotificationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _messageMeta = const VerificationMeta(
+    'message',
+  );
+  @override
+  late final GeneratedColumn<String> message = GeneratedColumn<String>(
+    'message',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, message, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'notifications';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NotificationRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('message')) {
+      context.handle(
+        _messageMeta,
+        message.isAcceptableOrUnknown(data['message']!, _messageMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_messageMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NotificationRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NotificationRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      message:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}message'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $NotificationsTable createAlias(String alias) {
+    return $NotificationsTable(attachedDatabase, alias);
+  }
+}
+
+class NotificationRow extends DataClass implements Insertable<NotificationRow> {
+  final int id;
+  final String message;
+  final DateTime createdAt;
+  const NotificationRow({
+    required this.id,
+    required this.message,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['message'] = Variable<String>(message);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  NotificationsCompanion toCompanion(bool nullToAbsent) {
+    return NotificationsCompanion(
+      id: Value(id),
+      message: Value(message),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory NotificationRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NotificationRow(
+      id: serializer.fromJson<int>(json['id']),
+      message: serializer.fromJson<String>(json['message']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'message': serializer.toJson<String>(message),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  NotificationRow copyWith({int? id, String? message, DateTime? createdAt}) =>
+      NotificationRow(
+        id: id ?? this.id,
+        message: message ?? this.message,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  NotificationRow copyWithCompanion(NotificationsCompanion data) {
+    return NotificationRow(
+      id: data.id.present ? data.id.value : this.id,
+      message: data.message.present ? data.message.value : this.message,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NotificationRow(')
+          ..write('id: $id, ')
+          ..write('message: $message, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, message, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NotificationRow &&
+          other.id == this.id &&
+          other.message == this.message &&
+          other.createdAt == this.createdAt);
+}
+
+class NotificationsCompanion extends UpdateCompanion<NotificationRow> {
+  final Value<int> id;
+  final Value<String> message;
+  final Value<DateTime> createdAt;
+  const NotificationsCompanion({
+    this.id = const Value.absent(),
+    this.message = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  NotificationsCompanion.insert({
+    this.id = const Value.absent(),
+    required String message,
+    this.createdAt = const Value.absent(),
+  }) : message = Value(message);
+  static Insertable<NotificationRow> custom({
+    Expression<int>? id,
+    Expression<String>? message,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (message != null) 'message': message,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  NotificationsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? message,
+    Value<DateTime>? createdAt,
+  }) {
+    return NotificationsCompanion(
+      id: id ?? this.id,
+      message: message ?? this.message,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (message.present) {
+      map['message'] = Variable<String>(message.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NotificationsCompanion(')
+          ..write('id: $id, ')
+          ..write('message: $message, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4370,11 +4676,15 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $OnboardingFlagsTable onboardingFlags = $OnboardingFlagsTable(
     this,
   );
+  late final $NotificationsTable notifications = $NotificationsTable(this);
   late final TasksDao tasksDao = TasksDao(this as AppDatabase);
   late final NotesDao notesDao = NotesDao(this as AppDatabase);
   late final FoldersDao foldersDao = FoldersDao(this as AppDatabase);
   late final LabSpacesDao labSpacesDao = LabSpacesDao(this as AppDatabase);
   late final KanbanDao kanbanDao = KanbanDao(this as AppDatabase);
+  late final NotificationsDao notificationsDao = NotificationsDao(
+    this as AppDatabase,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4391,6 +4701,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     kanbanCards,
     spaceFolderLinks,
     onboardingFlags,
+    notifications,
   ];
 }
 
@@ -4901,6 +5212,7 @@ typedef $$TasksTableCreateCompanionBuilder =
       required DateTime expiresAt,
       Value<DateTime?> trashedAt,
       Value<DateTime?> dueDate,
+      Value<DateTime?> completedAt,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
     TasksCompanion Function({
@@ -4912,6 +5224,7 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime> expiresAt,
       Value<DateTime?> trashedAt,
       Value<DateTime?> dueDate,
+      Value<DateTime?> completedAt,
     });
 
 final class $$TasksTableReferences
@@ -5012,6 +5325,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<DateTime> get dueDate => $composableBuilder(
     column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5133,6 +5451,11 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$FoldersTableOrderingComposer get folderId {
     final $$FoldersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -5186,6 +5509,11 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<DateTime> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => column,
+  );
 
   $$FoldersTableAnnotationComposer get folderId {
     final $$FoldersTableAnnotationComposer composer = $composerBuilder(
@@ -5301,6 +5629,7 @@ class $$TasksTableTableManager
                 Value<DateTime> expiresAt = const Value.absent(),
                 Value<DateTime?> trashedAt = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> completedAt = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 content: content,
@@ -5310,6 +5639,7 @@ class $$TasksTableTableManager
                 expiresAt: expiresAt,
                 trashedAt: trashedAt,
                 dueDate: dueDate,
+                completedAt: completedAt,
               ),
           createCompanionCallback:
               ({
@@ -5321,6 +5651,7 @@ class $$TasksTableTableManager
                 required DateTime expiresAt,
                 Value<DateTime?> trashedAt = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> completedAt = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 content: content,
@@ -5330,6 +5661,7 @@ class $$TasksTableTableManager
                 expiresAt: expiresAt,
                 trashedAt: trashedAt,
                 dueDate: dueDate,
+                completedAt: completedAt,
               ),
           withReferenceMapper:
               (p0) =>
@@ -9445,6 +9777,173 @@ typedef $$OnboardingFlagsTableProcessedTableManager =
       OnboardingFlagRow,
       PrefetchHooks Function()
     >;
+typedef $$NotificationsTableCreateCompanionBuilder =
+    NotificationsCompanion Function({
+      Value<int> id,
+      required String message,
+      Value<DateTime> createdAt,
+    });
+typedef $$NotificationsTableUpdateCompanionBuilder =
+    NotificationsCompanion Function({
+      Value<int> id,
+      Value<String> message,
+      Value<DateTime> createdAt,
+    });
+
+class $$NotificationsTableFilterComposer
+    extends Composer<_$AppDatabase, $NotificationsTable> {
+  $$NotificationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get message => $composableBuilder(
+    column: $table.message,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$NotificationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $NotificationsTable> {
+  $$NotificationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get message => $composableBuilder(
+    column: $table.message,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$NotificationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NotificationsTable> {
+  $$NotificationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get message =>
+      $composableBuilder(column: $table.message, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$NotificationsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NotificationsTable,
+          NotificationRow,
+          $$NotificationsTableFilterComposer,
+          $$NotificationsTableOrderingComposer,
+          $$NotificationsTableAnnotationComposer,
+          $$NotificationsTableCreateCompanionBuilder,
+          $$NotificationsTableUpdateCompanionBuilder,
+          (
+            NotificationRow,
+            BaseReferences<_$AppDatabase, $NotificationsTable, NotificationRow>,
+          ),
+          NotificationRow,
+          PrefetchHooks Function()
+        > {
+  $$NotificationsTableTableManager(_$AppDatabase db, $NotificationsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$NotificationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () =>
+                  $$NotificationsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$NotificationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> message = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => NotificationsCompanion(
+                id: id,
+                message: message,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String message,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => NotificationsCompanion.insert(
+                id: id,
+                message: message,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          BaseReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$NotificationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NotificationsTable,
+      NotificationRow,
+      $$NotificationsTableFilterComposer,
+      $$NotificationsTableOrderingComposer,
+      $$NotificationsTableAnnotationComposer,
+      $$NotificationsTableCreateCompanionBuilder,
+      $$NotificationsTableUpdateCompanionBuilder,
+      (
+        NotificationRow,
+        BaseReferences<_$AppDatabase, $NotificationsTable, NotificationRow>,
+      ),
+      NotificationRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9471,4 +9970,6 @@ class $AppDatabaseManager {
       $$SpaceFolderLinksTableTableManager(_db, _db.spaceFolderLinks);
   $$OnboardingFlagsTableTableManager get onboardingFlags =>
       $$OnboardingFlagsTableTableManager(_db, _db.onboardingFlags);
+  $$NotificationsTableTableManager get notifications =>
+      $$NotificationsTableTableManager(_db, _db.notifications);
 }
