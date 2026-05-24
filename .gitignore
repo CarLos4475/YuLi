@@ -43,3 +43,32 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# AI tools and configuration (local dev only, not for repo)
+.claude/
+CLAUDE.md
+AGENTS.md
+CONTEXT.md
+PROGRESS.md
+
+# CodeGraph index (local database)
+.codegraph/*.db
+.codegraph/*.db-shm
+.codegraph/*.db-wal
+.codegraph/cache/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+*.apk
+*.aab
+*.app
+*.ipa
+
+# Keystore and signing
+*.jks
+*.keystore
+
+# Flutter version management
+.fvm/
