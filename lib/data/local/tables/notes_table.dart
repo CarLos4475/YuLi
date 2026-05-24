@@ -13,4 +13,5 @@ class Notes extends Table {
   DateTimeColumn get updatedAt =>
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
+  TextColumn get color => text().nullable()();
 }

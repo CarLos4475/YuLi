@@ -141,7 +141,7 @@ class _FightHeader extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('Notificaciones',
-                      style: displayM.copyWith(color: accentFight)),
+                      style: displayM.copyWith(color: inkColor(ctx))),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.pop(ctx),

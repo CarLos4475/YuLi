@@ -7,11 +7,11 @@ import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/app_banner.dart';
-import '../../widgets/app_card.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import '../../widgets/fight_panel.dart';
 import 'note_editor_screen.dart';
+import '../../widgets/edit_item_dialog.dart';
 
 class FolderDetailScreen extends ConsumerStatefulWidget {
   final Folder folder;
@@ -320,13 +320,39 @@ class _NoteGridItem extends ConsumerWidget {
     }
   }
 
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => EditItemDialog(
+        title: 'Nota',
+        initialName: note.displayTitle,
+        initialColor: note.color ?? folder.color,
+        onSave: (name, color) async {
+          await ref.read(noteRepositoryProvider).update(note.copyWith(
+                title: name,
+                color: color,
+              ));
+        },
+        onDelete: () async {
+          Navigator.pop(ctx);
+          await _confirmDelete(context, ref);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final bgColor = note.color ?? folder.color;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _openNote(context),
-      onLongPress: () => _confirmDelete(context, ref),
-      child: AppCard(
+      onLongPress: () => _showOptions(context, ref),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          border: Border.all(color: inkColor(context), width: borderWidthHeavy),
+        ),
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,7 +360,7 @@ class _NoteGridItem extends ConsumerWidget {
           children: [
             Text(
               note.displayTitle,
-              style: displayM.copyWith(color: inkColor(context)),
+              style: displayM.copyWith(color: inkLight),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
@@ -401,8 +427,30 @@ class _NoteListItem extends ConsumerWidget {
     }
   }
 
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => EditItemDialog(
+        title: 'Nota',
+        initialName: note.displayTitle,
+        initialColor: note.color ?? folder.color,
+        onSave: (name, color) async {
+          await ref.read(noteRepositoryProvider).update(note.copyWith(
+                title: name,
+                color: color,
+              ));
+        },
+        onDelete: () async {
+          Navigator.pop(ctx);
+          await _confirmDelete(context, ref);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final bgColor = note.color ?? folder.color;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.push(
@@ -411,12 +459,16 @@ class _NoteListItem extends ConsumerWidget {
           builder: (_) => NoteEditorScreen(note: note, folder: folder),
         ),
       ),
-      onLongPress: () => _confirmDelete(context, ref),
-      child: AppCard(
+      onLongPress: () => _showOptions(context, ref),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          border: Border.all(color: inkColor(context), width: borderWidthHeavy),
+        ),
         padding: const EdgeInsets.all(12),
         child: Text(
           note.displayTitle,
-          style: displayM.copyWith(color: inkColor(context)),
+          style: displayM.copyWith(color: inkLight),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),

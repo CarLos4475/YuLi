@@ -1,10 +1,11 @@
+import 'package:flutter/material.dart';
 import '../models/note.dart';
 
 abstract class NoteRepository {
   Stream<List<Note>> watchByFolder(int folderId);
   Future<List<Note>> getByFolder(int folderId);
   Future<Note?> getById(int id);
-  Future<Note> create(int folderId, {String? title, String rawMarkdown});
+  Future<Note> create(int folderId, {String? title, String rawMarkdown, Color? color});
   Future<void> update(Note note);
   Future<void> softDelete(int id);
   Future<void> restore(int id);

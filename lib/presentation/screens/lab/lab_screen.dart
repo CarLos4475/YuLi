@@ -5,6 +5,7 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/coach_mark.dart';
+import '../../widgets/edit_item_dialog.dart';
 import 'lab_space_detail_screen.dart';
 import 'new_lab_space_dialog.dart';
 import '../../../domain/models/lab_space.dart';
@@ -297,6 +298,27 @@ class _SpaceTile extends ConsumerWidget {
     }
   }
 
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => EditItemDialog(
+        title: 'Space',
+        initialName: space.name,
+        initialColor: space.accentColor,
+        onSave: (name, color) async {
+          await ref.read(labSpaceRepositoryProvider).update(space.copyWith(
+                name: name,
+                accentColor: color,
+              ));
+        },
+        onDelete: () async {
+          Navigator.pop(ctx);
+          await _confirmDelete(context, ref);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
@@ -306,7 +328,7 @@ class _SpaceTile extends ConsumerWidget {
         MaterialPageRoute(
             builder: (_) => LabSpaceDetailScreen(space: space)),
       ),
-      onLongPress: () => _confirmDelete(context, ref),
+      onLongPress: () => _showOptions(context, ref),
       child: Container(
         decoration: BoxDecoration(
           color: space.accentColor,

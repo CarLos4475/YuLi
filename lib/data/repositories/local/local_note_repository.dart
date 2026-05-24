@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/material.dart';
 
 import '../../../domain/models/note.dart';
 import '../../../domain/repositories/note_repository.dart';
@@ -26,13 +27,14 @@ class LocalNoteRepository implements NoteRepository {
   }
 
   @override
-  Future<Note> create(int folderId, {String? title, String rawMarkdown = ''}) async {
+  Future<Note> create(int folderId, {String? title, String rawMarkdown = '', Color? color}) async {
     final row = await _db.notesDao.insertNote(
       NotesCompanion.insert(
         folderId: folderId,
         title: Value(title),
         rawMarkdown: Value(rawMarkdown),
         sizeBytes: Value(rawMarkdown.length),
+        color: Value(color != null ? _colorToHex(color) : null),
       ),
     );
     return _rowToNote(row);
@@ -49,6 +51,7 @@ class LocalNoteRepository implements NoteRepository {
         sizeBytes: Value(note.sizeBytes),
         updatedAt: Value(DateTime.now()),
         deletedAt: Value(note.deletedAt),
+        color: Value(note.color != null ? _colorToHex(note.color!) : null),
       ),
     );
   }
@@ -124,7 +127,17 @@ class LocalNoteRepository implements NoteRepository {
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         deletedAt: row.deletedAt,
+        color: row.color != null ? _hexToColor(row.color!) : null,
       );
+
+  Color _hexToColor(String hex) {
+    final val = hex.replaceFirst('#', '');
+    return Color(int.parse('FF$val', radix: 16));
+  }
+
+  String _colorToHex(Color color) {
+    return '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+  }
 
   NoteVersion _rowToVersion(NoteVersionRow row) => NoteVersion(
         id: row.id,

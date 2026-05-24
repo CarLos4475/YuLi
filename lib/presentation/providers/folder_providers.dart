@@ -6,6 +6,8 @@ final activeFoldersProvider = StreamProvider<List<Folder>>((ref) {
   return ref.watch(folderRepositoryProvider).watchActive();
 });
 
-final folderByIdProvider = FutureProvider.family<Folder?, int>((ref, id) {
-  return ref.watch(folderRepositoryProvider).getById(id);
+final folderByIdProvider = StreamProvider.family<Folder?, int>((ref, id) {
+  return ref.watch(folderRepositoryProvider).watchActive().map(
+    (folders) => folders.where((f) => f.id == id).firstOrNull,
+  );
 });

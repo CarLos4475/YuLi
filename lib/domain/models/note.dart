@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class Note {
   final int id;
   final int folderId;
@@ -7,6 +9,7 @@ class Note {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+  final Color? color;
 
   const Note({
     required this.id,
@@ -17,6 +20,7 @@ class Note {
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.color,
   });
 
   String get displayTitle {
@@ -38,6 +42,8 @@ class Note {
     DateTime? updatedAt,
     DateTime? deletedAt,
     bool clearDeletedAt = false,
+    Color? color,
+    bool clearColor = false,
   }) {
     return Note(
       id: id ?? this.id,
@@ -48,6 +54,7 @@ class Note {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
+      color: clearColor ? null : (color ?? this.color),
     );
   }
 }

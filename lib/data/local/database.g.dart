@@ -1013,6 +1013,15 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1023,6 +1032,7 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
     createdAt,
     updatedAt,
     deletedAt,
+    color,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1086,6 +1096,12 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
         deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
       );
     }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
     return context;
   }
 
@@ -1133,6 +1149,10 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}deleted_at'],
       ),
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      ),
     );
   }
 
@@ -1151,6 +1171,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+  final String? color;
   const NoteRow({
     required this.id,
     required this.folderId,
@@ -1160,6 +1181,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
+    this.color,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1175,6 +1197,9 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    if (!nullToAbsent || color != null) {
+      map['color'] = Variable<String>(color);
     }
     return map;
   }
@@ -1193,6 +1218,8 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
           deletedAt == null && nullToAbsent
               ? const Value.absent()
               : Value(deletedAt),
+      color:
+          color == null && nullToAbsent ? const Value.absent() : Value(color),
     );
   }
 
@@ -1210,6 +1237,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      color: serializer.fromJson<String?>(json['color']),
     );
   }
   @override
@@ -1224,6 +1252,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'color': serializer.toJson<String?>(color),
     };
   }
 
@@ -1236,6 +1265,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
+    Value<String?> color = const Value.absent(),
   }) => NoteRow(
     id: id ?? this.id,
     folderId: folderId ?? this.folderId,
@@ -1245,6 +1275,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    color: color.present ? color.value : this.color,
   );
   NoteRow copyWithCompanion(NotesCompanion data) {
     return NoteRow(
@@ -1257,6 +1288,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      color: data.color.present ? data.color.value : this.color,
     );
   }
 
@@ -1270,7 +1302,8 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
           ..write('sizeBytes: $sizeBytes, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('color: $color')
           ..write(')'))
         .toString();
   }
@@ -1285,6 +1318,7 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     createdAt,
     updatedAt,
     deletedAt,
+    color,
   );
   @override
   bool operator ==(Object other) =>
@@ -1297,7 +1331,8 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
           other.sizeBytes == this.sizeBytes &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.deletedAt == this.deletedAt);
+          other.deletedAt == this.deletedAt &&
+          other.color == this.color);
 }
 
 class NotesCompanion extends UpdateCompanion<NoteRow> {
@@ -1309,6 +1344,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
+  final Value<String?> color;
   const NotesCompanion({
     this.id = const Value.absent(),
     this.folderId = const Value.absent(),
@@ -1318,6 +1354,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.color = const Value.absent(),
   });
   NotesCompanion.insert({
     this.id = const Value.absent(),
@@ -1328,6 +1365,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
+    this.color = const Value.absent(),
   }) : folderId = Value(folderId);
   static Insertable<NoteRow> custom({
     Expression<int>? id,
@@ -1338,6 +1376,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
+    Expression<String>? color,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1348,6 +1387,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
+      if (color != null) 'color': color,
     });
   }
 
@@ -1360,6 +1400,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
+    Value<String?>? color,
   }) {
     return NotesCompanion(
       id: id ?? this.id,
@@ -1370,6 +1411,7 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
+      color: color ?? this.color,
     );
   }
 
@@ -1400,6 +1442,9 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
     return map;
   }
 
@@ -1413,7 +1458,8 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
           ..write('sizeBytes: $sizeBytes, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('deletedAt: $deletedAt')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('color: $color')
           ..write(')'))
         .toString();
   }
@@ -5795,6 +5841,7 @@ typedef $$NotesTableCreateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
+      Value<String?> color,
     });
 typedef $$NotesTableUpdateCompanionBuilder =
     NotesCompanion Function({
@@ -5806,6 +5853,7 @@ typedef $$NotesTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
+      Value<String?> color,
     });
 
 final class $$NotesTableReferences
@@ -5942,6 +5990,11 @@ class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
     column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6113,6 +6166,11 @@ class $$NotesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$FoldersTableOrderingComposer get folderId {
     final $$FoldersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -6168,6 +6226,9 @@ class $$NotesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
 
   $$FoldersTableAnnotationComposer get folderId {
     final $$FoldersTableAnnotationComposer composer = $composerBuilder(
@@ -6335,6 +6396,7 @@ class $$NotesTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> color = const Value.absent(),
               }) => NotesCompanion(
                 id: id,
                 folderId: folderId,
@@ -6344,6 +6406,7 @@ class $$NotesTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
+                color: color,
               ),
           createCompanionCallback:
               ({
@@ -6355,6 +6418,7 @@ class $$NotesTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> color = const Value.absent(),
               }) => NotesCompanion.insert(
                 id: id,
                 folderId: folderId,
@@ -6364,6 +6428,7 @@ class $$NotesTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
+                color: color,
               ),
           withReferenceMapper:
               (p0) =>

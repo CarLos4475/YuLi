@@ -6,6 +6,7 @@ import '../../providers/task_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/coach_mark.dart';
+import '../../widgets/edit_item_dialog.dart';
 import '../../../domain/models/folder.dart';
 import 'folder_detail_screen.dart';
 import 'note_editor_screen.dart';
@@ -174,6 +175,27 @@ class _FolderTile extends ConsumerWidget {
     }
   }
 
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => EditItemDialog(
+        title: 'Carpeta',
+        initialName: folder.name,
+        initialColor: folder.color,
+        onSave: (name, color) async {
+          await ref.read(folderRepositoryProvider).update(folder.copyWith(
+                name: name,
+                color: color,
+              ));
+        },
+        onDelete: () async {
+          Navigator.pop(ctx);
+          await _confirmDelete(context, ref);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pendingAsync = ref.watch(pendingTasksForFolderProvider(folder.id));
@@ -185,7 +207,7 @@ class _FolderTile extends ConsumerWidget {
         context,
         MaterialPageRoute(builder: (_) => FolderDetailScreen(folder: folder)),
       ),
-      onLongPress: () => _confirmDelete(context, ref),
+      onLongPress: () => _showOptions(context, ref),
       child: Stack(
         children: [
           Container(
