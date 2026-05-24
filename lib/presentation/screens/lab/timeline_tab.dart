@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/lab_space_providers.dart';
@@ -19,6 +20,7 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
     with AutomaticKeepAliveClientMixin {
   final TransformationController _transformationController =
       TransformationController();
+  bool _initialFitDone = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -44,6 +46,17 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
         widget.space;
     if (reactiveSpace.startDate == null || reactiveSpace.dueDate == null) {
       return _NoDatesMessage(ink: ink, accentColor: reactiveSpace.accentColor);
+    }
+
+    if (!_initialFitDone) {
+      _initialFitDone = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        final totalDays = reactiveSpace.dueDate!.difference(reactiveSpace.startDate!).inDays + 1;
+        final screenWidth = MediaQuery.of(context).size.width;
+        final totalWidth = screenWidth + (totalDays * 4.0);
+        final scale = screenWidth / totalWidth;
+        _transformationController.value = Matrix4.diagonal3Values(scale, scale, 1);
+      });
     }
 
     return columnsAsync.when(
