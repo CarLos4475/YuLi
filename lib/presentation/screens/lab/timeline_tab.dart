@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/lab_space_providers.dart';
@@ -23,23 +22,6 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
 
   @override
   bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    SchedulerBinding.instance.addPostFrameCallback((_) => _fitTimeline());
-  }
-
-  void _fitTimeline() {
-    if (!mounted) return;
-    if (widget.space.startDate == null || widget.space.dueDate == null) return;
-    final totalDays = widget.space.dueDate!.difference(widget.space.startDate!).inDays + 1;
-    if (totalDays <= 0) return;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final totalWidth = screenWidth + (totalDays * 4.0);
-    final scale = screenWidth / totalWidth;
-    _transformationController.value = Matrix4.diagonal3Values(scale, scale, 1);
-  }
 
   @override
   void dispose() {
@@ -192,6 +174,11 @@ class _TimelineViewer extends StatelessWidget {
     final totalWidth = minWidth + (totalDays * 4.0);
     final dayWidth = totalWidth / totalDays;
     final paper = paperColor(context);
+
+    if (transformationController.value == Matrix4.identity()) {
+      final scale = minWidth / totalWidth;
+      transformationController.value = Matrix4.diagonal3Values(scale, scale, 1);
+    }
 
     // Build positioned card widgets
     final cardWidgets = <Widget>[];
