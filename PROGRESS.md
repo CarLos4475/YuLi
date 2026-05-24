@@ -93,42 +93,122 @@
 - Futura **Phase opcional:** LaTeX real via `flutter_math_fork` integrado en `markdown_widget` preview
 
 ### Problemas encontrados
-- Bloqueo total del event loop de Flutter/Dart por fallas de isolación con `shareAcrossIsolates: true` en entornos Android. Solucionado.
-- La base de datos no realizaba transiciones de expiración en arranque debido a la interpretación errónea de SQLite del timestamp numérico como día juliano en vez de unix epoch. Solucionado.
-- Sobrecarga masiva de renderizado en `GrainOverlay` (12,000 rects/frame + millones de random allocations/segundo) bloqueando la cola de frames GPU y causando ANR en el dispositivo del usuario al desplegarse el teclado/redimensionar la pantalla. Solucionado.
-- Excepciones de renderizado `RenderBox was not laid out` en la barra de navegación (`ModeSwitch`) causadas por constraints de ancho infinito (`double.infinity` + `Center`) dentro de un `Row` flex horizontal. Solucionado.
+- Ninguno en esta sesión
 
 ---
 
-## Sesión 3 — 2026-05-23 (Reactividad de Capturas y Estilizado de Menciones)
+## Sesión 10 — 2026-05-23 (Cierre de Sesión)
 
 ### Completado
-- Se solucionó la reactivación inicial de carpetas en el modo de captura (FIGHT). Al cargar la pantalla por primera vez, `activeFoldersProvider` no tenía escuchas activos, por lo que retornaba `null` y evitaba que el input reconociera el `@` del autocompletado y guardara la tarea con su `folderId`. Ahora, se observa/escucha `activeFoldersProvider` dentro del widget `FightInput` para mantener el stream caliente desde el arranque.
-- Se implementó la persistencia y renderizado inteligente de etiquetas con **split-styling**:
-  - En la base de datos se guarda el contenido completo de la tarea con su mención intacta (ej. `"haz lo de @matematicas hoy"`), preservando la referencia original.
-  - En la visualización (`TaskCard` en Fight y `PanelTaskTile` en el panel desplegable), se divide el texto dinámicamente; se remueve únicamente el carácter `@` de la mención y se renderiza el nombre de la carpeta (ej. `"matematicas"`) en **negrita y con su color correspondiente**, manteniendo el resto de la frase en su estilo por defecto.
-  - En la vista previa de notas (`_MarkdownPreview`), se adaptó un `textGenerator` en `MarkdownGenerator` para interceptar dinámicamente menciones tipo `@nombre_carpeta` y producir un `ConcreteElementNode` con la misma lógica de división de estilos (remoción del `@` y aplicación de negrita + color al nombre del folder).
-- Se habilitó la visibilidad permanente del bottom sheet en la vista general de la carpeta (`FolderDetailScreen`), mostrando `— tareas pendientes —` cuando el contador es 0 y `— tareas pendientes (count) —` cuando es mayor a 0, alineando el comportamiento y permitiendo abrir la bandeja en cualquier momento.
+- Véase Sesiones 5–9 para el trabajo realizado hoy (rediseño brutalista de Home, Settings, Tab Bar, exportación a PDF).
+
+### Pendiente
+- **Pulir exportación a PDF:** la implementación actual es funcional pero mínima. Se requiere:
+  - Preservar formato markdown real (negritas, listas, headers) en vez de strippear todo a texto plano.
+  - Soporte para imágenes incrustadas en la nota.
+  - Soporte para ecuaciones LaTeX (renderizado o fallback a texto).
+  - Mejor manejo de saltos de página y márgenes.
+  - Posible selección de formato adicional (txt, markdown raw).
+- Descargar y agregar fuentes TTF a `assets/fonts/` (Space Grotesk + Inter).
+- Pruebas en dispositivo real (Android/iOS).
+- Futura **Phase opcional:** LaTeX real via `flutter_math_fork` integrado en `markdown_widget` preview.
+
+### Problemas encontrados
+- `share_plus` requiere reinstalación limpie de la app (`flutter clean` + desinstalar APK + `flutter run`) porque contiene código nativo Android que no se inyecta con Hot Restart.
 
 ---
 
-## Sesión 4 — 2026-05-23 (Soporte LaTeX Completo en Notas y Exclusión de Divisas)
+## Sesión 6 — 2026-05-23 (Pantalla de Ajustes y Selector de Tema)
 
 ### Completado
-- Se implementó el soporte completo para fórmulas LaTeX matemáticas tanto en línea (`$f(x)$`) como en bloque (`$$f(x)$$`).
-- Se introdujo `LatexBlockSyntax` (subclase de `BlockSyntax` de `markdown`), que captura correctamente fórmulas de bloque de múltiples líneas (e incluso líneas vacías intermedias) delimitadas por `$$` independientes, impidiendo que el motor de markdown las fragmente en múltiples párrafos.
-- Se refinó la expresión regular en `LatexSyntax` a `r'(\$\$(?!\s)([\s\S]+?)(?<!\s)\$\$)|(\$(?!\s)([^$\n]+?)(?<!\s)\$)'` para exigir que los delimitadores no tengan espacios adyacentes a su contenido interno. Esto soluciona los problemas de falsos positivos en oraciones con precios o divisas (por ejemplo: `tengo $10 y $20`, `$10, $20 y $30` o un precio simple como `cuesta $5`), que ahora se muestran como texto normal en lugar de generar errores de renderizado matemático.
-- Se agregó el archivo `test/latex_test.dart` con pruebas de integración de widgets para validar la rendering del componente `Math` y asegurar la correcta exclusión de precios de divisa del parser matemático. Todas las pruebas unitarias y de integración pasan con éxito.
-- Se solucionó un error de ciclo de vida (`StateError: Cannot use "ref" after the widget was disposed.`) que provocaba el cierre inesperado (cuelgue/crash) de la app al salir de las pantallas de edición (`NoteEditorScreen` y `KanbanCardDetail`). Este error ocurría porque el método `_save()` se invocaba en `dispose()` de forma síncrona pero ejecutaba consultas asíncronas de guardado, lo que causaba que al retornar del primer `await` el widget ya estuviese desmontado e intentar usar `ref.read` fallara. Se resolvió almacenando una referencia en caché al repositorio (`final repository = ref.read(...)`) de forma síncrona antes de los awaits.
-- Se implementaron las conexiones cruzadas de integraciones de la **Fase 8 (Flight ➔ Lab)**:
-  - **Conversión de Notas a Kanban Cards:** Añadido el botón "vincular a Lab" en el header del editor de notas (`NoteEditorScreen`). Al presionarlo, abre el panel `_SendNoteToKanbanSheet` que despliega los Lab Spaces y sus columnas. Al seleccionar una columna, se crea la tarjeta Kanban apuntando a la nota (`sourceNoteId`) y se inserta automáticamente un ancla invisible en la nota (`<!-- kanban:{id} -->`) forzando el auto-guardado.
-  - **Vinculación de Carpetas a Lab Spaces:** Añadido un botón de carpeta en el header del tablero Kanban (`_KanbanHeader` en `LabSpaceDetailScreen`). Al presionarlo, abre la bandeja `_LinkFoldersSheet` para asociar/desasociar carpetas Flight completas a este Lab Space en la tabla `space_folder_links`. Las carpetas vinculadas se muestran dinámicamente como etiquetas de colores debajo del título del space.
-  - **Prueba de Integración:** Añadida una prueba unitaria/de integración en `test/latex_test.dart` que valida el guardado en base de datos y mapeo en repositorio de la relación de carpetas vinculadas a espacios y tarjetas Kanban nacidas de apuntes.
-- Se implementó la opción de eliminación por pulsación larga (**long-press**) en la galería de carpetas de Flight (`_FolderTile` en `flight_screen.dart`) y en los recuadros de proyectos de Lab (`_SpaceTile` en `lab_screen.dart`). Al mantener presionado un elemento:
-  - Se despliega un diálogo de confirmación `AlertDialog` con bordes rectos estrictos (`borderRadius: 0.0`) y colores de contraste.
-  - Al confirmar, se invoca de forma segura el método `softDelete` de su correspondiente repositorio (`FolderRepository` o `LabSpaceRepository`), enviándolo a la papelera en base de datos de manera reactiva (desapareciendo inmediatamente de las cuadrículas activas de la interfaz).
+- Se agregó `shared_preferences: ^2.3.2` a `pubspec.yaml` para persistencia de preferencias locales.
+- Se creó `lib/presentation/providers/theme_provider.dart`:
+  - `ThemeModeNotifier` que lee/escribe `ThemeMode` (light/dark/system) en `SharedPreferences` bajo la clave `theme_mode`.
+  - `themeModeProvider` expuesto como `StateNotifierProvider<ThemeModeNotifier, ThemeMode>`.
+  - `initThemeModeOverride()` para inicializar el provider con el valor almacenado antes del primer frame.
+- Se creó `lib/presentation/screens/settings/settings_screen.dart` con estilo brutalista:
+  - Header sólido `inkColor` con título "AJUSTES" en mayúsculas y flecha de regreso.
+  - Sección "APARIENCIA" con tres opciones de tema: Claro, Oscuro, Sistema.
+  - Indicador de selección como cuadrado sólido rojo (`accentFight`) o cuadrado vacío con borde.
+  - Sección "INFO" con filas de versión y modo (Offline-first).
+  - Bordes inferiores finos para separar filas. Sin borderRadius.
+- Se actualizó `lib/main.dart`:
+  - `main()` ahora es `async`, inicializa `SharedPreferences` y pasa el override al `ProviderScope`.
+  - `YuLiApp` convertido a `ConsumerWidget` para observar `themeModeProvider` y pasar el valor a `MaterialApp.themeMode`.
+- Se agregó botón de ajustes (`Icons.settings`) en la esquina superior derecha del header monolito de `home_screen.dart`, navegando a `SettingsScreen` con `MaterialPageRoute`.
 
+### Pendiente
+- Descargar y agregar fuentes TTF a `assets/fonts/` (Space Grotesk + Inter)
+- Pruebas en dispositivo real (Android/iOS)
+- Futura **Phase opcional:** LaTeX real via `flutter_math_fork` integrado en `markdown_widget` preview
 
+### Problemas encontrados
+- Ninguno en esta sesión
 
+---
 
+## Sesión 7 — 2026-05-23 (Rediseño de la Tab Bar Inferior)
+
+### Completado
+- Se rediseñó `lib/presentation/widgets/mode_switch.dart`:
+  - `ModeSwitch` ahora usa `mainAxisSize: MainAxisSize.max` para ocupar todo el ancho disponible.
+  - Los tres tabs de modo (FIGHT, FLIGHT, LAB) están envueltos en `Expanded`, distribuyendo el espacio restante de forma equitativa entre ellos.
+  - El botón overflow (`•••`) tiene ancho fijo de 48px y está siempre pegado a la derecha, alineado con el botón de retroceso (`<`).
+  - Se agregaron separadores verticales finos (`Container(width: 1, height: 28, color: inkGray.withAlpha(60))`) entre cada tab y entre el último tab y el overflow.
+  - Se unificó la altura de todos los elementos a 56px para coherencia visual.
+  - El overflow menu ahora también incluye el acceso a "CONFIGURACIÓN" (`SettingsScreen`), corrigiendo la ruta que antes era un no-op.
+
+### Pendiente
+- Descargar y agregar fuentes TTF a `assets/fonts/` (Space Grotesk + Inter)
+- Pruebas en dispositivo real (Android/iOS)
+- Futura **Phase opcional:** LaTeX real via `flutter_math_fork` integrado en `markdown_widget` preview
+
+### Problemas encontrados
+- Ninguno en esta sesión
+
+---
+
+## Sesión 8 — 2026-05-23 (Rediseño Brutalista de Ajustes)
+
+### Completado
+- Se reescribió `settings_screen.dart` con estilo brutalista puro:
+  - Header monolito sólido `inkColor` con flecha de regreso y título "AJUSTES" en blanco.
+  - Separador `AppSectionDivider` editorial para las secciones `TEMA` e `INFO`.
+  - Tres bloques de tema lado a lado (`CLARO`, `OSCURO`, `SISTEMA`), cada uno con color de fondo sólido propio (`paperLight`, `paperDark`, `accentFlight`), texto de alto contraste, borde negro de 2px y sombra sólida offset (3,3).
+  - Indicador de selección como **checkbox cuadrado** con borde negro: cuando está activo muestra un cuadrado rojo sólido (`accentFight`) en el interior; vacío cuando no.
+  - Dos bloques de info lado a lado (`VERSIÓN` en ocre, `MODO` en verde), mismos bordes y sombras, labels en mayúsculas pequeñas y valores grandes en `displayM`.
+  - Bloque de marca final (`YuLi / Segundo Cerebro`) de color negro sólido con texto blanco, borde y sombra.
+  - Sin `AppBar`; todo el layout es un `ListView` dentro de `SafeArea` sin padding externo. Sin borderRadius en ningún elemento.
+
+### Pendiente
+- Descargar y agregar fuentes TTF a `assets/fonts/` (Space Grotesk + Inter)
+- Pruebas en dispositivo real (Android/iOS)
+- Futura **Phase opcional:** LaTeX real via `flutter_math_fork` integrado en `markdown_widget` preview
+
+### Problemas encontrados
+- Ninguno en esta sesión
+
+---
+
+## Sesión 9 — 2026-05-23 (Exportar Notas a PDF)
+
+### Completado
+- Se agregaron dependencias `pdf: ^3.10.8` y `share_plus: ^10.0.0` a `pubspec.yaml`.
+- Se creó `lib/presentation/utils/pdf_export.dart` con función `exportNoteToPdf`:
+  - Genera un PDF A4 con título en mayúsculas, línea separadora negra y contenido de la nota en texto plano.
+  - Limpia el markdown básico (`#*_[\]()!-`) para producir texto legible.
+  - Guarda el PDF en directorio temporal con nombre sanitizado basado en el título de la nota.
+  - Lanza la hoja de compartir nativa del sistema (`Share.shareXFiles`).
+- Se agregó botón cuadrado de exportar PDF en `NoteEditorScreen`:
+  - Color de fondo `accentJournal` (ocre), borde negro de 2px, sombra sólida offset (3,3).
+  - Icono `Icons.picture_as_pdf` en blanco, tamaño 16px.
+  - Ubicado en el header junto a los botones de guardar, preview y vincular a Lab.
+
+### Pendiente
+- Descargar y agregar fuentes TTF a `assets/fonts/` (Space Grotesk + Inter)
+- Pruebas en dispositivo real (Android/iOS)
+- Futura **Phase opcional:** LaTeX real via `flutter_math_fork` integrado en `markdown_widget` preview
+
+### Problemas encontrados
+- Ninguno en esta sesión
 

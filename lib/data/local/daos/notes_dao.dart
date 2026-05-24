@@ -11,6 +11,12 @@ part 'notes_dao.g.dart';
 class NotesDao extends DatabaseAccessor<AppDatabase> with _$NotesDaoMixin {
   NotesDao(super.db);
 
+  Stream<List<NoteRow>> watchAllActive() =>
+      (select(notes)
+            ..where((n) => n.deletedAt.isNull())
+            ..orderBy([(n) => OrderingTerm.desc(n.updatedAt)]))
+          .watch();
+
   Stream<List<NoteRow>> watchByFolder(int folderId) =>
       (select(notes)
             ..where((n) =>

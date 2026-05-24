@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/theme/app_tokens.dart';
 import 'presentation/providers/database_providers.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'presentation/widgets/mode_switch.dart';
 import 'presentation/widgets/app_banner.dart';
 import 'presentation/screens/fight/fight_screen.dart';
@@ -10,26 +11,30 @@ import 'presentation/screens/lab/lab_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
 import 'presentation/providers/navigation_provider.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final themeOverride = await initThemeModeOverride();
   runApp(
-    const ProviderScope(
-      child: YuLiApp(),
+    ProviderScope(
+      overrides: [themeOverride],
+      child: const YuLiApp(),
     ),
   );
 }
 
-class YuLiApp extends StatelessWidget {
+class YuLiApp extends ConsumerWidget {
   const YuLiApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: 'YuLi',
       debugShowCheckedModeBanner: false,
       theme: lightTheme(),
       darkTheme: darkTheme(),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: const _AppInit(),
     );
   }

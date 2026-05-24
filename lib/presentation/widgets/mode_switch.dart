@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_tokens.dart';
 import '../providers/database_providers.dart';
 import '../screens/trash/trash_screen.dart';
+import '../screens/settings/settings_screen.dart';
 
 class ModeSwitch extends ConsumerWidget {
   const ModeSwitch({super.key});
@@ -13,34 +14,54 @@ class ModeSwitch extends ConsumerWidget {
     final ink = inkColor(context);
 
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       children: [
-        _ModeTab(
-          label: 'FIGHT',
-          icon: Icons.checklist_outlined,
-          mode: AppMode.fight,
-          accentColor: accentFight,
-          currentMode: currentMode,
-          onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
+        Expanded(
+          child: _ModeTab(
+            label: 'FIGHT',
+            icon: Icons.checklist_outlined,
+            mode: AppMode.fight,
+            accentColor: accentFight,
+            currentMode: currentMode,
+            onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
+          ),
         ),
-        _ModeTab(
-          label: 'FLIGHT',
-          icon: Icons.article_outlined,
-          mode: AppMode.flight,
-          accentColor: accentFlight,
-          currentMode: currentMode,
-          onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
+        _Separator(),
+        Expanded(
+          child: _ModeTab(
+            label: 'FLIGHT',
+            icon: Icons.article_outlined,
+            mode: AppMode.flight,
+            accentColor: accentFlight,
+            currentMode: currentMode,
+            onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
+          ),
         ),
-        _ModeTab(
-          label: 'LAB',
-          icon: Icons.dashboard_outlined,
-          mode: AppMode.lab,
-          accentColor: accentLab,
-          currentMode: currentMode,
-          onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.lab,
+        _Separator(),
+        Expanded(
+          child: _ModeTab(
+            label: 'LAB',
+            icon: Icons.dashboard_outlined,
+            mode: AppMode.lab,
+            accentColor: accentLab,
+            currentMode: currentMode,
+            onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.lab,
+          ),
         ),
+        _Separator(),
         _OverflowTab(ink: ink),
       ],
+    );
+  }
+}
+
+class _Separator extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 28,
+      color: inkGray.withAlpha(60),
     );
   }
 }
@@ -72,7 +93,7 @@ class _ModeTab extends StatelessWidget {
       onTap: onTap,
       child: Container(
         height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(
@@ -81,7 +102,6 @@ class _ModeTab extends StatelessWidget {
             ),
           ),
         ),
-        alignment: Alignment.center,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -109,18 +129,13 @@ class _OverflowTab extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _showOverflowMenu(context),
       child: SizedBox(
-        height: 48,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                '•••',
-                style: labelBold.copyWith(color: inkGray),
-              ),
-            ),
+        width: 48,
+        height: 56,
+        child: Align(
+          alignment: Alignment.center,
+          child: Text(
+            '•••',
+            style: labelBold.copyWith(color: inkGray, fontSize: 12),
           ),
         ),
       ),
@@ -154,7 +169,13 @@ class _OverflowMenu extends StatelessWidget {
         ),
         _MenuItem(
           label: 'CONFIGURACIÓN',
-          onTap: () => Navigator.pop(context),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
+          },
           textColor: ink,
         ),
         _MenuItem(

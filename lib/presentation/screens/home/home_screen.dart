@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
@@ -7,6 +6,9 @@ import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../../domain/models/task.dart' as domain_task;
+import '../../widgets/app_card.dart';
+import '../../widgets/app_section_divider.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -16,18 +18,10 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  late Timer _timer;
   final _taskController = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
-  }
-
-  @override
   void dispose() {
-    _timer.cancel();
     _taskController.dispose();
     super.dispose();
   }
@@ -54,9 +48,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final greeting = _greeting(now.hour);
-    final timeStr =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     final dateStr = _formatDate(now);
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     final pendingAsync = ref.watch(pendingTasksProvider);
     final foldersAsync = ref.watch(activeFoldersProvider);
@@ -65,173 +59,354 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final pendingTasks = pendingAsync.valueOrNull ?? [];
     final folders = foldersAsync.valueOrNull ?? [];
-    final spaceCount = spacesAsync.valueOrNull?.length ?? 0;
+    final spaces = spacesAsync.valueOrNull ?? [];
     final doneCount = doneAsync.valueOrNull?.length ?? 0;
+
+    final nextTask = pendingTasks.isNotEmpty ? pendingTasks.first : null;
+    final latestFolder = folders.isNotEmpty ? folders.first : null;
 
     return Scaffold(
       backgroundColor: paperColor(context),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          padding: EdgeInsets.zero,
           children: [
-            // Greeting
-            Center(
-              child: Text(
-                greeting,
-                style: displayL.copyWith(color: inkGray.withAlpha(120)),
-              ),
-            ),
-            const SizedBox(height: 4),
-            // Clock
-            Center(
-              child: Text(
-                timeStr,
-                style: displayXL.copyWith(color: inkColor(context)),
-              ),
-            ),
-            const SizedBox(height: 4),
-            // Date
-            Center(
-              child: Text(
-                dateStr,
-                style: bodyL.copyWith(color: inkGray),
-              ),
-            ),
-            const SizedBox(height: 32),
-            // Stats row
-            Row(
-              children: [
-                _StatCard(
-                  label: 'Pendientes',
-                  value: '${pendingTasks.length}',
-                  color: accentFight,
-                ),
-                const SizedBox(width: 12),
-                _StatCard(
-                  label: 'Notas',
-                  value: '${folders.length}',
-                  color: accentFlight,
-                ),
-                const SizedBox(width: 12),
-                _StatCard(
-                  label: 'Labs',
-                  value: '$spaceCount',
-                  color: accentLab,
-                ),
-                const SizedBox(width: 12),
-                _StatCard(
-                  label: 'Hechas',
-                  value: '$doneCount',
-                  color: accentJournal,
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            // Quick task input
-            Text(
-              'Tarea rápida',
-              style: labelBold.copyWith(color: inkGray),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: inkGray.withAlpha(80), width: 1),
+            // ── HEADER MONOLITO ──
+            Container(
+              width: double.infinity,
+              color: inkColor(context),
+              padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            greeting.toUpperCase(),
+                            style: labelBold.copyWith(
+                              color: paperColor(context),
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                            ),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.settings,
+                                size: 20,
+                                color: paperColor(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: 48,
+                        height: borderWidthHeavy,
+                        color: paperColor(context).withAlpha(80),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        timeStr,
+                        style: displayXL.copyWith(color: paperColor(context)),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        dateStr.toUpperCase(),
+                        style: bodyS.copyWith(color: inkGray),
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    right: 32,
+                    bottom: -20,
+                    child: Text(
+                      'YuLi',
+                      textAlign: TextAlign.right,
+                      style: displayL.copyWith(
+                        color: paperColor(context).withAlpha(20),
+                        fontSize: 144,
+                        height: 1.0,
+                      ),
                     ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              height: borderWidthHeavy,
+              color: inkColor(context),
+            ),
+
+            // ── STATS BLOQUES ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _StatBlock(
+                    label: 'PENDIENTES',
+                    value: '${pendingTasks.length}',
+                    color: accentFight,
+                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
+                  ),
+                  _StatBlock(
+                    label: 'NOTAS',
+                    value: '${folders.length}',
+                    color: accentFlight,
+                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
+                  ),
+                  _StatBlock(
+                    label: 'LABS',
+                    value: '${spaces.length}',
+                    color: accentLab,
+                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.lab,
+                  ),
+                  _StatBlock(
+                    label: 'HECHAS',
+                    value: '$doneCount',
+                    color: accentJournal,
+                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'CAPTURAR'),
+            ),
+            const SizedBox(height: 12),
+
+            // ── INPUT RÁPIDO ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
                     child: TextField(
                       controller: _taskController,
                       style: bodyM.copyWith(color: inkColor(context)),
-                      decoration: const InputDecoration(
+                      maxLines: 3,
+                      minLines: 1,
+                      decoration: InputDecoration(
                         hintText: 'Escribe una tarea...',
-                        hintStyle: TextStyle(color: inkGray),
-                        border: InputBorder.none,
+                        hintStyle: bodyM.copyWith(color: inkGray),
+                        filled: true,
+                        fillColor: cardBackground(context),
+                        border: const OutlineInputBorder(
+                          borderRadius: BorderRadius.zero,
+                          borderSide: BorderSide(color: inkBlack, width: borderWidthHeavy),
+                        ),
+                        enabledBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.zero,
+                          borderSide: BorderSide(color: inkBlack, width: borderWidthHeavy),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.zero,
+                          borderSide: BorderSide(color: inkBlack, width: borderWidthHeavy),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 10),
                       ),
                       onSubmitted: (_) => _addQuickTask(),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _addQuickTask,
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: accentFight,
-                      border: Border.all(color: accentFight, width: 1),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _addQuickTask,
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: accentFight,
+                        border: Border.all(color: inkBlack, width: borderWidth),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: inkBlack,
+                            offset: shadowOffset,
+                            blurRadius: shadowBlurRadius,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.add,
+                        size: 24,
+                        color: paperLight,
+                      ),
                     ),
-                    child: const Icon(Icons.add, size: 18, color: paperLight),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+
             const SizedBox(height: 24),
-            // Next tasks
-            Text(
-              'Próximas tareas',
-              style: labelBold.copyWith(color: inkGray),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'PENDIENTES'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            // ── LISTA PENDIENTES ──
             if (pendingTasks.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  'Sin tareas pendientes',
-                  style: bodyS.copyWith(color: inkGray.withAlpha(120)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: AppCard(
+                  borderColor: inkGray.withAlpha(80),
+                  backgroundColor: paperColor(context),
+                  child: Center(
+                    child: Text(
+                      'NADA PENDIENTE',
+                      style: labelBold.copyWith(color: inkGray.withAlpha(120)),
+                    ),
+                  ),
                 ),
               )
             else
-              ...pendingTasks.take(5).map((task) => _TaskRow(task: task)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: pendingTasks.take(5).map((task) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _TaskBlock(
+                        task: task,
+                        onToggle: () => ref.read(taskRepositoryProvider).markDone(task.id),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
             const SizedBox(height: 24),
-            // Folders quick links
-            Text(
-              'Tus notas',
-              style: labelBold.copyWith(color: inkGray),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'NOTAS'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+
+            // ── LISTA CARPETAS ──
             if (folders.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  'Sin carpetas',
-                  style: bodyS.copyWith(color: inkGray.withAlpha(120)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: AppCard(
+                  borderColor: inkGray.withAlpha(80),
+                  backgroundColor: paperColor(context),
+                  child: Center(
+                    child: Text(
+                      'SIN CARPETAS',
+                      style: labelBold.copyWith(color: inkGray.withAlpha(120)),
+                    ),
+                  ),
                 ),
               )
             else
-              ...folders.take(4).map((f) => _FolderRow(
-                    folder: f,
-                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
-                  )),
-            const SizedBox(height: 32),
-            // Go to board
-            Center(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: folders.take(4).map((folder) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _FolderBlock(
+                        folder: folder,
+                        onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+            const SizedBox(height: 24),
+
+            // ── DOS CARDS DESTACADAS ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _HighlightCard(
+                      label: 'PRÓXIMA TAREA',
+                      value: nextTask?.content ?? 'NADA',
+                      color: accentFight,
+                      onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _HighlightCard(
+                      label: 'CARPETA',
+                      value: latestFolder?.name ?? 'SIN CARPETAS',
+                      color: accentFlight,
+                      onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // ── BOTÓN IR AL TABLERO ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GestureDetector(
                 onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
+                behavior: HitTestBehavior.opaque,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
                   decoration: BoxDecoration(
-                    color: inkColor(context),
-                    border: Border.all(color: inkColor(context), width: borderWidth),
+                    color: accentFight,
+                    border: Border.all(color: inkBlack, width: borderWidth),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: inkBlack,
+                        offset: shadowOffset,
+                        blurRadius: shadowBlurRadius,
+                      ),
+                    ],
                   ),
+                  alignment: Alignment.center,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.arrow_forward, size: 18, color: paperColor(context)),
-                      const SizedBox(width: 8),
                       Text(
-                        'Ir al tablero',
-                        style: labelBold.copyWith(color: paperColor(context)),
+                        'IR AL TABLERO',
+                        style: labelBold.copyWith(
+                          color: paperLight,
+                          fontSize: 14,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.arrow_forward,
+                        size: 18,
+                        color: paperLight.withAlpha(220),
                       ),
                     ],
                   ),
                 ),
               ),
             ),
+
+            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -254,115 +429,186 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _StatCard extends StatelessWidget {
+// ── WIDGETS PRIVADOS ──
+
+class _StatBlock extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final VoidCallback onTap;
 
-  const _StatCard({
+  const _StatBlock({
     required this.label,
     required this.value,
     required this.color,
+    required this.onTap,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: color, width: borderWidth),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: displayM.copyWith(color: color),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: bodyS.copyWith(color: inkGray),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TaskRow extends ConsumerWidget {
-  final domain_task.Task task;
-
-  const _TaskRow({required this.task});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () => ref.read(taskRepositoryProvider).markDone(task.id),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: inkGray.withAlpha(30), width: 1),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                border: Border.all(color: accentFight, width: borderWidth),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                task.content,
-                style: bodyM.copyWith(color: inkColor(context)),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FolderRow extends StatelessWidget {
-  final dynamic folder;
-  final VoidCallback onTap;
-
-  const _FolderRow({required this.folder, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        width: (MediaQuery.of(context).size.width - 40) / 2,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: inkGray.withAlpha(30), width: 1),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              height: 20,
-              color: folder.color,
+          color: color,
+          border: Border.all(color: inkBlack, width: borderWidth),
+          boxShadow: const [
+            BoxShadow(
+              color: inkBlack,
+              offset: shadowOffset,
+              blurRadius: shadowBlurRadius,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                folder.name,
-                style: bodyM.copyWith(color: inkColor(context)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: displayL.copyWith(color: paperLight, height: 1.0),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: labelBold.copyWith(
+                color: paperLight.withAlpha(220),
+                fontSize: 10,
+                letterSpacing: 1.2,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskBlock extends StatelessWidget {
+  final domain_task.Task task;
+  final VoidCallback onToggle;
+
+  const _TaskBlock({required this.task, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      onTap: onToggle,
+      borderColor: inkColor(context),
+      backgroundColor: cardBackground(context),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              border: Border.all(color: accentFight, width: borderWidth),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              task.content,
+              style: bodyM.copyWith(color: inkColor(context)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FolderBlock extends StatelessWidget {
+  final dynamic folder;
+  final VoidCallback onTap;
+
+  const _FolderBlock({required this.folder, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      onTap: onTap,
+      borderColor: inkColor(context),
+      backgroundColor: cardBackground(context),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 24,
+            color: folder.color as Color? ?? inkGray,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              folder.name as String? ?? '',
+              style: bodyM.copyWith(color: inkColor(context)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Icon(Icons.arrow_forward, size: 16, color: inkGray),
+        ],
+      ),
+    );
+  }
+}
+
+class _HighlightCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _HighlightCard({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: inkBlack, width: borderWidth),
+          boxShadow: const [
+            BoxShadow(
+              color: inkBlack,
+              offset: shadowOffset,
+              blurRadius: shadowBlurRadius,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: labelBold.copyWith(
+                color: paperLight.withAlpha(220),
+                fontSize: 10,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: bodyM.copyWith(
+                color: paperLight,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

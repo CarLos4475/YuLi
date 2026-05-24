@@ -7,6 +7,7 @@ import 'package:markdown_widget/markdown_widget.dart';
 import 'package:markdown/markdown.dart' as m;
 import 'package:flutter_math_fork/flutter_math.dart';
 import '../../theme/app_tokens.dart';
+import '../../utils/pdf_export.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -230,6 +231,11 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       setState(() => _isPreview = !_isPreview),
                   onLinkToLab: () => _showSendToLab(context),
                   onSave: _save,
+                  onExportPdf: () => exportNoteToPdf(
+                    context: context,
+                    title: widget.note.displayTitle,
+                    content: widget.note.rawMarkdown,
+                  ),
                   onBack: () async {
                     await _save();
                     if (context.mounted) Navigator.pop(context);
@@ -475,6 +481,7 @@ class _NoteHeader extends StatelessWidget {
   final VoidCallback onTogglePreview;
   final VoidCallback onLinkToLab;
   final VoidCallback onSave;
+  final VoidCallback onExportPdf;
   final VoidCallback onBack;
 
   const _NoteHeader({
@@ -485,6 +492,7 @@ class _NoteHeader extends StatelessWidget {
     required this.onTogglePreview,
     required this.onLinkToLab,
     required this.onSave,
+    required this.onExportPdf,
     required this.onBack,
   });
 
@@ -575,6 +583,31 @@ class _NoteHeader extends StatelessWidget {
                 border: Border.all(color: accentFlight, width: 1),
               ),
               child: Icon(Icons.link, size: 16, color: paperLight),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onExportPdf,
+            child: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: accentJournal,
+                border: Border.all(color: inkBlack, width: borderWidth),
+                boxShadow: const [
+                  BoxShadow(
+                    color: inkBlack,
+                    offset: shadowOffset,
+                    blurRadius: shadowBlurRadius,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.picture_as_pdf,
+                size: 16,
+                color: paperLight,
+              ),
             ),
           ),
         ],

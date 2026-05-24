@@ -63,6 +63,10 @@ class LocalNoteRepository implements NoteRepository {
   Future<void> hardDelete(int id) => _db.notesDao.hardDelete(id);
 
   @override
+  Stream<List<Note>> watchAllActive() =>
+      _db.notesDao.watchAllActive().map((rows) => rows.map(_rowToNote).toList());
+
+  @override
   Stream<List<Note>> watchDeleted() =>
       _db.notesDao.watchDeleted().map((rows) => rows.map(_rowToNote).toList());
 

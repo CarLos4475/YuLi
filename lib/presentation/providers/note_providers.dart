@@ -11,6 +11,10 @@ final noteByIdProvider = FutureProvider.family<Note?, int>((ref, id) {
   return ref.watch(noteRepositoryProvider).getById(id);
 });
 
+final recentNotesProvider = StreamProvider<List<Note>>((ref) {
+  return ref.watch(noteRepositoryProvider).watchAllActive();
+});
+
 final noteVersionsProvider =
     FutureProvider.family<List<NoteVersion>, int>((ref, noteId) {
   return ref.watch(noteRepositoryProvider).getVersions(noteId);
