@@ -57,6 +57,17 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
             final withDate = cards.where((c) => c.dueDate != null).toList();
             final noDate = cards.where((c) => c.dueDate == null).toList();
 
+            if (_transformationController.value.getColumn(0)[0] == 1.0) {
+              final totalDays = reactiveSpace.dueDate!.difference(reactiveSpace.startDate!).inDays + 1;
+              final screenWidth = MediaQuery.of(context).size.width;
+              final totalWidth = screenWidth + (totalDays * 4.0);
+              _transformationController.value = Matrix4.diagonal3Values(
+                screenWidth / totalWidth,
+                screenWidth / totalWidth,
+                1,
+              );
+            }
+
             return Column(
               children: [
                 // Timeline zoom area
@@ -174,11 +185,6 @@ class _TimelineViewer extends StatelessWidget {
     final totalWidth = minWidth + (totalDays * 4.0);
     final dayWidth = totalWidth / totalDays;
     final paper = paperColor(context);
-
-    if (transformationController.value == Matrix4.identity()) {
-      final scale = minWidth / totalWidth;
-      transformationController.value = Matrix4.diagonal3Values(scale, scale, 1);
-    }
 
     // Build positioned card widgets
     final cardWidgets = <Widget>[];
