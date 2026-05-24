@@ -59,9 +59,11 @@ class _TaskCardState extends ConsumerState<TaskCard>
     if (!reducedMotion) {
       HapticFeedback.mediumImpact();
       await ref.read(taskRepositoryProvider).markDone(widget.task.id);
-      await _fadeController.forward();
+      await syncTaskCompletionToKanban(ref, widget.task.id);
+      if (mounted) await _fadeController.forward();
     } else {
       await ref.read(taskRepositoryProvider).markDone(widget.task.id);
+      await syncTaskCompletionToKanban(ref, widget.task.id);
     }
   }
 
@@ -115,6 +117,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
           await _delete();
           return false;
         },
+        background: const SizedBox.shrink(),
         secondaryBackground: _SwipeBackground(
           color: accentFight,
           alignment: Alignment.centerRight,

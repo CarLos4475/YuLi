@@ -55,6 +55,18 @@ class LocalKanbanRepository implements KanbanCardRepository {
 
   @override
   Future<void> update(KanbanCard card) async {
+    final col = await _db.labSpacesDao.getColumn(card.columnId);
+    if (col != null && col.name == 'Entregado') {
+      if (card.originTaskDoneAt == null) {
+        final now = DateTime.now();
+        card = card.copyWith(originTaskDoneAt: now, dueDate: now);
+        if (card.originTaskId != null) {
+          await _db.tasksDao.markDone(card.originTaskId!);
+        }
+      }
+    } else if (card.originTaskDoneAt != null) {
+      card = card.copyWith(clearOriginTaskDoneAt: true);
+    }
     await _db.kanbanDao.updateCard(
       KanbanCardsCompanion(
         id: Value(card.id),
@@ -67,6 +79,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         sourceNoteId: Value(card.sourceNoteId),
         sourceAnchor: Value(card.sourceAnchor),
         originTaskId: Value(card.originTaskId),
+        originTaskDoneAt: Value(card.originTaskDoneAt),
       ),
     );
   }
@@ -75,12 +88,50 @@ class LocalKanbanRepository implements KanbanCardRepository {
   Future<void> delete(int id) => _db.kanbanDao.deleteCard(id);
 
   @override
-  Future<void> moveToColumn(int cardId, int newColumnId, int newPosition) =>
-      _db.kanbanDao.moveToColumn(cardId, newColumnId, newPosition);
+  Future<void> moveToColumn(int cardId, int newColumnId, int newPosition) async {
+    final card = await _db.kanbanDao.getById(cardId);
+    if (card == null) return;
+    final col = await _db.labSpacesDao.getColumn(newColumnId);
+    if (col != null && col.name == 'Entregado') {
+      if (card.originTaskDoneAt == null) {
+        final now = DateTime.now();
+        await _db.kanbanDao.updateCard(
+          KanbanCardsCompanion(
+            id: Value(cardId),
+            columnId: Value(newColumnId),
+            position: Value(newPosition),
+            dueDate: Value(now),
+            originTaskDoneAt: Value(now),
+          ),
+        );
+        if (card.originTaskId != null) {
+          await _db.tasksDao.markDone(card.originTaskId!);
+        }
+        return;
+      }
+    } else if (card.originTaskDoneAt != null) {
+      await _db.kanbanDao.updateCard(
+        KanbanCardsCompanion(
+          id: Value(cardId),
+          columnId: Value(newColumnId),
+          position: Value(newPosition),
+          originTaskDoneAt: Value(null),
+        ),
+      );
+      return;
+    }
+    await _db.kanbanDao.moveToColumn(cardId, newColumnId, newPosition);
+  }
 
   @override
   Future<void> reorderInColumn(int columnId, List<int> orderedIds) =>
       _db.kanbanDao.reorderInColumn(columnId, orderedIds);
+
+  @override
+  Future<KanbanCard?> getByOriginTaskId(int taskId) async {
+    final row = await _db.kanbanDao.getByOriginTaskId(taskId);
+    return row != null ? _rowToCard(row) : null;
+  }
 
   @override
   Stream<List<KanbanCard>> watchBySourceNoteId(int noteId) =>
@@ -98,6 +149,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         sourceNoteId: row.sourceNoteId,
         sourceAnchor: row.sourceAnchor,
         originTaskId: row.originTaskId,
+        originTaskDoneAt: row.originTaskDoneAt,
         createdAt: row.createdAt,
       );
 }

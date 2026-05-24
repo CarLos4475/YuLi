@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/lab_space_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/navigation_provider.dart';
@@ -63,8 +64,9 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
         builder: (ctx, scrollController) => FightPanel(
           folderId: widget.folder.id,
           scrollController: scrollController,
-          onTapTask: (task) {
-            ref.read(taskRepositoryProvider).markDone(task.id);
+          onTapTask: (task) async {
+            await ref.read(taskRepositoryProvider).markDone(task.id);
+            await syncTaskCompletionToKanban(ref, task.id);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Tarea completada'),

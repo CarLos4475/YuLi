@@ -35,3 +35,22 @@ final kanbanCardsByNoteProvider =
     StreamProvider.family<List<KanbanCard>, int>((ref, noteId) {
   return ref.watch(kanbanCardRepositoryProvider).watchBySourceNoteId(noteId);
 });
+
+Future<void> syncTaskCompletionToKanban(WidgetRef ref, int taskId) async {
+  final kanbanRepo = ref.read(kanbanCardRepositoryProvider);
+  final labRepo = ref.read(labSpaceRepositoryProvider);
+
+  final linkedCard = await kanbanRepo.getByOriginTaskId(taskId);
+  if (linkedCard == null) return;
+
+  final columns = await labRepo.getColumns(linkedCard.labSpaceId);
+  final entregado = columns.firstWhere((c) => c.name == 'Entregado');
+
+  final now = DateTime.now();
+  final updated = linkedCard.copyWith(
+    columnId: entregado.id,
+    dueDate: now,
+    originTaskDoneAt: now,
+  );
+  await kanbanRepo.update(updated);
+}

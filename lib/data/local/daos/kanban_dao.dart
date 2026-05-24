@@ -67,4 +67,8 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
       (select(kanbanCards)
             ..where((c) => c.sourceNoteId.equals(noteId)))
           .watch();
+
+  Future<KanbanCardRow?> getByOriginTaskId(int taskId) =>
+      (select(kanbanCards)..where((c) => c.originTaskId.equals(taskId)))
+          .getSingleOrNull();
 }

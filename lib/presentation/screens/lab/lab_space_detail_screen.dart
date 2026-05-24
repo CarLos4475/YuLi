@@ -6,6 +6,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../providers/lab_tab_providers.dart';
 import '../../widgets/app_column_header.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
@@ -15,32 +16,243 @@ import '../../../domain/models/note.dart';
 import '../../screens/flight/note_cell_model.dart';
 import 'kanban_card_tile.dart';
 import 'kanban_card_detail.dart';
+import 'calendar_tab.dart';
+import 'timeline_tab.dart';
 
-class LabSpaceDetailScreen extends ConsumerWidget {
+class LabSpaceDetailScreen extends ConsumerStatefulWidget {
   final LabSpace space;
 
   const LabSpaceDetailScreen({super.key, required this.space});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final columnsAsync = ref.watch(kanbanColumnsProvider(space.id));
+  ConsumerState<LabSpaceDetailScreen> createState() =>
+      _LabSpaceDetailScreenState();
+}
+
+class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
+  int _tabIndex = 0;
+
+  void _showAddTabSheet() {
+    final tabsNotifier = ref.read(labTabsProvider(widget.space.id).notifier);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _AddTabSheet(
+        available: tabsNotifier.available,
+        onSelect: (tab) {
+          tabsNotifier.addTab(tab);
+          setState(() => _tabIndex = tabsNotifier.state.length - 1);
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    final tabs = ref.watch(labTabsProvider(widget.space.id));
+    if (tabs.isEmpty) return const SizedBox.shrink();
+    switch (tabs[_tabIndex.clamp(0, tabs.length - 1)]) {
+      case 'Kanban':
+        final columnsAsync = ref.watch(kanbanColumnsProvider(widget.space.id));
+        return columnsAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (columns) => _KanbanBoard(
+            space: widget.space,
+            columns: columns,
+          ),
+        );
+      case 'Calendario':
+        return CalendarTab(space: widget.space);
+      case 'Timeline':
+        return TimelineTab(space: widget.space);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    final tabs = ref.watch(labTabsProvider(widget.space.id));
 
     return Scaffold(
       backgroundColor: paperColor(context),
       body: SafeArea(
         child: Column(
           children: [
-            _KanbanHeader(space: space),
-            Expanded(
-              child: columnsAsync.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, _) => const SizedBox.shrink(),
-                data: (columns) => _KanbanBoard(
-                  space: space,
-                  columns: columns,
+            _KanbanHeader(space: widget.space),
+            Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: ink, width: borderWidth),
                 ),
               ),
+              child: Row(
+                children: [
+                  ...tabs.asMap().entries.map((e) => Row(
+                        children: [
+                          if (e.key > 0)
+                            Container(
+                                width: 1,
+                                height: 28,
+                                color: ink.withAlpha(60)),
+                          _TabButton(
+                            label: e.value,
+                            isActive: _tabIndex == e.key,
+                            onTap: () =>
+                                setState(() => _tabIndex = e.key),
+                            onClose: e.value == 'Kanban'
+                                ? null
+                                : () {
+                                    final notifier = ref.read(
+                                        labTabsProvider(widget.space.id)
+                                            .notifier);
+                                    final wasActive = _tabIndex == e.key;
+                                    notifier.removeTab(e.value);
+                                    if (wasActive) {
+                                      setState(() => _tabIndex = 0);
+                                    } else if (e.key < _tabIndex) {
+                                      setState(() => _tabIndex--);
+                                    }
+                                  },
+                          ),
+                        ],
+                      )),
+                  Container(width: 1, height: 28, color: ink.withAlpha(60)),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _showAddTabSheet,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      child: Icon(Icons.add, size: 18, color: inkGray),
+                    ),
+                  ),
+                ],
+              ),
             ),
+            Expanded(
+              child: _buildTabContent(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddTabSheet extends StatelessWidget {
+  final List<String> available;
+  final void Function(String) onSelect;
+
+  const _AddTabSheet({required this.available, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border(
+          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: Text('Agregar vista',
+                  style: labelBold.copyWith(color: inkGray)),
+            ),
+            if (available.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                child: Text('No hay más vistas disponibles.',
+                    style: bodyS.copyWith(color: inkGray)),
+              )
+            else
+              ...available.map((tab) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onSelect(tab),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            color: accentLab,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(tab,
+                              style: bodyM.copyWith(
+                                  color: inkColor(context),
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  final VoidCallback? onClose;
+
+  const _TabButton({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          border: isActive
+              ? const Border(
+                  bottom: BorderSide(color: inkBlack, width: borderWidthHeavy),
+                )
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: labelBold.copyWith(
+                color: isActive ? inkColor(context) : inkGray,
+              ),
+            ),
+            if (onClose != null) ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onClose,
+                child: Icon(
+                  Icons.close,
+                  size: 12,
+                  color: isActive ? inkColor(context) : inkGray,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -83,18 +295,12 @@ class _KanbanHeader extends ConsumerWidget {
           ),
           const SizedBox(width: 4),
           Expanded(
-            child: Column(
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        space.name,
-                        style: displayL.copyWith(color: space.accentColor),
-                      ),
-                    ),
-                  ],
+                Text(
+                  space.name,
+                  style: displayL.copyWith(color: space.accentColor),
                 ),
                 if (linkedFolders.isNotEmpty) ...[
                   const SizedBox(height: 4),
@@ -104,21 +310,31 @@ class _KanbanHeader extends ConsumerWidget {
                     children: linkedFolders.map((f) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: f.color.withAlpha(30),
-                        border: Border.all(color: f.color, width: 1),
+                        color: f.color,
+                        border: Border.all(color: inkBlack, width: borderWidth),
+                        boxShadow: shadowM,
                       ),
                       child: Text(
                         f.name,
-                        style: labelBold.copyWith(color: f.color, fontSize: 10),
+                        style: labelBold.copyWith(
+                          color: f.color.computeLuminance() > 0.5 ? inkBlack : paperLight,
+                          fontSize: 10,
+                        ),
                       ),
                     )).toList(),
                   ),
                 ],
-                if (space.dueDate != null) ...[
+                if (space.startDate != null || space.dueDate != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    _formatDate(space.dueDate!),
+                    _formatDateRange(space.startDate, space.dueDate),
                     style: bodyS.copyWith(color: inkGray),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'SIN FECHAS DE PROYECTO',
+                    style: bodyS.copyWith(color: inkGray.withAlpha(128)),
                   ),
                 ],
               ],
@@ -134,7 +350,8 @@ class _KanbanHeader extends ConsumerWidget {
                 height: 30,
                 decoration: BoxDecoration(
                   color: accentFlight,
-                  border: Border.all(color: accentFlight, width: 1),
+                  border: Border.all(color: inkBlack, width: borderWidth),
+                  boxShadow: shadowM,
                 ),
                 child: Icon(Icons.description_outlined, size: 16, color: paperLight),
               ),
@@ -144,14 +361,39 @@ class _KanbanHeader extends ConsumerWidget {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _showLinkFolders(context, ref),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: accentLab,
+                  border: Border.all(color: inkBlack, width: borderWidth),
+                  boxShadow: shadowM,
+                ),
+                child: Icon(Icons.folder_outlined, size: 16, color: paperLight),
+              ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _showDateEditor(context, ref),
             child: Container(
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                color: accentLab,
-                border: Border.all(color: accentLab, width: 1),
+                color: space.accentColor,
+                border: Border.all(
+                  color: inkBlack,
+                  width: borderWidth,
+                ),
+                boxShadow: shadowM,
               ),
-              child: Icon(Icons.folder_outlined, size: 16, color: paperLight),
+              child: Icon(
+                Icons.calendar_today,
+                size: 16,
+                color: space.accentColor.computeLuminance() > 0.5
+                    ? inkBlack
+                    : paperColor(context),
+              ),
             ),
           ),
         ],
@@ -187,6 +429,267 @@ class _KanbanHeader extends ConsumerWidget {
 
   String _formatDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  String _formatDateRange(DateTime? start, DateTime? end) {
+    if (start != null && end != null) {
+      return '${_formatDate(start)} – ${_formatDate(end)}';
+    } else if (start != null) {
+      return 'INICIO: ${_formatDate(start)}';
+    } else if (end != null) {
+      return 'FIN: ${_formatDate(end)}';
+    }
+    return '';
+  }
+
+  void _showDateEditor(BuildContext context, WidgetRef ref) {
+    final ink = inkColor(context);
+    DateTime? tempStart = space.startDate;
+    DateTime? tempEnd = space.dueDate;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            contentPadding: EdgeInsets.zero,
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            content: Container(
+              width: 320,
+              decoration: BoxDecoration(
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: ink, width: borderWidth),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'FECHAS DEL PROYECTO',
+                            style: labelBold.copyWith(color: ink),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Icon(Icons.close, size: 18, color: inkGray),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _DateRow(
+                          label: 'INICIO',
+                          date: tempStart,
+                          ink: ink,
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: tempStart ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    dialogTheme: const DialogThemeData(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.zero,
+                                      ),
+                                    ),
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (picked != null) {
+                              setDialogState(() => tempStart = picked);
+                            }
+                          },
+                          onClear: () => setDialogState(() => tempStart = null),
+                        ),
+                        const SizedBox(height: 12),
+                        _DateRow(
+                          label: 'FIN',
+                          date: tempEnd,
+                          ink: ink,
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: ctx,
+                              initialDate: tempEnd ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    dialogTheme: const DialogThemeData(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.zero,
+                                      ),
+                                    ),
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (picked != null) {
+                              setDialogState(() => tempEnd = picked);
+                            }
+                          },
+                          onClear: () => setDialogState(() => tempEnd = null),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: ink, width: borderWidth),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: ink,
+                                width: borderWidth,
+                              ),
+                            ),
+                            child: Text(
+                              'CANCELAR',
+                              style: labelBold.copyWith(
+                                color: inkGray,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () async {
+                            await ref
+                                .read(labSpaceRepositoryProvider)
+                                .update(space.copyWith(
+                                  startDate: tempStart,
+                                  clearStartDate: tempStart == null,
+                                  dueDate: tempEnd,
+                                  clearDueDate: tempEnd == null,
+                                ));
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: space.accentColor,
+                              border: Border.all(
+                                color: space.accentColor,
+                                width: borderWidth,
+                              ),
+                              boxShadow: shadowM,
+                            ),
+                            child: Text(
+                              'GUARDAR',
+                              style: labelBold.copyWith(
+                                color: paperLight,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DateRow extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final Color ink;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  const _DateRow({
+    required this.label,
+    required this.date,
+    required this.ink,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(
+            label,
+            style: labelBold.copyWith(color: ink, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      date != null
+                          ? '${date!.day.toString().padLeft(2, '0')}/${date!.month.toString().padLeft(2, '0')}/${date!.year}'
+                          : 'SELECCIONAR...',
+                      style: bodyS.copyWith(
+                        color: date != null ? ink : inkGray,
+                      ),
+                    ),
+                  ),
+                  if (date != null)
+                    GestureDetector(
+                      onTap: onClear,
+                      child: Icon(Icons.close, size: 14, color: inkGray),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _KanbanBoard extends ConsumerWidget {
@@ -256,6 +759,7 @@ class _KanbanColumn extends ConsumerWidget {
   const _KanbanColumn({required this.space, required this.column});
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final isProtected = column.name == 'Entregado' || column.name == 'Vencido';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -266,8 +770,22 @@ class _KanbanColumn extends ConsumerWidget {
         ),
         title: Text('Eliminar columna',
             style: displayM.copyWith(color: inkColor(context))),
-        content: Text('Se eliminará la columna y todas sus cards.',
-            style: bodyM.copyWith(color: inkColor(context))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Se eliminará la columna y todas sus cards.',
+                style: bodyM.copyWith(color: inkColor(context))),
+            if (isProtected) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${column.name} es una columna automática del sistema. '
+                'Si la eliminas, las cards no se moverán automáticamente.',
+                style: bodyS.copyWith(color: accentFight),
+              ),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -306,9 +824,9 @@ class _KanbanColumn extends ConsumerWidget {
           const SizedBox(height: 8),
           Expanded(
             child: DragTarget<_DragData>(
-              onAcceptWithDetails: (details) {
+              onAcceptWithDetails: (details) async {
                 if (details.data.card.columnId != column.id) {
-                  _moveCardToColumn(ref, details.data, cards.length);
+                  await _moveCardToColumn(ref, details.data, cards.length);
                 }
               },
               builder: (context, candidateData, rejectedData) {
@@ -388,21 +906,21 @@ class _KanbanColumn extends ConsumerWidget {
     );
   }
 
-  void _handleDrop(
+  Future<void> _handleDrop(
     WidgetRef ref,
     _DragData data,
     List<KanbanCard> cards,
     int position,
-  ) {
+  ) async {
     if (data.card.columnId == column.id) {
       _reorderInColumn(ref, cards, data.card.id, position);
     } else {
-      _moveCardToColumn(ref, data, position);
+      await _moveCardToColumn(ref, data, position);
     }
   }
 
-  void _moveCardToColumn(WidgetRef ref, _DragData data, int position) {
-    ref.read(kanbanCardRepositoryProvider).moveToColumn(
+  Future<void> _moveCardToColumn(WidgetRef ref, _DragData data, int position) async {
+    await ref.read(kanbanCardRepositoryProvider).moveToColumn(
           data.card.id,
           column.id,
           position,

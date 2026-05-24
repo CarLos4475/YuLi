@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -64,6 +64,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from <= 3) {
             await m.addColumn(notes, notes.color);
+          }
+          if (from <= 4) {
+            await m.addColumn(kanbanCards, kanbanCards.originTaskDoneAt);
           }
         },
       );
@@ -131,6 +134,21 @@ class AppDatabase extends _$AppDatabase {
             NotificationsCompanion.insert(message: 'Tarea a la papelera: $msg'),
           );
         }
+        // Move linked KanbanCards to Vencido when linked task expires
+        await customUpdate(
+          "UPDATE kanban_cards SET column_id = ("
+          "SELECT kc.id FROM kanban_columns kc "
+          "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.name = 'Vencido'"
+          ") WHERE kanban_cards.origin_task_id IN ("
+          "SELECT id FROM tasks WHERE status = 'archived_failed'"
+          ") AND kanban_cards.origin_task_done_at IS NULL "
+          "AND EXISTS ("
+          "SELECT 1 FROM kanban_columns kc "
+          "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.name = 'Vencido'"
+          ")",
+          updates: {kanbanCards},
+          updateKind: UpdateKind.update,
+        );
         archivedCount = await customUpdate(
           "UPDATE tasks SET status = 'trash', trashed_at = datetime('now') "
           "WHERE status = 'archived_failed'",
@@ -140,6 +158,16 @@ class AppDatabase extends _$AppDatabase {
       }
 
       // 4. trash → permanent delete (7-day grace period)
+      // First, clear origin fields on KanbanCards linked to tasks about to be deleted
+      await customUpdate(
+        "UPDATE kanban_cards SET origin_task_id = NULL, origin_task_done_at = NULL "
+        "WHERE origin_task_id IN ("
+        "SELECT id FROM tasks WHERE status = 'trash' "
+        "AND date(trashed_at, 'unixepoch') < date('now', '-7 days')"
+        ")",
+        updates: {kanbanCards},
+        updateKind: UpdateKind.update,
+      );
       await customUpdate(
         "DELETE FROM tasks WHERE status = 'trash' "
         "AND date(trashed_at, 'unixepoch') < date('now', '-7 days')",

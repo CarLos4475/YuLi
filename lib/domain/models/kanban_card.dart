@@ -32,6 +32,7 @@ class KanbanCard {
   final int? sourceNoteId;
   final String? sourceAnchor;
   final int? originTaskId;
+  final DateTime? originTaskDoneAt;
   final DateTime createdAt;
 
   const KanbanCard({
@@ -46,6 +47,7 @@ class KanbanCard {
     this.sourceNoteId,
     this.sourceAnchor,
     this.originTaskId,
+    this.originTaskDoneAt,
     required this.createdAt,
   });
 
@@ -66,6 +68,8 @@ class KanbanCard {
     bool clearSourceAnchor = false,
     int? originTaskId,
     bool clearOriginTaskId = false,
+    DateTime? originTaskDoneAt,
+    bool clearOriginTaskDoneAt = false,
     DateTime? createdAt,
   }) {
     return KanbanCard(
@@ -84,6 +88,9 @@ class KanbanCard {
           clearSourceAnchor ? null : (sourceAnchor ?? this.sourceAnchor),
       originTaskId:
           clearOriginTaskId ? null : (originTaskId ?? this.originTaskId),
+      originTaskDoneAt: clearOriginTaskDoneAt
+          ? null
+          : (originTaskDoneAt ?? this.originTaskDoneAt),
       createdAt: createdAt ?? this.createdAt,
     );
   }

@@ -20,6 +20,7 @@ class KanbanCards extends Table {
   TextColumn get sourceAnchor => text().nullable()();
   IntColumn get originTaskId =>
       integer().nullable().references(Tasks, #id)();
+  DateTimeColumn get originTaskDoneAt => dateTime().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
 }

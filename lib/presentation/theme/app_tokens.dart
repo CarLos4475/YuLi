@@ -104,6 +104,55 @@ const TextStyle mono = TextStyle(
   height: 1.4,
 );
 
+// Additional label sizes (not in original set, added for Calendar/Timeline)
+const TextStyle labelS = TextStyle(
+  fontFamily: 'Inter',
+  fontWeight: FontWeight.w600,
+  fontSize: 12,
+  height: 1.3,
+);
+
+const TextStyle labelM = TextStyle(
+  fontFamily: 'Inter',
+  fontWeight: FontWeight.w600,
+  fontSize: 14,
+  height: 1.3,
+);
+
+const TextStyle labelXS = TextStyle(
+  fontFamily: 'Inter',
+  fontWeight: FontWeight.w500,
+  fontSize: 10,
+  height: 1.3,
+);
+
+const TextStyle labelXXS = TextStyle(
+  fontFamily: 'Inter',
+  fontWeight: FontWeight.w500,
+  fontSize: 8,
+  height: 1.2,
+);
+
+const TextStyle bodyXS = TextStyle(
+  fontFamily: 'Inter',
+  fontWeight: FontWeight.w400,
+  fontSize: 11,
+  height: 1.3,
+);
+
+// Semantic accent aliases
+const Color accentError = accentFight;
+const Color accentSuccess = accentLab;
+
+// Shadow presets
+const List<BoxShadow> shadowM = [
+  BoxShadow(
+    color: Color(0xFF111111),
+    offset: Offset(3, 3),
+    blurRadius: 0,
+  ),
+];
+
 // ─── Theme Data ───────────────────────────────────────────────────────────────
 
 ThemeData lightTheme() => ThemeData(

@@ -60,6 +60,9 @@ class LabSpacesDao extends DatabaseAccessor<AppDatabase>
             ..orderBy([(c) => OrderingTerm.asc(c.position)]))
           .get();
 
+  Future<KanbanColumnRow?> getColumn(int columnId) =>
+      (select(kanbanColumns)..where((c) => c.id.equals(columnId))).getSingleOrNull();
+
   Future<KanbanColumnRow> insertColumn(KanbanColumnsCompanion row) async {
     final id = await into(kanbanColumns).insert(row);
     return (select(kanbanColumns)..where((c) => c.id.equals(id))).getSingle();

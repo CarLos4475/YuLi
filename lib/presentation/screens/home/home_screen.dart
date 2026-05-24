@@ -414,7 +414,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _TaskBlock(
                         task: task,
-                        onToggle: () => ref.read(taskRepositoryProvider).markDone(task.id),
+                        onToggle: () async {
+                          await ref.read(taskRepositoryProvider).markDone(task.id);
+                          await syncTaskCompletionToKanban(ref, task.id);
+                        },
                       ),
                     );
                   }).toList(),

@@ -70,7 +70,7 @@ class KanbanCardTile extends StatelessWidget {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                color: accentFight,
+                                color: card.originTaskDoneAt != null ? accentLab : accentFight,
                                 border: Border.all(color: inkBlack, width: borderWidth),
                                 boxShadow: const [
                                   BoxShadow(
@@ -80,12 +80,13 @@ class KanbanCardTile extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                              child: Text('Tarea',
+                              child: Text(
+                                  card.originTaskDoneAt != null ? 'Hecho' : 'Tarea',
                                   style: labelBold.copyWith(
                                       color: paperLight, fontSize: 9)),
                             ),
                           ),
-                        if (card.dueDate != null) ...[
+                        if (card.dueDate != null && card.originTaskDoneAt == null) ...[
                           const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

@@ -487,9 +487,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         builder: (ctx, scrollController) => FightPanel(
           folderId: widget.folder.id,
           scrollController: scrollController,
-          onTapTask: (task) {
+          onTapTask: (task) async {
             _insertBlock('\n- [ ] ${task.content}\n');
-            ref.read(taskRepositoryProvider).markDone(task.id);
+            await ref.read(taskRepositoryProvider).markDone(task.id);
+            await syncTaskCompletionToKanban(ref, task.id);
             Navigator.pop(ctx);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
