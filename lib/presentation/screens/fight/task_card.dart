@@ -5,7 +5,6 @@ import '../../theme/app_tokens.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
-import '../../widgets/app_tag.dart';
 import '../../../domain/models/task.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
@@ -290,7 +289,33 @@ class _CardContent extends ConsumerWidget {
               ),
               if (folder != null) ...[
                 const SizedBox(width: 8),
-                AppTag(label: folder!.name, color: folder!.color),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: folder!.color,
+                    border: Border.all(color: inkBlack, width: borderWidth),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: inkBlack,
+                        offset: shadowOffset,
+                        blurRadius: shadowBlurRadius,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    folder!.name,
+                    style: labelBold.copyWith(
+                      color: folder!.color.computeLuminance() > 0.4
+                          ? inkBlack
+                          : inkLight,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                ),
               ],
             ],
           ),
