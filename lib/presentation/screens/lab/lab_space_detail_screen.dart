@@ -268,30 +268,72 @@ class _KanbanColumn extends ConsumerWidget {
           const SizedBox(height: 8),
           Expanded(
             child: DragTarget<_DragData>(
-              onAcceptWithDetails: (details) => _onCardDropped(
-                ref,
-                details.data,
-                column,
-                cards.length,
-              ),
+              onAcceptWithDetails: (details) {
+                if (details.data.card.columnId != column.id) {
+                  _moveCardToColumn(ref, details.data, cards.length);
+                }
+              },
               builder: (context, candidateData, rejectedData) {
+                final hasCrossCandidate = candidateData
+                    .any((d) => d?.card.columnId != column.id);
                 return Container(
-                  color: candidateData.isNotEmpty
+                  color: hasCrossCandidate
                       ? space.accentColor.withAlpha(20)
                       : Colors.transparent,
                   child: cards.isEmpty
                       ? const SizedBox.expand()
-                      : ReorderableListView.builder(
-                          shrinkWrap: true,
-                          onReorder: (oldIndex, newIndex) =>
-                              _reorder(ref, cards, oldIndex, newIndex),
-                          itemCount: cards.length,
-                          itemBuilder: (_, i) => KanbanCardTile(
-                            key: ValueKey(cards[i].id),
-                            card: cards[i],
-                            accentColor: space.accentColor,
-                            onTap: () => _openCard(context, cards[i]),
-                          ),
+                      : ListView(
+                          children: [
+                            for (int i = 0; i < cards.length; i++) ...[
+                              _CardDropZone(
+                                column: column,
+                                accentColor: space.accentColor,
+                                position: i,
+                                onDrop: (_DragData data) =>
+                                    _handleDrop(ref, data, cards, i),
+                              ),
+                              LongPressDraggable<_DragData>(
+                                key: ValueKey(cards[i].id),
+                                data: _DragData(cards[i]),
+                                feedback: Material(
+                                  elevation: 4,
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.zero,
+                                  child: SizedBox(
+                                    width: 260,
+                                    child: KanbanCardTile(
+                                      card: cards[i],
+                                      accentColor: space.accentColor,
+                                      onTap: () {},
+                                    ),
+                                  ),
+                                ),
+                                childWhenDragging: Opacity(
+                                  opacity: 0.3,
+                                  child: KanbanCardTile(
+                                    card: cards[i],
+                                    accentColor: space.accentColor,
+                                    onTap: () =>
+                                        _openCard(context, cards[i]),
+                                  ),
+                                ),
+                                child: KanbanCardTile(
+                                  card: cards[i],
+                                  accentColor: space.accentColor,
+                                  onTap: () =>
+                                      _openCard(context, cards[i]),
+                                ),
+                              ),
+                            ],
+                            _CardDropZone(
+                              column: column,
+                              accentColor: space.accentColor,
+                              position: cards.length,
+                              onDrop: (_DragData data) => _handleDrop(
+                                  ref, data, cards, cards.length),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                         ),
                 );
               },
@@ -308,30 +350,39 @@ class _KanbanColumn extends ConsumerWidget {
     );
   }
 
-  void _onCardDropped(
+  void _handleDrop(
     WidgetRef ref,
     _DragData data,
-    KanbanColumn targetColumn,
+    List<KanbanCard> cards,
     int position,
   ) {
-    if (data.card.columnId == targetColumn.id) return;
+    if (data.card.columnId == column.id) {
+      _reorderInColumn(ref, cards, data.card.id, position);
+    } else {
+      _moveCardToColumn(ref, data, position);
+    }
+  }
+
+  void _moveCardToColumn(WidgetRef ref, _DragData data, int position) {
     ref.read(kanbanCardRepositoryProvider).moveToColumn(
           data.card.id,
-          targetColumn.id,
+          column.id,
           position,
         );
   }
 
-  Future<void> _reorder(
+  Future<void> _reorderInColumn(
     WidgetRef ref,
     List<KanbanCard> cards,
-    int oldIndex,
-    int newIndex,
+    int cardId,
+    int newPosition,
   ) async {
-    if (newIndex > oldIndex) newIndex--;
     final ids = cards.map((c) => c.id).toList();
-    final id = ids.removeAt(oldIndex);
-    ids.insert(newIndex, id);
+    final oldIndex = ids.indexOf(cardId);
+    if (oldIndex == -1 || oldIndex == newPosition) return;
+    ids.removeAt(oldIndex);
+    if (newPosition > oldIndex) newPosition--;
+    ids.insert(newPosition, cardId);
     await ref.read(kanbanCardRepositoryProvider).reorderInColumn(column.id, ids);
   }
 
@@ -350,6 +401,43 @@ class _KanbanColumn extends ConsumerWidget {
           scrollController: sc,
         ),
       ),
+    );
+  }
+}
+
+class _CardDropZone extends StatelessWidget {
+  final KanbanColumn column;
+  final Color accentColor;
+  final int position;
+  final ValueChanged<_DragData> onDrop;
+
+  const _CardDropZone({
+    required this.column,
+    required this.accentColor,
+    required this.position,
+    required this.onDrop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<_DragData>(
+      onAcceptWithDetails: (details) => onDrop(details.data),
+      builder: (context, candidateData, rejectedData) {
+        final isActive = candidateData.isNotEmpty;
+        return Container(
+          height: isActive ? 6 : 2,
+          margin: EdgeInsets.only(bottom: isActive ? 6 : 0),
+          decoration: BoxDecoration(
+            color: isActive ? accentColor.withAlpha(40) : Colors.transparent,
+            border: isActive
+                ? Border(
+                    top: BorderSide(color: accentColor, width: 2),
+                    bottom: BorderSide(color: accentColor, width: 2),
+                  )
+                : null,
+          ),
+        );
+      },
     );
   }
 }
