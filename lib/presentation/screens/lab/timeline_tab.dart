@@ -568,9 +568,7 @@ class _SinFechaSection extends StatelessWidget {
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isSelected
-                          ? accentColor.withAlpha(25)
-                          : bg,
+                      color: bg,
                       border: Border.all(
                         color: isSelected ? accentColor : inkBlack,
                         width: isSelected ? borderWidthHeavy : borderWidth,
