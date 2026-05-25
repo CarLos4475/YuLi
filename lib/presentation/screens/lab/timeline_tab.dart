@@ -212,7 +212,7 @@ class _TimelineViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalDays = space.dueDate!.difference(space.startDate!).inDays + 1;
-    const laneHeight = 100.0;
+    const baseLaneHeight = 100.0;
     const headerHeight = 40.0;
     final availWidth = MediaQuery.of(context).size.width;
 
@@ -242,6 +242,16 @@ class _TimelineViewer extends StatelessWidget {
     }
     final totalWidth = dayPositions.last + dayWidths.last;
 
+    // Calculate per-lane Y positions with dynamic heights
+    final laneTopPositions = List.filled(columns.length, 0.0);
+    double currentY = headerHeight;
+    for (int i = 0; i < columns.length; i++) {
+      laneTopPositions[i] = currentY;
+      final count = cardsPerLane[i] ?? 0;
+      currentY += baseLaneHeight + (count > 4 ? (count - 4) * 26.0 : 0);
+    }
+    final totalHeight = currentY;
+
     // Group cards by (dayIndex, laneIndex) for vertical stacking
     final groups = <String, List<KanbanCard>>{};
     for (final card in cards) {
@@ -254,9 +264,6 @@ class _TimelineViewer extends StatelessWidget {
       final key = '$dayIndex|$laneIndex';
       groups.putIfAbsent(key, () => []).add(card);
     }
-
-    final totalHeight = headerHeight + columns.length * laneHeight +
-        cardsPerLane.values.fold(0, (sum, c) => sum + (c > 4 ? (c - 4) * 26 : 0));
 
     // Build positioned card widgets with vertical stacking
     final cardWidgets = <Widget>[];
@@ -272,9 +279,9 @@ class _TimelineViewer extends StatelessWidget {
         final card = groupCards[gi];
         final dayW = dayWidths[dayIndex];
         final x = dayPositions[dayIndex] + 2;
-        final y = headerHeight + (laneIndex * laneHeight) + 22 + gi * 26;
+        final y = laneTopPositions[laneIndex] + 4 + gi * 24;
         final cardWidth = dayW - 4;
-        final cardHeight = 22.0;
+        final cardHeight = 20.0;
         final isSelected = selectedCardIds.contains(card.id);
         final bg = card.originFolderColor != null
             ? Color(card.originFolderColor!)
@@ -342,7 +349,7 @@ class _TimelineViewer extends StatelessWidget {
                 columns: columns,
                 ink: ink,
                 headerHeight: headerHeight,
-                laneHeight: laneHeight,
+                laneTopPositions: laneTopPositions,
                 dayPositions: dayPositions,
                 dayWidths: dayWidths,
               ),
@@ -375,7 +382,7 @@ class _TimelineGridPainter extends CustomPainter {
   final List<KanbanColumn> columns;
   final Color ink;
   final double headerHeight;
-  final double laneHeight;
+  final List<double> laneTopPositions;
   final List<double> dayPositions;
   final List<double> dayWidths;
 
@@ -385,7 +392,7 @@ class _TimelineGridPainter extends CustomPainter {
     required this.columns,
     required this.ink,
     required this.headerHeight,
-    required this.laneHeight,
+    required this.laneTopPositions,
     required this.dayPositions,
     required this.dayWidths,
   });
@@ -475,7 +482,7 @@ class _TimelineGridPainter extends CustomPainter {
 
     // Horizontal lane lines and column labels
     for (int i = 0; i < columns.length; i++) {
-      final y = headerHeight + (i * laneHeight);
+      final y = laneTopPositions[i];
 
       // Lane top border
       canvas.drawLine(
