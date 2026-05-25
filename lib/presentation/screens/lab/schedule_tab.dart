@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -98,30 +99,63 @@ class ScheduleTab extends ConsumerStatefulWidget {
   ConsumerState<ScheduleTab> createState() => _ScheduleTabState();
 }
 
-class _ScheduleTabState extends ConsumerState<ScheduleTab>
-    with AutomaticKeepAliveClientMixin {
+class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   late DateTime _currentWeekStart;
+  List<ScheduleBlock> _blocks = [];
+  ScheduleWeekNote? _weekNote;
+  StreamSubscription<List<ScheduleBlock>>? _blocksSub;
+  StreamSubscription<ScheduleWeekNote?>? _noteSub;
 
   double? _dragStartY;
   double? _dragCurrentY;
   int? _dragDayIndex;
 
   @override
-  bool get wantKeepAlive => true;
-
-  @override
   void initState() {
     super.initState();
     _currentWeekStart = _mondayOfWeek(DateTime.now());
+    _subscribe();
   }
 
-  void _prevWeek() => setState(
-      () => _currentWeekStart = _currentWeekStart.subtract(const Duration(days: 7)));
+  void _subscribe() {
+    final repo = ref.read(scheduleRepositoryProvider);
+    _blocksSub = repo.watchBySpace(widget.space.id).listen((b) {
+      if (mounted) setState(() => _blocks = b);
+    });
+    _noteSub = repo.watchWeekNote(widget.space.id, _currentWeekStart).listen((n) {
+      if (mounted) setState(() => _weekNote = n);
+    });
+  }
 
-  void _nextWeek() => setState(
-      () => _currentWeekStart = _currentWeekStart.add(const Duration(days: 7)));
+  @override
+  void dispose() {
+    _blocksSub?.cancel();
+    _noteSub?.cancel();
+    super.dispose();
+  }
 
-  void _goToday() => setState(() => _currentWeekStart = _mondayOfWeek(DateTime.now()));
+  void _prevWeek() {
+    setState(() => _currentWeekStart = _currentWeekStart.subtract(const Duration(days: 7)));
+    _resubscribe();
+  }
+
+  void _nextWeek() {
+    setState(() => _currentWeekStart = _currentWeekStart.add(const Duration(days: 7)));
+    _resubscribe();
+  }
+
+  void _goToday() {
+    setState(() => _currentWeekStart = _mondayOfWeek(DateTime.now()));
+    _resubscribe();
+  }
+
+  void _resubscribe() {
+    _noteSub?.cancel();
+    final repo = ref.read(scheduleRepositoryProvider);
+    _noteSub = repo.watchWeekNote(widget.space.id, _currentWeekStart).listen((n) {
+      if (mounted) setState(() => _weekNote = n);
+    });
+  }
 
   String _weekLabel() {
     final end = _currentWeekStart.add(const Duration(days: 6));
@@ -130,26 +164,18 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final ink = inkColor(context);
 
     return ref.watch(_scheduleSettingsProvider(widget.space.id)).when(
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (settings) {
-        return StreamBuilder<List<ScheduleBlock>>(
-          stream: ref.read(scheduleRepositoryProvider).watchBySpace(widget.space.id),
-          builder: (ctx, snap) {
-            final blocks = snap.data ?? [];
-            return _buildWithBlocks(ctx, blocks, settings, ink);
-          },
-        );
+        return _buildWithBlocks(settings, ink);
       },
     );
   }
 
-  Widget _buildWithBlocks(BuildContext outerCtx, List<ScheduleBlock> blocks,
-      ScheduleSettings settings, Color ink) {
+  Widget _buildWithBlocks(ScheduleSettings settings, Color ink) {
     final days = _weekDays(settings.showWeekends);
     final sMin = settings.startMinutes;
     final eMin = settings.endMinutes;
@@ -250,7 +276,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab>
                                         // Blocks per day
                                         for (int di = 0; di < days.length; di++)
                                           ..._buildDayBlocks(
-                                            blocks,
+                                            _blocks,
                                             di,
                                             days[di],
                                             dayWidth,
@@ -291,7 +317,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab>
                                                       _dragCurrentY =
                                                           d.localPosition.dy),
                                               onVerticalDragEnd: (d) {
-                                                _finishDrag(blocks, days, sMin,
+                                                _finishDrag(_blocks, days, sMin,
                                                     totalHeight);
                                               },
                                             ),
