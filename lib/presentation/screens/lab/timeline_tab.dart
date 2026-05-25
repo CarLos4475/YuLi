@@ -95,12 +95,14 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
                             widget.onToggleSelection(card.id),
                         selectedCardIds: widget.selectedCardIds,
                         selectionMode: widget.selectionMode,
+                        accentColor: widget.space.accentColor,
                       ),
                     ),
                     if (noDate.isNotEmpty)
                       _SinFechaSection(
                         cards: noDate,
                         ink: ink,
+                        accentColor: widget.space.accentColor,
                         onCardTap: (card) => widget.selectionMode
                             ? widget.onToggleSelection(card.id)
                             : _openCardDetail(context, card),
@@ -189,6 +191,7 @@ class _TimelineViewer extends StatelessWidget {
   final void Function(KanbanCard) onCardLongPress;
   final Set<int> selectedCardIds;
   final bool selectionMode;
+  final Color accentColor;
 
   const _TimelineViewer({
     super.key,
@@ -201,6 +204,7 @@ class _TimelineViewer extends StatelessWidget {
     this.onCardLongPress = _noop,
     this.selectedCardIds = const {},
     this.selectionMode = false,
+    required this.accentColor,
   });
 
   static void _noop(KanbanCard _) {}
@@ -248,41 +252,22 @@ class _TimelineViewer extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             child: Container(
               decoration: BoxDecoration(
-                color: isSelected ? ink : paper,
+                color: isSelected ? accentColor.withAlpha(20) : paper,
                 border: Border.all(
-                  color: isSelected ? ink : ink.withAlpha(80),
+                  color: isSelected ? accentColor : ink.withAlpha(80),
                   width: isSelected ? borderWidthHeavy : borderWidth,
                 ),
               ),
               padding: const EdgeInsets.fromLTRB(5, 4, 4, 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 3,
-                    height: double.infinity,
-                    color: _cardColor(card),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      card.title,
-                      style: TextStyle(
-                        color: isSelected ? paper : ink,
-                        fontSize: 9,
-                        fontFamily: 'Inter',
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (isSelected)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 2),
-                      child: Icon(Icons.check,
-                          size: 8, color: paper),
-                    ),
-                ],
+              child: Text(
+                card.title,
+                style: TextStyle(
+                  color: ink,
+                  fontSize: 9,
+                  fontFamily: 'Inter',
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -515,6 +500,7 @@ class _TimelineGridPainter extends CustomPainter {
 class _SinFechaSection extends StatelessWidget {
   final List<KanbanCard> cards;
   final Color ink;
+  final Color accentColor;
   final void Function(KanbanCard)? onCardTap;
   final void Function(KanbanCard)? onCardLongPress;
   final Set<int> selectedCardIds;
@@ -523,6 +509,7 @@ class _SinFechaSection extends StatelessWidget {
   const _SinFechaSection({
     required this.cards,
     required this.ink,
+    required this.accentColor,
     this.onCardTap,
     this.onCardLongPress,
     this.selectedCardIds = const {},
@@ -581,37 +568,25 @@ class _SinFechaSection extends StatelessWidget {
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isSelected ? ink : bg,
+                      color: isSelected
+                          ? accentColor.withAlpha(25)
+                          : bg,
                       border: Border.all(
-                        color: isSelected ? ink : inkBlack,
+                        color: isSelected ? accentColor : inkBlack,
                         width: isSelected ? borderWidthHeavy : borderWidth,
                       ),
                       boxShadow: isSelected ? null : shadowM,
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            cards[i].title,
-                            style: bodyS.copyWith(
-                              color: isSelected
-                                  ? paperColor(context)
-                                  : bg.computeLuminance() > 0.5
-                                      ? inkBlack
-                                      : paperColor(context),
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isSelected)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Icon(Icons.check,
-                                size: 10, color: paperColor(context)),
-                          ),
-                      ],
+                    child: Text(
+                      cards[i].title,
+                      style: bodyS.copyWith(
+                        color: bg.computeLuminance() > 0.5
+                            ? inkBlack
+                            : paperColor(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 );

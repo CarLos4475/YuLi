@@ -274,6 +274,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                       weekStart: _currentWeekStart,
                       cards: withDate,
                       ink: ink,
+                      accentColor: widget.space.accentColor,
                       onCardDropped: (card, date) =>
                           _onCardDropped(card, date, repo, taskRepo),
                       onCardTap: (card) => widget.selectionMode
@@ -298,6 +299,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
               _SinFechaSection(
                 cards: noDate,
                 ink: ink,
+                accentColor: widget.space.accentColor,
                 onCardTap: (card) => widget.selectionMode
                     ? widget.onToggleSelection(card.id)
                     : _openCardDetail(context, card),
@@ -500,11 +502,13 @@ class _WeekView extends StatelessWidget {
   final void Function(KanbanCard) onCardLongPress;
   final Set<int> selectedCardIds;
   final bool selectionMode;
+  final Color accentColor;
 
   const _WeekView({
     required this.weekStart,
     required this.cards,
     required this.ink,
+    required this.accentColor,
     required this.onCardDropped,
     required this.onCardTap,
     this.onCardLongPress = _noop,
@@ -603,6 +607,7 @@ class _WeekView extends StatelessWidget {
                             return _DraggableCard(
                               card: dayCards[i],
                               ink: ink,
+                              accentColor: accentColor,
                               onTap: () => onCardTap(dayCards[i]),
                               onLongPress: () =>
                                   onCardLongPress(dayCards[i]),
@@ -634,6 +639,7 @@ class _WeekView extends StatelessWidget {
 class _DraggableCard extends StatelessWidget {
   final KanbanCard card;
   final Color ink;
+  final Color accentColor;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final bool isSelected;
@@ -641,6 +647,7 @@ class _DraggableCard extends StatelessWidget {
   const _DraggableCard({
     required this.card,
     required this.ink,
+    required this.accentColor,
     this.onTap,
     this.onLongPress,
     this.isSelected = false,
@@ -691,9 +698,9 @@ class _DraggableCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isSelected ? ink.withAlpha(25) : Colors.transparent,
+        color: isSelected ? accentColor.withAlpha(25) : Colors.transparent,
         border: Border.all(
-          color: isSelected ? ink : ink.withAlpha(60),
+          color: isSelected ? accentColor : ink.withAlpha(60),
           width: isSelected ? borderWidthHeavy : borderWidth,
         ),
       ),
@@ -703,8 +710,7 @@ class _DraggableCard extends StatelessWidget {
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: isSelected ? ink : _priorityColor(),
-              shape: BoxShape.rectangle,
+              color: isSelected ? accentColor : _priorityColor(),
             ),
           ),
           const SizedBox(width: 6),
@@ -719,7 +725,7 @@ class _DraggableCard extends StatelessWidget {
           if (isSelected)
             Padding(
               padding: const EdgeInsets.only(left: 4),
-              child: Icon(Icons.check, size: 10, color: ink),
+              child: Icon(Icons.check, size: 10, color: accentColor),
             ),
         ],
       ),
@@ -912,6 +918,7 @@ class _MonthView extends StatelessWidget {
 class _SinFechaSection extends StatelessWidget {
   final List<KanbanCard> cards;
   final Color ink;
+  final Color accentColor;
   final void Function(KanbanCard)? onCardTap;
   final void Function(KanbanCard)? onCardLongPress;
   final Set<int> selectedCardIds;
@@ -920,6 +927,7 @@ class _SinFechaSection extends StatelessWidget {
   const _SinFechaSection({
     required this.cards,
     required this.ink,
+    required this.accentColor,
     this.onCardTap,
     this.onCardLongPress,
     this.selectedCardIds = const {},
@@ -975,9 +983,11 @@ class _SinFechaSection extends StatelessWidget {
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isSelected ? ink : bg,
+                      color: isSelected
+                          ? accentColor.withAlpha(25)
+                          : bg,
                       border: Border.all(
-                        color: isSelected ? ink : inkBlack,
+                        color: isSelected ? accentColor : inkBlack,
                         width: isSelected ? borderWidthHeavy : borderWidth,
                       ),
                       boxShadow: isSelected ? null : shadowM,
@@ -988,11 +998,9 @@ class _SinFechaSection extends StatelessWidget {
                           child: Text(
                             cards[i].title,
                             style: bodyS.copyWith(
-                              color: isSelected
-                                  ? paperColor(context)
-                                  : bg.computeLuminance() > 0.5
-                                      ? inkBlack
-                                      : paperColor(context),
+                              color: bg.computeLuminance() > 0.5
+                                  ? inkBlack
+                                  : paperColor(context),
                               fontWeight: FontWeight.w600,
                             ),
                             maxLines: 2,
@@ -1003,7 +1011,7 @@ class _SinFechaSection extends StatelessWidget {
                           Padding(
                             padding: const EdgeInsets.only(left: 4),
                             child: Icon(Icons.check,
-                                size: 10, color: paperColor(context)),
+                                size: 10, color: accentColor),
                           ),
                       ],
                     ),
