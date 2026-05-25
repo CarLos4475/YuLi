@@ -204,7 +204,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final totalHeight = (totalMins / 30) * _halfHourHeight;
 
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 120.0);
+    final horizontalPadding = (screenWidth * 0.04).clamp(16.0, 80.0);
 
     return Center(
       child: Padding(
@@ -261,18 +261,12 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                           m += 30)
                                         SizedBox(
                                           height: _halfHourHeight,
-                                          child: Align(
-                                            alignment: Alignment.topRight,
-                                            child: Transform.translate(
-                                              offset: const Offset(0, -6),
-                                              child: Padding(
-                                                padding: const EdgeInsets.only(right: 6),
-                                                child: Text(
-                                                  _minutesToTime(m),
-                                                  style: bodyS.copyWith(
-                                                      color: inkGray, fontSize: 10),
-                                                ),
-                                              ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(right: 6, top: 2),
+                                            child: Text(
+                                              _minutesToTime(m),
+                                              style: bodyS.copyWith(
+                                                  color: inkGray, fontSize: 10),
                                             ),
                                           ),
                                         ),
