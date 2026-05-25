@@ -39,13 +39,6 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
   @override
   void initState() {
     super.initState();
-    if (widget.space.startDate != null) {
-      _currentWeekStart = _startOfWeek(widget.space.startDate!);
-      _currentMonth = DateTime(
-        widget.space.startDate!.year,
-        widget.space.startDate!.month,
-      );
-    }
   }
 
   DateTime _startOfWeek(DateTime date) {
