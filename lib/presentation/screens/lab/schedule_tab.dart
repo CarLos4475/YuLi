@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
@@ -10,8 +8,6 @@ import '../../../domain/models/schedule_block.dart';
 import '../../../domain/models/schedule_settings.dart';
 import '../../../domain/models/schedule_week_note.dart';
 import '../../../domain/models/lab_space.dart';
-import '../../../domain/models/folder.dart';
-import '../../../domain/repositories/schedule_repository.dart';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -22,11 +18,6 @@ const _dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 List<String> _weekDays(bool showWeekends) =>
     showWeekends ? _dayNames : _dayNames.sublist(0, 5);
-
-int _timeToMinutes(String time) {
-  final p = time.split(':');
-  return int.parse(p[0]) * 60 + int.parse(p[1]);
-}
 
 String _minutesToTime(int m) {
   final h = m ~/ 60;
@@ -54,16 +45,45 @@ class _LaneInfo {
   final ScheduleBlock block;
   final int lane;
   final int totalLanes;
-  const _LaneInfo(this.block, this.lane, this.totalLanes);
+  final int colSpan;
+  const _LaneInfo(this.block, this.lane, this.totalLanes, this.colSpan);
 }
 
 List<_LaneInfo> _assignLanes(List<ScheduleBlock> blocks) {
   if (blocks.isEmpty) return [];
   final sorted = List<ScheduleBlock>.from(blocks)
     ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
-  final lanes = <List<ScheduleBlock>>[];
+
   final result = <_LaneInfo>[];
+  var cluster = <ScheduleBlock>[];
+  var maxEnd = 0;
+
   for (final block in sorted) {
+    if (cluster.isEmpty) {
+      cluster.add(block);
+      maxEnd = block.endMinutes;
+    } else if (block.startMinutes < maxEnd) {
+      cluster.add(block);
+      if (block.endMinutes > maxEnd) {
+        maxEnd = block.endMinutes;
+      }
+    } else {
+      result.addAll(_assignLanesForCluster(cluster));
+      cluster = [block];
+      maxEnd = block.endMinutes;
+    }
+  }
+  if (cluster.isNotEmpty) {
+    result.addAll(_assignLanesForCluster(cluster));
+  }
+  return result;
+}
+
+List<_LaneInfo> _assignLanesForCluster(List<ScheduleBlock> cluster) {
+  final lanes = <List<ScheduleBlock>>[];
+  final tempResult = <(ScheduleBlock, int)>[];
+
+  for (final block in cluster) {
     int idx = -1;
     for (int i = 0; i < lanes.length; i++) {
       if (lanes[i].last.endMinutes <= block.startMinutes) {
@@ -76,8 +96,26 @@ List<_LaneInfo> _assignLanes(List<ScheduleBlock> blocks) {
       lanes.add([]);
     }
     lanes[idx].add(block);
-    result.add(_LaneInfo(block, idx, lanes.length));
+    tempResult.add((block, idx));
   }
+
+  final N = lanes.length;
+  final result = <_LaneInfo>[];
+
+  for (final (block, c) in tempResult) {
+    int colSpan = 1;
+    for (int j = c + 1; j < N; j++) {
+      final hasOverlap = lanes[j].any((otherBlock) =>
+          otherBlock.startMinutes < block.endMinutes &&
+          otherBlock.endMinutes > block.startMinutes);
+      if (hasOverlap) {
+        break;
+      }
+      colSpan++;
+    }
+    result.add(_LaneInfo(block, c, N, colSpan));
+  }
+
   return result;
 }
 
@@ -85,19 +123,22 @@ List<_LaneInfo> _assignLanes(List<ScheduleBlock> blocks) {
 
 final _scheduleSettingsProvider =
     FutureProvider.family<ScheduleSettings, int>((ref, spaceId) async {
-  return ref.read(scheduleRepositoryProvider).getOrCreateSettings(spaceId);
+  final repo = ref.watch(scheduleRepositoryProvider);
+  return repo.getOrCreateSettings(spaceId);
 });
 
 final _scheduleBlocksProvider =
     StreamProvider.family<List<ScheduleBlock>, int>((ref, spaceId) {
-  return ref.read(scheduleRepositoryProvider).watchBySpace(spaceId);
+  final repo = ref.watch(scheduleRepositoryProvider);
+  return repo.watchBySpace(spaceId);
 });
 
 final _weekNoteProvider =
     StreamProvider.family<ScheduleWeekNote?, (int, String)>((ref, key) {
   final (spaceId, weekStart) = key;
   final date = DateTime.parse(weekStart);
-  return ref.read(scheduleRepositoryProvider).watchWeekNote(spaceId, date);
+  final repo = ref.watch(scheduleRepositoryProvider);
+  return repo.watchWeekNote(spaceId, date);
 });
 
 // ─── Main Widget ───────────────────────────────────────────────────────────
@@ -162,12 +203,13 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final totalMins = eMin - sMin;
     final totalHeight = (totalMins / 30) * _halfHourHeight;
 
-    return StreamBuilder<ScheduleWeekNote?>(
-      stream: ref.read(scheduleRepositoryProvider).watchWeekNote(
-        widget.space.id, _currentWeekStart),
-      builder: (context, noteSnap) {
-        final weekNote = noteSnap.data;
-        return Column(
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 120.0);
+
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
+        child: Column(
           children: [
             _ScheduleHeader(
               weekLabel: _weekLabel(),
@@ -221,13 +263,15 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                           height: _halfHourHeight,
                                           child: Align(
                                             alignment: Alignment.topRight,
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsets.only(right: 6, top: -6),
-                                              child: Text(
-                                                _minutesToTime(m),
-                                                style: bodyS.copyWith(
-                                                    color: inkGray, fontSize: 10),
+                                            child: Transform.translate(
+                                              offset: const Offset(0, -6),
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(right: 6),
+                                                child: Text(
+                                                  _minutesToTime(m),
+                                                  style: bodyS.copyWith(
+                                                      color: inkGray, fontSize: 10),
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -317,8 +361,8 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
               ),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -341,18 +385,24 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     for (final li in lanes) {
       final b = li.block;
       final laneWidth = dayWidth / li.totalLanes;
-      final topRatio =
-          (b.startMinutes - startMinutes) / (totalHeight / _halfHourHeight * 30);
-      final heightRatio =
-          (b.endMinutes - b.startMinutes) / (_halfHourHeight * 2) * _halfHourHeight;
-      final top = topRatio * _halfHourHeight;
+      final top = ((b.startMinutes - startMinutes) / 30) * _halfHourHeight;
+      final height = ((b.endMinutes - b.startMinutes) / 30) * _halfHourHeight;
+
+      final remainingDayWidth = dayWidth - (li.lane * laneWidth);
+      double blockWidth = li.colSpan * laneWidth;
+      if (li.lane + li.colSpan < li.totalLanes) {
+        blockWidth += 0.5 * laneWidth;
+      }
+      if (blockWidth > remainingDayWidth) {
+        blockWidth = remainingDayWidth;
+      }
 
       result.add(
         Positioned(
-          left: dayIndex * dayWidth + li.lane * laneWidth,
-          top: top,
-          width: laneWidth - 2,
-          height: heightRatio - 2,
+          left: dayIndex * dayWidth + li.lane * laneWidth + 2.0,
+          top: top + 2.0,
+          width: (blockWidth - 4.0).clamp(4.0, double.infinity),
+          height: (height - 4.0).clamp(4.0, double.infinity),
           child: _ScheduleBlockWidget(
             block: b,
             onTap: () => _showBlockDetail(context, b),
@@ -387,6 +437,8 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final endMins =
         _roundToHalfHour(startMinutes + (bottom * minPerPixel).round());
 
+    final dayIndex = _dragDayIndex!;
+
     setState(() {
       _dragStartY = null;
       _dragCurrentY = null;
@@ -395,7 +447,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
 
     if (endMins - startMins < 30) return;
 
-    final dayKey = days[_dragDayIndex!];
+    final dayKey = days[dayIndex];
     _showCreateBlock(context, startMins, endMins, dayKey);
   }
 
@@ -1137,7 +1189,14 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
   }
 
   Future<void> _save() async {
-    final title = _titleCtrl.text.trim();
+    String title = _titleCtrl.text.trim();
+    if (_selectedFolderId != null) {
+      final folders = ref.read(activeFoldersProvider).valueOrNull ?? [];
+      final folder = folders.where((f) => f.id == _selectedFolderId).firstOrNull;
+      if (folder != null) {
+        title = folder.name;
+      }
+    }
     if (title.isEmpty || _selectedDays.isEmpty) return;
 
     final color = _useFolderColor && _selectedFolderId != null
@@ -1173,11 +1232,11 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
         useFolderColor: _useFolderColor,
       );
     }
-    if (context.mounted) Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
   }
 
   String _colorToHex(Color c) =>
-      '#${c.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+      '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
 
   Color _folderColor(int folderId) {
     final foldersAsync = ref.read(activeFoldersProvider);
@@ -1223,39 +1282,50 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              ...folders.map((f) => GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedFolderId =
-                          _selectedFolderId == f.id ? null : f.id;
-                      if (_selectedFolderId != null) {
-                        _useFolderColor = true;
-                      }
-                    }),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _selectedFolderId == f.id
-                            ? f.color
-                            : Colors.transparent,
-                        border: Border.all(
-                          color: _selectedFolderId == f.id
-                              ? f.color
-                              : inkGray,
-                          width: borderWidth,
-                        ),
+              ...folders.map((f) {
+                final isSelected = _selectedFolderId == f.id;
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    _selectedFolderId = isSelected ? null : f.id;
+                    if (_selectedFolderId != null) {
+                      _useFolderColor = true;
+                    }
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: f.color,
+                      border: Border.all(
+                        color: inkBlack,
+                        width: isSelected ? borderWidthHeavy : borderWidth,
                       ),
-                      child: Text(
-                        f.name,
-                        style: labelBold.copyWith(
-                          color: _selectedFolderId == f.id
-                              ? paperLight
-                              : f.color,
-                          fontSize: 11,
-                        ),
-                      ),
+                      boxShadow: shadowM,
                     ),
-                  )),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          f.name,
+                          style: labelBold.copyWith(
+                            color: f.color.computeLuminance() > 0.5
+                                ? inkBlack
+                                : paperLight,
+                            fontSize: 11,
+                          ),
+                        ),
+                        if (isSelected) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.check, size: 10,
+                              color: f.color.computeLuminance() > 0.5
+                                  ? inkBlack
+                                  : paperLight),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
               if (_selectedFolderId != null)
                 GestureDetector(
                   onTap: () =>
