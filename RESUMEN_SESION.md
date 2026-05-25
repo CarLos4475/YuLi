@@ -6,7 +6,10 @@ Rediseño completo del frontend de YuLi siguiendo el sistema brutalista
 
 ## Setup
 
-- Flutter 3.44.0 instalado en `~/development/flutter`
+- Sesión trabajada en Mac secundaria (no PC principal). Por eso se
+  descargó Flutter 3.44.0 a `~/development/flutter` para correr
+  `flutter analyze`. PC principal ya tiene el entorno seteado, no
+  requiere reinstalación
 - Target principal: Android tablet landscape 1280×820
 - Tokens centralizados: `lib/presentation/widgets/yuli_design.dart`
 - Stack DB: drift + sqlite3_flutter_libs (sin cambios de stack)
