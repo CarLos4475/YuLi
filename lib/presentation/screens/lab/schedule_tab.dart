@@ -922,6 +922,7 @@ class _ScheduleBlockWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           border: Border.all(color: inkBlack, width: borderWidth),
+          boxShadow: shadowM,
         ),
         padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
         child: Column(
