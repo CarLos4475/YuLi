@@ -59,10 +59,13 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+        },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from == 1) {
             await m.addColumn(tasks, tasks.dueDate);
@@ -75,6 +78,11 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from <= 4) {
             await m.addColumn(kanbanCards, kanbanCards.originTaskDoneAt);
+          }
+          if (from <= 5) {
+            await m.createTable(scheduleBlocks);
+            await m.createTable(scheduleSettings);
+            await m.createTable(scheduleWeekNotes);
           }
         },
       );
