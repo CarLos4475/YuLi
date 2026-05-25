@@ -422,10 +422,21 @@ class _KanbanHeader extends ConsumerWidget {
                   ),
                 ],
                 if (space.startDate != null || space.dueDate != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    _formatDateRange(space.startDate, space.dueDate),
-                    style: bodyS.copyWith(color: inkGray),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: space.accentColor.withAlpha(25),
+                      border: Border.all(color: space.accentColor, width: borderWidth),
+                      boxShadow: shadowM,
+                    ),
+                    child: Text(
+                      _formatDateRange(space.startDate, space.dueDate),
+                      style: labelS.copyWith(
+                        color: space.accentColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ] else ...[
                   const SizedBox(height: 2),
