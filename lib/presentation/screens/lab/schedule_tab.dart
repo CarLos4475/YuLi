@@ -81,6 +81,13 @@ List<_LaneInfo> _assignLanes(List<ScheduleBlock> blocks) {
   return result;
 }
 
+// ─── Settings provider per space ──────────────────────────────────────────
+
+final _scheduleSettingsProvider =
+    FutureProvider.family<ScheduleSettings, int>((ref, spaceId) async {
+  return ref.read(scheduleRepositoryProvider).getOrCreateSettings(spaceId);
+});
+
 // ─── Main Widget ───────────────────────────────────────────────────────────
 
 class ScheduleTab extends ConsumerStatefulWidget {
@@ -91,25 +98,21 @@ class ScheduleTab extends ConsumerStatefulWidget {
   ConsumerState<ScheduleTab> createState() => _ScheduleTabState();
 }
 
-class _ScheduleTabState extends ConsumerState<ScheduleTab> {
+class _ScheduleTabState extends ConsumerState<ScheduleTab>
+    with AutomaticKeepAliveClientMixin {
   late DateTime _currentWeekStart;
-  ScheduleSettings? _settings;
 
   double? _dragStartY;
   double? _dragCurrentY;
   int? _dragDayIndex;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _currentWeekStart = _mondayOfWeek(DateTime.now());
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    final repo = ref.read(scheduleRepositoryProvider);
-    final s = await repo.getOrCreateSettings(widget.space.id);
-    if (mounted) setState(() => _settings = s);
   }
 
   void _prevWeek() => setState(
@@ -127,20 +130,26 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final ink = inkColor(context);
-    final settings = _settings;
-    if (settings == null) return const SizedBox.shrink();
 
-    return StreamBuilder<List<ScheduleBlock>>(
-      stream: ref.read(scheduleRepositoryProvider).watchBySpace(widget.space.id),
-      builder: (context, snap) {
-        final blocks = snap.data ?? [];
-        return _buildWithBlocks(blocks, settings, ink);
+    return ref.watch(_scheduleSettingsProvider(widget.space.id)).when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (settings) {
+        return StreamBuilder<List<ScheduleBlock>>(
+          stream: ref.read(scheduleRepositoryProvider).watchBySpace(widget.space.id),
+          builder: (ctx, snap) {
+            final blocks = snap.data ?? [];
+            return _buildWithBlocks(ctx, blocks, settings, ink);
+          },
+        );
       },
     );
   }
 
-  Widget _buildWithBlocks(List<ScheduleBlock> blocks, ScheduleSettings settings, Color ink) {
+  Widget _buildWithBlocks(BuildContext outerCtx, List<ScheduleBlock> blocks,
+      ScheduleSettings settings, Color ink) {
     final days = _weekDays(settings.showWeekends);
     final sMin = settings.startMinutes;
     final eMin = settings.endMinutes;
@@ -495,7 +504,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
           scrollController: sc,
           onChanged: (s) {
             ref.read(scheduleRepositoryProvider).updateSettings(s);
-            setState(() => _settings = s);
+            ref.invalidate(_scheduleSettingsProvider(widget.space.id));
           },
         ),
       ),
