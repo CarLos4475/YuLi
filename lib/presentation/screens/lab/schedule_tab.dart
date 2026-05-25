@@ -866,15 +866,12 @@ class _TimeLineWidget extends StatelessWidget {
 
     return Positioned(
       left: 0,
-      top: nowY,
+      top: nowY - 4,
       width: totalWidth,
-      child: Row(
-        children: [
-          CustomPaint(
-            size: Size(totalWidth, 2),
-            painter: _TimeLinePainter(),
-          ),
-        ],
+      height: 10,
+      child: CustomPaint(
+        size: Size(totalWidth, 10),
+        painter: _TimeLinePainter(),
       ),
     );
   }
@@ -886,13 +883,29 @@ class _TimeLinePainter extends CustomPainter {
     final paint = Paint()
       ..color = accentError
       ..strokeWidth = 2.0;
-    canvas.drawLine(Offset(0, 0), Offset(size.width, 0), paint);
+    canvas.drawLine(Offset(0, 4), Offset(size.width, 4), paint);
     final triangle = Path()
-      ..moveTo(0, -4)
-      ..lineTo(6, 0)
-      ..lineTo(0, 4)
+      ..moveTo(0, 0)
+      ..lineTo(8, 4)
+      ..lineTo(0, 8)
       ..close();
     canvas.drawPath(triangle, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _TrianglePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = accentError;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, size.height / 2)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
   }
 
   @override
