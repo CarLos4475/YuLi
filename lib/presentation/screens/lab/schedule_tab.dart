@@ -303,14 +303,6 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             halfHourHeight: _halfHourHeight,
                                           ),
                                         ),
-                                        // Current time line (on top of everything)
-                                        _TimeLineWidget(
-                                          startMinutes: sMin,
-                                          totalMinutes: totalMins,
-                                          halfHourHeight: _halfHourHeight,
-                                          totalWidth:
-                                              constraints.maxWidth - _hoursWidth,
-                                        ),
                                         // Blocks per day
                                         for (int di = 0; di < days.length; di++)
                                           ..._buildDayBlocks(
@@ -321,6 +313,14 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             sMin,
                                             totalHeight,
                                           ),
+                                        // Current time line (on top of blocks)
+                                        _TimeLineWidget(
+                                          startMinutes: sMin,
+                                          totalMinutes: totalMins,
+                                          halfHourHeight: _halfHourHeight,
+                                          totalWidth:
+                                              constraints.maxWidth - _hoursWidth,
+                                        ),
                                         // Drag overlay
                                         if (_dragStartY != null &&
                                             _dragCurrentY != null &&
