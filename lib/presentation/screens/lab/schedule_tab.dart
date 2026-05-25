@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
@@ -156,11 +158,21 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   double? _dragStartY;
   double? _dragCurrentY;
   int? _dragDayIndex;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _currentWeekStart = _mondayOfWeek(DateTime.now());
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   void _prev() => setState(
@@ -286,6 +298,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                           painter: _GridPainter(
                                             ink: ink,
                                             totalMinutes: totalMins,
+                                            startMinutes: sMin,
                                             numDays: days.length,
                                             dayWidth: dayWidth,
                                             halfHourHeight: _halfHourHeight,
@@ -820,6 +833,7 @@ class _DayHeaderRow extends StatelessWidget {
 class _GridPainter extends CustomPainter {
   final Color ink;
   final int totalMinutes;
+  final int startMinutes;
   final int numDays;
   final double dayWidth;
   final double halfHourHeight;
@@ -827,6 +841,7 @@ class _GridPainter extends CustomPainter {
   _GridPainter({
     required this.ink,
     required this.totalMinutes,
+    required this.startMinutes,
     required this.numDays,
     required this.dayWidth,
     required this.halfHourHeight,
@@ -841,6 +856,9 @@ class _GridPainter extends CustomPainter {
     final borderPaint = Paint()
       ..color = ink.withAlpha(40)
       ..strokeWidth = borderWidth;
+
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
 
     final slots = totalMinutes ~/ 30;
 
@@ -862,6 +880,28 @@ class _GridPainter extends CustomPainter {
         Offset(x, size.height),
         borderPaint,
       );
+    }
+
+    // Current time line (red horizontal)
+    if (nowMinutes >= startMinutes &&
+        nowMinutes <= startMinutes + totalMinutes) {
+      final nowY =
+          ((nowMinutes - startMinutes) / 30.0) * halfHourHeight;
+      final nowPaint = Paint()
+        ..color = accentError
+        ..strokeWidth = 2.0;
+      canvas.drawLine(
+        Offset(0, nowY),
+        Offset(size.width, nowY),
+        nowPaint,
+      );
+      // Small triangle pointer at the left
+      final trianglePath = Path()
+        ..moveTo(0, nowY - 4)
+        ..lineTo(6, nowY)
+        ..lineTo(0, nowY + 4)
+        ..close();
+      canvas.drawPath(trianglePath, nowPaint);
     }
   }
 
