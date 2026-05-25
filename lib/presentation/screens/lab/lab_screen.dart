@@ -133,6 +133,20 @@ class _LabHeader extends StatelessWidget {
                 body: 'Las notas de Flight se vinculan a espacios desde el editor. '
                     'Las tareas de Fight se envían a columnas con long press.',
               ),
+              const SizedBox(height: 12),
+              _HelpSection(
+                label: 'CALENDARIO Y TIMELINE',
+                body: 'Agrega las pestañas Calendario y Timeline desde el botón +. '
+                    'Muestran las tarjetas con fecha en vista semanal/mensual y '
+                    'línea de tiempo. Arrastra tarjetas para reasignar fecha.',
+              ),
+              const SizedBox(height: 12),
+              _HelpSection(
+                label: 'SELECCIÓN MÚLTIPLE',
+                body: 'En Kanban toca el icono checklist en el encabezado. '
+                    'En Calendario y Timeline usa long press. '
+                    'Toca más tarjetas para seleccionarlas y bórralas todas juntas.',
+              ),
             ],
           ),
         ),
