@@ -560,8 +560,9 @@ class _SpaceRow extends ConsumerWidget {
                   await ref.read(folderRepositoryProvider).getById(task.folderId!);
               folderColor = folder?.color.value;
             }
-            final cleanTitle =
-                task.content.replaceAll(RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)'), r'$1').trim();
+            final cleanTitle = task.content.replaceAllMapped(
+              RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)'),
+              (m) => m.group(1)!,).trim();
             await ref.read(kanbanCardRepositoryProvider).create(
                   labSpaceId: space.id,
                   columnId: col.id,
