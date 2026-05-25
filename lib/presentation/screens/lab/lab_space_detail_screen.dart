@@ -426,14 +426,14 @@ class _KanbanHeader extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: space.accentColor.withAlpha(25),
-                      border: Border.all(color: space.accentColor, width: borderWidth),
+                      color: space.accentColor,
+                      border: Border.all(color: inkBlack, width: borderWidth),
                       boxShadow: shadowM,
                     ),
                     child: Text(
                       _formatDateRange(space.startDate, space.dueDate),
                       style: labelS.copyWith(
-                        color: space.accentColor,
+                        color: paperLight,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
