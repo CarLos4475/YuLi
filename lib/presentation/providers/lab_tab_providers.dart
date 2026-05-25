@@ -8,7 +8,7 @@ final labTabsProvider =
 );
 
 const _baseTabs = ['Kanban'];
-const _availableTabs = ['Calendario', 'Timeline'];
+const _availableTabs = ['Calendario', 'Timeline', 'Horario'];
 
 class LabTabsNotifier extends StateNotifier<List<String>> {
   final int spaceId;

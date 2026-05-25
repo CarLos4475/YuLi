@@ -4766,6 +4766,1315 @@ class NotificationsCompanion extends UpdateCompanion<NotificationRow> {
   }
 }
 
+class $ScheduleBlocksTable extends ScheduleBlocks
+    with TableInfo<$ScheduleBlocksTable, ScheduleBlockRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ScheduleBlocksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _folderIdMeta = const VerificationMeta(
+    'folderId',
+  );
+  @override
+  late final GeneratedColumn<int> folderId = GeneratedColumn<int>(
+    'folder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _locationMeta = const VerificationMeta(
+    'location',
+  );
+  @override
+  late final GeneratedColumn<String> location = GeneratedColumn<String>(
+    'location',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _startTimeMeta = const VerificationMeta(
+    'startTime',
+  );
+  @override
+  late final GeneratedColumn<String> startTime = GeneratedColumn<String>(
+    'start_time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endTimeMeta = const VerificationMeta(
+    'endTime',
+  );
+  @override
+  late final GeneratedColumn<String> endTime = GeneratedColumn<String>(
+    'end_time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _daysMeta = const VerificationMeta('days');
+  @override
+  late final GeneratedColumn<String> days = GeneratedColumn<String>(
+    'days',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _useFolderColorMeta = const VerificationMeta(
+    'useFolderColor',
+  );
+  @override
+  late final GeneratedColumn<int> useFolderColor = GeneratedColumn<int>(
+    'use_folder_color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    labSpaceId,
+    folderId,
+    title,
+    location,
+    startTime,
+    endTime,
+    days,
+    color,
+    useFolderColor,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'schedule_blocks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ScheduleBlockRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_labSpaceIdMeta);
+    }
+    if (data.containsKey('folder_id')) {
+      context.handle(
+        _folderIdMeta,
+        folderId.isAcceptableOrUnknown(data['folder_id']!, _folderIdMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('location')) {
+      context.handle(
+        _locationMeta,
+        location.isAcceptableOrUnknown(data['location']!, _locationMeta),
+      );
+    }
+    if (data.containsKey('start_time')) {
+      context.handle(
+        _startTimeMeta,
+        startTime.isAcceptableOrUnknown(data['start_time']!, _startTimeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startTimeMeta);
+    }
+    if (data.containsKey('end_time')) {
+      context.handle(
+        _endTimeMeta,
+        endTime.isAcceptableOrUnknown(data['end_time']!, _endTimeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endTimeMeta);
+    }
+    if (data.containsKey('days')) {
+      context.handle(
+        _daysMeta,
+        days.isAcceptableOrUnknown(data['days']!, _daysMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_daysMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
+    if (data.containsKey('use_folder_color')) {
+      context.handle(
+        _useFolderColorMeta,
+        useFolderColor.isAcceptableOrUnknown(
+          data['use_folder_color']!,
+          _useFolderColorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ScheduleBlockRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ScheduleBlockRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      folderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}folder_id'],
+      ),
+      title:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}title'],
+          )!,
+      location: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}location'],
+      ),
+      startTime:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}start_time'],
+          )!,
+      endTime:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}end_time'],
+          )!,
+      days:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}days'],
+          )!,
+      color:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}color'],
+          )!,
+      useFolderColor:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}use_folder_color'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $ScheduleBlocksTable createAlias(String alias) {
+    return $ScheduleBlocksTable(attachedDatabase, alias);
+  }
+}
+
+class ScheduleBlockRow extends DataClass
+    implements Insertable<ScheduleBlockRow> {
+  final int id;
+  final int labSpaceId;
+  final int? folderId;
+  final String title;
+  final String? location;
+  final String startTime;
+  final String endTime;
+  final String days;
+  final String color;
+  final int useFolderColor;
+  final DateTime createdAt;
+  const ScheduleBlockRow({
+    required this.id,
+    required this.labSpaceId,
+    this.folderId,
+    required this.title,
+    this.location,
+    required this.startTime,
+    required this.endTime,
+    required this.days,
+    required this.color,
+    required this.useFolderColor,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    if (!nullToAbsent || folderId != null) {
+      map['folder_id'] = Variable<int>(folderId);
+    }
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || location != null) {
+      map['location'] = Variable<String>(location);
+    }
+    map['start_time'] = Variable<String>(startTime);
+    map['end_time'] = Variable<String>(endTime);
+    map['days'] = Variable<String>(days);
+    map['color'] = Variable<String>(color);
+    map['use_folder_color'] = Variable<int>(useFolderColor);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ScheduleBlocksCompanion toCompanion(bool nullToAbsent) {
+    return ScheduleBlocksCompanion(
+      id: Value(id),
+      labSpaceId: Value(labSpaceId),
+      folderId:
+          folderId == null && nullToAbsent
+              ? const Value.absent()
+              : Value(folderId),
+      title: Value(title),
+      location:
+          location == null && nullToAbsent
+              ? const Value.absent()
+              : Value(location),
+      startTime: Value(startTime),
+      endTime: Value(endTime),
+      days: Value(days),
+      color: Value(color),
+      useFolderColor: Value(useFolderColor),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ScheduleBlockRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ScheduleBlockRow(
+      id: serializer.fromJson<int>(json['id']),
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      folderId: serializer.fromJson<int?>(json['folderId']),
+      title: serializer.fromJson<String>(json['title']),
+      location: serializer.fromJson<String?>(json['location']),
+      startTime: serializer.fromJson<String>(json['startTime']),
+      endTime: serializer.fromJson<String>(json['endTime']),
+      days: serializer.fromJson<String>(json['days']),
+      color: serializer.fromJson<String>(json['color']),
+      useFolderColor: serializer.fromJson<int>(json['useFolderColor']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'folderId': serializer.toJson<int?>(folderId),
+      'title': serializer.toJson<String>(title),
+      'location': serializer.toJson<String?>(location),
+      'startTime': serializer.toJson<String>(startTime),
+      'endTime': serializer.toJson<String>(endTime),
+      'days': serializer.toJson<String>(days),
+      'color': serializer.toJson<String>(color),
+      'useFolderColor': serializer.toJson<int>(useFolderColor),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ScheduleBlockRow copyWith({
+    int? id,
+    int? labSpaceId,
+    Value<int?> folderId = const Value.absent(),
+    String? title,
+    Value<String?> location = const Value.absent(),
+    String? startTime,
+    String? endTime,
+    String? days,
+    String? color,
+    int? useFolderColor,
+    DateTime? createdAt,
+  }) => ScheduleBlockRow(
+    id: id ?? this.id,
+    labSpaceId: labSpaceId ?? this.labSpaceId,
+    folderId: folderId.present ? folderId.value : this.folderId,
+    title: title ?? this.title,
+    location: location.present ? location.value : this.location,
+    startTime: startTime ?? this.startTime,
+    endTime: endTime ?? this.endTime,
+    days: days ?? this.days,
+    color: color ?? this.color,
+    useFolderColor: useFolderColor ?? this.useFolderColor,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ScheduleBlockRow copyWithCompanion(ScheduleBlocksCompanion data) {
+    return ScheduleBlockRow(
+      id: data.id.present ? data.id.value : this.id,
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      folderId: data.folderId.present ? data.folderId.value : this.folderId,
+      title: data.title.present ? data.title.value : this.title,
+      location: data.location.present ? data.location.value : this.location,
+      startTime: data.startTime.present ? data.startTime.value : this.startTime,
+      endTime: data.endTime.present ? data.endTime.value : this.endTime,
+      days: data.days.present ? data.days.value : this.days,
+      color: data.color.present ? data.color.value : this.color,
+      useFolderColor:
+          data.useFolderColor.present
+              ? data.useFolderColor.value
+              : this.useFolderColor,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduleBlockRow(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('folderId: $folderId, ')
+          ..write('title: $title, ')
+          ..write('location: $location, ')
+          ..write('startTime: $startTime, ')
+          ..write('endTime: $endTime, ')
+          ..write('days: $days, ')
+          ..write('color: $color, ')
+          ..write('useFolderColor: $useFolderColor, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    labSpaceId,
+    folderId,
+    title,
+    location,
+    startTime,
+    endTime,
+    days,
+    color,
+    useFolderColor,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ScheduleBlockRow &&
+          other.id == this.id &&
+          other.labSpaceId == this.labSpaceId &&
+          other.folderId == this.folderId &&
+          other.title == this.title &&
+          other.location == this.location &&
+          other.startTime == this.startTime &&
+          other.endTime == this.endTime &&
+          other.days == this.days &&
+          other.color == this.color &&
+          other.useFolderColor == this.useFolderColor &&
+          other.createdAt == this.createdAt);
+}
+
+class ScheduleBlocksCompanion extends UpdateCompanion<ScheduleBlockRow> {
+  final Value<int> id;
+  final Value<int> labSpaceId;
+  final Value<int?> folderId;
+  final Value<String> title;
+  final Value<String?> location;
+  final Value<String> startTime;
+  final Value<String> endTime;
+  final Value<String> days;
+  final Value<String> color;
+  final Value<int> useFolderColor;
+  final Value<DateTime> createdAt;
+  const ScheduleBlocksCompanion({
+    this.id = const Value.absent(),
+    this.labSpaceId = const Value.absent(),
+    this.folderId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.location = const Value.absent(),
+    this.startTime = const Value.absent(),
+    this.endTime = const Value.absent(),
+    this.days = const Value.absent(),
+    this.color = const Value.absent(),
+    this.useFolderColor = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ScheduleBlocksCompanion.insert({
+    this.id = const Value.absent(),
+    required int labSpaceId,
+    this.folderId = const Value.absent(),
+    required String title,
+    this.location = const Value.absent(),
+    required String startTime,
+    required String endTime,
+    required String days,
+    required String color,
+    this.useFolderColor = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : labSpaceId = Value(labSpaceId),
+       title = Value(title),
+       startTime = Value(startTime),
+       endTime = Value(endTime),
+       days = Value(days),
+       color = Value(color);
+  static Insertable<ScheduleBlockRow> custom({
+    Expression<int>? id,
+    Expression<int>? labSpaceId,
+    Expression<int>? folderId,
+    Expression<String>? title,
+    Expression<String>? location,
+    Expression<String>? startTime,
+    Expression<String>? endTime,
+    Expression<String>? days,
+    Expression<String>? color,
+    Expression<int>? useFolderColor,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (folderId != null) 'folder_id': folderId,
+      if (title != null) 'title': title,
+      if (location != null) 'location': location,
+      if (startTime != null) 'start_time': startTime,
+      if (endTime != null) 'end_time': endTime,
+      if (days != null) 'days': days,
+      if (color != null) 'color': color,
+      if (useFolderColor != null) 'use_folder_color': useFolderColor,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ScheduleBlocksCompanion copyWith({
+    Value<int>? id,
+    Value<int>? labSpaceId,
+    Value<int?>? folderId,
+    Value<String>? title,
+    Value<String?>? location,
+    Value<String>? startTime,
+    Value<String>? endTime,
+    Value<String>? days,
+    Value<String>? color,
+    Value<int>? useFolderColor,
+    Value<DateTime>? createdAt,
+  }) {
+    return ScheduleBlocksCompanion(
+      id: id ?? this.id,
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      folderId: folderId ?? this.folderId,
+      title: title ?? this.title,
+      location: location ?? this.location,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      days: days ?? this.days,
+      color: color ?? this.color,
+      useFolderColor: useFolderColor ?? this.useFolderColor,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (folderId.present) {
+      map['folder_id'] = Variable<int>(folderId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (location.present) {
+      map['location'] = Variable<String>(location.value);
+    }
+    if (startTime.present) {
+      map['start_time'] = Variable<String>(startTime.value);
+    }
+    if (endTime.present) {
+      map['end_time'] = Variable<String>(endTime.value);
+    }
+    if (days.present) {
+      map['days'] = Variable<String>(days.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (useFolderColor.present) {
+      map['use_folder_color'] = Variable<int>(useFolderColor.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduleBlocksCompanion(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('folderId: $folderId, ')
+          ..write('title: $title, ')
+          ..write('location: $location, ')
+          ..write('startTime: $startTime, ')
+          ..write('endTime: $endTime, ')
+          ..write('days: $days, ')
+          ..write('color: $color, ')
+          ..write('useFolderColor: $useFolderColor, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ScheduleSettingsTable extends ScheduleSettings
+    with TableInfo<$ScheduleSettingsTable, ScheduleSettingsRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ScheduleSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _showWeekendsMeta = const VerificationMeta(
+    'showWeekends',
+  );
+  @override
+  late final GeneratedColumn<int> showWeekends = GeneratedColumn<int>(
+    'show_weekends',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _dayStartTimeMeta = const VerificationMeta(
+    'dayStartTime',
+  );
+  @override
+  late final GeneratedColumn<String> dayStartTime = GeneratedColumn<String>(
+    'day_start_time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('07:00'),
+  );
+  static const VerificationMeta _dayEndTimeMeta = const VerificationMeta(
+    'dayEndTime',
+  );
+  @override
+  late final GeneratedColumn<String> dayEndTime = GeneratedColumn<String>(
+    'day_end_time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('22:00'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    labSpaceId,
+    showWeekends,
+    dayStartTime,
+    dayEndTime,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'schedule_settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ScheduleSettingsRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('show_weekends')) {
+      context.handle(
+        _showWeekendsMeta,
+        showWeekends.isAcceptableOrUnknown(
+          data['show_weekends']!,
+          _showWeekendsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('day_start_time')) {
+      context.handle(
+        _dayStartTimeMeta,
+        dayStartTime.isAcceptableOrUnknown(
+          data['day_start_time']!,
+          _dayStartTimeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('day_end_time')) {
+      context.handle(
+        _dayEndTimeMeta,
+        dayEndTime.isAcceptableOrUnknown(
+          data['day_end_time']!,
+          _dayEndTimeMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {labSpaceId};
+  @override
+  ScheduleSettingsRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ScheduleSettingsRow(
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      showWeekends:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}show_weekends'],
+          )!,
+      dayStartTime:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}day_start_time'],
+          )!,
+      dayEndTime:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}day_end_time'],
+          )!,
+    );
+  }
+
+  @override
+  $ScheduleSettingsTable createAlias(String alias) {
+    return $ScheduleSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class ScheduleSettingsRow extends DataClass
+    implements Insertable<ScheduleSettingsRow> {
+  final int labSpaceId;
+  final int showWeekends;
+  final String dayStartTime;
+  final String dayEndTime;
+  const ScheduleSettingsRow({
+    required this.labSpaceId,
+    required this.showWeekends,
+    required this.dayStartTime,
+    required this.dayEndTime,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    map['show_weekends'] = Variable<int>(showWeekends);
+    map['day_start_time'] = Variable<String>(dayStartTime);
+    map['day_end_time'] = Variable<String>(dayEndTime);
+    return map;
+  }
+
+  ScheduleSettingsCompanion toCompanion(bool nullToAbsent) {
+    return ScheduleSettingsCompanion(
+      labSpaceId: Value(labSpaceId),
+      showWeekends: Value(showWeekends),
+      dayStartTime: Value(dayStartTime),
+      dayEndTime: Value(dayEndTime),
+    );
+  }
+
+  factory ScheduleSettingsRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ScheduleSettingsRow(
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      showWeekends: serializer.fromJson<int>(json['showWeekends']),
+      dayStartTime: serializer.fromJson<String>(json['dayStartTime']),
+      dayEndTime: serializer.fromJson<String>(json['dayEndTime']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'showWeekends': serializer.toJson<int>(showWeekends),
+      'dayStartTime': serializer.toJson<String>(dayStartTime),
+      'dayEndTime': serializer.toJson<String>(dayEndTime),
+    };
+  }
+
+  ScheduleSettingsRow copyWith({
+    int? labSpaceId,
+    int? showWeekends,
+    String? dayStartTime,
+    String? dayEndTime,
+  }) => ScheduleSettingsRow(
+    labSpaceId: labSpaceId ?? this.labSpaceId,
+    showWeekends: showWeekends ?? this.showWeekends,
+    dayStartTime: dayStartTime ?? this.dayStartTime,
+    dayEndTime: dayEndTime ?? this.dayEndTime,
+  );
+  ScheduleSettingsRow copyWithCompanion(ScheduleSettingsCompanion data) {
+    return ScheduleSettingsRow(
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      showWeekends:
+          data.showWeekends.present
+              ? data.showWeekends.value
+              : this.showWeekends,
+      dayStartTime:
+          data.dayStartTime.present
+              ? data.dayStartTime.value
+              : this.dayStartTime,
+      dayEndTime:
+          data.dayEndTime.present ? data.dayEndTime.value : this.dayEndTime,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduleSettingsRow(')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('showWeekends: $showWeekends, ')
+          ..write('dayStartTime: $dayStartTime, ')
+          ..write('dayEndTime: $dayEndTime')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(labSpaceId, showWeekends, dayStartTime, dayEndTime);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ScheduleSettingsRow &&
+          other.labSpaceId == this.labSpaceId &&
+          other.showWeekends == this.showWeekends &&
+          other.dayStartTime == this.dayStartTime &&
+          other.dayEndTime == this.dayEndTime);
+}
+
+class ScheduleSettingsCompanion extends UpdateCompanion<ScheduleSettingsRow> {
+  final Value<int> labSpaceId;
+  final Value<int> showWeekends;
+  final Value<String> dayStartTime;
+  final Value<String> dayEndTime;
+  const ScheduleSettingsCompanion({
+    this.labSpaceId = const Value.absent(),
+    this.showWeekends = const Value.absent(),
+    this.dayStartTime = const Value.absent(),
+    this.dayEndTime = const Value.absent(),
+  });
+  ScheduleSettingsCompanion.insert({
+    this.labSpaceId = const Value.absent(),
+    this.showWeekends = const Value.absent(),
+    this.dayStartTime = const Value.absent(),
+    this.dayEndTime = const Value.absent(),
+  });
+  static Insertable<ScheduleSettingsRow> custom({
+    Expression<int>? labSpaceId,
+    Expression<int>? showWeekends,
+    Expression<String>? dayStartTime,
+    Expression<String>? dayEndTime,
+  }) {
+    return RawValuesInsertable({
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (showWeekends != null) 'show_weekends': showWeekends,
+      if (dayStartTime != null) 'day_start_time': dayStartTime,
+      if (dayEndTime != null) 'day_end_time': dayEndTime,
+    });
+  }
+
+  ScheduleSettingsCompanion copyWith({
+    Value<int>? labSpaceId,
+    Value<int>? showWeekends,
+    Value<String>? dayStartTime,
+    Value<String>? dayEndTime,
+  }) {
+    return ScheduleSettingsCompanion(
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      showWeekends: showWeekends ?? this.showWeekends,
+      dayStartTime: dayStartTime ?? this.dayStartTime,
+      dayEndTime: dayEndTime ?? this.dayEndTime,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (showWeekends.present) {
+      map['show_weekends'] = Variable<int>(showWeekends.value);
+    }
+    if (dayStartTime.present) {
+      map['day_start_time'] = Variable<String>(dayStartTime.value);
+    }
+    if (dayEndTime.present) {
+      map['day_end_time'] = Variable<String>(dayEndTime.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduleSettingsCompanion(')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('showWeekends: $showWeekends, ')
+          ..write('dayStartTime: $dayStartTime, ')
+          ..write('dayEndTime: $dayEndTime')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ScheduleWeekNotesTable extends ScheduleWeekNotes
+    with TableInfo<$ScheduleWeekNotesTable, ScheduleWeekNoteRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ScheduleWeekNotesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _weekStartDateMeta = const VerificationMeta(
+    'weekStartDate',
+  );
+  @override
+  late final GeneratedColumn<String> weekStartDate = GeneratedColumn<String>(
+    'week_start_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, labSpaceId, weekStartDate, note];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'schedule_week_notes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ScheduleWeekNoteRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_labSpaceIdMeta);
+    }
+    if (data.containsKey('week_start_date')) {
+      context.handle(
+        _weekStartDateMeta,
+        weekStartDate.isAcceptableOrUnknown(
+          data['week_start_date']!,
+          _weekStartDateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_weekStartDateMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ScheduleWeekNoteRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ScheduleWeekNoteRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      weekStartDate:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}week_start_date'],
+          )!,
+      note:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}note'],
+          )!,
+    );
+  }
+
+  @override
+  $ScheduleWeekNotesTable createAlias(String alias) {
+    return $ScheduleWeekNotesTable(attachedDatabase, alias);
+  }
+}
+
+class ScheduleWeekNoteRow extends DataClass
+    implements Insertable<ScheduleWeekNoteRow> {
+  final int id;
+  final int labSpaceId;
+  final String weekStartDate;
+  final String note;
+  const ScheduleWeekNoteRow({
+    required this.id,
+    required this.labSpaceId,
+    required this.weekStartDate,
+    required this.note,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    map['week_start_date'] = Variable<String>(weekStartDate);
+    map['note'] = Variable<String>(note);
+    return map;
+  }
+
+  ScheduleWeekNotesCompanion toCompanion(bool nullToAbsent) {
+    return ScheduleWeekNotesCompanion(
+      id: Value(id),
+      labSpaceId: Value(labSpaceId),
+      weekStartDate: Value(weekStartDate),
+      note: Value(note),
+    );
+  }
+
+  factory ScheduleWeekNoteRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ScheduleWeekNoteRow(
+      id: serializer.fromJson<int>(json['id']),
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      weekStartDate: serializer.fromJson<String>(json['weekStartDate']),
+      note: serializer.fromJson<String>(json['note']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'weekStartDate': serializer.toJson<String>(weekStartDate),
+      'note': serializer.toJson<String>(note),
+    };
+  }
+
+  ScheduleWeekNoteRow copyWith({
+    int? id,
+    int? labSpaceId,
+    String? weekStartDate,
+    String? note,
+  }) => ScheduleWeekNoteRow(
+    id: id ?? this.id,
+    labSpaceId: labSpaceId ?? this.labSpaceId,
+    weekStartDate: weekStartDate ?? this.weekStartDate,
+    note: note ?? this.note,
+  );
+  ScheduleWeekNoteRow copyWithCompanion(ScheduleWeekNotesCompanion data) {
+    return ScheduleWeekNoteRow(
+      id: data.id.present ? data.id.value : this.id,
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      weekStartDate:
+          data.weekStartDate.present
+              ? data.weekStartDate.value
+              : this.weekStartDate,
+      note: data.note.present ? data.note.value : this.note,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduleWeekNoteRow(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('weekStartDate: $weekStartDate, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, labSpaceId, weekStartDate, note);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ScheduleWeekNoteRow &&
+          other.id == this.id &&
+          other.labSpaceId == this.labSpaceId &&
+          other.weekStartDate == this.weekStartDate &&
+          other.note == this.note);
+}
+
+class ScheduleWeekNotesCompanion extends UpdateCompanion<ScheduleWeekNoteRow> {
+  final Value<int> id;
+  final Value<int> labSpaceId;
+  final Value<String> weekStartDate;
+  final Value<String> note;
+  const ScheduleWeekNotesCompanion({
+    this.id = const Value.absent(),
+    this.labSpaceId = const Value.absent(),
+    this.weekStartDate = const Value.absent(),
+    this.note = const Value.absent(),
+  });
+  ScheduleWeekNotesCompanion.insert({
+    this.id = const Value.absent(),
+    required int labSpaceId,
+    required String weekStartDate,
+    required String note,
+  }) : labSpaceId = Value(labSpaceId),
+       weekStartDate = Value(weekStartDate),
+       note = Value(note);
+  static Insertable<ScheduleWeekNoteRow> custom({
+    Expression<int>? id,
+    Expression<int>? labSpaceId,
+    Expression<String>? weekStartDate,
+    Expression<String>? note,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (weekStartDate != null) 'week_start_date': weekStartDate,
+      if (note != null) 'note': note,
+    });
+  }
+
+  ScheduleWeekNotesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? labSpaceId,
+    Value<String>? weekStartDate,
+    Value<String>? note,
+  }) {
+    return ScheduleWeekNotesCompanion(
+      id: id ?? this.id,
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      weekStartDate: weekStartDate ?? this.weekStartDate,
+      note: note ?? this.note,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (weekStartDate.present) {
+      map['week_start_date'] = Variable<String>(weekStartDate.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ScheduleWeekNotesCompanion(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('weekStartDate: $weekStartDate, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4785,6 +6094,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $NotificationsTable notifications = $NotificationsTable(this);
+  late final $ScheduleBlocksTable scheduleBlocks = $ScheduleBlocksTable(this);
+  late final $ScheduleSettingsTable scheduleSettings = $ScheduleSettingsTable(
+    this,
+  );
+  late final $ScheduleWeekNotesTable scheduleWeekNotes =
+      $ScheduleWeekNotesTable(this);
   late final TasksDao tasksDao = TasksDao(this as AppDatabase);
   late final NotesDao notesDao = NotesDao(this as AppDatabase);
   late final FoldersDao foldersDao = FoldersDao(this as AppDatabase);
@@ -4793,6 +6108,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final NotificationsDao notificationsDao = NotificationsDao(
     this as AppDatabase,
   );
+  late final ScheduleDao scheduleDao = ScheduleDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4810,6 +6126,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     spaceFolderLinks,
     onboardingFlags,
     notifications,
+    scheduleBlocks,
+    scheduleSettings,
+    scheduleWeekNotes,
   ];
 }
 
@@ -7739,6 +9058,74 @@ final class $$LabSpacesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$ScheduleBlocksTable, List<ScheduleBlockRow>>
+  _scheduleBlocksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.scheduleBlocks,
+    aliasName: $_aliasNameGenerator(
+      db.labSpaces.id,
+      db.scheduleBlocks.labSpaceId,
+    ),
+  );
+
+  $$ScheduleBlocksTableProcessedTableManager get scheduleBlocksRefs {
+    final manager = $$ScheduleBlocksTableTableManager(
+      $_db,
+      $_db.scheduleBlocks,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_scheduleBlocksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ScheduleSettingsTable, List<ScheduleSettingsRow>>
+  _scheduleSettingsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.scheduleSettings,
+    aliasName: $_aliasNameGenerator(
+      db.labSpaces.id,
+      db.scheduleSettings.labSpaceId,
+    ),
+  );
+
+  $$ScheduleSettingsTableProcessedTableManager get scheduleSettingsRefs {
+    final manager = $$ScheduleSettingsTableTableManager(
+      $_db,
+      $_db.scheduleSettings,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _scheduleSettingsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ScheduleWeekNotesTable, List<ScheduleWeekNoteRow>>
+  _scheduleWeekNotesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.scheduleWeekNotes,
+        aliasName: $_aliasNameGenerator(
+          db.labSpaces.id,
+          db.scheduleWeekNotes.labSpaceId,
+        ),
+      );
+
+  $$ScheduleWeekNotesTableProcessedTableManager get scheduleWeekNotesRefs {
+    final manager = $$ScheduleWeekNotesTableTableManager(
+      $_db,
+      $_db.scheduleWeekNotes,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _scheduleWeekNotesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$LabSpacesTableFilterComposer
@@ -7856,6 +9243,81 @@ class $$LabSpacesTableFilterComposer
           }) => $$SpaceFolderLinksTableFilterComposer(
             $db: $db,
             $table: $db.spaceFolderLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> scheduleBlocksRefs(
+    Expression<bool> Function($$ScheduleBlocksTableFilterComposer f) f,
+  ) {
+    final $$ScheduleBlocksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scheduleBlocks,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScheduleBlocksTableFilterComposer(
+            $db: $db,
+            $table: $db.scheduleBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> scheduleSettingsRefs(
+    Expression<bool> Function($$ScheduleSettingsTableFilterComposer f) f,
+  ) {
+    final $$ScheduleSettingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scheduleSettings,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScheduleSettingsTableFilterComposer(
+            $db: $db,
+            $table: $db.scheduleSettings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> scheduleWeekNotesRefs(
+    Expression<bool> Function($$ScheduleWeekNotesTableFilterComposer f) f,
+  ) {
+    final $$ScheduleWeekNotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scheduleWeekNotes,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScheduleWeekNotesTableFilterComposer(
+            $db: $db,
+            $table: $db.scheduleWeekNotes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8025,6 +9487,82 @@ class $$LabSpacesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> scheduleBlocksRefs<T extends Object>(
+    Expression<T> Function($$ScheduleBlocksTableAnnotationComposer a) f,
+  ) {
+    final $$ScheduleBlocksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scheduleBlocks,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScheduleBlocksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.scheduleBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> scheduleSettingsRefs<T extends Object>(
+    Expression<T> Function($$ScheduleSettingsTableAnnotationComposer a) f,
+  ) {
+    final $$ScheduleSettingsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.scheduleSettings,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ScheduleSettingsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.scheduleSettings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> scheduleWeekNotesRefs<T extends Object>(
+    Expression<T> Function($$ScheduleWeekNotesTableAnnotationComposer a) f,
+  ) {
+    final $$ScheduleWeekNotesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.scheduleWeekNotes,
+          getReferencedColumn: (t) => t.labSpaceId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ScheduleWeekNotesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.scheduleWeekNotes,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$LabSpacesTableTableManager
@@ -8044,6 +9582,9 @@ class $$LabSpacesTableTableManager
             bool kanbanColumnsRefs,
             bool kanbanCardsRefs,
             bool spaceFolderLinksRefs,
+            bool scheduleBlocksRefs,
+            bool scheduleSettingsRefs,
+            bool scheduleWeekNotesRefs,
           })
         > {
   $$LabSpacesTableTableManager(_$AppDatabase db, $LabSpacesTable table)
@@ -8111,6 +9652,9 @@ class $$LabSpacesTableTableManager
             kanbanColumnsRefs = false,
             kanbanCardsRefs = false,
             spaceFolderLinksRefs = false,
+            scheduleBlocksRefs = false,
+            scheduleSettingsRefs = false,
+            scheduleWeekNotesRefs = false,
           }) {
             return PrefetchHooks(
               db: db,
@@ -8118,6 +9662,9 @@ class $$LabSpacesTableTableManager
                 if (kanbanColumnsRefs) db.kanbanColumns,
                 if (kanbanCardsRefs) db.kanbanCards,
                 if (spaceFolderLinksRefs) db.spaceFolderLinks,
+                if (scheduleBlocksRefs) db.scheduleBlocks,
+                if (scheduleSettingsRefs) db.scheduleSettings,
+                if (scheduleWeekNotesRefs) db.scheduleWeekNotes,
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
@@ -8188,6 +9735,72 @@ class $$LabSpacesTableTableManager
                           ),
                       typedResults: items,
                     ),
+                  if (scheduleBlocksRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      ScheduleBlockRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._scheduleBlocksRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).scheduleBlocksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (scheduleSettingsRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      ScheduleSettingsRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._scheduleSettingsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).scheduleSettingsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (scheduleWeekNotesRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      ScheduleWeekNoteRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._scheduleWeekNotesRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).scheduleWeekNotesRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
                 ];
               },
             );
@@ -8212,6 +9825,9 @@ typedef $$LabSpacesTableProcessedTableManager =
         bool kanbanColumnsRefs,
         bool kanbanCardsRefs,
         bool spaceFolderLinksRefs,
+        bool scheduleBlocksRefs,
+        bool scheduleSettingsRefs,
+        bool scheduleWeekNotesRefs,
       })
     >;
 typedef $$KanbanColumnsTableCreateCompanionBuilder =
@@ -10092,6 +11708,1086 @@ typedef $$NotificationsTableProcessedTableManager =
       NotificationRow,
       PrefetchHooks Function()
     >;
+typedef $$ScheduleBlocksTableCreateCompanionBuilder =
+    ScheduleBlocksCompanion Function({
+      Value<int> id,
+      required int labSpaceId,
+      Value<int?> folderId,
+      required String title,
+      Value<String?> location,
+      required String startTime,
+      required String endTime,
+      required String days,
+      required String color,
+      Value<int> useFolderColor,
+      Value<DateTime> createdAt,
+    });
+typedef $$ScheduleBlocksTableUpdateCompanionBuilder =
+    ScheduleBlocksCompanion Function({
+      Value<int> id,
+      Value<int> labSpaceId,
+      Value<int?> folderId,
+      Value<String> title,
+      Value<String?> location,
+      Value<String> startTime,
+      Value<String> endTime,
+      Value<String> days,
+      Value<String> color,
+      Value<int> useFolderColor,
+      Value<DateTime> createdAt,
+    });
+
+final class $$ScheduleBlocksTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $ScheduleBlocksTable, ScheduleBlockRow> {
+  $$ScheduleBlocksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(db.scheduleBlocks.labSpaceId, db.labSpaces.id),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ScheduleBlocksTableFilterComposer
+    extends Composer<_$AppDatabase, $ScheduleBlocksTable> {
+  $$ScheduleBlocksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get folderId => $composableBuilder(
+    column: $table.folderId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get location => $composableBuilder(
+    column: $table.location,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startTime => $composableBuilder(
+    column: $table.startTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get endTime => $composableBuilder(
+    column: $table.endTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get days => $composableBuilder(
+    column: $table.days,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get useFolderColor => $composableBuilder(
+    column: $table.useFolderColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleBlocksTableOrderingComposer
+    extends Composer<_$AppDatabase, $ScheduleBlocksTable> {
+  $$ScheduleBlocksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get folderId => $composableBuilder(
+    column: $table.folderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get location => $composableBuilder(
+    column: $table.location,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get startTime => $composableBuilder(
+    column: $table.startTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get endTime => $composableBuilder(
+    column: $table.endTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get days => $composableBuilder(
+    column: $table.days,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get useFolderColor => $composableBuilder(
+    column: $table.useFolderColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleBlocksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ScheduleBlocksTable> {
+  $$ScheduleBlocksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get folderId =>
+      $composableBuilder(column: $table.folderId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get location =>
+      $composableBuilder(column: $table.location, builder: (column) => column);
+
+  GeneratedColumn<String> get startTime =>
+      $composableBuilder(column: $table.startTime, builder: (column) => column);
+
+  GeneratedColumn<String> get endTime =>
+      $composableBuilder(column: $table.endTime, builder: (column) => column);
+
+  GeneratedColumn<String> get days =>
+      $composableBuilder(column: $table.days, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get useFolderColor => $composableBuilder(
+    column: $table.useFolderColor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleBlocksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ScheduleBlocksTable,
+          ScheduleBlockRow,
+          $$ScheduleBlocksTableFilterComposer,
+          $$ScheduleBlocksTableOrderingComposer,
+          $$ScheduleBlocksTableAnnotationComposer,
+          $$ScheduleBlocksTableCreateCompanionBuilder,
+          $$ScheduleBlocksTableUpdateCompanionBuilder,
+          (ScheduleBlockRow, $$ScheduleBlocksTableReferences),
+          ScheduleBlockRow,
+          PrefetchHooks Function({bool labSpaceId})
+        > {
+  $$ScheduleBlocksTableTableManager(
+    _$AppDatabase db,
+    $ScheduleBlocksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$ScheduleBlocksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () =>
+                  $$ScheduleBlocksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$ScheduleBlocksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> labSpaceId = const Value.absent(),
+                Value<int?> folderId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> location = const Value.absent(),
+                Value<String> startTime = const Value.absent(),
+                Value<String> endTime = const Value.absent(),
+                Value<String> days = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<int> useFolderColor = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ScheduleBlocksCompanion(
+                id: id,
+                labSpaceId: labSpaceId,
+                folderId: folderId,
+                title: title,
+                location: location,
+                startTime: startTime,
+                endTime: endTime,
+                days: days,
+                color: color,
+                useFolderColor: useFolderColor,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int labSpaceId,
+                Value<int?> folderId = const Value.absent(),
+                required String title,
+                Value<String?> location = const Value.absent(),
+                required String startTime,
+                required String endTime,
+                required String days,
+                required String color,
+                Value<int> useFolderColor = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ScheduleBlocksCompanion.insert(
+                id: id,
+                labSpaceId: labSpaceId,
+                folderId: folderId,
+                title: title,
+                location: location,
+                startTime: startTime,
+                endTime: endTime,
+                days: days,
+                color: color,
+                useFolderColor: useFolderColor,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$ScheduleBlocksTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({labSpaceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable: $$ScheduleBlocksTableReferences
+                                ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$ScheduleBlocksTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ScheduleBlocksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ScheduleBlocksTable,
+      ScheduleBlockRow,
+      $$ScheduleBlocksTableFilterComposer,
+      $$ScheduleBlocksTableOrderingComposer,
+      $$ScheduleBlocksTableAnnotationComposer,
+      $$ScheduleBlocksTableCreateCompanionBuilder,
+      $$ScheduleBlocksTableUpdateCompanionBuilder,
+      (ScheduleBlockRow, $$ScheduleBlocksTableReferences),
+      ScheduleBlockRow,
+      PrefetchHooks Function({bool labSpaceId})
+    >;
+typedef $$ScheduleSettingsTableCreateCompanionBuilder =
+    ScheduleSettingsCompanion Function({
+      Value<int> labSpaceId,
+      Value<int> showWeekends,
+      Value<String> dayStartTime,
+      Value<String> dayEndTime,
+    });
+typedef $$ScheduleSettingsTableUpdateCompanionBuilder =
+    ScheduleSettingsCompanion Function({
+      Value<int> labSpaceId,
+      Value<int> showWeekends,
+      Value<String> dayStartTime,
+      Value<String> dayEndTime,
+    });
+
+final class $$ScheduleSettingsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ScheduleSettingsTable,
+          ScheduleSettingsRow
+        > {
+  $$ScheduleSettingsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(db.scheduleSettings.labSpaceId, db.labSpaces.id),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ScheduleSettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $ScheduleSettingsTable> {
+  $$ScheduleSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get showWeekends => $composableBuilder(
+    column: $table.showWeekends,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dayStartTime => $composableBuilder(
+    column: $table.dayStartTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dayEndTime => $composableBuilder(
+    column: $table.dayEndTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleSettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ScheduleSettingsTable> {
+  $$ScheduleSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get showWeekends => $composableBuilder(
+    column: $table.showWeekends,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dayStartTime => $composableBuilder(
+    column: $table.dayStartTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dayEndTime => $composableBuilder(
+    column: $table.dayEndTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleSettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ScheduleSettingsTable> {
+  $$ScheduleSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get showWeekends => $composableBuilder(
+    column: $table.showWeekends,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dayStartTime => $composableBuilder(
+    column: $table.dayStartTime,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dayEndTime => $composableBuilder(
+    column: $table.dayEndTime,
+    builder: (column) => column,
+  );
+
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleSettingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ScheduleSettingsTable,
+          ScheduleSettingsRow,
+          $$ScheduleSettingsTableFilterComposer,
+          $$ScheduleSettingsTableOrderingComposer,
+          $$ScheduleSettingsTableAnnotationComposer,
+          $$ScheduleSettingsTableCreateCompanionBuilder,
+          $$ScheduleSettingsTableUpdateCompanionBuilder,
+          (ScheduleSettingsRow, $$ScheduleSettingsTableReferences),
+          ScheduleSettingsRow,
+          PrefetchHooks Function({bool labSpaceId})
+        > {
+  $$ScheduleSettingsTableTableManager(
+    _$AppDatabase db,
+    $ScheduleSettingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () =>
+                  $$ScheduleSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$ScheduleSettingsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$ScheduleSettingsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> labSpaceId = const Value.absent(),
+                Value<int> showWeekends = const Value.absent(),
+                Value<String> dayStartTime = const Value.absent(),
+                Value<String> dayEndTime = const Value.absent(),
+              }) => ScheduleSettingsCompanion(
+                labSpaceId: labSpaceId,
+                showWeekends: showWeekends,
+                dayStartTime: dayStartTime,
+                dayEndTime: dayEndTime,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> labSpaceId = const Value.absent(),
+                Value<int> showWeekends = const Value.absent(),
+                Value<String> dayStartTime = const Value.absent(),
+                Value<String> dayEndTime = const Value.absent(),
+              }) => ScheduleSettingsCompanion.insert(
+                labSpaceId: labSpaceId,
+                showWeekends: showWeekends,
+                dayStartTime: dayStartTime,
+                dayEndTime: dayEndTime,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$ScheduleSettingsTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({labSpaceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable: $$ScheduleSettingsTableReferences
+                                ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$ScheduleSettingsTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ScheduleSettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ScheduleSettingsTable,
+      ScheduleSettingsRow,
+      $$ScheduleSettingsTableFilterComposer,
+      $$ScheduleSettingsTableOrderingComposer,
+      $$ScheduleSettingsTableAnnotationComposer,
+      $$ScheduleSettingsTableCreateCompanionBuilder,
+      $$ScheduleSettingsTableUpdateCompanionBuilder,
+      (ScheduleSettingsRow, $$ScheduleSettingsTableReferences),
+      ScheduleSettingsRow,
+      PrefetchHooks Function({bool labSpaceId})
+    >;
+typedef $$ScheduleWeekNotesTableCreateCompanionBuilder =
+    ScheduleWeekNotesCompanion Function({
+      Value<int> id,
+      required int labSpaceId,
+      required String weekStartDate,
+      required String note,
+    });
+typedef $$ScheduleWeekNotesTableUpdateCompanionBuilder =
+    ScheduleWeekNotesCompanion Function({
+      Value<int> id,
+      Value<int> labSpaceId,
+      Value<String> weekStartDate,
+      Value<String> note,
+    });
+
+final class $$ScheduleWeekNotesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ScheduleWeekNotesTable,
+          ScheduleWeekNoteRow
+        > {
+  $$ScheduleWeekNotesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(db.scheduleWeekNotes.labSpaceId, db.labSpaces.id),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ScheduleWeekNotesTableFilterComposer
+    extends Composer<_$AppDatabase, $ScheduleWeekNotesTable> {
+  $$ScheduleWeekNotesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get weekStartDate => $composableBuilder(
+    column: $table.weekStartDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleWeekNotesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ScheduleWeekNotesTable> {
+  $$ScheduleWeekNotesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get weekStartDate => $composableBuilder(
+    column: $table.weekStartDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleWeekNotesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ScheduleWeekNotesTable> {
+  $$ScheduleWeekNotesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get weekStartDate => $composableBuilder(
+    column: $table.weekStartDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ScheduleWeekNotesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ScheduleWeekNotesTable,
+          ScheduleWeekNoteRow,
+          $$ScheduleWeekNotesTableFilterComposer,
+          $$ScheduleWeekNotesTableOrderingComposer,
+          $$ScheduleWeekNotesTableAnnotationComposer,
+          $$ScheduleWeekNotesTableCreateCompanionBuilder,
+          $$ScheduleWeekNotesTableUpdateCompanionBuilder,
+          (ScheduleWeekNoteRow, $$ScheduleWeekNotesTableReferences),
+          ScheduleWeekNoteRow,
+          PrefetchHooks Function({bool labSpaceId})
+        > {
+  $$ScheduleWeekNotesTableTableManager(
+    _$AppDatabase db,
+    $ScheduleWeekNotesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$ScheduleWeekNotesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer:
+              () => $$ScheduleWeekNotesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$ScheduleWeekNotesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> labSpaceId = const Value.absent(),
+                Value<String> weekStartDate = const Value.absent(),
+                Value<String> note = const Value.absent(),
+              }) => ScheduleWeekNotesCompanion(
+                id: id,
+                labSpaceId: labSpaceId,
+                weekStartDate: weekStartDate,
+                note: note,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int labSpaceId,
+                required String weekStartDate,
+                required String note,
+              }) => ScheduleWeekNotesCompanion.insert(
+                id: id,
+                labSpaceId: labSpaceId,
+                weekStartDate: weekStartDate,
+                note: note,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$ScheduleWeekNotesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({labSpaceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable: $$ScheduleWeekNotesTableReferences
+                                ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$ScheduleWeekNotesTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ScheduleWeekNotesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ScheduleWeekNotesTable,
+      ScheduleWeekNoteRow,
+      $$ScheduleWeekNotesTableFilterComposer,
+      $$ScheduleWeekNotesTableOrderingComposer,
+      $$ScheduleWeekNotesTableAnnotationComposer,
+      $$ScheduleWeekNotesTableCreateCompanionBuilder,
+      $$ScheduleWeekNotesTableUpdateCompanionBuilder,
+      (ScheduleWeekNoteRow, $$ScheduleWeekNotesTableReferences),
+      ScheduleWeekNoteRow,
+      PrefetchHooks Function({bool labSpaceId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -10120,4 +12816,10 @@ class $AppDatabaseManager {
       $$OnboardingFlagsTableTableManager(_db, _db.onboardingFlags);
   $$NotificationsTableTableManager get notifications =>
       $$NotificationsTableTableManager(_db, _db.notifications);
+  $$ScheduleBlocksTableTableManager get scheduleBlocks =>
+      $$ScheduleBlocksTableTableManager(_db, _db.scheduleBlocks);
+  $$ScheduleSettingsTableTableManager get scheduleSettings =>
+      $$ScheduleSettingsTableTableManager(_db, _db.scheduleSettings);
+  $$ScheduleWeekNotesTableTableManager get scheduleWeekNotes =>
+      $$ScheduleWeekNotesTableTableManager(_db, _db.scheduleWeekNotes);
 }

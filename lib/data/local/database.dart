@@ -13,12 +13,16 @@ import 'tables/kanban_cards_table.dart';
 import 'tables/space_folder_links_table.dart';
 import 'tables/onboarding_flags_table.dart';
 import 'tables/notifications_table.dart';
+import 'tables/schedule_blocks_table.dart';
+import 'tables/schedule_settings_table.dart';
+import 'tables/schedule_week_notes_table.dart';
 import 'daos/tasks_dao.dart';
 import 'daos/notes_dao.dart';
 import 'daos/folders_dao.dart';
 import 'daos/lab_spaces_dao.dart';
 import 'daos/kanban_dao.dart';
 import 'daos/notifications_dao.dart';
+import 'daos/schedule_dao.dart';
 
 part 'database.g.dart';
 
@@ -36,6 +40,9 @@ part 'database.g.dart';
     SpaceFolderLinks,
     OnboardingFlags,
     Notifications,
+    ScheduleBlocks,
+    ScheduleSettings,
+    ScheduleWeekNotes,
   ],
   daos: [
     TasksDao,
@@ -44,6 +51,7 @@ part 'database.g.dart';
     LabSpacesDao,
     KanbanDao,
     NotificationsDao,
+    ScheduleDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {

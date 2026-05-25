@@ -5,3 +5,5 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 final pendingNoteNavigationProvider = StateProvider<int?>((ref) => null);
 
 final pendingLabSpaceNavigationProvider = StateProvider<int?>((ref) => null);
+
+final pendingFolderNavigationProvider = StateProvider<int?>((ref) => null);

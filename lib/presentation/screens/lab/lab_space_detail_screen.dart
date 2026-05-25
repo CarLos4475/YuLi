@@ -18,6 +18,7 @@ import 'kanban_card_tile.dart';
 import 'kanban_card_detail.dart';
 import 'calendar_tab.dart';
 import 'timeline_tab.dart';
+import 'schedule_tab.dart';
 
 class LabSpaceDetailScreen extends ConsumerStatefulWidget {
   final LabSpace space;
@@ -134,6 +135,8 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
           onToggleSelection: _toggleSelection,
           selectionMode: _selectionMode,
         );
+      case 'Horario':
+        return ScheduleTab(space: widget.space);
       default:
         return const SizedBox.shrink();
     }

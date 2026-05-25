@@ -7,6 +7,8 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../../domain/repositories/schedule_repository.dart';
+import '../../../domain/models/schedule_block.dart';
 import '../../widgets/app_banner.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -108,6 +110,7 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
                   ref.read(currentModeProvider.notifier).state = AppMode.fight;
                 },
               ),
+            _NextClassBanner(folderId: widget.folder.id),
             Expanded(
               child: _NoteGrid(
                 notes: notes,
@@ -520,5 +523,88 @@ class _NewNoteButton extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+// ─── Next Class Banner (Flight integration) ─────────────────────────────────
+
+class _NextClassBanner extends ConsumerWidget {
+  final int folderId;
+  const _NextClassBanner({required this.folderId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final repo = ref.read(scheduleRepositoryProvider);
+
+    return FutureBuilder<List<ScheduleBlock>>(
+      future: repo.getByFolderId(folderId),
+      builder: (context, snap) {
+        if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
+
+        final now = DateTime.now();
+        final todayDay = _dayNameFromIndex(now.weekday - 1);
+        final nowMinutes = now.hour * 60 + now.minute;
+
+        final upcoming = _nextClass(snap.data!, todayDay, nowMinutes, now.weekday);
+        if (upcoming == null) return const SizedBox.shrink();
+
+        final text = upcoming.location != null && upcoming.location!.isNotEmpty
+            ? '${upcoming.title} — ${upcoming.startTime}  ${upcoming.location}'
+            : '${upcoming.title} — ${upcoming.startTime}';
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: accentLab.withAlpha(15),
+            border: Border(
+              bottom: BorderSide(color: accentLab, width: borderWidth),
+            ),
+          ),
+          child: Text(
+            text,
+            style: bodyS.copyWith(color: accentLab),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      },
+    );
+  }
+
+  ScheduleBlock? _nextClass(
+      List<ScheduleBlock> blocks, String todayDay, int nowMinutes, int weekday) {
+    for (final b in blocks) {
+      if (b.days.contains(todayDay) && b.startMinutes > nowMinutes) {
+        return b;
+      }
+    }
+    // If none today, find the next day
+    final dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    // Map schedule day keys to day order
+    const dayMap = {
+      'Lun': 'Mon', 'Mar': 'Tue', 'Mié': 'Wed', 'Jue': 'Thu',
+      'Vie': 'Fri', 'Sáb': 'Sat', 'Dom': 'Sun',
+    };
+    int todayIdx = dayOrder.indexOf(_dayNameFromIndex(weekday - 1));
+    if (todayIdx == -1) todayIdx = 0;
+
+    for (int offset = 1; offset <= 7; offset++) {
+      final idx = (todayIdx + offset) % 7;
+      final engDay = dayOrder[idx];
+      final espDay = dayMap.entries
+          .firstWhere((e) => e.value == engDay, orElse: () => const MapEntry('', ''))
+          .key;
+      if (espDay.isEmpty) continue;
+      for (final b in blocks) {
+        if (b.days.contains(espDay)) return b;
+      }
+    }
+    return null;
+  }
+
+  String _dayNameFromIndex(int idx) {
+    const names = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    return names[idx >= 0 && idx < 7 ? idx : 0];
   }
 }

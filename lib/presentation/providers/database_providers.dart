@@ -6,7 +6,9 @@ import '../../data/repositories/local/local_note_repository.dart';
 import '../../data/repositories/local/local_lab_space_repository.dart';
 import '../../data/repositories/local/local_kanban_repository.dart';
 import '../../data/repositories/local/local_notification_repository.dart';
+import '../../data/repositories/local/local_schedule_repository.dart';
 import '../../domain/repositories/notification_repository.dart';
+import '../../domain/repositories/schedule_repository.dart';
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/repositories/folder_repository.dart';
 import '../../domain/repositories/note_repository.dart';
@@ -76,6 +78,10 @@ final deletedLabSpacesProvider = StreamProvider<List<LabSpace>>((ref) {
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
   return LocalNotificationRepository(ref.watch(databaseProvider));
+});
+
+final scheduleRepositoryProvider = Provider<ScheduleRepository>((ref) {
+  return LocalScheduleRepository(ref.watch(databaseProvider));
 });
 
 final notificationsProvider = StreamProvider<List<NotificationItem>>((ref) {
