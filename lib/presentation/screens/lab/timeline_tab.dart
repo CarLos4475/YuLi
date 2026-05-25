@@ -220,59 +220,82 @@ class _TimelineViewer extends StatelessWidget {
     final dayWidth = totalWidth / totalDays;
     final paper = paperColor(context);
 
-    // Build positioned card widgets
-    final cardWidgets = <Widget>[];
+    // Group cards by (dayIndex, laneIndex) for overlap resolution
+    final groups = <String, List<KanbanCard>>{};
     for (final card in cards) {
       if (card.dueDate == null) continue;
-
       final cardDay = DateTime(card.dueDate!.year, card.dueDate!.month, card.dueDate!.day);
       final startDay = DateTime(space.startDate!.year, space.startDate!.month, space.startDate!.day);
       final dayIndex = cardDay.difference(startDay).inDays;
-
       if (dayIndex < 0 || dayIndex >= totalDays) continue;
-
       final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
       if (laneIndex < 0) continue;
+      final key = '$dayIndex|$laneIndex';
+      groups.putIfAbsent(key, () => []).add(card);
+    }
 
-      final x = dayIndex * dayWidth + 2;
-      final y = headerHeight + (laneIndex * laneHeight) + 24;
-      final cardWidth = dayWidth - 4;
-      final cardHeight = laneHeight - 28;
+    // Build positioned card widgets with overlap resolution
+    final cardWidgets = <Widget>[];
+    for (final group in groups.entries) {
+      final parts = group.key.split('|');
+      final dayIndex = int.parse(parts[0]);
+      final laneIndex = int.parse(parts[1]);
+      final groupCards = group.value;
+      final totalLanes = groupCards.length;
 
-      final isSelected = selectedCardIds.contains(card.id);
-      cardWidgets.add(
-        Positioned(
-          left: x,
-          top: y,
-          width: cardWidth,
-          height: cardHeight,
-          child: GestureDetector(
-            onTap: () => onCardTap(card),
-            onLongPress: () => onCardLongPress(card),
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              decoration: BoxDecoration(
-                color: isSelected ? accentColor.withAlpha(20) : paper,
-                border: Border.all(
-                  color: isSelected ? accentColor : ink.withAlpha(80),
-                  width: isSelected ? borderWidthHeavy : borderWidth,
+      for (int gi = 0; gi < totalLanes; gi++) {
+        final card = groupCards[gi];
+        final laneWidth = (dayWidth - 4) / totalLanes;
+        final x = dayIndex * dayWidth + 2 + gi * laneWidth;
+        final y = headerHeight + (laneIndex * laneHeight) + 24;
+        final cardHeight = laneHeight - 28;
+        final isSelected = selectedCardIds.contains(card.id);
+        final bg = card.originFolderColor != null
+            ? Color(card.originFolderColor!)
+            : (card.originTaskDoneAt != null
+                ? accentSuccess
+                : _cardColor(card));
+
+        cardWidgets.add(
+          Positioned(
+            left: x,
+            top: y,
+            width: laneWidth - 1,
+            height: cardHeight,
+            child: GestureDetector(
+              onTap: () => onCardTap(card),
+              onLongPress: () => onCardLongPress(card),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isSelected ? accentColor : bg,
+                  border: Border.all(
+                    color: inkBlack,
+                    width: isSelected ? borderWidthHeavy : borderWidth,
+                  ),
+                  boxShadow: shadowM,
                 ),
-              ),
-              padding: const EdgeInsets.fromLTRB(5, 4, 4, 4),
-              child: Text(
-                card.title,
-                style: TextStyle(
-                  color: ink,
-                  fontSize: 9,
-                  fontFamily: 'Inter',
+                padding: const EdgeInsets.fromLTRB(5, 4, 4, 4),
+                child: Text(
+                  card.title,
+                  style: TextStyle(
+                    color: isSelected
+                        ? paperLight
+                        : bg.computeLuminance() > 0.5
+                            ? inkBlack
+                            : paperLight,
+                    fontSize: 9,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
-        ),
-      );
+        );
+      }
     }
 
     return InteractiveViewer(
