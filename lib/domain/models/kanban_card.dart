@@ -32,6 +32,7 @@ class KanbanCard {
   final int? sourceNoteId;
   final String? sourceAnchor;
   final int? originTaskId;
+  final int? originFolderColor;
   final DateTime? originTaskDoneAt;
   final DateTime createdAt;
 
@@ -47,6 +48,7 @@ class KanbanCard {
     this.sourceNoteId,
     this.sourceAnchor,
     this.originTaskId,
+    this.originFolderColor,
     this.originTaskDoneAt,
     required this.createdAt,
   });
@@ -68,6 +70,8 @@ class KanbanCard {
     bool clearSourceAnchor = false,
     int? originTaskId,
     bool clearOriginTaskId = false,
+    int? originFolderColor,
+    bool clearOriginFolderColor = false,
     DateTime? originTaskDoneAt,
     bool clearOriginTaskDoneAt = false,
     DateTime? createdAt,
@@ -88,6 +92,9 @@ class KanbanCard {
           clearSourceAnchor ? null : (sourceAnchor ?? this.sourceAnchor),
       originTaskId:
           clearOriginTaskId ? null : (originTaskId ?? this.originTaskId),
+      originFolderColor: clearOriginFolderColor
+          ? null
+          : (originFolderColor ?? this.originFolderColor),
       originTaskDoneAt: clearOriginTaskDoneAt
           ? null
           : (originTaskDoneAt ?? this.originTaskDoneAt),

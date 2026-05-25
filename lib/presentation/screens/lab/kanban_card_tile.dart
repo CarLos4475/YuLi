@@ -81,7 +81,11 @@ class KanbanCardTile extends StatelessWidget {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                color: card.originTaskDoneAt != null ? accentLab : accentFight,
+                                color: card.originTaskDoneAt != null
+                                    ? accentLab
+                                    : (card.originFolderColor != null
+                                        ? Color(card.originFolderColor!)
+                                        : accentFight),
                                 border: Border.all(color: inkBlack, width: borderWidth),
                                 boxShadow: const [
                                   BoxShadow(

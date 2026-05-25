@@ -34,6 +34,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
     int? sourceNoteId,
     String? sourceAnchor,
     int? originTaskId,
+    int? originFolderColor,
   }) async {
     final position = await _db.kanbanDao.getNextPositionInColumn(columnId);
     final row = await _db.kanbanDao.insertCard(
@@ -48,6 +49,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         sourceNoteId: Value(sourceNoteId),
         sourceAnchor: Value(sourceAnchor),
         originTaskId: Value(originTaskId),
+        originFolderColor: Value(originFolderColor),
       ),
     );
     return _rowToCard(row);
@@ -79,6 +81,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         sourceNoteId: Value(card.sourceNoteId),
         sourceAnchor: Value(card.sourceAnchor),
         originTaskId: Value(card.originTaskId),
+        originFolderColor: Value(card.originFolderColor),
         originTaskDoneAt: Value(card.originTaskDoneAt),
       ),
     );
@@ -152,6 +155,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         sourceNoteId: row.sourceNoteId,
         sourceAnchor: row.sourceAnchor,
         originTaskId: row.originTaskId,
+        originFolderColor: row.originFolderColor,
         originTaskDoneAt: row.originTaskDoneAt,
         createdAt: row.createdAt,
       );

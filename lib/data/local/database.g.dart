@@ -3407,6 +3407,17 @@ class $KanbanCardsTable extends KanbanCards
       'REFERENCES tasks (id)',
     ),
   );
+  static const VerificationMeta _originFolderColorMeta = const VerificationMeta(
+    'originFolderColor',
+  );
+  @override
+  late final GeneratedColumn<int> originFolderColor = GeneratedColumn<int>(
+    'origin_folder_color',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _originTaskDoneAtMeta = const VerificationMeta(
     'originTaskDoneAt',
   );
@@ -3444,6 +3455,7 @@ class $KanbanCardsTable extends KanbanCards
     sourceNoteId,
     sourceAnchor,
     originTaskId,
+    originFolderColor,
     originTaskDoneAt,
     createdAt,
   ];
@@ -3545,6 +3557,15 @@ class $KanbanCardsTable extends KanbanCards
         ),
       );
     }
+    if (data.containsKey('origin_folder_color')) {
+      context.handle(
+        _originFolderColorMeta,
+        originFolderColor.isAcceptableOrUnknown(
+          data['origin_folder_color']!,
+          _originFolderColorMeta,
+        ),
+      );
+    }
     if (data.containsKey('origin_task_done_at')) {
       context.handle(
         _originTaskDoneAtMeta,
@@ -3619,6 +3640,10 @@ class $KanbanCardsTable extends KanbanCards
         DriftSqlType.int,
         data['${effectivePrefix}origin_task_id'],
       ),
+      originFolderColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}origin_folder_color'],
+      ),
       originTaskDoneAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}origin_task_done_at'],
@@ -3649,6 +3674,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
   final int? sourceNoteId;
   final String? sourceAnchor;
   final int? originTaskId;
+  final int? originFolderColor;
   final DateTime? originTaskDoneAt;
   final DateTime createdAt;
   const KanbanCardRow({
@@ -3663,6 +3689,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     this.sourceNoteId,
     this.sourceAnchor,
     this.originTaskId,
+    this.originFolderColor,
     this.originTaskDoneAt,
     required this.createdAt,
   });
@@ -3689,6 +3716,9 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     }
     if (!nullToAbsent || originTaskId != null) {
       map['origin_task_id'] = Variable<int>(originTaskId);
+    }
+    if (!nullToAbsent || originFolderColor != null) {
+      map['origin_folder_color'] = Variable<int>(originFolderColor);
     }
     if (!nullToAbsent || originTaskDoneAt != null) {
       map['origin_task_done_at'] = Variable<DateTime>(originTaskDoneAt);
@@ -3725,6 +3755,10 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           originTaskId == null && nullToAbsent
               ? const Value.absent()
               : Value(originTaskId),
+      originFolderColor:
+          originFolderColor == null && nullToAbsent
+              ? const Value.absent()
+              : Value(originFolderColor),
       originTaskDoneAt:
           originTaskDoneAt == null && nullToAbsent
               ? const Value.absent()
@@ -3750,6 +3784,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       sourceNoteId: serializer.fromJson<int?>(json['sourceNoteId']),
       sourceAnchor: serializer.fromJson<String?>(json['sourceAnchor']),
       originTaskId: serializer.fromJson<int?>(json['originTaskId']),
+      originFolderColor: serializer.fromJson<int?>(json['originFolderColor']),
       originTaskDoneAt: serializer.fromJson<DateTime?>(
         json['originTaskDoneAt'],
       ),
@@ -3771,6 +3806,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       'sourceNoteId': serializer.toJson<int?>(sourceNoteId),
       'sourceAnchor': serializer.toJson<String?>(sourceAnchor),
       'originTaskId': serializer.toJson<int?>(originTaskId),
+      'originFolderColor': serializer.toJson<int?>(originFolderColor),
       'originTaskDoneAt': serializer.toJson<DateTime?>(originTaskDoneAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -3788,6 +3824,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     Value<int?> sourceNoteId = const Value.absent(),
     Value<String?> sourceAnchor = const Value.absent(),
     Value<int?> originTaskId = const Value.absent(),
+    Value<int?> originFolderColor = const Value.absent(),
     Value<DateTime?> originTaskDoneAt = const Value.absent(),
     DateTime? createdAt,
   }) => KanbanCardRow(
@@ -3802,6 +3839,10 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     sourceNoteId: sourceNoteId.present ? sourceNoteId.value : this.sourceNoteId,
     sourceAnchor: sourceAnchor.present ? sourceAnchor.value : this.sourceAnchor,
     originTaskId: originTaskId.present ? originTaskId.value : this.originTaskId,
+    originFolderColor:
+        originFolderColor.present
+            ? originFolderColor.value
+            : this.originFolderColor,
     originTaskDoneAt:
         originTaskDoneAt.present
             ? originTaskDoneAt.value
@@ -3832,6 +3873,10 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           data.originTaskId.present
               ? data.originTaskId.value
               : this.originTaskId,
+      originFolderColor:
+          data.originFolderColor.present
+              ? data.originFolderColor.value
+              : this.originFolderColor,
       originTaskDoneAt:
           data.originTaskDoneAt.present
               ? data.originTaskDoneAt.value
@@ -3854,6 +3899,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           ..write('sourceNoteId: $sourceNoteId, ')
           ..write('sourceAnchor: $sourceAnchor, ')
           ..write('originTaskId: $originTaskId, ')
+          ..write('originFolderColor: $originFolderColor, ')
           ..write('originTaskDoneAt: $originTaskDoneAt, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -3873,6 +3919,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     sourceNoteId,
     sourceAnchor,
     originTaskId,
+    originFolderColor,
     originTaskDoneAt,
     createdAt,
   );
@@ -3891,6 +3938,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           other.sourceNoteId == this.sourceNoteId &&
           other.sourceAnchor == this.sourceAnchor &&
           other.originTaskId == this.originTaskId &&
+          other.originFolderColor == this.originFolderColor &&
           other.originTaskDoneAt == this.originTaskDoneAt &&
           other.createdAt == this.createdAt);
 }
@@ -3907,6 +3955,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
   final Value<int?> sourceNoteId;
   final Value<String?> sourceAnchor;
   final Value<int?> originTaskId;
+  final Value<int?> originFolderColor;
   final Value<DateTime?> originTaskDoneAt;
   final Value<DateTime> createdAt;
   const KanbanCardsCompanion({
@@ -3921,6 +3970,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     this.sourceNoteId = const Value.absent(),
     this.sourceAnchor = const Value.absent(),
     this.originTaskId = const Value.absent(),
+    this.originFolderColor = const Value.absent(),
     this.originTaskDoneAt = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
@@ -3936,6 +3986,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     this.sourceNoteId = const Value.absent(),
     this.sourceAnchor = const Value.absent(),
     this.originTaskId = const Value.absent(),
+    this.originFolderColor = const Value.absent(),
     this.originTaskDoneAt = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : labSpaceId = Value(labSpaceId),
@@ -3954,6 +4005,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     Expression<int>? sourceNoteId,
     Expression<String>? sourceAnchor,
     Expression<int>? originTaskId,
+    Expression<int>? originFolderColor,
     Expression<DateTime>? originTaskDoneAt,
     Expression<DateTime>? createdAt,
   }) {
@@ -3969,6 +4021,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
       if (sourceNoteId != null) 'source_note_id': sourceNoteId,
       if (sourceAnchor != null) 'source_anchor': sourceAnchor,
       if (originTaskId != null) 'origin_task_id': originTaskId,
+      if (originFolderColor != null) 'origin_folder_color': originFolderColor,
       if (originTaskDoneAt != null) 'origin_task_done_at': originTaskDoneAt,
       if (createdAt != null) 'created_at': createdAt,
     });
@@ -3986,6 +4039,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     Value<int?>? sourceNoteId,
     Value<String?>? sourceAnchor,
     Value<int?>? originTaskId,
+    Value<int?>? originFolderColor,
     Value<DateTime?>? originTaskDoneAt,
     Value<DateTime>? createdAt,
   }) {
@@ -4001,6 +4055,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
       sourceNoteId: sourceNoteId ?? this.sourceNoteId,
       sourceAnchor: sourceAnchor ?? this.sourceAnchor,
       originTaskId: originTaskId ?? this.originTaskId,
+      originFolderColor: originFolderColor ?? this.originFolderColor,
       originTaskDoneAt: originTaskDoneAt ?? this.originTaskDoneAt,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -4042,6 +4097,9 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     if (originTaskId.present) {
       map['origin_task_id'] = Variable<int>(originTaskId.value);
     }
+    if (originFolderColor.present) {
+      map['origin_folder_color'] = Variable<int>(originFolderColor.value);
+    }
     if (originTaskDoneAt.present) {
       map['origin_task_done_at'] = Variable<DateTime>(originTaskDoneAt.value);
     }
@@ -4065,6 +4123,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
           ..write('sourceNoteId: $sourceNoteId, ')
           ..write('sourceAnchor: $sourceAnchor, ')
           ..write('originTaskId: $originTaskId, ')
+          ..write('originFolderColor: $originFolderColor, ')
           ..write('originTaskDoneAt: $originTaskDoneAt, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -10264,6 +10323,7 @@ typedef $$KanbanCardsTableCreateCompanionBuilder =
       Value<int?> sourceNoteId,
       Value<String?> sourceAnchor,
       Value<int?> originTaskId,
+      Value<int?> originFolderColor,
       Value<DateTime?> originTaskDoneAt,
       Value<DateTime> createdAt,
     });
@@ -10280,6 +10340,7 @@ typedef $$KanbanCardsTableUpdateCompanionBuilder =
       Value<int?> sourceNoteId,
       Value<String?> sourceAnchor,
       Value<int?> originTaskId,
+      Value<int?> originFolderColor,
       Value<DateTime?> originTaskDoneAt,
       Value<DateTime> createdAt,
     });
@@ -10406,6 +10467,11 @@ class $$KanbanCardsTableFilterComposer
 
   ColumnFilters<String> get sourceAnchor => $composableBuilder(
     column: $table.sourceAnchor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get originFolderColor => $composableBuilder(
+    column: $table.originFolderColor,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10556,6 +10622,11 @@ class $$KanbanCardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get originFolderColor => $composableBuilder(
+    column: $table.originFolderColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get originTaskDoneAt => $composableBuilder(
     column: $table.originTaskDoneAt,
     builder: (column) => ColumnOrderings(column),
@@ -10690,6 +10761,11 @@ class $$KanbanCardsTableAnnotationComposer
 
   GeneratedColumn<String> get sourceAnchor => $composableBuilder(
     column: $table.sourceAnchor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get originFolderColor => $composableBuilder(
+    column: $table.originFolderColor,
     builder: (column) => column,
   );
 
@@ -10839,6 +10915,7 @@ class $$KanbanCardsTableTableManager
                 Value<int?> sourceNoteId = const Value.absent(),
                 Value<String?> sourceAnchor = const Value.absent(),
                 Value<int?> originTaskId = const Value.absent(),
+                Value<int?> originFolderColor = const Value.absent(),
                 Value<DateTime?> originTaskDoneAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => KanbanCardsCompanion(
@@ -10853,6 +10930,7 @@ class $$KanbanCardsTableTableManager
                 sourceNoteId: sourceNoteId,
                 sourceAnchor: sourceAnchor,
                 originTaskId: originTaskId,
+                originFolderColor: originFolderColor,
                 originTaskDoneAt: originTaskDoneAt,
                 createdAt: createdAt,
               ),
@@ -10869,6 +10947,7 @@ class $$KanbanCardsTableTableManager
                 Value<int?> sourceNoteId = const Value.absent(),
                 Value<String?> sourceAnchor = const Value.absent(),
                 Value<int?> originTaskId = const Value.absent(),
+                Value<int?> originFolderColor = const Value.absent(),
                 Value<DateTime?> originTaskDoneAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => KanbanCardsCompanion.insert(
@@ -10883,6 +10962,7 @@ class $$KanbanCardsTableTableManager
                 sourceNoteId: sourceNoteId,
                 sourceAnchor: sourceAnchor,
                 originTaskId: originTaskId,
+                originFolderColor: originFolderColor,
                 originTaskDoneAt: originTaskDoneAt,
                 createdAt: createdAt,
               ),

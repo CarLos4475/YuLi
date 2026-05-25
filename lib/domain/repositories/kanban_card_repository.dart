@@ -14,6 +14,7 @@ abstract class KanbanCardRepository {
     int? sourceNoteId,
     String? sourceAnchor,
     int? originTaskId,
+    int? originFolderColor,
   });
   Future<void> update(KanbanCard card);
   Future<void> delete(int id);

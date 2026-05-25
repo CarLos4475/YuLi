@@ -554,11 +554,18 @@ class _SpaceRow extends ConsumerWidget {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () async {
+            int? folderColor;
+            if (task.folderId != null) {
+              final folder =
+                  await ref.read(folderRepositoryProvider).getById(task.folderId!);
+              folderColor = folder?.color.value;
+            }
             await ref.read(kanbanCardRepositoryProvider).create(
                   labSpaceId: space.id,
                   columnId: col.id,
                   title: task.content,
                   originTaskId: task.id,
+                  originFolderColor: folderColor,
                   dueDate: task.dueDate,
                 );
             if (context.mounted) Navigator.pop(context);
