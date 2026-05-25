@@ -39,7 +39,7 @@ class FightScreen extends ConsumerWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (ctx, c) {
-              final isWide = c.maxWidth >= 800;
+              final isWide = c.maxWidth >= 900;
               if (isWide) {
                 return _ThreeBuckets(
                   hoy: hoy,
@@ -588,7 +588,7 @@ class _BucketColumn extends StatelessWidget {
                       task: tasks[i],
                       gesture: gesture,
                     ),
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemCount: tasks.length,
                   ),
           ),

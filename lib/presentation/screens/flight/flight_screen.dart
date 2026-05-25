@@ -411,7 +411,7 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
                           ),
                         );
                       },
-                      separatorBuilder: (_, __) => Container(
+                      separatorBuilder: (_, _) => Container(
                         height: 1,
                         color: yInk.withValues(alpha: 0.15),
                       ),
@@ -454,7 +454,7 @@ class _FolderGrid extends ConsumerWidget {
               count: counts[folders[i].id] ?? 0,
               pinned: pinned.contains(folders[i].id),
             ),
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemCount: folders.length,
           );
         }

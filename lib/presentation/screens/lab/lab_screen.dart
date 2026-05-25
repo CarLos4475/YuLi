@@ -6,7 +6,6 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/yuli_design.dart';
-import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
 import 'lab_space_detail_screen.dart';

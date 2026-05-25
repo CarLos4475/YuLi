@@ -389,7 +389,7 @@ class _NoteList extends ConsumerWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
       itemBuilder: (_, i) => _NoteRow(note: notes[i], folder: folder),
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemCount: notes.length,
     );
   }

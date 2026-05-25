@@ -719,7 +719,7 @@ class _FightPillar extends ConsumerWidget {
                             );
                       return _DoneTaskRow(task: t, folder: folder);
                     },
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemCount: done.length,
                   ),
           ),
@@ -932,7 +932,7 @@ class _LabPillar extends ConsumerWidget {
                 : ListView.separated(
                     padding: EdgeInsets.zero,
                     itemBuilder: (ctx, i) => _SpaceCard(space: spaces[i]),
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemCount: spaces.length,
                   ),
           ),
@@ -1199,20 +1199,15 @@ class _HatchedFillPainter extends CustomPainter {
 class _BrutalSlab extends StatelessWidget {
   final Color bg;
   final Widget child;
-  final BoxBorder? border;
 
-  const _BrutalSlab({
-    required this.bg,
-    required this.child,
-    this.border,
-  });
+  const _BrutalSlab({required this.bg, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        border: border ?? Border.all(color: _yInk, width: _hLine),
+        border: Border.all(color: _yInk, width: _hLine),
       ),
       child: child,
     );
