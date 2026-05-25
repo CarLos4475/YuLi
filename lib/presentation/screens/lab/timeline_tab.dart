@@ -306,6 +306,7 @@ class _TimelineViewer extends StatelessWidget {
 
   Color _cardColor(KanbanCard card) {
     if (card.originTaskDoneAt != null) return accentSuccess;
+    if (card.originFolderColor != null) return Color(card.originFolderColor!);
     return switch (card.priority) {
       CardPriority.high => accentError,
       CardPriority.medium => const Color(0xFFF5A623),
@@ -556,7 +557,9 @@ class _SinFechaSection extends StatelessWidget {
               itemBuilder: (context, i) {
                 final bg = cards[i].originTaskDoneAt != null
                     ? accentSuccess
-                    : _priorityColor(cards[i].priority);
+                    : (cards[i].originFolderColor != null
+                        ? Color(cards[i].originFolderColor!)
+                        : _priorityColor(cards[i].priority));
                 final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,

@@ -171,7 +171,9 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                             children: [
                               Container(
                                 width: 4,
-                                color: _cardPriorityColor(card.priority),
+                                color: card.originFolderColor != null
+                                    ? Color(card.originFolderColor!)
+                                    : _cardPriorityColor(card.priority),
                               ),
                               Expanded(
                                 child: Padding(
@@ -655,6 +657,7 @@ class _DraggableCard extends StatelessWidget {
 
   Color _priorityColor() {
     if (card.originTaskDoneAt != null) return accentSuccess;
+    if (card.originFolderColor != null) return Color(card.originFolderColor!);
     return switch (card.priority) {
       CardPriority.high => accentError,
       CardPriority.medium => const Color(0xFFF5A623),
@@ -879,7 +882,9 @@ class _MonthView extends StatelessWidget {
                                   width: 5,
                                   height: 5,
                                   decoration: BoxDecoration(
-                                    color: _dotColor(c.priority),
+                                    color: c.originFolderColor != null
+                                        ? Color(c.originFolderColor!)
+                                        : _dotColor(c.priority),
                                     shape: BoxShape.rectangle,
                                   ),
                                 );
@@ -971,7 +976,9 @@ class _SinFechaSection extends StatelessWidget {
               itemBuilder: (context, i) {
                 final bg = cards[i].originTaskDoneAt != null
                     ? accentSuccess
-                    : _priorityColor(cards[i].priority);
+                    : (cards[i].originFolderColor != null
+                        ? Color(cards[i].originFolderColor!)
+                        : _priorityColor(cards[i].priority));
                 final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
