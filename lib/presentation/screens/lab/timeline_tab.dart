@@ -214,13 +214,12 @@ class _TimelineViewer extends StatelessWidget {
     final totalDays = space.dueDate!.difference(space.startDate!).inDays + 1;
     const laneHeight = 100.0;
     const headerHeight = 40.0;
-    final totalHeight = headerHeight + (columns.length * laneHeight);
     final minWidth = MediaQuery.of(context).size.width;
     final totalWidth = minWidth;
     final dayWidth = totalWidth / totalDays;
     final paper = paperColor(context);
 
-    // Group cards by (dayIndex, laneIndex) for overlap resolution
+    // Group cards by (dayIndex, laneIndex) for vertical stacking
     final groups = <String, List<KanbanCard>>{};
     for (final card in cards) {
       if (card.dueDate == null) continue;
@@ -234,21 +233,35 @@ class _TimelineViewer extends StatelessWidget {
       groups.putIfAbsent(key, () => []).add(card);
     }
 
-    // Build positioned card widgets with overlap resolution
+    // Count cards per lane to compute dynamic lane height
+    final laneCardCount = <int, int>{};
+    for (final card in cards) {
+      if (card.dueDate == null) continue;
+      final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
+      if (laneIndex < 0) continue;
+      laneCardCount[laneIndex] = (laneCardCount[laneIndex] ?? 0) + 1;
+    }
+
+    final totalHeight = headerHeight + columns.length * laneHeight +
+        laneCardCount.values.fold(0, (sum, c) => sum + (c > 1 ? (c - 1) * 28 : 0));
+
+    // Build positioned card widgets with vertical stacking
     final cardWidgets = <Widget>[];
     for (final group in groups.entries) {
       final parts = group.key.split('|');
       final dayIndex = int.parse(parts[0]);
       final laneIndex = int.parse(parts[1]);
       final groupCards = group.value;
-      final totalLanes = groupCards.length;
 
-      for (int gi = 0; gi < totalLanes; gi++) {
+      // Sort cards by position within column for consistent stacking
+      groupCards.sort((a, b) => a.position.compareTo(b.position));
+
+      for (int gi = 0; gi < groupCards.length; gi++) {
         final card = groupCards[gi];
-        final laneWidth = (dayWidth - 4) / totalLanes;
-        final x = dayIndex * dayWidth + 2 + gi * laneWidth;
-        final y = headerHeight + (laneIndex * laneHeight) + 24;
-        final cardHeight = laneHeight - 28;
+        final x = dayIndex * dayWidth + 2;
+        final y = headerHeight + (laneIndex * laneHeight) + 24 + gi * 28;
+        final cardWidth = dayWidth - 4;
+        final cardHeight = 26.0;
         final isSelected = selectedCardIds.contains(card.id);
         final bg = card.originFolderColor != null
             ? Color(card.originFolderColor!)
@@ -260,7 +273,7 @@ class _TimelineViewer extends StatelessWidget {
           Positioned(
             left: x,
             top: y,
-            width: laneWidth - 1,
+            width: cardWidth,
             height: cardHeight,
             child: GestureDetector(
               onTap: () => onCardTap(card),
@@ -275,7 +288,7 @@ class _TimelineViewer extends StatelessWidget {
                   ),
                   boxShadow: shadowM,
                 ),
-                padding: const EdgeInsets.fromLTRB(5, 4, 4, 4),
+                padding: const EdgeInsets.fromLTRB(5, 2, 4, 2),
                 child: Text(
                   card.title,
                   style: TextStyle(
@@ -288,7 +301,7 @@ class _TimelineViewer extends StatelessWidget {
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
                   ),
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
