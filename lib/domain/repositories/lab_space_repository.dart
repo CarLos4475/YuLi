@@ -21,5 +21,7 @@ abstract class LabSpaceRepository {
   Future<void> linkFolder(int labSpaceId, int folderId);
   Future<void> unlinkFolder(int labSpaceId, int folderId);
   Future<List<int>> getLinkedFolderIds(int labSpaceId);
+  Future<List<int>> getLinkedSpaceIdsForFolder(int folderId);
+  Stream<List<int>> watchLinkedSpaceIdsForFolder(int folderId);
   Stream<List<LabSpace>> watchDeleted();
 }

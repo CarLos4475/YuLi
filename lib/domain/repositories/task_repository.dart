@@ -3,6 +3,7 @@ import '../models/task.dart';
 abstract class TaskRepository {
   Stream<List<Task>> watchPending();
   Stream<List<Task>> watchYesterday();
+  Stream<List<Task>> watchVencidas();
   Stream<List<Task>> watchDoneToday();
   Future<List<Task>> getPendingForFolder(int folderId);
   Stream<List<Task>> watchPendingForFolder(int folderId);

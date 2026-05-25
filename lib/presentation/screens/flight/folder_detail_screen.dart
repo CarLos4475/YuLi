@@ -1,18 +1,19 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../theme/app_tokens.dart';
+
 import '../../providers/database_providers.dart';
-import '../../providers/lab_space_providers.dart';
+import '../../providers/flight_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
+import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
-import '../../widgets/app_banner.dart';
+import '../../widgets/yuli_design.dart';
+import '../../widgets/edit_item_dialog.dart';
+import '../../widgets/fight_panel.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
-import '../../widgets/fight_panel.dart';
+import '../../../domain/models/task.dart' as domain_task;
 import 'note_editor_screen.dart';
-import '../../widgets/edit_item_dialog.dart';
 
 class FolderDetailScreen extends ConsumerStatefulWidget {
   final Folder folder;
@@ -25,7 +26,7 @@ class FolderDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
-  bool _isGrid = true;
+  bool _grid = true;
 
   @override
   void initState() {
@@ -42,17 +43,18 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
   Future<void> _navigateToPendingNote(int noteId) async {
     final note = await ref.read(noteRepositoryProvider).getById(noteId);
     if (note == null || !mounted) return;
-    final noteFolder = await ref.read(folderRepositoryProvider).getById(note.folderId);
-    if (noteFolder == null || !mounted) return;
+    final folder =
+        await ref.read(folderRepositoryProvider).getById(note.folderId);
+    if (folder == null || !mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => NoteEditorScreen(note: note, folder: noteFolder),
+        builder: (_) => NoteEditorScreen(note: note, folder: folder),
       ),
     );
   }
 
-  void _showFightPanel(BuildContext context) {
+  void _openFightPanel() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -67,259 +69,374 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
           onTapTask: (task) async {
             await ref.read(taskRepositoryProvider).markDone(task.id);
             await syncTaskCompletionToKanban(ref, task.id);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Tarea completada'),
-                duration: Duration(seconds: 2),
-              ),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Tarea completada'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
           },
         ),
       ),
     );
   }
 
+  Future<void> _createNote() async {
+    final note = await ref
+        .read(noteRepositoryProvider)
+        .create(widget.folder.id, rawMarkdown: '');
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoteEditorScreen(note: note, folder: widget.folder),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final notesAsync = ref.watch(notesByFolderProvider(widget.folder.id));
-    final pendingTasksAsync =
-        ref.watch(pendingTasksForFolderProvider(widget.folder.id));
-    final pendingCount = pendingTasksAsync.valueOrNull?.length ?? 0;
-    final notes = notesAsync.valueOrNull ?? [];
+    final notes = ref.watch(notesByFolderProvider(widget.folder.id)).valueOrNull ?? [];
+    final pending = ref.watch(pendingTasksForFolderProvider(widget.folder.id)).valueOrNull ?? [];
+    final enrichment = ref.watch(folderEnrichmentProvider(widget.folder.id)).valueOrNull;
+    final linkedSpaces = enrichment?.linkedSpaces ?? [];
 
     return Scaffold(
-      backgroundColor: paperColor(context),
+      backgroundColor: yCream,
       body: SafeArea(
         child: Column(
           children: [
-            _FolderDetailHeader(
+            ModeHeader(
+              mode: 'FLIGHT',
+              subtitle:
+                  'MODO NOTAS · CARPETA · ${notes.length} NOTAS',
+              color: yFlight,
+              onBack: () => Navigator.pop(context),
+              headerRight: [
+                YBadge(
+                  label: widget.folder.name.toUpperCase(),
+                  bg: widget.folder.color,
+                  fg: yCream,
+                ),
+                IconSquareBtn(icon: Icons.help_outline),
+              ],
+            ),
+            _FolderHero(
               folder: widget.folder,
               noteCount: notes.length,
-              isGrid: _isGrid,
-              onToggleLayout: () => setState(() => _isGrid = !_isGrid),
+              lastEdit: enrichment?.lastEditedAt,
+              linkedSpaces: linkedSpaces.map((s) => s.name).toList(),
+              grid: _grid,
+              onToggleView: () => setState(() => _grid = !_grid),
+              onCreateNote: _createNote,
             ),
-            if (pendingCount > 0)
-              AppBanner(
-                message: '${pendingCount} Tarea${pendingCount == 1 ? '' : 's'} Pendiente${pendingCount == 1 ? '' : 's'}',
-                accentColor: widget.folder.color,
-                actionLabel: 'Ver en Fight',
-                onAction: () {
+            Expanded(
+              child: Container(
+                color: yCream,
+                child: notes.isEmpty
+                    ? Center(
+                        child: Text(
+                          'SIN NOTAS — toca + NOTA',
+                          style: yMono(
+                            size: 11,
+                            color: yMuted,
+                            tracking: 1.4,
+                          ),
+                        ),
+                      )
+                    : _grid
+                        ? _NoteGrid(notes: notes, folder: widget.folder)
+                        : _NoteList(notes: notes, folder: widget.folder),
+              ),
+            ),
+            if (pending.isNotEmpty)
+              _TareasStrip(
+                folder: widget.folder,
+                tasks: pending,
+                onOpen: () {
                   Navigator.pop(context);
                   ref.read(currentModeProvider.notifier).state = AppMode.fight;
                 },
               ),
-
-            Expanded(
-              child: _NoteGrid(
-                notes: notes,
-                folder: widget.folder,
-                isGrid: _isGrid,
-              ),
-            ),
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: paperColor(context),
-          border: Border(
-            top: BorderSide(color: inkColor(context), width: borderWidth),
+      floatingActionButton: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openFightPanel,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: yInk,
+            border: Border.all(color: yInk, width: yLineMid),
           ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _showFightPanel(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                pendingCount > 0
-                    ? 'Tareas pendientes ($pendingCount)'
-                    : 'Tareas pendientes',
-                style: labelBold.copyWith(color: widget.folder.color),
-                textAlign: TextAlign.center,
-              ),
+          child: Text(
+            pending.isEmpty ? 'TAREAS' : 'TAREAS · ${pending.length}',
+            style: yMono(
+              size: 11,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yCream,
             ),
           ),
         ),
       ),
-      floatingActionButton: _NewNoteButton(folder: widget.folder),
     );
   }
 }
 
-class _FolderDetailHeader extends StatelessWidget {
+// ─── Folder hero header ───────────────────────────────────────────────────
+
+class _FolderHero extends StatelessWidget {
   final Folder folder;
   final int noteCount;
-  final bool isGrid;
-  final VoidCallback onToggleLayout;
+  final DateTime? lastEdit;
+  final List<String> linkedSpaces;
+  final bool grid;
+  final VoidCallback onToggleView;
+  final VoidCallback onCreateNote;
 
-  const _FolderDetailHeader({
+  const _FolderHero({
     required this.folder,
     required this.noteCount,
-    required this.isGrid,
-    required this.onToggleLayout,
+    required this.lastEdit,
+    required this.linkedSpaces,
+    required this.grid,
+    required this.onToggleView,
+    required this.onCreateNote,
   });
+
+  String _lastEditLabel(DateTime? d) {
+    if (d == null) return '';
+    final diff = DateTime.now().difference(d);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} sem';
+    return '${(diff.inDays / 30).floor()} m';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final scope =
+        linkedSpaces.isEmpty ? null : linkedSpaces.join(' · ');
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: BoxDecoration(
-        color: paperColor(context),
-        border: Border(
-          bottom: BorderSide(color: inkColor(context), width: borderWidth),
-        ),
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
       ),
-      child: Row(
+      child: Stack(
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.pop(context),
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Icon(Icons.arrow_back, color: inkColor(context), size: 20),
-            ),
+          // Color stripe on the left
+          Positioned(
+            top: 0,
+            left: 0,
+            bottom: 0,
+            child: Container(width: 8, color: folder.color),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 18, 28, 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  folder.name,
-                  style: displayL.copyWith(color: folder.color),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        scope == null
+                            ? '// CARPETA'
+                            : '// CARPETA · ${scope.toUpperCase()}',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: yMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              folder.name,
+                              style: ySans(
+                                size: 44,
+                                weight: FontWeight.w700,
+                                letterSpacing: -1.5,
+                                color: folder.color,
+                                height: 0.95,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              '${noteCount.toString().padLeft(2, '0')} NOTAS'
+                              '${lastEdit != null ? ' · ED. HACE ${_lastEditLabel(lastEdit).toUpperCase()}' : ''}',
+                              style: yMono(
+                                size: 11,
+                                weight: FontWeight.w700,
+                                tracking: 1.4,
+                                color: yMuted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                Text(
-                   '$noteCount Nota${noteCount == 1 ? '' : 's'}',
-                  style: bodyS.copyWith(color: inkGray),
+                const SizedBox(width: 12),
+                ViewToggleBtn(
+                  glyph: '▣',
+                  active: grid,
+                  onTap: grid ? () {} : onToggleView,
+                ),
+                const SizedBox(width: 4),
+                ViewToggleBtn(
+                  glyph: '≡',
+                  active: !grid,
+                  onTap: !grid ? () {} : onToggleView,
+                ),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onCreateNote,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: folder.color,
+                      border: Border.all(color: yInk, width: yLineMid),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('+',
+                            style:
+                                TextStyle(fontSize: 16, color: yCream, height: 1.0)),
+                        const SizedBox(width: 6),
+                        Text('NOTA',
+                            style: yBody(
+                              size: 13,
+                              weight: FontWeight.w700,
+                              color: yCream,
+                            ).copyWith(letterSpacing: 1.2)),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onToggleLayout,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Text(
-                isGrid ? 'Lista' : 'Grid',
-                style: labelBold.copyWith(color: inkColor(context)),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-class _NoteGrid extends StatelessWidget {
+// ─── Notes grid ───────────────────────────────────────────────────────────
+
+class _NoteGrid extends ConsumerWidget {
   final List<Note> notes;
   final Folder folder;
-  final bool isGrid;
 
-  const _NoteGrid({
-    required this.notes,
-    required this.folder,
-    required this.isGrid,
-  });
+  const _NoteGrid({required this.notes, required this.folder});
 
   @override
-  Widget build(BuildContext context) {
-    if (notes.isEmpty) {
-      return Center(
-        child: Text(
-          'Sin notas todavía',
-          style: bodyS.copyWith(color: inkGray),
-        ),
-      );
-    }
-
-    if (!isGrid) {
-      return ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: notes.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
-        itemBuilder: (_, i) => _NoteListItem(note: notes[i], folder: folder),
-      );
-    }
-
-    final crossCount = _crossAxisCount(context);
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossCount,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.85,
-      ),
-      itemCount: notes.length,
-      itemBuilder: (_, i) {
-        // Slight asymmetric rotation for editorial feel
-        final rotation = (i % 2 == 0 ? 1.0 : -1.0) *
-            (1.0 + (i % 3) * 0.5) *
-            (math.pi / 180);
-        return Transform.rotate(
-          angle: rotation,
-          child: _NoteGridItem(note: notes[i], folder: folder),
+  Widget build(BuildContext context, WidgetRef ref) {
+    return LayoutBuilder(
+      builder: (ctx, c) {
+        final cols = c.maxWidth >= 1000
+            ? 3
+            : c.maxWidth >= 650
+                ? 2
+                : 1;
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            mainAxisExtent: 168,
+          ),
+          itemCount: notes.length,
+          itemBuilder: (_, i) => _NoteCard(note: notes[i], folder: folder),
         );
       },
     );
   }
+}
 
-  int _crossAxisCount(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    if (width >= 900) return 4;
-    if (width >= 600) return 3;
-    return 2;
+class _NoteList extends ConsumerWidget {
+  final List<Note> notes;
+  final Folder folder;
+
+  const _NoteList({required this.notes, required this.folder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
+      itemBuilder: (_, i) => _NoteRow(note: notes[i], folder: folder),
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemCount: notes.length,
+    );
   }
 }
 
-class _NoteGridItem extends ConsumerWidget {
+// ─── Note card (saturated) ────────────────────────────────────────────────
+
+class _NoteCard extends ConsumerWidget {
   final Note note;
   final Folder folder;
 
-  const _NoteGridItem({required this.note, required this.folder});
+  const _NoteCard({required this.note, required this.folder});
+
+  String _lastEditLabel(DateTime d) {
+    final diff = DateTime.now().difference(d);
+    if (diff.inMinutes < 60) return 'hace ${diff.inMinutes}m';
+    if (diff.inHours < 24) return 'hace ${diff.inHours}h';
+    if (diff.inDays < 7) return 'hace ${diff.inDays}d';
+    return 'hace ${(diff.inDays / 7).floor()} sem';
+  }
+
+  String _previewOf(String md) {
+    final clean = md
+        .replaceAll(RegExp(r'#{1,6}\s+'), '')
+        .replaceAll(RegExp(r'[*_`~]'), '')
+        .replaceAll(RegExp(r'\n+'), ' ');
+    return clean.length > 220 ? '${clean.substring(0, 220)}…' : clean;
+  }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: RoundedRectangleBorder(
+        backgroundColor: yCream,
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.zero,
-          side: BorderSide(color: inkColor(context), width: borderWidth),
         ),
-        title: Text('Eliminar nota',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: Text('Se moverá la nota a la papelera.',
-            style: bodyM.copyWith(color: inkColor(context))),
+        title: Text('Eliminar nota', style: ySans(size: 20, weight: FontWeight.w700)),
+        content: Text('Se moverá la nota a la papelera.', style: yBody(size: 14)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Eliminar',
-                style: labelBold.copyWith(color: accentFight)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
         ],
       ),
     );
     if (confirmed == true) {
       await ref.read(noteRepositoryProvider).softDelete(note.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Nota "${note.displayTitle}" movida a la papelera'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
     }
   }
 
@@ -346,114 +463,9 @@ class _NoteGridItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bgColor = note.color ?? folder.color;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _openNote(context),
-      onLongPress: () => _showOptions(context, ref),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bgColor,
-          border: Border.all(color: inkColor(context), width: borderWidthHeavy),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              note.displayTitle,
-              style: displayM.copyWith(color: inkLight),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openNote(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NoteEditorScreen(note: note, folder: folder),
-      ),
-    );
-  }
-
-}
-
-class _NoteListItem extends ConsumerWidget {
-  final Note note;
-  final Folder folder;
-
-  const _NoteListItem({required this.note, required this.folder});
-
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.zero,
-          side: BorderSide(color: inkColor(context), width: borderWidth),
-        ),
-        title: Text('Eliminar nota',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: Text('Se moverá la nota a la papelera.',
-            style: bodyM.copyWith(color: inkColor(context))),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Eliminar',
-                style: labelBold.copyWith(color: accentFight)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(noteRepositoryProvider).softDelete(note.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Nota "${note.displayTitle}" movida a la papelera'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
-  void _showOptions(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (ctx) => EditItemDialog(
-        title: 'Nota',
-        initialName: note.displayTitle,
-        initialColor: note.color ?? folder.color,
-        onSave: (name, color) async {
-          await ref.read(noteRepositoryProvider).update(note.copyWith(
-                title: name,
-                color: color,
-              ));
-        },
-        onDelete: () async {
-          Navigator.pop(ctx);
-          await _confirmDelete(context, ref);
-        },
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bgColor = note.color ?? folder.color;
+    final pinned = ref.watch(pinnedNotesProvider).contains(note.id);
+    final bg = note.color ?? folder.color;
+    final preview = _previewOf(note.rawMarkdown);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.push(
@@ -463,62 +475,272 @@ class _NoteListItem extends ConsumerWidget {
         ),
       ),
       onLongPress: () => _showOptions(context, ref),
-      child: Container(
-        decoration: BoxDecoration(
-          color: bgColor,
-          border: Border.all(color: inkColor(context), width: borderWidthHeavy),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: bg,
+              border: Border.all(color: yInk, width: yLineHeavy),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  note.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ySans(
+                    size: 20,
+                    weight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                    color: yCream,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Text(
+                    preview,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: yBody(
+                      size: 12,
+                      color: yCream.withValues(alpha: 0.85),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 1.5,
+                  color: yCream.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _lastEditLabel(note.updatedAt).toUpperCase(),
+                      style: yMono(
+                        size: 9,
+                        weight: FontWeight.w700,
+                        tracking: 1.2,
+                        color: yCream.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    Text(
+                      '${note.sizeBytes}B',
+                      style: yMono(
+                        size: 9,
+                        weight: FontWeight.w700,
+                        tracking: 1.2,
+                        color: yCream.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (pinned)
+            Positioned(
+              top: -2,
+              right: 12,
+              child: Transform.rotate(
+                angle: 0.035,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
+                  decoration: BoxDecoration(
+                    color: yAmber2,
+                    border: Border.all(color: yInk, width: yLineThin),
+                  ),
+                  child: Text('★ FIJADA',
+                      style: yMono(
+                        size: 9,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yInk,
+                      )),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteRow extends ConsumerWidget {
+  final Note note;
+  final Folder folder;
+
+  const _NoteRow({required this.note, required this.folder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NoteEditorScreen(note: note, folder: folder),
         ),
-        padding: const EdgeInsets.all(12),
-        child: Text(
-          note.displayTitle,
-          style: displayM.copyWith(color: inkLight),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: note.color ?? folder.color,
+          border: Border.all(color: yInk, width: yLineMid),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(note.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ySans(
+                    size: 16,
+                    weight: FontWeight.w700,
+                    color: yCream,
+                  )),
+            ),
+            const SizedBox(width: 8),
+            Text('→',
+                style: TextStyle(fontSize: 14, color: yCream, height: 1.0)),
+          ],
         ),
       ),
     );
   }
 }
 
-class _NewNoteButton extends ConsumerWidget {
-  final Folder folder;
+// ─── Tareas pendientes strip ──────────────────────────────────────────────
 
-  const _NewNoteButton({required this.folder});
+class _TareasStrip extends StatelessWidget {
+  final Folder folder;
+  final List<domain_task.Task> tasks;
+  final VoidCallback onOpen;
+
+  const _TareasStrip({
+    required this.folder,
+    required this.tasks,
+    required this.onOpen,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () async {
-        final note = await ref
-            .read(noteRepositoryProvider)
-            .create(folder.id, rawMarkdown: '');
-        if (context.mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => NoteEditorScreen(note: note, folder: folder),
-            ),
-          );
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: inkColor(context),
-          border: Border.all(color: inkColor(context), width: borderWidth),
-          boxShadow: [
-            BoxShadow(
-              color: folder.color,
-              offset: shadowOffset,
-              blurRadius: shadowBlurRadius,
-            ),
-          ],
-        ),
-        child: Text(
-          '+ Nota',
-          style: labelBold.copyWith(color: paperColor(context)),
-        ),
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      padding: const EdgeInsets.fromLTRB(28, 12, 28, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('── TAREAS PENDIENTES',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.6,
+                    color: yInk,
+                  )),
+              const SizedBox(width: 10),
+              YBadge(
+                label: '@${folder.name} · ${tasks.length}',
+                bg: yFight,
+                fg: yCream,
+                fontSize: 10,
+              ),
+              const Spacer(),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onOpen,
+                child: Text('ABRIR EN FIGHT →',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ).copyWith(
+                      decoration: TextDecoration.underline,
+                      decorationColor: yInk,
+                    )),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(builder: (ctx, c) {
+            final cols = (tasks.length).clamp(1, 4);
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: c.maxWidth >= 900 ? cols : 1,
+                mainAxisExtent: 48,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: tasks.length,
+              itemBuilder: (_, i) {
+                final t = tasks[i];
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: yCream,
+                    border: Border.all(color: yInk, width: yLineThin),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: yInk, width: yLineThin),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              t.content,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ySans(
+                                size: 13,
+                                weight: FontWeight.w600,
+                                letterSpacing: -0.2,
+                                color: yInk,
+                                height: 1.2,
+                              ),
+                            ),
+                            Text(
+                              'PENDIENTE',
+                              style: yMono(
+                                size: 9,
+                                weight: FontWeight.w700,
+                                tracking: 1.2,
+                                color: yMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          }),
+        ],
       ),
     );
   }

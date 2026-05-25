@@ -149,9 +149,22 @@ class AppDatabase extends _$AppDatabase {
       );
 
       // 3. archived_failed → trash + notificar
-      final toTrash = await (select(tasks)
-            ..where((t) => t.status.equals('archived_failed')))
-            .get();
+      //    Grace period: 24h after entering archived_failed (= 2 days past
+      //    created_at without due_date, or 2 days past due_date) so the
+      //    FIGHT view can render them in the VENCIDAS bucket with a
+      //    countdown before final move to trash.
+      final toTrashRows = await customSelect(
+        "SELECT content FROM tasks "
+        "WHERE status = 'archived_failed' AND ("
+        "  (due_date IS NULL AND "
+        "    date(created_at, 'unixepoch') <= date('now', '-2 days')) OR "
+        "  (due_date IS NOT NULL AND "
+        "    datetime(due_date, 'unixepoch') <= datetime('now', '-2 days'))"
+        ")",
+        readsFrom: {tasks},
+      ).get();
+      final toTrash =
+          toTrashRows.map((r) => (content: r.read<String>('content'))).toList();
       if (toTrash.isNotEmpty) {
         for (final t in toTrash) {
           final msg = t.content.length > 80
@@ -178,7 +191,12 @@ class AppDatabase extends _$AppDatabase {
         );
         archivedCount = await customUpdate(
           "UPDATE tasks SET status = 'trash', trashed_at = datetime('now') "
-          "WHERE status = 'archived_failed'",
+          "WHERE status = 'archived_failed' AND ("
+          "  (due_date IS NULL AND "
+          "    date(created_at, 'unixepoch') <= date('now', '-2 days')) OR "
+          "  (due_date IS NOT NULL AND "
+          "    datetime(due_date, 'unixepoch') <= datetime('now', '-2 days'))"
+          ")",
           updates: {tasks},
           updateKind: UpdateKind.update,
         );

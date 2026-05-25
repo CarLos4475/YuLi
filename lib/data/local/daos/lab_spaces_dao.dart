@@ -107,4 +107,17 @@ class LabSpacesDao extends DatabaseAccessor<AppDatabase>
         .get();
     return rows.map((r) => r.folderId).toList();
   }
+
+  Future<List<int>> getLinkedSpaceIds(int folderId) async {
+    final rows = await (select(spaceFolderLinks)
+          ..where((l) => l.folderId.equals(folderId)))
+        .get();
+    return rows.map((r) => r.labSpaceId).toList();
+  }
+
+  Stream<List<int>> watchLinkedSpaceIds(int folderId) =>
+      (select(spaceFolderLinks)
+            ..where((l) => l.folderId.equals(folderId)))
+          .watch()
+          .map((rows) => rows.map((r) => r.labSpaceId).toList());
 }

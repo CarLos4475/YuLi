@@ -18,6 +18,11 @@ class TasksDao extends DatabaseAccessor<AppDatabase> with _$TasksDaoMixin {
         ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
       .watch();
 
+  Stream<List<TaskRow>> watchVencidas() => (select(tasks)
+        ..where((t) => t.status.equals('archived_failed'))
+        ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+      .watch();
+
   Stream<List<TaskRow>> watchDoneToday() {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);

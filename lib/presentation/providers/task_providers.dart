@@ -10,6 +10,10 @@ final yesterdayTasksProvider = StreamProvider<List<Task>>((ref) {
   return ref.watch(taskRepositoryProvider).watchYesterday();
 });
 
+final vencidasTasksProvider = StreamProvider<List<Task>>((ref) {
+  return ref.watch(taskRepositoryProvider).watchVencidas();
+});
+
 final doneTodayTasksProvider = StreamProvider<List<Task>>((ref) {
   return ref.watch(taskRepositoryProvider).watchDoneToday();
 });

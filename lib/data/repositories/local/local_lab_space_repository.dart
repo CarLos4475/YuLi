@@ -132,6 +132,14 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
   Future<List<int>> getLinkedFolderIds(int labSpaceId) =>
       _db.labSpacesDao.getLinkedFolderIds(labSpaceId);
 
+  @override
+  Future<List<int>> getLinkedSpaceIdsForFolder(int folderId) =>
+      _db.labSpacesDao.getLinkedSpaceIds(folderId);
+
+  @override
+  Stream<List<int>> watchLinkedSpaceIdsForFolder(int folderId) =>
+      _db.labSpacesDao.watchLinkedSpaceIds(folderId);
+
   LabSpace _rowToSpace(LabSpaceRow row) => LabSpace(
         id: row.id,
         name: row.name,

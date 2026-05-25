@@ -17,6 +17,10 @@ class LocalTaskRepository implements TaskRepository {
       _db.tasksDao.watchYesterday().map((rows) => rows.map(_rowToTask).toList());
 
   @override
+  Stream<List<Task>> watchVencidas() =>
+      _db.tasksDao.watchVencidas().map((rows) => rows.map(_rowToTask).toList());
+
+  @override
   Stream<List<Task>> watchDoneToday() =>
       _db.tasksDao.watchDoneToday().map((rows) => rows.map(_rowToTask).toList());
 

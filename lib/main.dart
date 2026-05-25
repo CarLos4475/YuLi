@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'presentation/theme/app_tokens.dart';
 import 'presentation/providers/database_providers.dart';
 import 'presentation/providers/theme_provider.dart';
-import 'presentation/widgets/mode_switch.dart';
 import 'presentation/widgets/app_banner.dart';
+import 'presentation/widgets/yuli_design.dart';
 import 'presentation/screens/fight/fight_screen.dart';
 import 'presentation/screens/flight/flight_screen.dart';
 import 'presentation/screens/lab/lab_screen.dart';
@@ -142,34 +142,8 @@ class _AppShellState extends ConsumerState<AppShell> {
           ],
         ),
       ),
-      bottomNavigationBar: currentMode != AppMode.home
-          ? Container(
-              decoration: BoxDecoration(
-                color: paperColor(context),
-                border: Border(
-                  top: BorderSide(color: inkColor(context), width: borderWidth),
-                ),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.home,
-                      child: Container(
-                        width: 48,
-                        height: 56,
-                        alignment: Alignment.center,
-                        child: Icon(Icons.arrow_back, size: 20, color: inkColor(context)),
-                      ),
-                    ),
-                    const Expanded(child: ModeSwitch()),
-                  ],
-                ),
-              ),
-            )
-          : null,
+      bottomNavigationBar:
+          currentMode != AppMode.home ? const YuliBottomNav() : null,
     );
   }
 }

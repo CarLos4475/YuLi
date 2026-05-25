@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 
 enum LabSpaceStatus {
   active,
+  paused,
   completed,
   archived;
 
   static LabSpaceStatus fromString(String value) => switch (value) {
         'active' => active,
+        'paused' => paused,
         'completed' => completed,
         'archived' => archived,
-        _ => throw ArgumentError('Unknown LabSpaceStatus: $value'),
+        // Unknown values default to active to keep the app usable across
+        // schema additions without crashing.
+        _ => active,
       };
 
   String toDbString() => switch (this) {
         active => 'active',
+        paused => 'paused',
         completed => 'completed',
         archived => 'archived',
       };
