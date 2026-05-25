@@ -422,7 +422,7 @@ class _KanbanHeader extends ConsumerWidget {
                   ),
                 ],
                 if (space.startDate != null || space.dueDate != null) ...[
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
