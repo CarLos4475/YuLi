@@ -235,7 +235,7 @@ class _TimelineViewer extends StatelessWidget {
     // Day widths: empty days keep original width, days with cards get extra space
     final baseW = availWidth / totalDays;
     final dayWidths = List.generate(totalDays, (d) =>
-        (cardsPerDay[d] ?? 0) > 0 ? baseW * 1.5 : baseW);
+        (cardsPerDay[d] ?? 0) > 0 ? baseW * 2.5 : baseW);
     final dayPositions = List.filled(totalDays, 0.0);
     for (int d = 0; d < totalDays; d++) {
       dayPositions[d] = d == 0 ? 0 : dayPositions[d - 1] + dayWidths[d - 1];
