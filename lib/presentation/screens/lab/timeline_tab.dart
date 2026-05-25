@@ -232,18 +232,12 @@ class _TimelineViewer extends StatelessWidget {
       cardsPerLane[laneIndex] = (cardsPerLane[laneIndex] ?? 0) + 1;
     }
 
-    // Dynamic day widths: empty days get 1 unit, days with cards get proportionally more
-    final emptyW = availWidth / totalDays * 0.4;
-    final daysWithCards = cardsPerDay.length;
-    final remainingW = availWidth - (totalDays - daysWithCards) * emptyW;
-    final baseCardDayW = daysWithCards > 0 ? remainingW / daysWithCards : 0.0;
+    // Day widths: empty days keep original width, days with cards get extra space
+    final baseW = availWidth / totalDays;
+    final dayWidths = List.generate(totalDays, (d) =>
+        (cardsPerDay[d] ?? 0) > 0 ? baseW * 1.5 : baseW);
     final dayPositions = List.filled(totalDays, 0.0);
-    final dayWidths = List.filled(totalDays, emptyW);
     for (int d = 0; d < totalDays; d++) {
-      final count = cardsPerDay[d] ?? 0;
-      if (count > 0) {
-        dayWidths[d] = baseCardDayW;
-      }
       dayPositions[d] = d == 0 ? 0 : dayPositions[d - 1] + dayWidths[d - 1];
     }
     final totalWidth = dayPositions.last + dayWidths.last;
@@ -262,7 +256,7 @@ class _TimelineViewer extends StatelessWidget {
     }
 
     final totalHeight = headerHeight + columns.length * laneHeight +
-        cardsPerLane.values.fold(0, (sum, c) => sum + (c > 1 ? (c - 1) * 28 : 0));
+        cardsPerLane.values.fold(0, (sum, c) => sum + (c > 4 ? (c - 4) * 26 : 0));
 
     // Build positioned card widgets with vertical stacking
     final cardWidgets = <Widget>[];
@@ -278,9 +272,9 @@ class _TimelineViewer extends StatelessWidget {
         final card = groupCards[gi];
         final dayW = dayWidths[dayIndex];
         final x = dayPositions[dayIndex] + 2;
-        final y = headerHeight + (laneIndex * laneHeight) + 24 + gi * 28;
+        final y = headerHeight + (laneIndex * laneHeight) + 22 + gi * 26;
         final cardWidth = dayW - 4;
-        final cardHeight = 26.0;
+        final cardHeight = 22.0;
         final isSelected = selectedCardIds.contains(card.id);
         final bg = card.originFolderColor != null
             ? Color(card.originFolderColor!)
