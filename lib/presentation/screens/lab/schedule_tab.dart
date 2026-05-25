@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -82,11 +81,23 @@ List<_LaneInfo> _assignLanes(List<ScheduleBlock> blocks) {
   return result;
 }
 
-// ─── Settings provider per space ──────────────────────────────────────────
+// ─── Providers ────────────────────────────────────────────────────────────
 
 final _scheduleSettingsProvider =
     FutureProvider.family<ScheduleSettings, int>((ref, spaceId) async {
   return ref.read(scheduleRepositoryProvider).getOrCreateSettings(spaceId);
+});
+
+final _scheduleBlocksProvider =
+    StreamProvider.family<List<ScheduleBlock>, int>((ref, spaceId) {
+  return ref.read(scheduleRepositoryProvider).watchBySpace(spaceId);
+});
+
+final _weekNoteProvider =
+    StreamProvider.family<ScheduleWeekNote?, (int, String)>((ref, key) {
+  final (spaceId, weekStart) = key;
+  final date = DateTime.parse(weekStart);
+  return ref.read(scheduleRepositoryProvider).watchWeekNote(spaceId, date);
 });
 
 // ─── Main Widget ───────────────────────────────────────────────────────────
@@ -101,11 +112,6 @@ class ScheduleTab extends ConsumerStatefulWidget {
 
 class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   late DateTime _currentWeekStart;
-  List<ScheduleBlock> _blocks = [];
-  ScheduleWeekNote? _weekNote;
-  StreamSubscription<List<ScheduleBlock>>? _blocksSub;
-  StreamSubscription<ScheduleWeekNote?>? _noteSub;
-
   double? _dragStartY;
   double? _dragCurrentY;
   int? _dragDayIndex;
@@ -114,68 +120,42 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   void initState() {
     super.initState();
     _currentWeekStart = _mondayOfWeek(DateTime.now());
-    _subscribe();
   }
 
-  void _subscribe() {
-    final repo = ref.read(scheduleRepositoryProvider);
-    _blocksSub = repo.watchBySpace(widget.space.id).listen((b) {
-      if (mounted) setState(() => _blocks = b);
-    });
-    _noteSub = repo.watchWeekNote(widget.space.id, _currentWeekStart).listen((n) {
-      if (mounted) setState(() => _weekNote = n);
-    });
-  }
+  void _prev() => setState(
+      () => _currentWeekStart = _currentWeekStart.subtract(const Duration(days: 7)));
 
-  @override
-  void dispose() {
-    _blocksSub?.cancel();
-    _noteSub?.cancel();
-    super.dispose();
-  }
+  void _next() => setState(
+      () => _currentWeekStart = _currentWeekStart.add(const Duration(days: 7)));
 
-  void _prevWeek() {
-    setState(() => _currentWeekStart = _currentWeekStart.subtract(const Duration(days: 7)));
-    _resubscribe();
-  }
-
-  void _nextWeek() {
-    setState(() => _currentWeekStart = _currentWeekStart.add(const Duration(days: 7)));
-    _resubscribe();
-  }
-
-  void _goToday() {
-    setState(() => _currentWeekStart = _mondayOfWeek(DateTime.now()));
-    _resubscribe();
-  }
-
-  void _resubscribe() {
-    _noteSub?.cancel();
-    final repo = ref.read(scheduleRepositoryProvider);
-    _noteSub = repo.watchWeekNote(widget.space.id, _currentWeekStart).listen((n) {
-      if (mounted) setState(() => _weekNote = n);
-    });
-  }
+  void _today() => setState(() => _currentWeekStart = _mondayOfWeek(DateTime.now()));
 
   String _weekLabel() {
     final end = _currentWeekStart.add(const Duration(days: 6));
     return '${_currentWeekStart.day}/${_currentWeekStart.month} – ${end.day}/${end.month}';
   }
 
+  String _weekStartStr() =>
+      '${_currentWeekStart.year}-${_currentWeekStart.month.toString().padLeft(2, '0')}-${_currentWeekStart.day.toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
     final ink = inkColor(context);
+    final settingsAsync = ref.watch(_scheduleSettingsProvider(widget.space.id));
+    final blocksAsync = ref.watch(_scheduleBlocksProvider(widget.space.id));
+    final weekNoteAsync = ref.watch(_weekNoteProvider((widget.space.id, _weekStartStr())));
 
-    return ref.watch(_scheduleSettingsProvider(widget.space.id)).when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (settings) {
-        return _buildWithBlocks(settings, ink);
-      },
-    );
+    final settings = settingsAsync.valueOrNull;
+    final blocks = blocksAsync.valueOrNull ?? [];
+    final weekNote = weekNoteAsync.valueOrNull;
+
+    if (settings == null) return const SizedBox.shrink();
+
+    return _buildWithBlocks(settings, blocks, weekNote, ink);
   }
 
-  Widget _buildWithBlocks(ScheduleSettings settings, Color ink) {
+  Widget _buildWithBlocks(ScheduleSettings settings, List<ScheduleBlock> blocks,
+      ScheduleWeekNote? weekNote, Color ink) {
     final days = _weekDays(settings.showWeekends);
     final sMin = settings.startMinutes;
     final eMin = settings.endMinutes;
@@ -191,9 +171,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
           children: [
             _ScheduleHeader(
               weekLabel: _weekLabel(),
-              onPrev: _prevWeek,
-              onNext: _nextWeek,
-              onToday: _goToday,
+              onPrev: _prev,
+              onNext: _next,
+              onToday: _today,
               onSettings: () => _showSettings(context, settings),
             ),
             if (weekNote != null)
@@ -276,7 +256,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                         // Blocks per day
                                         for (int di = 0; di < days.length; di++)
                                           ..._buildDayBlocks(
-                                            _blocks,
+                                            blocks,
                                             di,
                                             days[di],
                                             dayWidth,
@@ -317,7 +297,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                                       _dragCurrentY =
                                                           d.localPosition.dy),
                                               onVerticalDragEnd: (d) {
-                                                _finishDrag(_blocks, days, sMin,
+                                                _finishDrag(blocks, days, sMin,
                                                     totalHeight);
                                               },
                                             ),
