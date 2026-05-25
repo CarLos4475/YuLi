@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
-import '../../providers/folder_providers.dart';
-import '../../providers/task_providers.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/task_providers.dart';
+import '../../providers/note_providers.dart';
+import '../../providers/folder_providers.dart';
 import '../../providers/navigation_provider.dart';
+import 'folder_detail_screen.dart';
 import '../../widgets/coach_mark.dart';
 import '../../widgets/edit_item_dialog.dart';
 import '../../../domain/models/folder.dart';
@@ -29,7 +31,24 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
         ref.read(pendingNoteNavigationProvider.notifier).state = null;
         _navigateToPendingNote(pendingNoteId);
       }
+      final pendingFolderId = ref.read(pendingFolderNavigationProvider);
+      if (pendingFolderId != null) {
+        ref.read(pendingFolderNavigationProvider.notifier).state = null;
+        _navigateToPendingFolder(pendingFolderId);
+      }
     });
+  }
+
+  void _navigateToPendingFolder(int folderId) async {
+    final folder =
+        await ref.read(folderRepositoryProvider).getById(folderId);
+    if (folder == null || !mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FolderDetailScreen(folder: folder),
+      ),
+    );
   }
 
   Future<void> _navigateToPendingNote(int noteId) async {

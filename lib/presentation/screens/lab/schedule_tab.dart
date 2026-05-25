@@ -1043,10 +1043,8 @@ class _FolderLinkButton extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () {
-        ref.read(pendingNoteNavigationProvider.notifier).state = null;
-        Navigator.pop(context);
-        Navigator.pop(context);
         ref.read(pendingFolderNavigationProvider.notifier).state = folderId;
+        Navigator.pop(context);
       },
       child: Container(
         padding: const EdgeInsets.all(12),
