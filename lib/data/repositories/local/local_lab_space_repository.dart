@@ -32,15 +32,18 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
     final row = await _db.labSpacesDao.insertSpace(
       LabSpacesCompanion.insert(name: name, accentColor: accentColorHex),
     );
-    // Create default columns: Backlog, En Proceso, Entregado
+    // Create default columns: Backlog, En Proceso, Entregado, Vencido.
+    // Entregado + Vencido are marked terminal so cards there count as done.
     final spaceId = row.id;
     for (var i = 0; i < _defaultColumns.length; i++) {
+      final name = _defaultColumns[i];
       await _db.labSpacesDao.insertColumn(
         KanbanColumnsCompanion.insert(
           labSpaceId: spaceId,
-          name: _defaultColumns[i],
+          name: name,
           position: i,
           isDefault: const Value(true),
+          isTerminal: Value(_terminalDefaults.contains(name)),
         ),
       );
     }
@@ -48,6 +51,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
   }
 
   static const _defaultColumns = ['Backlog', 'En Proceso', 'Entregado', 'Vencido'];
+  static const _terminalDefaults = {'Entregado', 'Vencido'};
 
   @override
   Future<void> update(LabSpace space) async {
@@ -108,6 +112,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         name: Value(column.name),
         position: Value(column.position),
         isDefault: Value(column.isDefault),
+        isTerminal: Value(column.isTerminal),
       ),
     );
   }
@@ -157,6 +162,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         name: row.name,
         position: row.position,
         isDefault: row.isDefault,
+        isTerminal: row.isTerminal,
       );
 
   Color _hexToColor(String hex) {

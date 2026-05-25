@@ -9,4 +9,10 @@ class KanbanColumns extends Table {
   IntColumn get position => integer()();
   BoolColumn get isDefault =>
       boolean().withDefault(const Constant(false))();
+
+  /// Terminal columns mark the end of the kanban flow. Cards in terminal
+  /// columns count as "done" for space stats and visually appear
+  /// strike-through. Defaults: Entregado + Vencido are terminal.
+  BoolColumn get isTerminal =>
+      boolean().withDefault(const Constant(false))();
 }

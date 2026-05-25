@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart' as y;
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../../domain/models/lab_space.dart';
@@ -302,75 +303,29 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
         ? '${_currentWeekStart.day}/${_currentWeekStart.month} – ${_currentWeekStart.add(const Duration(days: 6)).day}/${_currentWeekStart.add(const Duration(days: 6)).month}'
         : '${_monthName(_currentMonth.month)} ${_currentMonth.year}';
 
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: ink, width: borderWidth)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-        children: [
-          GestureDetector(
-            onTap: _prev,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: widget.space.accentColor,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: shadowM,
-              ),
-              child: Icon(Icons.chevron_left, size: 18,
-                color: widget.space.accentColor.computeLuminance() > 0.5
-                    ? inkBlack
-                    : paperColor(context),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              dateText.toUpperCase(),
-              textAlign: TextAlign.center,
-              style: labelS.copyWith(color: ink, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _next,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: widget.space.accentColor,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: shadowM,
-              ),
-              child: Icon(Icons.chevron_right, size: 18,
-                color: widget.space.accentColor.computeLuminance() > 0.5
-                    ? inkBlack
-                    : paperColor(context),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Row(
-            children: [
-              _ViewToggleButton(
-                label: 'SEMANA',
-                isActive: _isWeekView,
-                onTap: () => setState(() => _isWeekView = true),
-                accentColor: widget.space.accentColor,
-                ink: ink,
-              ),
-              _ViewToggleButton(
-                label: 'MES',
-                isActive: !_isWeekView,
-                onTap: () => setState(() => _isWeekView = false),
-                accentColor: widget.space.accentColor,
-                ink: ink,
-              ),
-            ],
-          ),
-        ],
-      ),
+    return y.ViewHead(
+      title: 'Calendario',
+      kicker: dateText.toUpperCase(),
+      right: [
+        y.NavBtn(glyph: '‹', onTap: _prev),
+        const SizedBox(width: 4),
+        y.NavBtn(glyph: '›', onTap: _next),
+        const SizedBox(width: 8),
+        _ViewToggleButton(
+          label: 'SEMANA',
+          isActive: _isWeekView,
+          onTap: () => setState(() => _isWeekView = true),
+          accentColor: widget.space.accentColor,
+          ink: ink,
+        ),
+        _ViewToggleButton(
+          label: 'MES',
+          isActive: !_isWeekView,
+          onTap: () => setState(() => _isWeekView = false),
+          accentColor: widget.space.accentColor,
+          ink: ink,
+        ),
+      ],
     );
   }
 

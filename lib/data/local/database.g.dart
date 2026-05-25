@@ -3467,6 +3467,21 @@ class $KanbanColumnsTable extends KanbanColumns
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isTerminalMeta = const VerificationMeta(
+    'isTerminal',
+  );
+  @override
+  late final GeneratedColumn<bool> isTerminal = GeneratedColumn<bool>(
+    'is_terminal',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_terminal" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3474,6 +3489,7 @@ class $KanbanColumnsTable extends KanbanColumns
     name,
     position,
     isDefault,
+    isTerminal,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3523,6 +3539,12 @@ class $KanbanColumnsTable extends KanbanColumns
         isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta),
       );
     }
+    if (data.containsKey('is_terminal')) {
+      context.handle(
+        _isTerminalMeta,
+        isTerminal.isAcceptableOrUnknown(data['is_terminal']!, _isTerminalMeta),
+      );
+    }
     return context;
   }
 
@@ -3557,6 +3579,11 @@ class $KanbanColumnsTable extends KanbanColumns
             DriftSqlType.bool,
             data['${effectivePrefix}is_default'],
           )!,
+      isTerminal:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}is_terminal'],
+          )!,
     );
   }
 
@@ -3572,12 +3599,18 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
   final String name;
   final int position;
   final bool isDefault;
+
+  /// Terminal columns mark the end of the kanban flow. Cards in terminal
+  /// columns count as "done" for space stats and visually appear
+  /// strike-through. Defaults: Entregado + Vencido are terminal.
+  final bool isTerminal;
   const KanbanColumnRow({
     required this.id,
     required this.labSpaceId,
     required this.name,
     required this.position,
     required this.isDefault,
+    required this.isTerminal,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3587,6 +3620,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     map['name'] = Variable<String>(name);
     map['position'] = Variable<int>(position);
     map['is_default'] = Variable<bool>(isDefault);
+    map['is_terminal'] = Variable<bool>(isTerminal);
     return map;
   }
 
@@ -3597,6 +3631,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       name: Value(name),
       position: Value(position),
       isDefault: Value(isDefault),
+      isTerminal: Value(isTerminal),
     );
   }
 
@@ -3611,6 +3646,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       name: serializer.fromJson<String>(json['name']),
       position: serializer.fromJson<int>(json['position']),
       isDefault: serializer.fromJson<bool>(json['isDefault']),
+      isTerminal: serializer.fromJson<bool>(json['isTerminal']),
     );
   }
   @override
@@ -3622,6 +3658,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       'name': serializer.toJson<String>(name),
       'position': serializer.toJson<int>(position),
       'isDefault': serializer.toJson<bool>(isDefault),
+      'isTerminal': serializer.toJson<bool>(isTerminal),
     };
   }
 
@@ -3631,12 +3668,14 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     String? name,
     int? position,
     bool? isDefault,
+    bool? isTerminal,
   }) => KanbanColumnRow(
     id: id ?? this.id,
     labSpaceId: labSpaceId ?? this.labSpaceId,
     name: name ?? this.name,
     position: position ?? this.position,
     isDefault: isDefault ?? this.isDefault,
+    isTerminal: isTerminal ?? this.isTerminal,
   );
   KanbanColumnRow copyWithCompanion(KanbanColumnsCompanion data) {
     return KanbanColumnRow(
@@ -3646,6 +3685,8 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       name: data.name.present ? data.name.value : this.name,
       position: data.position.present ? data.position.value : this.position,
       isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
+      isTerminal:
+          data.isTerminal.present ? data.isTerminal.value : this.isTerminal,
     );
   }
 
@@ -3656,13 +3697,15 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           ..write('labSpaceId: $labSpaceId, ')
           ..write('name: $name, ')
           ..write('position: $position, ')
-          ..write('isDefault: $isDefault')
+          ..write('isDefault: $isDefault, ')
+          ..write('isTerminal: $isTerminal')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, labSpaceId, name, position, isDefault);
+  int get hashCode =>
+      Object.hash(id, labSpaceId, name, position, isDefault, isTerminal);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3671,7 +3714,8 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           other.labSpaceId == this.labSpaceId &&
           other.name == this.name &&
           other.position == this.position &&
-          other.isDefault == this.isDefault);
+          other.isDefault == this.isDefault &&
+          other.isTerminal == this.isTerminal);
 }
 
 class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
@@ -3680,12 +3724,14 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
   final Value<String> name;
   final Value<int> position;
   final Value<bool> isDefault;
+  final Value<bool> isTerminal;
   const KanbanColumnsCompanion({
     this.id = const Value.absent(),
     this.labSpaceId = const Value.absent(),
     this.name = const Value.absent(),
     this.position = const Value.absent(),
     this.isDefault = const Value.absent(),
+    this.isTerminal = const Value.absent(),
   });
   KanbanColumnsCompanion.insert({
     this.id = const Value.absent(),
@@ -3693,6 +3739,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     required String name,
     required int position,
     this.isDefault = const Value.absent(),
+    this.isTerminal = const Value.absent(),
   }) : labSpaceId = Value(labSpaceId),
        name = Value(name),
        position = Value(position);
@@ -3702,6 +3749,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     Expression<String>? name,
     Expression<int>? position,
     Expression<bool>? isDefault,
+    Expression<bool>? isTerminal,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3709,6 +3757,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
       if (name != null) 'name': name,
       if (position != null) 'position': position,
       if (isDefault != null) 'is_default': isDefault,
+      if (isTerminal != null) 'is_terminal': isTerminal,
     });
   }
 
@@ -3718,6 +3767,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     Value<String>? name,
     Value<int>? position,
     Value<bool>? isDefault,
+    Value<bool>? isTerminal,
   }) {
     return KanbanColumnsCompanion(
       id: id ?? this.id,
@@ -3725,6 +3775,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
       name: name ?? this.name,
       position: position ?? this.position,
       isDefault: isDefault ?? this.isDefault,
+      isTerminal: isTerminal ?? this.isTerminal,
     );
   }
 
@@ -3746,6 +3797,9 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     if (isDefault.present) {
       map['is_default'] = Variable<bool>(isDefault.value);
     }
+    if (isTerminal.present) {
+      map['is_terminal'] = Variable<bool>(isTerminal.value);
+    }
     return map;
   }
 
@@ -3756,7 +3810,8 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
           ..write('labSpaceId: $labSpaceId, ')
           ..write('name: $name, ')
           ..write('position: $position, ')
-          ..write('isDefault: $isDefault')
+          ..write('isDefault: $isDefault, ')
+          ..write('isTerminal: $isTerminal')
           ..write(')'))
         .toString();
   }
@@ -10924,6 +10979,7 @@ typedef $$KanbanColumnsTableCreateCompanionBuilder =
       required String name,
       required int position,
       Value<bool> isDefault,
+      Value<bool> isTerminal,
     });
 typedef $$KanbanColumnsTableUpdateCompanionBuilder =
     KanbanColumnsCompanion Function({
@@ -10932,6 +10988,7 @@ typedef $$KanbanColumnsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<int> position,
       Value<bool> isDefault,
+      Value<bool> isTerminal,
     });
 
 final class $$KanbanColumnsTableReferences
@@ -11013,6 +11070,11 @@ class $$KanbanColumnsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isTerminal => $composableBuilder(
+    column: $table.isTerminal,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$LabSpacesTableFilterComposer get labSpaceId {
     final $$LabSpacesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11091,6 +11153,11 @@ class $$KanbanColumnsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isTerminal => $composableBuilder(
+    column: $table.isTerminal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$LabSpacesTableOrderingComposer get labSpaceId {
     final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11135,6 +11202,11 @@ class $$KanbanColumnsTableAnnotationComposer
 
   GeneratedColumn<bool> get isDefault =>
       $composableBuilder(column: $table.isDefault, builder: (column) => column);
+
+  GeneratedColumn<bool> get isTerminal => $composableBuilder(
+    column: $table.isTerminal,
+    builder: (column) => column,
+  );
 
   $$LabSpacesTableAnnotationComposer get labSpaceId {
     final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
@@ -11222,12 +11294,14 @@ class $$KanbanColumnsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<bool> isDefault = const Value.absent(),
+                Value<bool> isTerminal = const Value.absent(),
               }) => KanbanColumnsCompanion(
                 id: id,
                 labSpaceId: labSpaceId,
                 name: name,
                 position: position,
                 isDefault: isDefault,
+                isTerminal: isTerminal,
               ),
           createCompanionCallback:
               ({
@@ -11236,12 +11310,14 @@ class $$KanbanColumnsTableTableManager
                 required String name,
                 required int position,
                 Value<bool> isDefault = const Value.absent(),
+                Value<bool> isTerminal = const Value.absent(),
               }) => KanbanColumnsCompanion.insert(
                 id: id,
                 labSpaceId: labSpaceId,
                 name: name,
                 position: position,
                 isDefault: isDefault,
+                isTerminal: isTerminal,
               ),
           withReferenceMapper:
               (p0) =>

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart' as y;
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/navigation_provider.dart';
@@ -662,84 +663,41 @@ class _ScheduleHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ink = inkColor(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: ink, width: borderWidth),
+    return y.ViewHead(
+      title: 'Horario',
+      kicker: weekLabel.toUpperCase(),
+      right: [
+        y.NavBtn(glyph: '‹', onTap: onPrev),
+        const SizedBox(width: 4),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onToday,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text('HOY',
+                style: y.yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: y.yInk,
+                )),
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          Text('Horario', style: displayM.copyWith(color: accentLab)),
-          const Spacer(),
-          GestureDetector(
-            onTap: onPrev,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: accentLab,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: shadowM,
-              ),
-              child: const Icon(Icons.chevron_left, size: 16, color: paperLight),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTap: onToday,
-            child: Text(
-              weekLabel,
-              style: labelBold.copyWith(color: ink),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTap: onNext,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: accentLab,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: shadowM,
-              ),
-              child: const Icon(Icons.chevron_right, size: 16, color: paperLight),
-            ),
-          ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: onToggleCreate,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: creatingMode ? accentFight : Colors.transparent,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: creatingMode ? shadowM : null,
-              ),
-              child: Text('Crear',
-                  style: labelBold.copyWith(
-                    color: creatingMode ? paperLight : inkGray,
-                    fontSize: 11,
-                  )),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTap: onSettings,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: accentLab,
-                border: Border.all(color: inkBlack, width: borderWidth),
-                boxShadow: shadowM,
-              ),
-              child: Text('Ajustar',
-                  style: labelBold.copyWith(color: paperLight, fontSize: 11)),
-            ),
-          ),
-        ],
-      ),
+        const SizedBox(width: 4),
+        y.NavBtn(glyph: '›', onTap: onNext),
+        const SizedBox(width: 8),
+        y.HeadBtn(
+          label: creatingMode ? '✕ SALIR' : '+ CREAR',
+          primary: !creatingMode,
+          onTap: onToggleCreate,
+        ),
+        const SizedBox(width: 6),
+        y.HeadBtn(
+          label: '⚙ AJUSTAR',
+          leadingIcon: null,
+          onTap: onSettings,
+        ),
+      ],
     );
   }
 }

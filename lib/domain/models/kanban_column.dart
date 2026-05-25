@@ -4,6 +4,7 @@ class KanbanColumn {
   final String name;
   final int position;
   final bool isDefault;
+  final bool isTerminal;
 
   const KanbanColumn({
     required this.id,
@@ -11,6 +12,7 @@ class KanbanColumn {
     required this.name,
     required this.position,
     required this.isDefault,
+    this.isTerminal = false,
   });
 
   KanbanColumn copyWith({
@@ -19,6 +21,7 @@ class KanbanColumn {
     String? name,
     int? position,
     bool? isDefault,
+    bool? isTerminal,
   }) {
     return KanbanColumn(
       id: id ?? this.id,
@@ -26,6 +29,7 @@ class KanbanColumn {
       name: name ?? this.name,
       position: position ?? this.position,
       isDefault: isDefault ?? this.isDefault,
+      isTerminal: isTerminal ?? this.isTerminal,
     );
   }
 }

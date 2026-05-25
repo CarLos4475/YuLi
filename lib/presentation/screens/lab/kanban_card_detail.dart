@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/yuli_design.dart' as y;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import '../../theme/app_tokens.dart';
@@ -92,83 +93,102 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
 
     return Container(
       decoration: BoxDecoration(
-        color: paperColor(context),
+        color: y.yCream,
         border: Border(
-          top: BorderSide(
-              color: inkColor(context), width: borderWidthHeavy),
+          top: BorderSide(color: y.yInk, width: 3),
         ),
       ),
-      child: ListView(
-        controller: widget.scrollController,
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              color: inkGray,
-              margin: const EdgeInsets.only(bottom: 16),
-            ),
+          // Drag handle (ink bar w/ cream nub)
+          Container(
+            color: y.yInk,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            alignment: Alignment.center,
+            child: Container(width: 56, height: 4, color: y.yCream),
           ),
-          // Title + save + preview
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _titleController,
-                  style: displayM.copyWith(color: inkColor(context)),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: 'Título',
-                    hintStyle: displayM.copyWith(color: inkGray),
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: () async {
-                  await _save();
-                  if (context.mounted) Navigator.pop(context);
-                },
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: _isDirty ? accentFlight : Colors.transparent,
-                    border: Border.all(
-                      color: _isDirty ? accentFlight : inkGray.withAlpha(80),
-                      width: 1,
+          Expanded(
+            child: ListView(
+              controller: widget.scrollController,
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
+              children: [
+                // Kicker + title row + 3 icon btns
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '// TAREA · ID #${widget.card.id} · DESDE KANBAN',
+                            style: y.yMono(
+                              size: 9,
+                              weight: FontWeight.w700,
+                              tracking: 1.4,
+                              color: y.yMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: _titleController,
+                            style: y.ySans(
+                              size: 26,
+                              weight: FontWeight.w700,
+                              letterSpacing: -0.8,
+                              color: y.yInk,
+                              height: 1.15,
+                            ),
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                              hintText: 'Título',
+                              hintStyle: y.ySans(
+                                size: 26,
+                                weight: FontWeight.w700,
+                                letterSpacing: -0.8,
+                                color: y.yMuted,
+                                height: 1.15,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: Icon(Icons.check, size: 16,
-                    color: _isDirty ? paperLight : inkGray.withAlpha(80)),
-                ),
-              ),
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () => setState(() => _isPreview = !_isPreview),
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: _isPreview ? accentLab : Colors.transparent,
-                    border: Border.all(
-                      color: _isPreview ? accentLab : inkGray.withAlpha(80),
-                      width: 1,
+                    const SizedBox(width: 12),
+                    _SheetIcon(
+                      icon: Icons.check,
+                      active: !_isDirty,
+                      color: y.yLab,
+                      onTap: () async {
+                        await _save();
+                        if (context.mounted) Navigator.pop(context);
+                      },
                     ),
-                  ),
-                  child: Icon(_isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
-                    size: 16,
-                    color: _isPreview ? paperLight : inkGray.withAlpha(80)),
+                    const SizedBox(width: 6),
+                    _SheetIcon(
+                      icon: _isPreview
+                          ? Icons.edit_outlined
+                          : Icons.visibility_outlined,
+                      active: _isPreview,
+                      color: y.yFlight,
+                      onTap: () => setState(() => _isPreview = !_isPreview),
+                    ),
+                    const SizedBox(width: 6),
+                    _SheetIcon(
+                      icon: Icons.close,
+                      active: false,
+                      color: y.yCream,
+                      onTap: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+                const SizedBox(height: 16),
           // Column selector
           if (currentColumn != null)
             _ColumnSelector(
@@ -259,18 +279,59 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
             ),
           ],
           const SizedBox(height: 20),
-          // Delete
+          // Aparece en
+          Text('// ESTA TAREA APARECE EN',
+              style: y.yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: y.yMuted,
+              )),
+          const SizedBox(height: 8),
+          _AppearChips(card: _card, currentColumn: currentColumn),
+          const SizedBox(height: 24),
+        ],
+      ),
+    ),
+    Container(
+      decoration: const BoxDecoration(
+        color: y.yCream2,
+        border: Border(top: BorderSide(color: y.yInk, width: 2)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _confirmDelete(context),
             child: Text(
-              'Eliminar tarjeta',
-              style: bodyS.copyWith(color: accentFight.withAlpha(180)),
+              '✕ Eliminar tarjeta',
+              style: y.yBody(
+                size: 13,
+                weight: FontWeight.w700,
+                color: y.yFight,
+              ).copyWith(
+                decoration: TextDecoration.underline,
+                decorationColor: y.yFight,
+              ),
+            ),
+          ),
+          Text(
+            _isDirty ? 'editando · sin guardar' : 'autoguardado',
+            style: y.yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: y.yMuted,
             ),
           ),
         ],
       ),
-    );
+    ),
+  ],
+)
+);
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
@@ -559,4 +620,111 @@ class _DueDateRow extends StatelessWidget {
 
   String _formatDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+class _SheetIcon extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _SheetIcon({
+    required this.icon,
+    required this.active,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? color : y.yCream,
+          border: Border.all(color: y.yInk, width: y.yLineMid),
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: active ? y.yCream : y.yInk,
+        ),
+      ),
+    );
+  }
+}
+
+class _AppearChips extends StatelessWidget {
+  final KanbanCard card;
+  final KanbanColumn? currentColumn;
+
+  const _AppearChips({required this.card, required this.currentColumn});
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[];
+    if (currentColumn != null) {
+      chips.add(_AppearChip(
+        glyph: '▣',
+        label: 'Kanban / ${currentColumn!.name}',
+      ));
+    }
+    if (card.dueDate != null) {
+      chips.add(_AppearChip(
+        glyph: '▦',
+        label: 'Calendario / ${_fmtShort(card.dueDate!)}',
+      ));
+      chips.add(_AppearChip(
+        glyph: '═',
+        label: 'Timeline · ${_fmtShort(card.dueDate!)}',
+      ));
+    }
+    if (card.originTaskId != null) {
+      chips.add(const _AppearChip(glyph: '⚔', label: 'FIGHT / origen task'));
+    }
+    if (card.sourceNoteId != null) {
+      chips.add(const _AppearChip(glyph: '✎', label: 'FLIGHT / nota'));
+    }
+    return Wrap(spacing: 6, runSpacing: 6, children: chips);
+  }
+
+  String _fmtShort(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+}
+
+class _AppearChip extends StatelessWidget {
+  final String glyph;
+  final String label;
+  const _AppearChip({required this.glyph, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 4, 10, 5),
+      decoration: BoxDecoration(
+        color: y.yCream2,
+        border: Border.all(color: y.yInk, width: 2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(glyph,
+              style: const TextStyle(
+                  fontSize: 11, color: y.yInk, height: 1.0)),
+          const SizedBox(width: 6),
+          Text(label.toUpperCase(),
+              style: y.yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.2,
+                color: y.yInk,
+              )),
+        ],
+      ),
+    );
+  }
 }

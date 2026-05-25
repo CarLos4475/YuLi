@@ -7,7 +7,7 @@ import '../../providers/folder_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
-import '../../widgets/app_column_header.dart';
+import '../../widgets/yuli_design.dart' as y;
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/kanban_card.dart';
@@ -144,7 +144,6 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ink = inkColor(context);
     final tabs = ref.watch(labTabsProvider(widget.space.id));
 
     return Scaffold(
@@ -160,11 +159,13 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                   : () => setState(() => _selectionActive = true),
             ),
             Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
+                color: y.yCream,
                 border: Border(
-                  bottom: BorderSide(color: ink, width: borderWidth),
+                  bottom: BorderSide(color: y.yInk, width: 2),
                 ),
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
                   if (_selectionMode)
@@ -173,49 +174,42 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                       onTap: _clearSelection,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        child: Icon(Icons.clear, size: 16, color: inkGray),
+                            horizontal: 8, vertical: 12),
+                        child: const Icon(Icons.clear,
+                            size: 16, color: y.yMuted),
                       ),
                     ),
-                  ...tabs.asMap().entries.map((e) => Row(
-                        children: [
-                          if (e.key > 0)
-                            Container(
-                                width: 1,
-                                height: 28,
-                                color: ink.withAlpha(60)),
-                          _TabButton(
-                            label: e.value,
-                            isActive: _tabIndex == e.key,
-                            onTap: _selectionMode
-                                ? null
-                                : () =>
-                                    setState(() => _tabIndex = e.key),
-                            onClose: e.value == 'Kanban'
-                                ? null
-                                : () {
-                                    final notifier = ref.read(
-                                        labTabsProvider(widget.space.id)
-                                            .notifier);
-                                    final wasActive = _tabIndex == e.key;
-                                    notifier.removeTab(e.value);
-                                    if (wasActive) {
-                                      setState(() => _tabIndex = 0);
-                                    } else if (e.key < _tabIndex) {
-                                      setState(() => _tabIndex--);
-                                    }
-                                  },
-                          ),
-                        ],
+                  ...tabs.asMap().entries.map((e) => _TabButton(
+                        label: e.value,
+                        isActive: _tabIndex == e.key,
+                        onTap: _selectionMode
+                            ? null
+                            : () => setState(() => _tabIndex = e.key),
+                        onClose: e.value == 'Kanban'
+                            ? null
+                            : () {
+                                final notifier = ref.read(
+                                    labTabsProvider(widget.space.id).notifier);
+                                final wasActive = _tabIndex == e.key;
+                                notifier.removeTab(e.value);
+                                if (wasActive) {
+                                  setState(() => _tabIndex = 0);
+                                } else if (e.key < _tabIndex) {
+                                  setState(() => _tabIndex--);
+                                }
+                              },
                       )),
-                  Container(width: 1, height: 28, color: ink.withAlpha(60)),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _selectionMode ? null : _showAddTabSheet,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      child: Icon(Icons.add, size: 18, color: inkGray),
+                          horizontal: 14, vertical: 12),
+                      child: const Text('+',
+                          style: TextStyle(
+                              fontSize: 20,
+                              color: y.yMuted,
+                              height: 1.0)),
                     ),
                   ),
                 ],
@@ -299,6 +293,40 @@ class _AddTabSheet extends StatelessWidget {
   }
 }
 
+class _HeaderIcon extends StatelessWidget {
+  final IconData icon;
+  final Color bg;
+  final Color fg;
+  final bool fill;
+  final VoidCallback onTap;
+
+  const _HeaderIcon({
+    required this.icon,
+    required this.bg,
+    this.fg = y.yCream,
+    this.fill = true,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: fill ? bg : y.yCream,
+          border: Border.all(color: y.yInk, width: y.yLineMid),
+        ),
+        child: Icon(icon, size: 17, color: fg),
+      ),
+    );
+  }
+}
+
 class _TabButton extends StatelessWidget {
   final String label;
   final bool isActive;
@@ -318,21 +346,28 @@ class _TabButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
         decoration: BoxDecoration(
-          border: isActive
-              ? const Border(
-                  bottom: BorderSide(color: inkBlack, width: borderWidthHeavy),
-                )
-              : null,
+          border: Border(
+            bottom: BorderSide(
+              color: isActive ? y.yInk : Colors.transparent,
+              width: 3,
+            ),
+          ),
         ),
+        transform: Matrix4.translationValues(0, 2, 0),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               label,
-              style: labelBold.copyWith(
-                color: isActive ? inkColor(context) : inkGray,
+              style: y.ySans(
+                size: 16,
+                weight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: isActive ? y.yInk : y.yMuted,
+                height: 1.0,
               ),
             ),
             if (onClose != null) ...[
@@ -340,10 +375,13 @@ class _TabButton extends StatelessWidget {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onClose,
-                child: Icon(
-                  Icons.close,
-                  size: 12,
-                  color: isActive ? inkColor(context) : inkGray,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.close,
+                    size: 12,
+                    color: isActive ? y.yInk : y.yMuted,
+                  ),
                 ),
               ),
             ],
@@ -375,162 +413,107 @@ class _KanbanHeader extends ConsumerWidget {
     final linkedFolders = folders.where((f) => linkedIds.contains(f.id)).toList();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-      decoration: BoxDecoration(
-        color: paperColor(context),
-        border: Border(
-          bottom: BorderSide(color: inkColor(context), width: borderWidth),
-        ),
-      ),
+      color: y.yCream,
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => Navigator.pop(context),
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child:
-                  Icon(Icons.arrow_back, color: inkColor(context), size: 20),
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: y.yCream,
+                border: Border.all(color: y.yInk, width: y.yLineMid),
+              ),
+              child: const Icon(Icons.arrow_back, color: y.yInk, size: 18),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 14),
           Expanded(
-              child: Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  space.name,
-                  style: displayL.copyWith(color: space.accentColor),
-                ),
-                if (linkedFolders.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: linkedFolders.map((f) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: f.color,
-                        border: Border.all(color: inkBlack, width: borderWidth),
-                        boxShadow: shadowM,
-                      ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
                       child: Text(
-                        f.name,
-                        style: labelBold.copyWith(
-                          color: f.color.computeLuminance() > 0.5 ? inkBlack : paperLight,
-                          fontSize: 10,
+                        space.name,
+                        style: y.ySans(
+                          size: 32,
+                          weight: FontWeight.w700,
+                          letterSpacing: -1.2,
+                          color: y.yFlight,
+                          height: 0.95,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (linkedFolders.isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: linkedFolders
+                              .map((f) => y.YBadge(
+                                    label: f.name.toUpperCase(),
+                                    bg: f.color,
+                                    fg: y.yCream,
+                                    fontSize: 10,
+                                  ))
+                              .toList(),
                         ),
                       ),
-                    )).toList(),
-                  ),
-                ],
+                    ],
+                  ],
+                ),
                 if (space.startDate != null || space.dueDate != null) ...[
                   const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: space.accentColor,
-                      border: Border.all(color: inkBlack, width: borderWidth),
-                      boxShadow: shadowM,
-                    ),
-                    child: Text(
-                      _formatDateRange(space.startDate, space.dueDate),
-                      style: labelS.copyWith(
-                        color: paperLight,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'SIN FECHAS DE PROYECTO',
-                    style: bodyS.copyWith(color: inkGray.withAlpha(128)),
+                  y.YBadge(
+                    label: _formatDateRange(space.startDate, space.dueDate),
+                    bg: y.yFlight,
+                    fg: y.yCream,
+                    fontSize: 10,
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(width: 6),
-          if (linkedFolders.isNotEmpty)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
+          const SizedBox(width: 10),
+          if (linkedFolders.isNotEmpty) ...[
+            _HeaderIcon(
+              icon: Icons.description_outlined,
+              bg: y.yFlight,
               onTap: () => _showLinkedNotes(context),
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: accentFlight,
-                  border: Border.all(color: inkBlack, width: borderWidth),
-                  boxShadow: shadowM,
-                ),
-                child: Icon(Icons.description_outlined, size: 16, color: paperLight),
-              ),
             ),
-          if (linkedFolders.isNotEmpty)
             const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          ],
+          _HeaderIcon(
+            icon: Icons.folder_outlined,
+            bg: y.yLab,
             onTap: () => _showLinkFolders(context, ref),
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: accentLab,
-                  border: Border.all(color: inkBlack, width: borderWidth),
-                  boxShadow: shadowM,
-                ),
-                child: Icon(Icons.folder_outlined, size: 16, color: paperLight),
-              ),
           ),
           const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          _HeaderIcon(
+            icon: Icons.calendar_today,
+            bg: y.yFlight,
             onTap: () => _showDateEditor(context, ref),
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: space.accentColor,
-                border: Border.all(
-                  color: inkBlack,
-                  width: borderWidth,
-                ),
-                boxShadow: shadowM,
-              ),
-              child: Icon(
-                Icons.calendar_today,
-                size: 16,
-                color: space.accentColor.computeLuminance() > 0.5
-                    ? inkBlack
-                    : paperColor(context),
-              ),
-            ),
           ),
           if (onToggleSelectionMode != null) ...[
             const SizedBox(width: 6),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onToggleSelectionMode,
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: selectionMode ? accentFight : Colors.transparent,
-                  border: Border.all(
-                    color: selectionMode ? accentFight : inkBlack,
-                    width: borderWidth,
-                  ),
-                  boxShadow: selectionMode ? shadowM : null,
-                ),
-                child: Icon(
-                  Icons.checklist,
-                  size: 16,
-                  color: selectionMode
-                      ? paperLight
-                      : inkGray,
-                ),
-              ),
+            _HeaderIcon(
+              icon: Icons.checklist,
+              bg: selectionMode ? y.yFight : y.yCream,
+              fg: selectionMode ? y.yCream : y.yInk,
+              fill: !selectionMode,
+              onTap: onToggleSelectionMode!,
             ),
           ],
         ],
@@ -970,20 +953,28 @@ class _KanbanColumn extends ConsumerWidget {
     final cardsAsync = ref.watch(kanbanCardsByColumnProvider(column.id));
     final cards = cardsAsync.valueOrNull ?? [];
 
+    final colColor = _columnColor(column, space.accentColor);
     return SizedBox(
-      width: 280,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AppColumnHeader(
-            title: column.name,
-            accentColor: space.accentColor,
-            cardCount: cards.length,
-            onDelete: () => _confirmDelete(context, ref),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: DragTarget<_DragData>(
+      width: 268,
+      child: Container(
+        decoration: BoxDecoration(
+          color: y.yCream,
+          border: Border.all(color: y.yInk, width: y.yLineMid),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Color stripe
+            Container(height: 6, color: colColor),
+            Container(height: 2, color: y.yInk),
+            // Column header
+            _ColumnHead(
+              column: column,
+              count: cards.length,
+              onMenu: () => _showManagePopover(context, ref, colColor),
+            ),
+            Expanded(
+              child: DragTarget<_DragData>(
               onAcceptWithDetails: (details) async {
                 if (details.data.card.columnId != column.id) {
                   await _moveCardToColumn(ref, details.data, cards.length);
@@ -1070,16 +1061,109 @@ class _KanbanColumn extends ConsumerWidget {
                 );
               },
             ),
-          ),
-          const SizedBox(height: 8),
-          _AddCardButton(
-            spaceId: space.id,
-            columnId: column.id,
-            accentColor: space.accentColor,
-          ),
+            ),
+            Container(height: 1, color: y.yInk),
+            _AddCardButton(
+              spaceId: space.id,
+              columnId: column.id,
+              accentColor: space.accentColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _columnColor(KanbanColumn col, Color spaceAccent) {
+    if (col.name == 'Vencido') return y.yFight;
+    if (col.isTerminal) return y.yLab;
+    if (col.name == 'En Proceso' || col.name == 'En proceso') return y.yAmber;
+    if (col.name == 'Backlog') return y.yMuted;
+    return spaceAccent;
+  }
+
+  void _showManagePopover(
+      BuildContext context, WidgetRef ref, Color colColor) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _ColumnManagePopover(
+        column: column,
+        spaceId: space.id,
+        currentColor: colColor,
+        onRename: () {
+          Navigator.pop(ctx);
+          _showRenameDialog(context, ref);
+        },
+        onColorChange: (c) async {
+          await ref.read(labSpaceRepositoryProvider).updateColumn(
+                column.copyWith(),
+              );
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+        onMoveLeft: () async {
+          Navigator.pop(ctx);
+          await _moveColumn(ref, -1);
+        },
+        onMoveRight: () async {
+          Navigator.pop(ctx);
+          await _moveColumn(ref, 1);
+        },
+        onToggleTerminal: () async {
+          await ref
+              .read(labSpaceRepositoryProvider)
+              .updateColumn(column.copyWith(isTerminal: !column.isTerminal));
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+        onDelete: () {
+          Navigator.pop(ctx);
+          _confirmDelete(context, ref);
+        },
+      ),
+    );
+  }
+
+  Future<void> _showRenameDialog(BuildContext context, WidgetRef ref) async {
+    final ctrl = TextEditingController(text: column.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: y.yCream,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Renombrar columna',
+            style: y.ySans(size: 18, weight: FontWeight.w700)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Nombre'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Guardar')),
         ],
       ),
     );
+    if (newName != null && newName.isNotEmpty && newName != column.name) {
+      await ref
+          .read(labSpaceRepositoryProvider)
+          .updateColumn(column.copyWith(name: newName));
+    }
+  }
+
+  Future<void> _moveColumn(WidgetRef ref, int dir) async {
+    final all = await ref.read(labSpaceRepositoryProvider).getColumns(space.id);
+    final ids = all.map((c) => c.id).toList();
+    final idx = ids.indexOf(column.id);
+    final target = idx + dir;
+    if (idx < 0 || target < 0 || target >= ids.length) return;
+    ids.removeAt(idx);
+    ids.insert(target, column.id);
+    await ref.read(labSpaceRepositoryProvider).reorderColumns(space.id, ids);
   }
 
   Future<void> _handleDrop(
@@ -1182,24 +1266,59 @@ class _AddColumnButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
-      width: 200,
+      width: 180,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _showAddColumn(context, ref),
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: inkGray, width: borderWidth),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Center(
-              child: Text(
-                '+ Columna',
-                style: labelBold.copyWith(color: inkGray),
-              ),
+            border: Border.all(
+              color: y.yMuted,
+              width: 3,
+              style: BorderStyle.solid,
             ),
           ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: y.yCream,
+                  border: Border.all(color: y.yInk, width: 3),
+                ),
+                child: const Text('+',
+                    style: TextStyle(
+                        fontSize: 28,
+                        color: y.yInk,
+                        fontWeight: FontWeight.w700,
+                        height: 1.0)),
+              ),
+              const SizedBox(height: 10),
+              Text('Columna',
+                  style: y.ySans(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: y.yInk,
+                  )),
+              const SizedBox(height: 4),
+              Text('NOMBRE + COLOR',
+                  textAlign: TextAlign.center,
+                  style: y.yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: y.yMuted,
+                  )),
+            ],
+          ),
         ),
-      );
+      ),
+    );
   }
 
   void _showAddColumn(BuildContext context, WidgetRef ref) {
@@ -1271,14 +1390,21 @@ class _AddCardButton extends ConsumerWidget {
       onTap: () => _showAddCard(context, ref),
       child: Container(
         width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: inkGray, width: borderWidth),
-        ),
-        child: Text(
-          '+ Agregar tarea',
-          style: labelBold.copyWith(color: inkGray),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            const Text('+',
+                style: TextStyle(
+                    fontSize: 14, color: y.yMuted, height: 1.0)),
+            const SizedBox(width: 8),
+            Text('AÑADIR TAREA',
+                style: y.yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: y.yMuted,
+                )),
+          ],
         ),
       ),
     );
@@ -1806,6 +1932,208 @@ class _ColumnPickerSheet extends ConsumerWidget {
                     ),
                   )),
             const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColumnHead extends StatelessWidget {
+  final KanbanColumn column;
+  final int count;
+  final VoidCallback onMenu;
+
+  const _ColumnHead({
+    required this.column,
+    required this.count,
+    required this.onMenu,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: y.yInk, width: 2)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              column.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: y.ySans(
+                size: 16,
+                weight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: y.yInk,
+                height: 1.0,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            count.toString().padLeft(2, '0'),
+            style: y.yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 0.5,
+              color: y.yMuted,
+            ),
+          ),
+          if (column.isTerminal) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+              decoration: BoxDecoration(
+                color: y.yCream2,
+                border: Border.all(color: y.yLab, width: 1.5),
+              ),
+              child: Text('DONE',
+                  style: y.yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1,
+                    color: y.yLab,
+                  )),
+            ),
+          ],
+          const Spacer(),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onMenu,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Text('⋯',
+                  style: TextStyle(
+                      fontSize: 16,
+                      color: y.yMuted,
+                      height: 1.0)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColumnManagePopover extends StatelessWidget {
+  final KanbanColumn column;
+  final int spaceId;
+  final Color currentColor;
+  final VoidCallback onRename;
+  final ValueChanged<Color> onColorChange;
+  final VoidCallback onMoveLeft;
+  final VoidCallback onMoveRight;
+  final VoidCallback onToggleTerminal;
+  final VoidCallback onDelete;
+
+  const _ColumnManagePopover({
+    required this.column,
+    required this.spaceId,
+    required this.currentColor,
+    required this.onRename,
+    required this.onColorChange,
+    required this.onMoveLeft,
+    required this.onMoveRight,
+    required this.onToggleTerminal,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: y.yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      child: Container(
+        width: 280,
+        decoration: BoxDecoration(
+          border: Border.all(color: y.yInk, width: 3),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              color: y.yInk,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Text(
+                '// COLUMNA · ${column.name.toUpperCase()}',
+                style: y.yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: y.yCream,
+                ),
+              ),
+            ),
+            Container(height: 2, color: y.yInk),
+            _PopRow(glyph: '✎', label: 'Renombrar', onTap: onRename),
+            _PopRow(glyph: '◀', label: 'Mover izquierda', onTap: onMoveLeft),
+            _PopRow(glyph: '▶', label: 'Mover derecha', onTap: onMoveRight),
+            _PopRow(
+              glyph: column.isTerminal ? '✓' : '○',
+              label:
+                  column.isTerminal ? 'Quitar terminal' : 'Marcar terminal',
+              onTap: onToggleTerminal,
+            ),
+            Container(height: 2, color: y.yInk.withValues(alpha: 0.15)),
+            _PopRow(
+              glyph: '✕',
+              label: 'Eliminar columna',
+              danger: true,
+              onTap: onDelete,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PopRow extends StatelessWidget {
+  final String glyph;
+  final String label;
+  final bool danger;
+  final VoidCallback onTap;
+
+  const _PopRow({
+    required this.glyph,
+    required this.label,
+    this.danger = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              child: Text(glyph,
+                  textAlign: TextAlign.center,
+                  style: y.yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    color: y.yMuted,
+                    tracking: 0,
+                  )),
+            ),
+            const SizedBox(width: 10),
+            Text(label,
+                style: y.yBody(
+                  size: 13,
+                  weight: FontWeight.w500,
+                  color: danger ? y.yFight : y.yInk,
+                )),
           ],
         ),
       ),

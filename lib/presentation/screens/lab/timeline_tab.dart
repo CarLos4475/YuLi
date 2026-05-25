@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart' as y;
 import '../../providers/lab_space_providers.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_card.dart';
@@ -80,6 +81,11 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
 
                 return Column(
                   children: [
+                    y.ViewHead(
+                      title: 'Timeline',
+                      kicker:
+                          '${withDate.length} CON FECHA · ${columns.length} COLUMNAS',
+                    ),
                     Expanded(
                       child: _TimelineViewer(
                         key: ValueKey('${reactiveSpace.id}_${columns.length}_${withDate.length}'),

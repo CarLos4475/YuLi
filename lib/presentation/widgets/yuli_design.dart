@@ -659,6 +659,161 @@ class ViewToggleBtn extends StatelessWidget {
   }
 }
 
+// ─── VIEW HEAD ─────────────────────────────────────────────────────────────
+
+/// Section header inside a space view (Kanban / Horario / Timeline /
+/// Calendario). Title in lab green + mono kicker + right action slot.
+class ViewHead extends StatelessWidget {
+  final String title;
+  final String? kicker;
+  final List<Widget> right;
+
+  const ViewHead({
+    super.key,
+    required this.title,
+    this.kicker,
+    this.right = const [],
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: yInk, width: 2)),
+      ),
+      padding: const EdgeInsets.fromLTRB(28, 14, 28, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    style: ySans(
+                      size: 26,
+                      weight: FontWeight.w700,
+                      letterSpacing: -0.8,
+                      color: yLab,
+                      height: 1.0,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (kicker != null) ...[
+                  const SizedBox(width: 14),
+                  Flexible(
+                    child: Text(
+                      kicker!,
+                      style: yMono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          for (final w in right) ...[
+            w,
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Pill button shown in ViewHead right slot.
+class HeadBtn extends StatelessWidget {
+  final String label;
+  final bool primary;
+  final IconData? leadingIcon;
+  final VoidCallback? onTap;
+
+  const HeadBtn({
+    super.key,
+    required this.label,
+    this.primary = false,
+    this.leadingIcon,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
+        decoration: BoxDecoration(
+          color: primary ? yLab : yCream,
+          border: Border.all(color: yInk, width: yLineMid),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (leadingIcon != null) ...[
+              Icon(leadingIcon,
+                  size: 14, color: primary ? yCream : yInk),
+              const SizedBox(width: 6),
+            ],
+            Text(label,
+                style: yBody(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: primary ? yCream : yInk,
+                ).copyWith(letterSpacing: 1.2)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact nav button (36×36 square w/ glyph).
+class NavBtn extends StatelessWidget {
+  final String glyph;
+  final VoidCallback? onTap;
+
+  const NavBtn({super.key, required this.glyph, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yInk, width: yLineMid),
+        ),
+        child: Text(
+          glyph,
+          style: const TextStyle(
+            fontSize: 16,
+            color: yInk,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Color parseHex(String hex) {
   final h = hex.replaceFirst('#', '');
   if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
