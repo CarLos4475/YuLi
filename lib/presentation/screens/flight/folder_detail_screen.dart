@@ -15,6 +15,8 @@ import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import 'note_editor_screen.dart';
+import 'new_note_picker.dart';
+import 'whiteboard_editor_screen.dart';
 
 class FolderDetailScreen extends ConsumerStatefulWidget {
   final Folder folder;
@@ -50,7 +52,9 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => NoteEditorScreen(note: note, folder: folder),
+        builder: (_) => note.kind == NoteKind.whiteboard
+            ? WhiteboardEditorScreen(note: note, folder: folder)
+            : NoteEditorScreen(note: note, folder: folder),
       ),
     );
   }
@@ -85,17 +89,24 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
   }
 
   Future<void> _createNote() async {
+    final kind = await showNewNotePicker(context);
+    if (kind == null || !mounted) return;
     final note = await ref
         .read(noteRepositoryProvider)
-        .create(widget.folder.id, rawMarkdown: '');
-    if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => NoteEditorScreen(note: note, folder: widget.folder),
-        ),
-      );
-    }
+        .create(widget.folder.id, rawMarkdown: '', kind: kind);
+    if (!mounted) return;
+    _openNote(note);
+  }
+
+  void _openNote(Note note) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => note.kind == NoteKind.whiteboard
+            ? WhiteboardEditorScreen(note: note, folder: widget.folder)
+            : NoteEditorScreen(note: note, folder: widget.folder),
+      ),
+    );
   }
 
   @override
@@ -472,7 +483,9 @@ class _NoteCard extends ConsumerWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => NoteEditorScreen(note: note, folder: folder),
+          builder: (_) => note.kind == NoteKind.whiteboard
+              ? WhiteboardEditorScreen(note: note, folder: folder)
+              : NoteEditorScreen(note: note, folder: folder),
         ),
       ),
       onLongPress: () => _showOptions(context, ref),
@@ -586,7 +599,9 @@ class _NoteRow extends ConsumerWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => NoteEditorScreen(note: note, folder: folder),
+          builder: (_) => note.kind == NoteKind.whiteboard
+              ? WhiteboardEditorScreen(note: note, folder: folder)
+              : NoteEditorScreen(note: note, folder: folder),
         ),
       ),
       child: Container(

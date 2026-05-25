@@ -27,7 +27,11 @@ class LocalNoteRepository implements NoteRepository {
   }
 
   @override
-  Future<Note> create(int folderId, {String? title, String rawMarkdown = '', Color? color}) async {
+  Future<Note> create(int folderId,
+      {String? title,
+      String rawMarkdown = '',
+      Color? color,
+      NoteKind kind = NoteKind.block}) async {
     final row = await _db.notesDao.insertNote(
       NotesCompanion.insert(
         folderId: folderId,
@@ -35,6 +39,7 @@ class LocalNoteRepository implements NoteRepository {
         rawMarkdown: Value(rawMarkdown),
         sizeBytes: Value(rawMarkdown.length),
         color: Value(color != null ? _colorToHex(color) : null),
+        kind: Value(kind.toDbString()),
       ),
     );
     return _rowToNote(row);
@@ -52,6 +57,7 @@ class LocalNoteRepository implements NoteRepository {
         updatedAt: Value(DateTime.now()),
         deletedAt: Value(note.deletedAt),
         color: Value(note.color != null ? _colorToHex(note.color!) : null),
+        kind: Value(note.kind.toDbString()),
       ),
     );
   }
@@ -140,6 +146,7 @@ class LocalNoteRepository implements NoteRepository {
         updatedAt: row.updatedAt,
         deletedAt: row.deletedAt,
         color: row.color != null ? _hexToColor(row.color!) : null,
+        kind: NoteKind.fromString(row.kind),
       );
 
   Color _hexToColor(String hex) {

@@ -14,4 +14,9 @@ class Notes extends Table {
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
   TextColumn get color => text().nullable()();
+
+  /// Note variant. 'block' = block-based editor (default). 'whiteboard' =
+  /// infinite canvas, drawing-only.
+  TextColumn get kind =>
+      text().withDefault(const Constant('block'))();
 }

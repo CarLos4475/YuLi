@@ -8,8 +8,10 @@ import '../../providers/navigation_provider.dart';
 import '../../providers/note_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
+import '../../../domain/models/note.dart';
 import 'folder_detail_screen.dart';
 import 'note_editor_screen.dart';
+import 'whiteboard_editor_screen.dart';
 import 'new_folder_dialog.dart';
 
 class FlightScreen extends ConsumerStatefulWidget {
@@ -57,7 +59,9 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => NoteEditorScreen(note: note, folder: folder),
+        builder: (_) => note.kind == NoteKind.whiteboard
+            ? WhiteboardEditorScreen(note: note, folder: folder)
+            : NoteEditorScreen(note: note, folder: folder),
       ),
     );
   }

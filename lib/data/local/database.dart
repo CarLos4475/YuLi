@@ -63,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -110,6 +110,11 @@ class AppDatabase extends _$AppDatabase {
               await customStatement("DELETE FROM notes");
             } catch (_) {}
             await m.createTable(noteBlocks);
+          }
+          if (from <= 11) {
+            try {
+              await m.addColumn(notes, notes.kind);
+            } catch (_) {}
           }
         },
       );

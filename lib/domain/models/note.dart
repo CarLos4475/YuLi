@@ -1,5 +1,18 @@
 import 'package:flutter/material.dart';
 
+enum NoteKind {
+  block,
+  whiteboard;
+
+  String toDbString() => name;
+
+  static NoteKind fromString(String value) => switch (value) {
+        'block' => NoteKind.block,
+        'whiteboard' => NoteKind.whiteboard,
+        _ => NoteKind.block,
+      };
+}
+
 class Note {
   final int id;
   final int folderId;
@@ -10,6 +23,7 @@ class Note {
   final DateTime updatedAt;
   final DateTime? deletedAt;
   final Color? color;
+  final NoteKind kind;
 
   const Note({
     required this.id,
@@ -21,6 +35,7 @@ class Note {
     required this.updatedAt,
     this.deletedAt,
     this.color,
+    this.kind = NoteKind.block,
   });
 
   String get displayTitle {
@@ -44,6 +59,7 @@ class Note {
     bool clearDeletedAt = false,
     Color? color,
     bool clearColor = false,
+    NoteKind? kind,
   }) {
     return Note(
       id: id ?? this.id,
@@ -55,6 +71,7 @@ class Note {
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
       color: clearColor ? null : (color ?? this.color),
+      kind: kind ?? this.kind,
     );
   }
 }

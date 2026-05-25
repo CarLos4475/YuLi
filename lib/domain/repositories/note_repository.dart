@@ -5,7 +5,11 @@ abstract class NoteRepository {
   Stream<List<Note>> watchByFolder(int folderId);
   Future<List<Note>> getByFolder(int folderId);
   Future<Note?> getById(int id);
-  Future<Note> create(int folderId, {String? title, String rawMarkdown, Color? color});
+  Future<Note> create(int folderId,
+      {String? title,
+      String rawMarkdown,
+      Color? color,
+      NoteKind kind});
   Future<void> update(Note note);
   Future<void> softDelete(int id);
   Future<void> restore(int id);
