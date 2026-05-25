@@ -17,6 +17,11 @@ class LocalScheduleRepository implements ScheduleRepository {
           (rows) => rows.map(_rowToBlock).toList());
 
   @override
+  Stream<List<ScheduleBlock>> watchAll() =>
+      _db.scheduleDao.watchAll().map(
+          (rows) => rows.map(_rowToBlock).toList());
+
+  @override
   Future<ScheduleBlock> createBlock({
     required int labSpaceId,
     int? folderId,

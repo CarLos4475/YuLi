@@ -4,6 +4,7 @@ import '../models/schedule_week_note.dart';
 
 abstract class ScheduleRepository {
   Stream<List<ScheduleBlock>> watchBySpace(int labSpaceId);
+  Stream<List<ScheduleBlock>> watchAll();
   Future<ScheduleBlock> createBlock({
     required int labSpaceId,
     int? folderId,

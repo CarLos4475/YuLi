@@ -5,11 +5,43 @@ import '../../providers/database_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
+import '../../providers/note_providers.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import '../../../domain/models/folder.dart';
-import '../../widgets/app_card.dart';
-import '../../widgets/app_section_divider.dart';
+import '../../../domain/models/lab_space.dart';
+import '../../../domain/models/schedule_block.dart';
 import '../settings/settings_screen.dart';
+
+// ─── Design tokens (V1 Command Triptych) ──────────────────────────────────
+
+const Color _yCream = Color(0xFFF2EFE6);
+const Color _yInk = Color(0xFF0A0A0A);
+const Color _yMuted = Color(0xFF7A6F60);
+const Color _yFight = Color(0xFFC8332C);
+const Color _yFlight = Color(0xFF2D3F8C);
+const Color _yLab = Color(0xFF3F6E3E);
+const Color _yAmber = Color(0xFFE29A3A);
+
+const double _hLine = 3.0;
+const double _mLine = 2.5;
+
+TextStyle _mono({double size = 11, Color color = _yMuted, double tracking = 1.4}) =>
+    TextStyle(
+      fontFamily: 'monospace',
+      fontSize: size,
+      letterSpacing: tracking,
+      color: color,
+      fontWeight: FontWeight.w500,
+      height: 1.2,
+    );
+
+// ─── All-schedule-blocks provider for "próxima clase" aggregation ─────────
+
+final _allScheduleBlocksProvider = StreamProvider<List<ScheduleBlock>>((ref) {
+  return ref.watch(scheduleRepositoryProvider).watchAll();
+});
+
+// ─── HomeScreen ───────────────────────────────────────────────────────────
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -157,391 +189,79 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _focusNode.requestFocus();
   }
 
+  void _goTo(AppMode mode) {
+    ref.read(currentModeProvider.notifier).state = mode;
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final greeting = _greeting(now.hour);
-    final dateStr = _formatDate(now);
+    final greeting = _greeting(now.hour).toUpperCase();
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-
-    final pendingAsync = ref.watch(pendingTasksProvider);
-    final foldersAsync = ref.watch(activeFoldersProvider);
-    final spacesAsync = ref.watch(activeLabSpacesProvider);
-    final doneAsync = ref.watch(doneTodayTasksProvider);
-
-    final pendingTasks = pendingAsync.valueOrNull ?? [];
-    final folders = foldersAsync.valueOrNull ?? [];
-    final spaces = spacesAsync.valueOrNull ?? [];
-    final doneCount = doneAsync.valueOrNull?.length ?? 0;
-
-    final nextTask = pendingTasks.isNotEmpty ? pendingTasks.first : null;
-    final latestFolder = folders.isNotEmpty ? folders.first : null;
-
-    Folder? nextTaskFolder;
-    if (nextTask?.folderId != null) {
-      for (final f in folders) {
-        if ((f as dynamic).id == nextTask!.folderId) {
-          nextTaskFolder = f;
-          break;
-        }
-      }
-    }
+    final dateLong = _formatDateLong(now).toUpperCase();
 
     return Scaffold(
-      backgroundColor: paperColor(context),
+      backgroundColor: _yCream,
       body: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            // ── HEADER MONOLITO ──
-            Container(
-              width: double.infinity,
-              color: inkColor(context),
-              padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            greeting.toUpperCase(),
-                            style: labelBold.copyWith(
-                              color: paperColor(context),
-                              letterSpacing: 2,
-                            ),
+        child: LayoutBuilder(
+          builder: (ctx, constraints) {
+            final isWide = constraints.maxWidth >= 900;
+            return Column(
+              children: [
+                _HeaderStrip(
+                  greeting: greeting,
+                  timeStr: timeStr,
+                  dateLong: dateLong,
+                  onSettings: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
+                ),
+                Expanded(
+                  child: isWide
+                      ? _ThreePillarsRow(
+                          fight: _buildFightPillar(),
+                          flight: _buildFlightPillar(),
+                          lab: _buildLabPillar(),
+                        )
+                      : SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                  height: 560, child: _buildFightPillar()),
+                              SizedBox(
+                                  height: 560, child: _buildFlightPillar()),
+                              SizedBox(
+                                  height: 700, child: _buildLabPillar()),
+                            ],
                           ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                            ),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              alignment: Alignment.center,
-                              child: Icon(
-                                Icons.settings,
-                                size: 20,
-                                color: paperColor(context),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        width: 48,
-                        height: borderWidthHeavy,
-                        color: paperColor(context).withAlpha(80),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        timeStr,
-                        style: displayXL.copyWith(color: paperColor(context)),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        dateStr.toUpperCase(),
-                        style: bodyS.copyWith(color: inkGray),
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    right: 32,
-                    bottom: -20,
-                    child: Text(
-                      'YuLi',
-                      textAlign: TextAlign.right,
-                      style: displayL.copyWith(
-                        color: paperColor(context).withAlpha(20),
-                        fontSize: 144,
-                        height: 1.0,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              height: borderWidthHeavy,
-              color: inkColor(context),
-            ),
-
-            // ── STATS BLOQUES ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _StatBlock(
-                    label: 'PENDIENTES',
-                    value: '${pendingTasks.length}',
-                    color: accentFight,
-                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
-                  ),
-                  _StatBlock(
-                    label: 'NOTAS',
-                    value: '${folders.length}',
-                    color: accentFlight,
-                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
-                  ),
-                  _StatBlock(
-                    label: 'LABS',
-                    value: '${spaces.length}',
-                    color: accentLab,
-                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.lab,
-                  ),
-                  _StatBlock(
-                    label: 'HECHAS',
-                    value: '$doneCount',
-                    color: accentJournal,
-                    onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: AppSectionDivider(label: 'CAPTURAR'),
-            ),
-            const SizedBox(height: 12),
-
-            // ── INPUT RÁPIDO ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: CompositedTransformTarget(
-                link: _layerLink,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _taskController,
-                        focusNode: _focusNode,
-                        style: bodyM.copyWith(color: inkColor(context)),
-                        maxLines: 3,
-                        minLines: 1,
-                        decoration: InputDecoration(
-                          hintText: 'Escribe una tarea...',
-                          hintStyle: bodyM.copyWith(color: inkGray),
-                          filled: true,
-                          fillColor: cardBackground(context),
-                          border: const OutlineInputBorder(
-                            borderRadius: BorderRadius.zero,
-                            borderSide: BorderSide(color: inkBlack, width: borderWidthHeavy),
-                          ),
-                          enabledBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.zero,
-                            borderSide: BorderSide(color: inkBlack, width: borderWidthHeavy),
-                          ),
-                          focusedBorder: const OutlineInputBorder(
-                            borderRadius: BorderRadius.zero,
-                            borderSide: BorderSide(color: inkBlack, width: borderWidthHeavy),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                          isDense: true,
                         ),
-                        onSubmitted: (_) => _addQuickTask(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _addQuickTask,
-                      child: Container(
-                        width: 56,
-                        height: 56,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: accentFight,
-                          border: Border.all(color: inkBlack, width: borderWidth),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: inkBlack,
-                              offset: shadowOffset,
-                              blurRadius: shadowBlurRadius,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.add,
-                          size: 24,
-                          color: paperLight,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: AppSectionDivider(label: 'PENDIENTES'),
-            ),
-            const SizedBox(height: 12),
-
-            // ── LISTA PENDIENTES ──
-            if (pendingTasks.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: AppCard(
-                  borderColor: inkGray.withAlpha(80),
-                  backgroundColor: paperColor(context),
-                  child: Center(
-                    child: Text(
-                      'NADA PENDIENTE',
-                      style: labelBold.copyWith(color: inkGray.withAlpha(120)),
-                    ),
-                  ),
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: pendingTasks.take(5).map((task) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _TaskBlock(
-                        task: task,
-                        onToggle: () async {
-                          await ref.read(taskRepositoryProvider).markDone(task.id);
-                          await syncTaskCompletionToKanban(ref, task.id);
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-            const SizedBox(height: 24),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: AppSectionDivider(label: 'NOTAS'),
-            ),
-            const SizedBox(height: 12),
-
-            // ── LISTA CARPETAS ──
-            if (folders.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: AppCard(
-                  borderColor: inkGray.withAlpha(80),
-                  backgroundColor: paperColor(context),
-                  child: Center(
-                    child: Text(
-                      'SIN CARPETAS',
-                      style: labelBold.copyWith(color: inkGray.withAlpha(120)),
-                    ),
-                  ),
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: folders.take(4).map((folder) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _FolderBlock(
-                        folder: folder,
-                        onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-            const SizedBox(height: 24),
-
-            // ── DOS CARDS DESTACADAS ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _HighlightCard(
-                      label: 'PRÓXIMA TAREA',
-                      value: nextTask?.content ?? 'NADA',
-                      color: accentFight,
-                      onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
-                      folder: nextTaskFolder,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _HighlightCard(
-                      label: 'CARPETA',
-                      value: latestFolder?.name ?? 'SIN CARPETAS',
-                      color: accentFlight,
-                      onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.flight,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // ── BOTÓN IR AL TABLERO ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: GestureDetector(
-                onTap: () => ref.read(currentModeProvider.notifier).state = AppMode.fight,
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  decoration: BoxDecoration(
-                    color: accentFight,
-                    border: Border.all(color: inkBlack, width: borderWidth),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: inkBlack,
-                        offset: shadowOffset,
-                        blurRadius: shadowBlurRadius,
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'IR AL TABLERO',
-                        style: labelBold.copyWith(
-                          color: paperLight,
-                          fontSize: 14,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.arrow_forward,
-                        size: 18,
-                        color: paperLight.withAlpha(220),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 32),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
+  }
+
+  Widget _buildFightPillar() {
+    return _FightPillar(
+      controller: _taskController,
+      focusNode: _focusNode,
+      layerLink: _layerLink,
+      onSubmit: _addQuickTask,
+      onEnter: () => _goTo(AppMode.fight),
+    );
+  }
+
+  Widget _buildFlightPillar() {
+    return _FlightPillar(onEnter: () => _goTo(AppMode.flight));
+  }
+
+  Widget _buildLabPillar() {
+    return _LabPillar(onEnter: () => _goTo(AppMode.lab));
   }
 
   String _greeting(int hour) {
@@ -551,317 +271,1016 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return 'Buenas noches';
   }
 
-  String _formatDate(DateTime d) {
-    const months = [
-      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-    ];
-    return '${d.day} de ${months[d.month - 1]} de ${d.year}';
+  static const _kWeekdayLong = [
+    'LUNES',
+    'MARTES',
+    'MIÉRCOLES',
+    'JUEVES',
+    'VIERNES',
+    'SÁBADO',
+    'DOMINGO',
+  ];
+
+  static const _kMonths = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+
+  String _formatDateLong(DateTime d) {
+    final wd = _kWeekdayLong[d.weekday - 1];
+    return '$wd ${d.day} DE ${_kMonths[d.month - 1].toUpperCase()} DE ${d.year}';
   }
 }
 
-// ── WIDGETS PRIVADOS ──
+// ─── Header strip ─────────────────────────────────────────────────────────
 
-class _StatBlock extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final VoidCallback onTap;
+class _HeaderStrip extends StatelessWidget {
+  final String greeting;
+  final String timeStr;
+  final String dateLong;
+  final VoidCallback onSettings;
 
-  const _StatBlock({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.onTap,
+  const _HeaderStrip({
+    required this.greeting,
+    required this.timeStr,
+    required this.dateLong,
+    required this.onSettings,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: (MediaQuery.of(context).size.width - 40) / 2,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: inkBlack, width: borderWidth),
-          boxShadow: const [
-            BoxShadow(
-              color: inkBlack,
-              offset: shadowOffset,
-              blurRadius: shadowBlurRadius,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: displayL.copyWith(color: paperLight, height: 1.0),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: labelBold.copyWith(
-                color: paperLight.withAlpha(220),
-                fontSize: 10,
-                letterSpacing: 1.2,
+    return Container(
+      height: 96,
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _yInk, width: _hLine)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              decoration: const BoxDecoration(
+                border: Border(right: BorderSide(color: _yInk, width: _hLine)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '$greeting · Carlos',
+                    style: _mono(size: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        timeStr,
+                        style: const TextStyle(
+                          fontFamily: 'SpaceGrotesk',
+                          fontSize: 38,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -1.4,
+                          height: 1.0,
+                          color: _yInk,
+                        ),
+                      ),
+                      const SizedBox(width: 18),
+                      Flexible(
+                        child: Text(
+                          dateLong,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 1.0,
+                            color: _yMuted,
+                            height: 1.1,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+          Container(
+            width: 360,
+            color: _yInk,
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                RichText(
+                  text: const TextSpan(
+                    style: TextStyle(
+                      fontFamily: 'SpaceGrotesk',
+                      fontSize: 64,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -2.5,
+                      height: 1.0,
+                      color: _yCream,
+                    ),
+                    children: [
+                      TextSpan(text: 'Yu'),
+                      TextSpan(
+                          text: 'Li', style: TextStyle(color: _yAmber)),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onSettings,
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: _yCream, width: 2.5),
+                    ),
+                    child: const Icon(Icons.settings,
+                        color: _yCream, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _TaskBlock extends ConsumerWidget {
-  final domain_task.Task task;
-  final VoidCallback onToggle;
+// ─── Three pillars row ────────────────────────────────────────────────────
 
-  const _TaskBlock({required this.task, required this.onToggle});
+class _ThreePillarsRow extends StatelessWidget {
+  final Widget fight;
+  final Widget flight;
+  final Widget lab;
+
+  const _ThreePillarsRow({
+    required this.fight,
+    required this.flight,
+    required this.lab,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: fight),
+        Container(width: _hLine, color: _yInk),
+        Expanded(child: flight),
+        Container(width: _hLine, color: _yInk),
+        Expanded(child: lab),
+      ],
+    );
+  }
+}
+
+// ─── Pillar shell ─────────────────────────────────────────────────────────
+
+class _PillarShell extends StatelessWidget {
+  final String mode;
+  final String subtitle;
+  final Color color;
+  final Widget child;
+  final String footerLabel;
+  final VoidCallback onEnter;
+  final String? bigNumber;
+  final String? bigNumberUnit;
+
+  const _PillarShell({
+    required this.mode,
+    required this.subtitle,
+    required this.color,
+    required this.child,
+    required this.footerLabel,
+    required this.onEnter,
+    this.bigNumber,
+    this.bigNumberUnit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  mode,
+                  style: const TextStyle(
+                    fontFamily: 'SpaceGrotesk',
+                    fontSize: 56,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -1.8,
+                    height: 0.92,
+                    color: _yCream,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: _mono(
+                      size: 11,
+                      color: _yCream.withValues(alpha: 0.7),
+                      tracking: 1.4),
+                ),
+                if (bigNumber != null) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        bigNumber!,
+                        style: const TextStyle(
+                          fontFamily: 'SpaceGrotesk',
+                          fontSize: 92,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -2.0,
+                          height: 0.9,
+                          color: _yCream,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          bigNumberUnit ?? '',
+                          style: _mono(
+                              size: 11,
+                              color: _yCream.withValues(alpha: 0.75)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+              child: child,
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onEnter,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: _yCream, width: _mLine),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    footerLabel,
+                    style: const TextStyle(
+                      fontFamily: 'SpaceGrotesk',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: _yCream,
+                    ),
+                  ),
+                  const Text(
+                    '→',
+                    style: TextStyle(
+                      fontFamily: 'SpaceGrotesk',
+                      fontSize: 22,
+                      color: _yCream,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── FIGHT pillar ─────────────────────────────────────────────────────────
+
+class _FightPillar extends ConsumerWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final LayerLink layerLink;
+  final VoidCallback onSubmit;
+  final VoidCallback onEnter;
+
+  const _FightPillar({
+    required this.controller,
+    required this.focusNode,
+    required this.layerLink,
+    required this.onSubmit,
+    required this.onEnter,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final folder = task.folderId != null
-        ? ref.watch(folderByIdProvider(task.folderId!)).valueOrNull
-        : null;
+    final pendingAsync = ref.watch(pendingTasksProvider);
+    final doneAsync = ref.watch(doneTodayTasksProvider);
+    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
 
-    final defaultStyle = bodyM.copyWith(color: inkColor(context));
+    final pending = pendingAsync.valueOrNull ?? [];
+    final done = doneAsync.valueOrNull ?? [];
 
-    InlineSpan contentSpan;
-
-    if (folder != null) {
-      final text = task.content;
-      final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
-      final matches = regex.allMatches(text).toList();
-      final targetClean = removeAccents(folder.name.toLowerCase());
-
-      final validMatches = matches.where((m) {
-        final matchedName = m.group(1)!;
-        return removeAccents(matchedName.toLowerCase()) == targetClean;
-      }).toList();
-
-      if (validMatches.isEmpty) {
-        contentSpan = TextSpan(text: text, style: defaultStyle);
-      } else {
-        final spans = <InlineSpan>[];
-        int lastIndex = 0;
-
-        final mentionStyle = defaultStyle.copyWith(
-          color: folder.color,
-          fontWeight: FontWeight.bold,
-        );
-
-        for (final match in validMatches) {
-          if (match.start > lastIndex) {
-            spans.add(TextSpan(
-              text: text.substring(lastIndex, match.start),
-              style: defaultStyle,
-            ));
-          }
-          final matchedText = match.group(0)!;
-          final folderPart = matchedText.substring(1);
-          spans.add(TextSpan(
-            text: folderPart,
-            style: mentionStyle,
-          ));
-          lastIndex = match.end;
-        }
-
-        if (lastIndex < text.length) {
-          spans.add(TextSpan(
-            text: text.substring(lastIndex),
-            style: defaultStyle,
-          ));
-        }
-
-        contentSpan = TextSpan(children: spans);
-      }
-    } else {
-      contentSpan = TextSpan(text: task.content, style: defaultStyle);
-    }
-
-    return AppCard(
-      onTap: onToggle,
-      borderColor: inkColor(context),
-      backgroundColor: cardBackground(context),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      child: Row(
+    return _PillarShell(
+      mode: 'FIGHT',
+      subtitle: 'MODO CAPTURA',
+      color: _yFight,
+      footerLabel: 'ENTRAR EN FIGHT',
+      onEnter: onEnter,
+      bigNumber: '${pending.length}',
+      bigNumberUnit: 'pendientes',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              border: Border.all(color: accentFight, width: borderWidth),
+          // Captura input
+          CompositedTransformTarget(
+            link: layerLink,
+            child: _BrutalSlab(
+              bg: _yCream,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _yInk,
+                        ),
+                        cursorColor: _yInk,
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          filled: false,
+                          hintText: 'Captura una tarea…',
+                          hintStyle: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: _yMuted,
+                          ),
+                        ),
+                        onSubmitted: (_) => onSubmit(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onSubmit,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _yFight,
+                          border: Border.all(color: _yInk, width: 2),
+                        ),
+                        child: const Text(
+                          '+',
+                          style: TextStyle(
+                            fontFamily: 'SpaceGrotesk',
+                            color: _yCream,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(height: 22),
+          Text(
+            '── completadas hoy ──',
+            style: _mono(color: _yCream.withValues(alpha: 0.65)),
+          ),
+          const SizedBox(height: 10),
           Expanded(
-            child: Text.rich(
-              contentSpan,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: done.isEmpty
+                ? _PillarEmpty(text: 'NADA TODAVÍA')
+                : ListView.separated(
+                    padding: EdgeInsets.zero,
+                    itemBuilder: (ctx, i) {
+                      final t = done[i];
+                      final folder = t.folderId == null
+                          ? null
+                          : folders.firstWhere(
+                              (f) => f.id == t.folderId,
+                              orElse: () => folders.isEmpty
+                                  ? Folder(
+                                      id: -1,
+                                      name: '',
+                                      color: _yMuted,
+                                      createdAt: DateTime.now(),
+                                    )
+                                  : folders.first,
+                            );
+                      return _DoneTaskRow(task: t, folder: folder);
+                    },
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemCount: done.length,
+                  ),
           ),
+          const SizedBox(height: 12),
         ],
       ),
     );
   }
 }
 
-class _FolderBlock extends StatelessWidget {
-  final dynamic folder;
-  final VoidCallback onTap;
+class _DoneTaskRow extends StatelessWidget {
+  final domain_task.Task task;
+  final Folder? folder;
 
-  const _FolderBlock({required this.folder, required this.onTap});
+  const _DoneTaskRow({required this.task, this.folder});
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      onTap: onTap,
-      borderColor: inkColor(context),
-      backgroundColor: cardBackground(context),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _yCream.withValues(alpha: 0.08),
+        border: Border.all(color: _yCream, width: 2),
+      ),
       child: Row(
         children: [
-          Container(
-            width: 4,
-            height: 24,
-            color: folder.color as Color? ?? inkGray,
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              folder.name as String? ?? '',
-              style: bodyM.copyWith(color: inkColor(context)),
+              task.content,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _yCream.withValues(alpha: 0.7),
+                decoration: TextDecoration.lineThrough,
+              ),
             ),
           ),
-          const Icon(Icons.arrow_forward, size: 16, color: inkGray),
+          if (folder != null && (folder!.id != -1)) ...[
+            const SizedBox(width: 8),
+            _FolderBadge(folder: folder!, fg: _yCream),
+          ],
         ],
       ),
     );
   }
 }
 
-class _HighlightCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final VoidCallback onTap;
-  final Folder? folder;
+// ─── FLIGHT pillar ────────────────────────────────────────────────────────
 
-  const _HighlightCard({
-    required this.label,
-    required this.value,
-    required this.color,
-    required this.onTap,
-    this.folder,
+class _FlightPillar extends ConsumerWidget {
+  final VoidCallback onEnter;
+
+  const _FlightPillar({required this.onEnter});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
+    final allNotes = ref.watch(recentNotesProvider).valueOrNull ?? [];
+
+    // count notes per folder
+    final counts = <int, int>{};
+    for (final n in allNotes) {
+      counts[n.folderId] = (counts[n.folderId] ?? 0) + 1;
+    }
+
+    return _PillarShell(
+      mode: 'FLIGHT',
+      subtitle: 'MODO NOTAS',
+      color: _yFlight,
+      footerLabel: 'ENTRAR EN FLIGHT',
+      onEnter: onEnter,
+      bigNumber: '${folders.length}',
+      bigNumberUnit: 'carpetas',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '── carpetas ──',
+            style: _mono(color: _yCream.withValues(alpha: 0.65)),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: folders.isEmpty
+                ? _PillarEmpty(text: 'SIN CARPETAS')
+                : GridView.builder(
+                    padding: EdgeInsets.zero,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      mainAxisExtent: 60,
+                    ),
+                    itemBuilder: (ctx, i) {
+                      final f = folders[i];
+                      return _FolderCard(
+                        folder: f,
+                        count: counts[f.id] ?? 0,
+                      );
+                    },
+                    itemCount: folders.length,
+                  ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+class _FolderCard extends StatelessWidget {
+  final Folder folder;
+  final int count;
+
+  const _FolderCard({required this.folder, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: folder.color,
+        border: Border.all(color: _yInk, width: 2.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            folder.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'SpaceGrotesk',
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.1,
+              color: _yCream,
+            ),
+          ),
+          Text(
+            '$count notas',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10,
+              color: _yCream.withValues(alpha: 0.85),
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── LAB pillar ───────────────────────────────────────────────────────────
+
+class _LabPillar extends ConsumerWidget {
+  final VoidCallback onEnter;
+
+  const _LabPillar({required this.onEnter});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spacesAsync = ref.watch(activeLabSpacesProvider);
+    final blocksAsync = ref.watch(_allScheduleBlocksProvider);
+
+    final spaces = (spacesAsync.valueOrNull ?? [])
+        .where((s) => s.status == LabSpaceStatus.active)
+        .toList();
+    final allBlocks = blocksAsync.valueOrNull ?? [];
+
+    final activeSpaceIds = spaces.map((s) => s.id).toSet();
+    final relevantBlocks =
+        allBlocks.where((b) => activeSpaceIds.contains(b.labSpaceId)).toList();
+
+    final nextClass = _findNextClass(relevantBlocks, DateTime.now());
+
+    return _PillarShell(
+      mode: 'LAB',
+      subtitle: 'MODO PROYECTOS',
+      color: _yLab,
+      footerLabel: 'ENTRAR EN LAB',
+      onEnter: onEnter,
+      bigNumber: '${spaces.length}',
+      bigNumberUnit: 'en proceso',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (nextClass != null) ...[
+            Text(
+              '── próxima clase ──',
+              style: _mono(color: _yCream.withValues(alpha: 0.65)),
+            ),
+            const SizedBox(height: 8),
+            _NextClassCard(block: nextClass.block, when: nextClass.label),
+            const SizedBox(height: 18),
+          ],
+          Text(
+            '── spaces activos ──',
+            style: _mono(color: _yCream.withValues(alpha: 0.65)),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: spaces.isEmpty
+                ? _PillarEmpty(text: 'SIN SPACES ACTIVOS')
+                : ListView.separated(
+                    padding: EdgeInsets.zero,
+                    itemBuilder: (ctx, i) => _SpaceCard(space: spaces[i]),
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemCount: spaces.length,
+                  ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+class _NextOccurrence {
+  final ScheduleBlock block;
+  final String label;
+  const _NextOccurrence(this.block, this.label);
+}
+
+const _kBlockDayKeys = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+_NextOccurrence? _findNextClass(List<ScheduleBlock> blocks, DateTime now) {
+  if (blocks.isEmpty) return null;
+
+  ScheduleBlock? bestBlock;
+  int bestDelta = 1 << 30;
+  String bestLabel = '';
+
+  final nowMinutes = now.hour * 60 + now.minute;
+  final todayKey = _kBlockDayKeys[now.weekday - 1];
+
+  for (final b in blocks) {
+    for (final day in b.days) {
+      final dayIdx = _kBlockDayKeys.indexOf(day);
+      if (dayIdx < 0) continue;
+      int delta;
+      String label;
+      final todayIdx = now.weekday - 1;
+      if (day == todayKey && b.startMinutes > nowMinutes) {
+        delta = b.startMinutes - nowMinutes;
+        label = 'hoy';
+      } else {
+        final dayDiff = (dayIdx - todayIdx + 7) % 7;
+        final effectiveDiff = dayDiff == 0 ? 7 : dayDiff;
+        delta = effectiveDiff * 24 * 60 + (b.startMinutes - nowMinutes);
+        label = effectiveDiff == 1 ? 'mañana' : day.toLowerCase();
+      }
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        bestBlock = b;
+        bestLabel = label;
+      }
+    }
+  }
+
+  return bestBlock == null ? null : _NextOccurrence(bestBlock, bestLabel);
+}
+
+class _NextClassCard extends StatelessWidget {
+  final ScheduleBlock block;
+  final String when;
+
+  const _NextClassCard({required this.block, required this.when});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _parseHex(block.color);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _yCream.withValues(alpha: 0.08),
+        border: Border.all(color: _yCream, width: 2),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  block.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'SpaceGrotesk',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _yCream,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$when · ${block.startTime}'
+                  '${block.location != null && block.location!.isNotEmpty ? ' · ${block.location}' : ''}',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    color: _yCream.withValues(alpha: 0.85),
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _Badge(
+            label: block.title.length > 12
+                ? block.title.substring(0, 12)
+                : block.title,
+            bg: color,
+            fg: _yCream,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Color _parseHex(String hex) {
+  final h = hex.replaceFirst('#', '');
+  if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
+  if (h.length == 8) return Color(int.parse(h, radix: 16));
+  return _yMuted;
+}
+
+class _SpaceCard extends StatelessWidget {
+  final LabSpace space;
+
+  const _SpaceCard({required this.space});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final stage = _stageLabel(space, now);
+    final progress = _timeProgress(space, now);
+    final dueText = space.dueDate != null ? _fmtDate(space.dueDate!) : null;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _yCream,
+        border: Border.all(color: _yInk, width: _hLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            space.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'SpaceGrotesk',
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.6,
+              height: 1.0,
+              color: _yInk,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _Badge(label: stage, bg: space.accentColor, fg: _yCream),
+              if (dueText != null)
+                _Badge(label: dueText, bg: _yFlight, fg: _yCream),
+            ],
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              'progreso · ${(progress * 100).round()}%',
+              style: _mono(size: 10, color: _yMuted, tracking: 1.2),
+            ),
+            const SizedBox(height: 4),
+            _ProgressBar(value: progress, color: space.accentColor),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _stageLabel(LabSpace s, DateTime now) {
+    if (s.status == LabSpaceStatus.completed) return 'Completado';
+    if (s.status == LabSpaceStatus.archived) return 'Archivado';
+    if (s.dueDate != null && now.isAfter(s.dueDate!)) return 'Vencido';
+    if (s.startDate != null && now.isBefore(s.startDate!)) return 'Por iniciar';
+    if (s.startDate == null && s.dueDate == null) return 'Sin fechas';
+    return 'En proceso';
+  }
+
+  double? _timeProgress(LabSpace s, DateTime now) {
+    final start = s.startDate;
+    final end = s.dueDate;
+    if (start == null || end == null) return null;
+    if (!end.isAfter(start)) return null;
+    final total = end.difference(start).inMinutes;
+    final elapsed = now.difference(start).inMinutes;
+    return (elapsed / total).clamp(0.0, 1.0);
+  }
+
+  String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+}
+
+class _ProgressBar extends StatelessWidget {
+  final double value;
+  final Color color;
+
+  const _ProgressBar({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 14,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEBE6D9),
+        border: Border.all(color: _yInk, width: 2),
+      ),
+      child: Stack(
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: value,
+              heightFactor: 1.0,
+              child: CustomPaint(
+                painter: _HatchedFillPainter(color: color),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HatchedFillPainter extends CustomPainter {
+  final Color color;
+  _HatchedFillPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()..color = color;
+    canvas.drawRect(Offset.zero & size, bgPaint);
+
+    final hatchPaint = Paint()
+      ..color = const Color(0x2E000000)
+      ..strokeWidth = 1.2;
+    const step = 7.0;
+    for (double x = -size.height; x < size.width; x += step) {
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + size.height, 0),
+        hatchPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HatchedFillPainter old) => old.color != color;
+}
+
+// ─── Shared visual atoms ──────────────────────────────────────────────────
+
+class _BrutalSlab extends StatelessWidget {
+  final Color bg;
+  final Widget child;
+  final BoxBorder? border;
+
+  const _BrutalSlab({
+    required this.bg,
+    required this.child,
+    this.border,
   });
 
   @override
   Widget build(BuildContext context) {
-    final defaultStyle = bodyM.copyWith(
-      color: paperLight,
-      fontWeight: FontWeight.w700,
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        border: border ?? Border.all(color: _yInk, width: _hLine),
+      ),
+      child: child,
     );
+  }
+}
 
-    InlineSpan valueSpan;
+class _Badge extends StatelessWidget {
+  final String label;
+  final Color bg;
+  final Color fg;
 
-    if (folder != null) {
-      final text = value;
-      final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
-      final matches = regex.allMatches(text).toList();
-      final targetClean = removeAccents(folder!.name.toLowerCase());
+  const _Badge({required this.label, required this.bg, required this.fg});
 
-      final validMatches = matches.where((m) {
-        final matchedName = m.group(1)!;
-        return removeAccents(matchedName.toLowerCase()) == targetClean;
-      }).toList();
-
-      if (validMatches.isEmpty) {
-        valueSpan = TextSpan(text: text, style: defaultStyle);
-      } else {
-        final spans = <InlineSpan>[];
-        int lastIndex = 0;
-
-        final mentionColor = folder!.color == color ? paperLight : folder!.color;
-        final mentionStyle = defaultStyle.copyWith(
-          color: mentionColor,
-          fontWeight: FontWeight.bold,
-        );
-
-        for (final match in validMatches) {
-          if (match.start > lastIndex) {
-            spans.add(TextSpan(
-              text: text.substring(lastIndex, match.start),
-              style: defaultStyle,
-            ));
-          }
-          final matchedText = match.group(0)!;
-          final folderPart = matchedText.substring(1);
-          spans.add(TextSpan(
-            text: folderPart,
-            style: mentionStyle,
-          ));
-          lastIndex = match.end;
-        }
-
-        if (lastIndex < text.length) {
-          spans.add(TextSpan(
-            text: text.substring(lastIndex),
-            style: defaultStyle,
-          ));
-        }
-
-        valueSpan = TextSpan(children: spans);
-      }
-    } else {
-      valueSpan = TextSpan(text: value, style: defaultStyle);
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: inkBlack, width: borderWidth),
-          boxShadow: const [
-            BoxShadow(
-              color: inkBlack,
-              offset: shadowOffset,
-              blurRadius: shadowBlurRadius,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: labelBold.copyWith(
-                color: paperLight.withAlpha(220),
-                fontSize: 10,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text.rich(
-              valueSpan,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 5),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: _yInk, width: 2.5),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+          letterSpacing: 0.2,
+          height: 1.1,
+          color: fg,
         ),
       ),
     );
   }
 }
+
+class _FolderBadge extends StatelessWidget {
+  final Folder folder;
+  final Color fg;
+
+  const _FolderBadge({required this.folder, required this.fg});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(label: folder.name, bg: folder.color, fg: fg);
+  }
+}
+
+class _PillarEmpty extends StatelessWidget {
+  final String text;
+  const _PillarEmpty({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        text,
+        style: _mono(
+          size: 11,
+          color: _yCream.withValues(alpha: 0.5),
+          tracking: 1.4,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Mention popup (reused from prior home) ───────────────────────────────
 
 class _MentionPopup extends StatelessWidget {
   final List<Folder> folders;

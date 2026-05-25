@@ -20,6 +20,9 @@ class ScheduleDao extends DatabaseAccessor<AppDatabase>
             ..where((c) => c.labSpaceId.equals(labSpaceId)))
           .watch();
 
+  Stream<List<ScheduleBlockRow>> watchAll() =>
+      select(scheduleBlocks).watch();
+
   Future<ScheduleBlockRow> insertBlock(ScheduleBlocksCompanion row) async {
     final id = await into(scheduleBlocks).insert(row);
     return (select(scheduleBlocks)..where((c) => c.id.equals(id)))
