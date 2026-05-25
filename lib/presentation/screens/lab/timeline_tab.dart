@@ -410,8 +410,9 @@ class _TimelineGridPainter extends CustomPainter {
       ..color = ink.withAlpha(60)
       ..strokeWidth = borderWidth;
 
+    final wine = const Color(0xFF800020);
     final todayPaint = Paint()
-      ..color = accentError
+      ..color = wine
       ..strokeWidth = 1.5;
 
     const textStyle = TextStyle(
@@ -535,7 +536,7 @@ class _TimelineGridPainter extends CustomPainter {
       final hoySpan = TextSpan(
         text: 'HOY',
         style: textStyle.copyWith(
-          color: accentError,
+          color: const Color(0xFF800020),
           fontWeight: FontWeight.w700,
           fontSize: 9,
         ),

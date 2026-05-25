@@ -59,7 +59,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -87,6 +87,12 @@ class AppDatabase extends _$AppDatabase {
           if (from <= 8) {
             try {
               await m.addColumn(kanbanCards, kanbanCards.originFolderColor);
+            } catch (_) {}
+          }
+          if (from <= 9) {
+            try {
+              await m.addColumn(scheduleSettings, scheduleSettings.showSaturday);
+              await m.addColumn(scheduleSettings, scheduleSettings.showSunday);
             } catch (_) {}
           }
         },

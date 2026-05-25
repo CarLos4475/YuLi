@@ -14,12 +14,15 @@ import '../../../domain/models/lab_space.dart';
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const _hoursWidth = 52.0;
-const _halfHourHeight = 40.0;
+const _hourHeight = 48.0;
 const _dayHeaderHeight = 56.0;
 const _dayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
-List<String> _weekDays(bool showWeekends) =>
-    showWeekends ? _dayNames : _dayNames.sublist(0, 5);
+List<String> _weekDays(bool showSat, bool showSun) {
+  if (!showSat && !showSun) return _dayNames.sublist(0, 5);
+  if (showSat && !showSun) return _dayNames.sublist(0, 6);
+  return _dayNames;
+}
 
 String _minutesToTime(int m) {
   final h = m ~/ 60;
@@ -27,8 +30,8 @@ String _minutesToTime(int m) {
   return '${h.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')}';
 }
 
-int _roundToHalfHour(int minutes) =>
-    (minutes / 30).round() * 30;
+int _roundToHour(int minutes) =>
+    (minutes / 60).round() * 60;
 
 DateTime _mondayOfWeek(DateTime date) {
   final wd = date.weekday;
@@ -155,6 +158,7 @@ class ScheduleTab extends ConsumerStatefulWidget {
 
 class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   late DateTime _currentWeekStart;
+  bool _creatingMode = false;
   double? _dragStartY;
   double? _dragCurrentY;
   int? _dragDayIndex;
@@ -209,11 +213,11 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
 
   Widget _buildWithBlocks(ScheduleSettings settings, List<ScheduleBlock> blocks,
       ScheduleWeekNote? weekNote, Color ink) {
-    final days = _weekDays(settings.showWeekends);
+    final days = _weekDays(settings.showSaturday, settings.showSunday);
     final sMin = settings.startMinutes;
     final eMin = settings.endMinutes;
     final totalMins = eMin - sMin;
-    final totalHeight = (totalMins / 30) * _halfHourHeight;
+    final totalHeight = (totalMins / 60) * _hourHeight;
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     final horizontalPadding = (screenWidth * 0.04).clamp(16.0, 80.0);
@@ -229,6 +233,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
               onNext: _next,
               onToday: _today,
               onSettings: () => _showSettings(context, settings),
+              creatingMode: _creatingMode,
+              onToggleCreate: () =>
+                  setState(() => _creatingMode = !_creatingMode),
             ),
             if (weekNote != null)
               _WeekNoteBanner(
@@ -259,7 +266,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                       Expanded(
                         child: SingleChildScrollView(
                           child: SizedBox(
-                            height: totalHeight + _halfHourHeight,
+                            height: totalHeight + _hourHeight,
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -270,9 +277,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                     children: [
                                       for (int m = sMin;
                                           m <= eMin;
-                                          m += 30)
+                                          m += 60)
                                         SizedBox(
-                                          height: _halfHourHeight,
+                                          height: _hourHeight,
                                           child: Padding(
                                             padding: const EdgeInsets.only(right: 6, top: 2),
                                             child: Text(
@@ -288,19 +295,19 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                 // Days area
                                 Expanded(
                                   child: SizedBox(
-                                    height: totalHeight + _halfHourHeight,
+                                    height: totalHeight + _hourHeight,
                                     child: Stack(
                                       children: [
                                         CustomPaint(
                                           size: Size(
                                               constraints.maxWidth - _hoursWidth,
-                                              totalHeight + _halfHourHeight),
+                                              totalHeight + _hourHeight),
                                           painter: _GridPainter(
                                             ink: ink,
                                             totalMinutes: totalMins,
                                             numDays: days.length,
                                             dayWidth: dayWidth,
-                                            halfHourHeight: _halfHourHeight,
+                                          hourHeight: _hourHeight,
                                           ),
                                         ),
                                         // Blocks per day
@@ -313,16 +320,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             sMin,
                                             totalHeight,
                                           ),
-                                        // Current time line (on top of blocks)
-                                        _TimeLineWidget(
-                                          startMinutes: sMin,
-                                          totalMinutes: totalMins,
-                                          halfHourHeight: _halfHourHeight,
-                                          totalWidth:
-                                              constraints.maxWidth - _hoursWidth,
-                                        ),
-                                        // Drag overlay
-                                        if (_dragStartY != null &&
+                                        // Drag overlay (only in creating mode)
+                                        if (_creatingMode &&
+                                            _dragStartY != null &&
                                             _dragCurrentY != null &&
                                             _dragDayIndex != null)
                                           _DragOverlay(
@@ -332,6 +332,14 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             dayWidth: dayWidth,
                                             hoursWidth: _hoursWidth,
                                           ),
+                                        // Current time line (on top of blocks)
+                                        _TimeLineWidget(
+                                          startMinutes: sMin,
+                                          totalMinutes: totalMins,
+                                            hourHeight: _hourHeight,
+                                          totalWidth:
+                                              constraints.maxWidth - _hoursWidth,
+                                        ),
                                         // Drag gesture detector for each day
                                         for (int di = 0; di < days.length; di++)
                                           Positioned(
@@ -339,25 +347,30 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             top: 0,
                                             width: dayWidth,
                                             height:
-                                                totalHeight + _halfHourHeight,
-                                            child: GestureDetector(
-                                              behavior:
-                                                  HitTestBehavior.translucent,
-                                              onVerticalDragStart: (d) =>
-                                                  setState(() {
-                                                _dragStartY = d.localPosition.dy;
-                                                _dragCurrentY =
-                                                    d.localPosition.dy;
-                                                _dragDayIndex = di;
-                                              }),
-                                              onVerticalDragUpdate: (d) =>
-                                                  setState(() =>
-                                                      _dragCurrentY =
-                                                          d.localPosition.dy),
-                                              onVerticalDragEnd: (d) {
-                                                _finishDrag(blocks, days, sMin,
-                                                    totalHeight);
-                                              },
+                                                totalHeight + _hourHeight,
+                                            child: IgnorePointer(
+                                              ignoring: !_creatingMode,
+                                              child: GestureDetector(
+                                                behavior:
+                                                    HitTestBehavior.translucent,
+                                                onVerticalDragStart: (d) =>
+                                                    setState(() {
+                                                  _dragStartY =
+                                                      d.localPosition.dy;
+                                                  _dragCurrentY =
+                                                      d.localPosition.dy;
+                                                  _dragDayIndex = di;
+                                                }),
+                                                onVerticalDragUpdate: (d) =>
+                                                    setState(() =>
+                                                        _dragCurrentY =
+                                                            d.localPosition.dy),
+                                                onVerticalDragEnd: (d) {
+                                                  _finishDrag(
+                                                      blocks, days, sMin,
+                                                      totalHeight);
+                                                },
+                                              ),
                                             ),
                                           ),
                                       ],
@@ -399,8 +412,8 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     for (final li in lanes) {
       final b = li.block;
       final laneWidth = dayWidth / li.totalLanes;
-      final top = ((b.startMinutes - startMinutes) / 30) * _halfHourHeight;
-      final height = ((b.endMinutes - b.startMinutes) / 30) * _halfHourHeight;
+      final top = ((b.startMinutes - startMinutes) / 60) * _hourHeight;
+      final height = ((b.endMinutes - b.startMinutes) / 60) * _hourHeight;
 
       final remainingDayWidth = dayWidth - (li.lane * laneWidth);
       double blockWidth = li.colSpan * laneWidth;
@@ -445,11 +458,11 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final top = yStart < yEnd ? yStart : yEnd;
     final bottom = yStart < yEnd ? yEnd : yStart;
 
-    final minPerPixel = 30.0 / _halfHourHeight;
+    final minPerPixel = 60.0 / _hourHeight;
     final startMins =
-        _roundToHalfHour(startMinutes + (top * minPerPixel).round());
+        _roundToHour(startMinutes + (top * minPerPixel).round());
     final endMins =
-        _roundToHalfHour(startMinutes + (bottom * minPerPixel).round());
+        _roundToHour(startMinutes + (bottom * minPerPixel).round());
 
     final dayIndex = _dragDayIndex!;
 
@@ -459,7 +472,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
       _dragDayIndex = null;
     });
 
-    if (endMins - startMins < 30) return;
+    if (endMins - startMins < 60) return;
 
     final dayKey = days[dayIndex];
     _showCreateBlock(context, startMins, endMins, dayKey);
@@ -634,6 +647,8 @@ class _ScheduleHeader extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onToday;
   final VoidCallback onSettings;
+  final bool creatingMode;
+  final VoidCallback onToggleCreate;
 
   const _ScheduleHeader({
     required this.weekLabel,
@@ -641,6 +656,8 @@ class _ScheduleHeader extends StatelessWidget {
     required this.onNext,
     required this.onToday,
     required this.onSettings,
+    this.creatingMode = false,
+    required this.onToggleCreate,
   });
 
   @override
@@ -691,6 +708,23 @@ class _ScheduleHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
+          GestureDetector(
+            onTap: onToggleCreate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: creatingMode ? accentFight : Colors.transparent,
+                border: Border.all(color: inkBlack, width: borderWidth),
+                boxShadow: creatingMode ? shadowM : null,
+              ),
+              child: Text('Crear',
+                  style: labelBold.copyWith(
+                    color: creatingMode ? paperLight : inkGray,
+                    fontSize: 11,
+                  )),
+            ),
+          ),
+          const SizedBox(width: 6),
           GestureDetector(
             onTap: onSettings,
             child: Container(
@@ -842,13 +876,13 @@ class _DayHeaderRow extends StatelessWidget {
 class _TimeLineWidget extends StatelessWidget {
   final int startMinutes;
   final int totalMinutes;
-  final double halfHourHeight;
+  final double hourHeight;
   final double totalWidth;
 
   const _TimeLineWidget({
     required this.startMinutes,
     required this.totalMinutes,
-    required this.halfHourHeight,
+    required this.hourHeight,
     required this.totalWidth,
   });
 
@@ -862,7 +896,7 @@ class _TimeLineWidget extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final nowY = ((nowMinutes - startMinutes) / 30.0) * halfHourHeight;
+    final nowY = ((nowMinutes - startMinutes) / 60.0) * hourHeight;
 
     return Positioned(
       left: 0,
@@ -881,7 +915,7 @@ class _TimeLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = accentError
+      ..color = const Color(0xFF800020)
       ..strokeWidth = 2.0;
     canvas.drawLine(Offset(0, 4), Offset(size.width, 4), paint);
     final triangle = Path()
@@ -896,22 +930,6 @@ class _TimeLinePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _TrianglePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = accentError;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, size.height / 2)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 // ─── Grid Painter ──────────────────────────────────────────────────────────
 
 class _GridPainter extends CustomPainter {
@@ -919,14 +937,14 @@ class _GridPainter extends CustomPainter {
   final int totalMinutes;
   final int numDays;
   final double dayWidth;
-  final double halfHourHeight;
+  final double hourHeight;
 
   _GridPainter({
     required this.ink,
     required this.totalMinutes,
     required this.numDays,
     required this.dayWidth,
-    required this.halfHourHeight,
+    required this.hourHeight,
   });
 
   @override
@@ -939,14 +957,14 @@ class _GridPainter extends CustomPainter {
       ..color = ink.withAlpha(40)
       ..strokeWidth = borderWidth;
 
-    final slots = totalMinutes ~/ 30;
+    final hours = totalMinutes ~/ 60;
 
-    for (int i = 0; i <= slots; i++) {
-      final y = i * halfHourHeight;
+    for (int i = 0; i <= hours; i++) {
+      final y = i * hourHeight;
       canvas.drawLine(
         Offset(0, y),
         Offset(size.width, y),
-        i % 2 == 0 ? borderPaint : gridPaint,
+        i == 0 || i == hours ? borderPaint : gridPaint,
       );
     }
 
@@ -1629,6 +1647,53 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
   }
 }
 
+// ─── Toggle Row ─────────────────────────────────────────────────────────────
+
+class _ToggleRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _ToggleRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: labelBold.copyWith(color: ink)),
+          ),
+          Container(
+            width: 40,
+            height: 22,
+            decoration: BoxDecoration(
+              color: value ? accentLab : inkGray,
+              border: Border.all(color: inkBlack, width: borderWidth),
+            ),
+            child: Align(
+              alignment:
+                  value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 18,
+                height: 18,
+                color: paperLight,
+                margin: const EdgeInsets.all(1),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Time Picker Field ─────────────────────────────────────────────────────
 
 class _TimePickerField extends StatelessWidget {
@@ -1708,21 +1773,24 @@ class _SettingsSheet extends StatefulWidget {
 }
 
 class _SettingsSheetState extends State<_SettingsSheet> {
-  late bool _showWeekends;
+  late bool _showSaturday;
+  late bool _showSunday;
   late String _dayStart;
   late String _dayEnd;
 
   @override
   void initState() {
     super.initState();
-    _showWeekends = widget.settings.showWeekends;
+    _showSaturday = widget.settings.showSaturday;
+    _showSunday = widget.settings.showSunday;
     _dayStart = widget.settings.dayStartTime;
     _dayEnd = widget.settings.dayEndTime;
   }
 
   void _emit() {
     widget.onChanged(widget.settings.copyWith(
-      showWeekends: _showWeekends,
+      showSaturday: _showSaturday,
+      showSunday: _showSunday,
       dayStartTime: _dayStart,
       dayEndTime: _dayEnd,
     ));
@@ -1754,37 +1822,22 @@ class _SettingsSheetState extends State<_SettingsSheet> {
           Text('Ajustes del horario',
               style: displayM.copyWith(color: ink)),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Text('Mostrar sabado y domingo',
-                    style: bodyM.copyWith(color: ink)),
-              ),
-              GestureDetector(
-                onTap: () {
-                  setState(() => _showWeekends = !_showWeekends);
-                  _emit();
-                },
-                child: Container(
-                  width: 40,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: _showWeekends ? accentLab : inkGray,
-                    border: Border.all(color: inkBlack, width: borderWidth),
-                  ),
-                  child: Align(
-                    alignment:
-                        _showWeekends ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      color: paperLight,
-                      margin: const EdgeInsets.all(1),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          _ToggleRow(
+            label: 'Mostrar sabado',
+            value: _showSaturday,
+            onChanged: (v) {
+              setState(() => _showSaturday = v);
+              _emit();
+            },
+          ),
+          const SizedBox(height: 12),
+          _ToggleRow(
+            label: 'Mostrar domingo',
+            value: _showSunday,
+            onChanged: (v) {
+              setState(() => _showSunday = v);
+              _emit();
+            },
           ),
           const SizedBox(height: 20),
           Row(

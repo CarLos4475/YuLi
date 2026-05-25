@@ -1,12 +1,14 @@
 class ScheduleSettings {
   final int labSpaceId;
-  final bool showWeekends;
+  final bool showSaturday;
+  final bool showSunday;
   final String dayStartTime;
   final String dayEndTime;
 
   const ScheduleSettings({
     required this.labSpaceId,
-    this.showWeekends = false,
+    this.showSaturday = false,
+    this.showSunday = false,
     this.dayStartTime = '07:00',
     this.dayEndTime = '22:00',
   });
@@ -25,13 +27,15 @@ class ScheduleSettings {
 
   ScheduleSettings copyWith({
     int? labSpaceId,
-    bool? showWeekends,
+    bool? showSaturday,
+    bool? showSunday,
     String? dayStartTime,
     String? dayEndTime,
   }) =>
       ScheduleSettings(
         labSpaceId: labSpaceId ?? this.labSpaceId,
-        showWeekends: showWeekends ?? this.showWeekends,
+        showSaturday: showSaturday ?? this.showSaturday,
+        showSunday: showSunday ?? this.showSunday,
         dayStartTime: dayStartTime ?? this.dayStartTime,
         dayEndTime: dayEndTime ?? this.dayEndTime,
       );

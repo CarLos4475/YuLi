@@ -5508,17 +5508,27 @@ class $ScheduleSettingsTable extends ScheduleSettings
       'REFERENCES lab_spaces (id)',
     ),
   );
-  static const VerificationMeta _showWeekendsMeta = const VerificationMeta(
-    'showWeekends',
+  static const VerificationMeta _showSaturdayMeta = const VerificationMeta(
+    'showSaturday',
   );
   @override
-  late final GeneratedColumn<int> showWeekends = GeneratedColumn<int>(
-    'show_weekends',
+  late final GeneratedColumn<int> showSaturday = GeneratedColumn<int>(
+    'show_saturday',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _showSundayMeta = const VerificationMeta(
+    'showSunday',
+  );
+  @override
+  late final GeneratedColumn<int> showSunday = GeneratedColumn<int>(
+    'show_sunday',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _dayStartTimeMeta = const VerificationMeta(
     'dayStartTime',
@@ -5547,7 +5557,8 @@ class $ScheduleSettingsTable extends ScheduleSettings
   @override
   List<GeneratedColumn> get $columns => [
     labSpaceId,
-    showWeekends,
+    showSaturday,
+    showSunday,
     dayStartTime,
     dayEndTime,
   ];
@@ -5572,13 +5583,19 @@ class $ScheduleSettingsTable extends ScheduleSettings
         ),
       );
     }
-    if (data.containsKey('show_weekends')) {
+    if (data.containsKey('show_saturday')) {
       context.handle(
-        _showWeekendsMeta,
-        showWeekends.isAcceptableOrUnknown(
-          data['show_weekends']!,
-          _showWeekendsMeta,
+        _showSaturdayMeta,
+        showSaturday.isAcceptableOrUnknown(
+          data['show_saturday']!,
+          _showSaturdayMeta,
         ),
+      );
+    }
+    if (data.containsKey('show_sunday')) {
+      context.handle(
+        _showSundayMeta,
+        showSunday.isAcceptableOrUnknown(data['show_sunday']!, _showSundayMeta),
       );
     }
     if (data.containsKey('day_start_time')) {
@@ -5613,11 +5630,14 @@ class $ScheduleSettingsTable extends ScheduleSettings
             DriftSqlType.int,
             data['${effectivePrefix}lab_space_id'],
           )!,
-      showWeekends:
-          attachedDatabase.typeMapping.read(
-            DriftSqlType.int,
-            data['${effectivePrefix}show_weekends'],
-          )!,
+      showSaturday: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}show_saturday'],
+      ),
+      showSunday: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}show_sunday'],
+      ),
       dayStartTime:
           attachedDatabase.typeMapping.read(
             DriftSqlType.string,
@@ -5640,12 +5660,14 @@ class $ScheduleSettingsTable extends ScheduleSettings
 class ScheduleSettingsRow extends DataClass
     implements Insertable<ScheduleSettingsRow> {
   final int labSpaceId;
-  final int showWeekends;
+  final int? showSaturday;
+  final int? showSunday;
   final String dayStartTime;
   final String dayEndTime;
   const ScheduleSettingsRow({
     required this.labSpaceId,
-    required this.showWeekends,
+    this.showSaturday,
+    this.showSunday,
     required this.dayStartTime,
     required this.dayEndTime,
   });
@@ -5653,7 +5675,12 @@ class ScheduleSettingsRow extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['lab_space_id'] = Variable<int>(labSpaceId);
-    map['show_weekends'] = Variable<int>(showWeekends);
+    if (!nullToAbsent || showSaturday != null) {
+      map['show_saturday'] = Variable<int>(showSaturday);
+    }
+    if (!nullToAbsent || showSunday != null) {
+      map['show_sunday'] = Variable<int>(showSunday);
+    }
     map['day_start_time'] = Variable<String>(dayStartTime);
     map['day_end_time'] = Variable<String>(dayEndTime);
     return map;
@@ -5662,7 +5689,14 @@ class ScheduleSettingsRow extends DataClass
   ScheduleSettingsCompanion toCompanion(bool nullToAbsent) {
     return ScheduleSettingsCompanion(
       labSpaceId: Value(labSpaceId),
-      showWeekends: Value(showWeekends),
+      showSaturday:
+          showSaturday == null && nullToAbsent
+              ? const Value.absent()
+              : Value(showSaturday),
+      showSunday:
+          showSunday == null && nullToAbsent
+              ? const Value.absent()
+              : Value(showSunday),
       dayStartTime: Value(dayStartTime),
       dayEndTime: Value(dayEndTime),
     );
@@ -5675,7 +5709,8 @@ class ScheduleSettingsRow extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ScheduleSettingsRow(
       labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
-      showWeekends: serializer.fromJson<int>(json['showWeekends']),
+      showSaturday: serializer.fromJson<int?>(json['showSaturday']),
+      showSunday: serializer.fromJson<int?>(json['showSunday']),
       dayStartTime: serializer.fromJson<String>(json['dayStartTime']),
       dayEndTime: serializer.fromJson<String>(json['dayEndTime']),
     );
@@ -5685,7 +5720,8 @@ class ScheduleSettingsRow extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'labSpaceId': serializer.toJson<int>(labSpaceId),
-      'showWeekends': serializer.toJson<int>(showWeekends),
+      'showSaturday': serializer.toJson<int?>(showSaturday),
+      'showSunday': serializer.toJson<int?>(showSunday),
       'dayStartTime': serializer.toJson<String>(dayStartTime),
       'dayEndTime': serializer.toJson<String>(dayEndTime),
     };
@@ -5693,12 +5729,14 @@ class ScheduleSettingsRow extends DataClass
 
   ScheduleSettingsRow copyWith({
     int? labSpaceId,
-    int? showWeekends,
+    Value<int?> showSaturday = const Value.absent(),
+    Value<int?> showSunday = const Value.absent(),
     String? dayStartTime,
     String? dayEndTime,
   }) => ScheduleSettingsRow(
     labSpaceId: labSpaceId ?? this.labSpaceId,
-    showWeekends: showWeekends ?? this.showWeekends,
+    showSaturday: showSaturday.present ? showSaturday.value : this.showSaturday,
+    showSunday: showSunday.present ? showSunday.value : this.showSunday,
     dayStartTime: dayStartTime ?? this.dayStartTime,
     dayEndTime: dayEndTime ?? this.dayEndTime,
   );
@@ -5706,10 +5744,12 @@ class ScheduleSettingsRow extends DataClass
     return ScheduleSettingsRow(
       labSpaceId:
           data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
-      showWeekends:
-          data.showWeekends.present
-              ? data.showWeekends.value
-              : this.showWeekends,
+      showSaturday:
+          data.showSaturday.present
+              ? data.showSaturday.value
+              : this.showSaturday,
+      showSunday:
+          data.showSunday.present ? data.showSunday.value : this.showSunday,
       dayStartTime:
           data.dayStartTime.present
               ? data.dayStartTime.value
@@ -5723,7 +5763,8 @@ class ScheduleSettingsRow extends DataClass
   String toString() {
     return (StringBuffer('ScheduleSettingsRow(')
           ..write('labSpaceId: $labSpaceId, ')
-          ..write('showWeekends: $showWeekends, ')
+          ..write('showSaturday: $showSaturday, ')
+          ..write('showSunday: $showSunday, ')
           ..write('dayStartTime: $dayStartTime, ')
           ..write('dayEndTime: $dayEndTime')
           ..write(')'))
@@ -5731,44 +5772,55 @@ class ScheduleSettingsRow extends DataClass
   }
 
   @override
-  int get hashCode =>
-      Object.hash(labSpaceId, showWeekends, dayStartTime, dayEndTime);
+  int get hashCode => Object.hash(
+    labSpaceId,
+    showSaturday,
+    showSunday,
+    dayStartTime,
+    dayEndTime,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ScheduleSettingsRow &&
           other.labSpaceId == this.labSpaceId &&
-          other.showWeekends == this.showWeekends &&
+          other.showSaturday == this.showSaturday &&
+          other.showSunday == this.showSunday &&
           other.dayStartTime == this.dayStartTime &&
           other.dayEndTime == this.dayEndTime);
 }
 
 class ScheduleSettingsCompanion extends UpdateCompanion<ScheduleSettingsRow> {
   final Value<int> labSpaceId;
-  final Value<int> showWeekends;
+  final Value<int?> showSaturday;
+  final Value<int?> showSunday;
   final Value<String> dayStartTime;
   final Value<String> dayEndTime;
   const ScheduleSettingsCompanion({
     this.labSpaceId = const Value.absent(),
-    this.showWeekends = const Value.absent(),
+    this.showSaturday = const Value.absent(),
+    this.showSunday = const Value.absent(),
     this.dayStartTime = const Value.absent(),
     this.dayEndTime = const Value.absent(),
   });
   ScheduleSettingsCompanion.insert({
     this.labSpaceId = const Value.absent(),
-    this.showWeekends = const Value.absent(),
+    this.showSaturday = const Value.absent(),
+    this.showSunday = const Value.absent(),
     this.dayStartTime = const Value.absent(),
     this.dayEndTime = const Value.absent(),
   });
   static Insertable<ScheduleSettingsRow> custom({
     Expression<int>? labSpaceId,
-    Expression<int>? showWeekends,
+    Expression<int>? showSaturday,
+    Expression<int>? showSunday,
     Expression<String>? dayStartTime,
     Expression<String>? dayEndTime,
   }) {
     return RawValuesInsertable({
       if (labSpaceId != null) 'lab_space_id': labSpaceId,
-      if (showWeekends != null) 'show_weekends': showWeekends,
+      if (showSaturday != null) 'show_saturday': showSaturday,
+      if (showSunday != null) 'show_sunday': showSunday,
       if (dayStartTime != null) 'day_start_time': dayStartTime,
       if (dayEndTime != null) 'day_end_time': dayEndTime,
     });
@@ -5776,13 +5828,15 @@ class ScheduleSettingsCompanion extends UpdateCompanion<ScheduleSettingsRow> {
 
   ScheduleSettingsCompanion copyWith({
     Value<int>? labSpaceId,
-    Value<int>? showWeekends,
+    Value<int?>? showSaturday,
+    Value<int?>? showSunday,
     Value<String>? dayStartTime,
     Value<String>? dayEndTime,
   }) {
     return ScheduleSettingsCompanion(
       labSpaceId: labSpaceId ?? this.labSpaceId,
-      showWeekends: showWeekends ?? this.showWeekends,
+      showSaturday: showSaturday ?? this.showSaturday,
+      showSunday: showSunday ?? this.showSunday,
       dayStartTime: dayStartTime ?? this.dayStartTime,
       dayEndTime: dayEndTime ?? this.dayEndTime,
     );
@@ -5794,8 +5848,11 @@ class ScheduleSettingsCompanion extends UpdateCompanion<ScheduleSettingsRow> {
     if (labSpaceId.present) {
       map['lab_space_id'] = Variable<int>(labSpaceId.value);
     }
-    if (showWeekends.present) {
-      map['show_weekends'] = Variable<int>(showWeekends.value);
+    if (showSaturday.present) {
+      map['show_saturday'] = Variable<int>(showSaturday.value);
+    }
+    if (showSunday.present) {
+      map['show_sunday'] = Variable<int>(showSunday.value);
     }
     if (dayStartTime.present) {
       map['day_start_time'] = Variable<String>(dayStartTime.value);
@@ -5810,7 +5867,8 @@ class ScheduleSettingsCompanion extends UpdateCompanion<ScheduleSettingsRow> {
   String toString() {
     return (StringBuffer('ScheduleSettingsCompanion(')
           ..write('labSpaceId: $labSpaceId, ')
-          ..write('showWeekends: $showWeekends, ')
+          ..write('showSaturday: $showSaturday, ')
+          ..write('showSunday: $showSunday, ')
           ..write('dayStartTime: $dayStartTime, ')
           ..write('dayEndTime: $dayEndTime')
           ..write(')'))
@@ -12233,14 +12291,16 @@ typedef $$ScheduleBlocksTableProcessedTableManager =
 typedef $$ScheduleSettingsTableCreateCompanionBuilder =
     ScheduleSettingsCompanion Function({
       Value<int> labSpaceId,
-      Value<int> showWeekends,
+      Value<int?> showSaturday,
+      Value<int?> showSunday,
       Value<String> dayStartTime,
       Value<String> dayEndTime,
     });
 typedef $$ScheduleSettingsTableUpdateCompanionBuilder =
     ScheduleSettingsCompanion Function({
       Value<int> labSpaceId,
-      Value<int> showWeekends,
+      Value<int?> showSaturday,
+      Value<int?> showSunday,
       Value<String> dayStartTime,
       Value<String> dayEndTime,
     });
@@ -12287,8 +12347,13 @@ class $$ScheduleSettingsTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<int> get showWeekends => $composableBuilder(
-    column: $table.showWeekends,
+  ColumnFilters<int> get showSaturday => $composableBuilder(
+    column: $table.showSaturday,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get showSunday => $composableBuilder(
+    column: $table.showSunday,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12335,8 +12400,13 @@ class $$ScheduleSettingsTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<int> get showWeekends => $composableBuilder(
-    column: $table.showWeekends,
+  ColumnOrderings<int> get showSaturday => $composableBuilder(
+    column: $table.showSaturday,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get showSunday => $composableBuilder(
+    column: $table.showSunday,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -12383,8 +12453,13 @@ class $$ScheduleSettingsTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<int> get showWeekends => $composableBuilder(
-    column: $table.showWeekends,
+  GeneratedColumn<int> get showSaturday => $composableBuilder(
+    column: $table.showSaturday,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get showSunday => $composableBuilder(
+    column: $table.showSunday,
     builder: (column) => column,
   );
 
@@ -12460,24 +12535,28 @@ class $$ScheduleSettingsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> labSpaceId = const Value.absent(),
-                Value<int> showWeekends = const Value.absent(),
+                Value<int?> showSaturday = const Value.absent(),
+                Value<int?> showSunday = const Value.absent(),
                 Value<String> dayStartTime = const Value.absent(),
                 Value<String> dayEndTime = const Value.absent(),
               }) => ScheduleSettingsCompanion(
                 labSpaceId: labSpaceId,
-                showWeekends: showWeekends,
+                showSaturday: showSaturday,
+                showSunday: showSunday,
                 dayStartTime: dayStartTime,
                 dayEndTime: dayEndTime,
               ),
           createCompanionCallback:
               ({
                 Value<int> labSpaceId = const Value.absent(),
-                Value<int> showWeekends = const Value.absent(),
+                Value<int?> showSaturday = const Value.absent(),
+                Value<int?> showSunday = const Value.absent(),
                 Value<String> dayStartTime = const Value.absent(),
                 Value<String> dayEndTime = const Value.absent(),
               }) => ScheduleSettingsCompanion.insert(
                 labSpaceId: labSpaceId,
-                showWeekends: showWeekends,
+                showSaturday: showSaturday,
+                showSunday: showSunday,
                 dayStartTime: dayStartTime,
                 dayEndTime: dayEndTime,
               ),

@@ -80,7 +80,8 @@ class LocalScheduleRepository implements ScheduleRepository {
     await _db.scheduleDao.updateSettings(
       ScheduleSettingsCompanion(
         labSpaceId: Value(settings.labSpaceId),
-        showWeekends: Value(settings.showWeekends ? 1 : 0),
+        showSaturday: Value(settings.showSaturday ? 1 : 0),
+        showSunday: Value(settings.showSunday ? 1 : 0),
         dayStartTime: Value(settings.dayStartTime),
         dayEndTime: Value(settings.dayEndTime),
       ),
@@ -148,7 +149,8 @@ class LocalScheduleRepository implements ScheduleRepository {
   ScheduleSettings _rowToSettings(ScheduleSettingsRow row) =>
       ScheduleSettings(
         labSpaceId: row.labSpaceId,
-        showWeekends: row.showWeekends == 1,
+        showSaturday: (row.showSaturday ?? 0) == 1,
+        showSunday: (row.showSunday ?? 0) == 1,
         dayStartTime: row.dayStartTime,
         dayEndTime: row.dayEndTime,
       );
