@@ -696,6 +696,7 @@ class _DraggableCard extends StatelessWidget {
             child: Text(
               card.title,
               style: bodyXS.copyWith(
+                fontWeight: FontWeight.w700,
                 color: isSelected
                     ? paperLight
                     : bg.computeLuminance() > 0.5
@@ -859,14 +860,19 @@ class _MonthView extends StatelessWidget {
                               runSpacing: 2,
                               alignment: WrapAlignment.center,
                               children: dayCards.take(4).map((c) {
+                                final cBg = c.originFolderColor != null
+                                    ? Color(c.originFolderColor!)
+                                    : _dotColor(c.priority);
                                 return Container(
-                                  width: 5,
-                                  height: 5,
+                                  width: 8,
+                                  height: 6,
+                                  margin: const EdgeInsets.only(bottom: 1),
                                   decoration: BoxDecoration(
-                                    color: c.originFolderColor != null
-                                        ? Color(c.originFolderColor!)
-                                        : _dotColor(c.priority),
-                                    shape: BoxShape.rectangle,
+                                    color: cBg,
+                                    border: Border.all(
+                                      color: inkBlack,
+                                      width: 1,
+                                    ),
                                   ),
                                 );
                               }).toList(),
