@@ -214,17 +214,45 @@ class _TimelineViewer extends StatelessWidget {
     final totalDays = space.dueDate!.difference(space.startDate!).inDays + 1;
     const laneHeight = 100.0;
     const headerHeight = 40.0;
-    final minWidth = MediaQuery.of(context).size.width;
-    final totalWidth = minWidth;
-    final dayWidth = totalWidth / totalDays;
-    final paper = paperColor(context);
+    final availWidth = MediaQuery.of(context).size.width;
+
+    // Count cards per day and per lane for dynamic sizing
+    final cardsPerDay = <int, int>{};
+    final cardsPerLane = <int, int>{};
+    final startDay = DateTime(space.startDate!.year, space.startDate!.month, space.startDate!.day);
+
+    for (final card in cards) {
+      if (card.dueDate == null) continue;
+      final cardDay = DateTime(card.dueDate!.year, card.dueDate!.month, card.dueDate!.day);
+      final dayIndex = cardDay.difference(startDay).inDays;
+      if (dayIndex < 0 || dayIndex >= totalDays) continue;
+      final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
+      if (laneIndex < 0) continue;
+      cardsPerDay[dayIndex] = (cardsPerDay[dayIndex] ?? 0) + 1;
+      cardsPerLane[laneIndex] = (cardsPerLane[laneIndex] ?? 0) + 1;
+    }
+
+    // Dynamic day widths: empty days get 1 unit, days with cards get proportionally more
+    final emptyW = availWidth / totalDays * 0.4;
+    final daysWithCards = cardsPerDay.length;
+    final remainingW = availWidth - (totalDays - daysWithCards) * emptyW;
+    final baseCardDayW = daysWithCards > 0 ? remainingW / daysWithCards : 0.0;
+    final dayPositions = List.filled(totalDays, 0.0);
+    final dayWidths = List.filled(totalDays, emptyW);
+    for (int d = 0; d < totalDays; d++) {
+      final count = cardsPerDay[d] ?? 0;
+      if (count > 0) {
+        dayWidths[d] = baseCardDayW;
+      }
+      dayPositions[d] = d == 0 ? 0 : dayPositions[d - 1] + dayWidths[d - 1];
+    }
+    final totalWidth = dayPositions.last + dayWidths.last;
 
     // Group cards by (dayIndex, laneIndex) for vertical stacking
     final groups = <String, List<KanbanCard>>{};
     for (final card in cards) {
       if (card.dueDate == null) continue;
       final cardDay = DateTime(card.dueDate!.year, card.dueDate!.month, card.dueDate!.day);
-      final startDay = DateTime(space.startDate!.year, space.startDate!.month, space.startDate!.day);
       final dayIndex = cardDay.difference(startDay).inDays;
       if (dayIndex < 0 || dayIndex >= totalDays) continue;
       final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
@@ -233,17 +261,8 @@ class _TimelineViewer extends StatelessWidget {
       groups.putIfAbsent(key, () => []).add(card);
     }
 
-    // Count cards per lane to compute dynamic lane height
-    final laneCardCount = <int, int>{};
-    for (final card in cards) {
-      if (card.dueDate == null) continue;
-      final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
-      if (laneIndex < 0) continue;
-      laneCardCount[laneIndex] = (laneCardCount[laneIndex] ?? 0) + 1;
-    }
-
     final totalHeight = headerHeight + columns.length * laneHeight +
-        laneCardCount.values.fold(0, (sum, c) => sum + (c > 1 ? (c - 1) * 28 : 0));
+        cardsPerLane.values.fold(0, (sum, c) => sum + (c > 1 ? (c - 1) * 28 : 0));
 
     // Build positioned card widgets with vertical stacking
     final cardWidgets = <Widget>[];
@@ -253,14 +272,14 @@ class _TimelineViewer extends StatelessWidget {
       final laneIndex = int.parse(parts[1]);
       final groupCards = group.value;
 
-      // Sort cards by position within column for consistent stacking
       groupCards.sort((a, b) => a.position.compareTo(b.position));
 
       for (int gi = 0; gi < groupCards.length; gi++) {
         final card = groupCards[gi];
-        final x = dayIndex * dayWidth + 2;
+        final dayW = dayWidths[dayIndex];
+        final x = dayPositions[dayIndex] + 2;
         final y = headerHeight + (laneIndex * laneHeight) + 24 + gi * 28;
-        final cardWidth = dayWidth - 4;
+        final cardWidth = dayW - 4;
         final cardHeight = 26.0;
         final isSelected = selectedCardIds.contains(card.id);
         final bg = card.originFolderColor != null
@@ -330,6 +349,8 @@ class _TimelineViewer extends StatelessWidget {
                 ink: ink,
                 headerHeight: headerHeight,
                 laneHeight: laneHeight,
+                dayPositions: dayPositions,
+                dayWidths: dayWidths,
               ),
               size: Size(totalWidth, totalHeight),
             ),
@@ -361,6 +382,8 @@ class _TimelineGridPainter extends CustomPainter {
   final Color ink;
   final double headerHeight;
   final double laneHeight;
+  final List<double> dayPositions;
+  final List<double> dayWidths;
 
   _TimelineGridPainter({
     required this.startDate,
@@ -369,12 +392,13 @@ class _TimelineGridPainter extends CustomPainter {
     required this.ink,
     required this.headerHeight,
     required this.laneHeight,
+    required this.dayPositions,
+    required this.dayWidths,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final totalDays = dueDate.difference(startDate).inDays + 1;
-    final dayWidth = size.width / totalDays;
     final today = DateTime.now();
 
     final gridPaint = Paint()
@@ -396,50 +420,64 @@ class _TimelineGridPainter extends CustomPainter {
     );
 
     // Draw vertical grid lines and date labels
-    for (int i = 0; i <= totalDays; i++) {
-      final x = i * dayWidth;
+    for (int i = 0; i < totalDays; i++) {
+      final x = dayPositions[i];
+      final dw = dayWidths[i];
 
-      // Grid line
+      // Grid line at start of day
       canvas.drawLine(
         Offset(x, 0),
         Offset(x, size.height),
         gridPaint,
       );
 
-      // Date label
-      if (i < totalDays) {
-        final day = DateTime(startDate.year, startDate.month, startDate.day + i);
-        final dayStr = '${day.day}';
-        final textSpan = TextSpan(text: dayStr, style: textStyle);
-        final textPainter = TextPainter(
-          text: textSpan,
+      // Grid line at end of day
+      canvas.drawLine(
+        Offset(x + dw, 0),
+        Offset(x + dw, size.height),
+        gridPaint,
+      );
+
+      // Date label centered in day width
+      final day = DateTime(startDate.year, startDate.month, startDate.day + i);
+      final dayStr = '${day.day}';
+      final textSpan = TextSpan(text: dayStr, style: textStyle);
+      final textPainter = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      final labelX = x + 2;
+      textPainter.paint(
+        canvas,
+        Offset(labelX, 2),
+      );
+
+      // Month label on first day or when month changes
+      if (i == 0 || day.day == 1) {
+        final monthStr = _monthShort(day.month);
+        final monthSpan = TextSpan(
+          text: monthStr,
+          style: textStyle.copyWith(fontWeight: FontWeight.w600),
+        );
+        final monthPainter = TextPainter(
+          text: monthSpan,
           textDirection: TextDirection.ltr,
         );
-        textPainter.layout();
-        textPainter.paint(
+        monthPainter.layout();
+        monthPainter.paint(
           canvas,
-          Offset(x + 2, 2),
+          Offset(labelX, 14),
         );
-
-        // Month label on first day or when month changes
-        if (i == 0 || day.day == 1) {
-          final monthStr = _monthShort(day.month);
-          final monthSpan = TextSpan(
-            text: monthStr,
-            style: textStyle.copyWith(fontWeight: FontWeight.w600),
-          );
-          final monthPainter = TextPainter(
-            text: monthSpan,
-            textDirection: TextDirection.ltr,
-          );
-          monthPainter.layout();
-          monthPainter.paint(
-            canvas,
-            Offset(x + 2, 14),
-          );
-        }
       }
     }
+
+    // Rightmost border
+    canvas.drawLine(
+      Offset(dayPositions.last + dayWidths.last, 0),
+      Offset(dayPositions.last + dayWidths.last, size.height),
+      gridPaint,
+    );
 
     // Horizontal lane lines and column labels
     for (int i = 0; i < columns.length; i++) {
@@ -485,7 +523,7 @@ class _TimelineGridPainter extends CustomPainter {
         .difference(DateTime(startDate.year, startDate.month, startDate.day))
         .inDays;
     if (todayDiff >= 0 && todayDiff < totalDays) {
-      final todayX = todayDiff * dayWidth + (dayWidth / 2);
+      final todayX = dayPositions[todayDiff] + (dayWidths[todayDiff] / 2);
       canvas.drawLine(
         Offset(todayX, 0),
         Offset(todayX, size.height),
