@@ -272,6 +272,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                       month: _currentMonth,
                       cards: withDate,
                       ink: ink,
+                      accentColor: widget.space.accentColor,
                       onDayTap: (day, dayCards) => _showDayCardsDialog(context, day, dayCards),
                       onCardDropped: (card, date) =>
                           _onCardDropped(card, date, repo, taskRepo),
@@ -731,6 +732,7 @@ class _MonthView extends StatelessWidget {
   final DateTime month;
   final List<KanbanCard> cards;
   final Color ink;
+  final Color accentColor;
   final void Function(DateTime, List<KanbanCard>) onDayTap;
   final void Function(KanbanCard, DateTime) onCardDropped;
   final void Function(KanbanCard) onCardTap;
@@ -739,6 +741,7 @@ class _MonthView extends StatelessWidget {
     required this.month,
     required this.cards,
     required this.ink,
+    required this.accentColor,
     required this.onDayTap,
     required this.onCardDropped,
     required this.onCardTap,
@@ -878,9 +881,21 @@ class _MonthView extends StatelessWidget {
                               }).toList(),
                             ),
                           if (dayCards.length > 4)
-                            Text(
-                              '+${dayCards.length - 4}',
-                              style: labelXXS.copyWith(color: inkGray),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: accentColor,
+                                border: Border.all(color: inkBlack, width: 1),
+                              ),
+                              child: Text(
+                                '+${dayCards.length - 4}',
+                                style: labelXXS.copyWith(
+                                  color: accentColor.computeLuminance() > 0.5
+                                      ? inkBlack
+                                      : paperLight,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
                         ],
                       ),
