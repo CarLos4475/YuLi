@@ -69,7 +69,7 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
             final noDate = cards.where((c) => c.dueDate == null).toList();
 
             const tH = 40.0;
-            const lH = 80.0;
+            const lH = 100.0;
             final totalH = tH + (columns.length * lH);
             final availH = MediaQuery.of(context).size.height * 0.5;
             final zoom = (availH / totalH).clamp(1.2, 2.0);
@@ -212,7 +212,7 @@ class _TimelineViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalDays = space.dueDate!.difference(space.startDate!).inDays + 1;
-    const laneHeight = 80.0;
+    const laneHeight = 100.0;
     const headerHeight = 40.0;
     final totalHeight = headerHeight + (columns.length * laneHeight);
     final minWidth = MediaQuery.of(context).size.width;

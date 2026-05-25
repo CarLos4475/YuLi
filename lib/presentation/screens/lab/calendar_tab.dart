@@ -865,7 +865,7 @@ class _MonthView extends StatelessWidget {
                                     : _dotColor(c.priority);
                                 return Container(
                                   width: 8,
-                                  height: 6,
+                                  height: 8,
                                   margin: const EdgeInsets.only(bottom: 1),
                                   decoration: BoxDecoration(
                                     color: cBg,
