@@ -5,6 +5,8 @@ abstract class TaskRepository {
   Stream<List<Task>> watchYesterday();
   Stream<List<Task>> watchVencidas();
   Stream<List<Task>> watchDoneToday();
+  Stream<List<Task>> watchByIds(List<int> ids);
+  Future<Task?> getById(int id);
   Future<List<Task>> getPendingForFolder(int folderId);
   Stream<List<Task>> watchPendingForFolder(int folderId);
   Future<Task> save(Task task);

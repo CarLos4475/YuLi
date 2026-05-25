@@ -1,17 +1,19 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import '../../theme/app_tokens.dart';
+
+import '../../widgets/yuli_design.dart';
 import 'note_cell_model.dart';
 
-const _colors = [
-  Color(0xFF111111),
-  Color(0xFFE02B2B),
-  Color(0xFF2D4B8E),
-  Color(0xFF3D6B4F),
-  Color(0xFFC17F3A),
-  Color(0xFF6B2D8E),
+const _baseColors = <Color>[
+  yInk,
+  yFight,
+  yFlight,
+  yLab,
+  yAmber,
+  yAmber2,
 ];
 
-const _widths = [1.5, 3.0, 6.0];
+const _widths = [3.0, 6.0, 10.0];
 
 class DrawingCell extends StatefulWidget {
   final DrawingData data;
@@ -20,6 +22,7 @@ class DrawingCell extends StatefulWidget {
   final VoidCallback onDrawStart;
   final VoidCallback onDrawEnd;
   final ValueChanged<bool> onScrollLockChanged;
+  final Color? accent;
   final Widget? header;
 
   const DrawingCell({
@@ -30,6 +33,7 @@ class DrawingCell extends StatefulWidget {
     required this.onDrawStart,
     required this.onDrawEnd,
     required this.onScrollLockChanged,
+    this.accent,
     this.header,
   });
 
@@ -39,10 +43,12 @@ class DrawingCell extends StatefulWidget {
 
 class _DrawingCellState extends State<DrawingCell> {
   late DrawingData _data;
-  Color _color = const Color(0xFF111111);
-  double _strokeW = 2.0;
+  late List<Color> _palette;
+  Color _color = yInk;
+  double _strokeW = 3.0;
   bool _erasing = false;
   bool _locked = false;
+  bool _palmRejection = true;
   final List<DrawingStroke> _undoStack = [];
   DrawingStroke? _active;
 
@@ -50,12 +56,32 @@ class _DrawingCellState extends State<DrawingCell> {
   void initState() {
     super.initState();
     _data = widget.data;
+    _palette = _buildPalette();
   }
 
-  void _panStart(DragStartDetails d) {
+  @override
+  void didUpdateWidget(covariant DrawingCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.accent != widget.accent) {
+      setState(() => _palette = _buildPalette());
+    }
+  }
+
+  List<Color> _buildPalette() {
+    if (widget.accent == null) return _baseColors;
+    return [..._baseColors.sublist(0, 5), widget.accent!];
+  }
+
+  bool _shouldAcceptPointer(PointerDeviceKind kind) {
+    if (!_palmRejection) return true;
+    return kind == PointerDeviceKind.stylus ||
+        kind == PointerDeviceKind.invertedStylus;
+  }
+
+  void _start(Offset pos) {
     widget.onDrawStart();
     if (_erasing) {
-      _eraseNear(d.localPosition);
+      _eraseNear(pos);
       return;
     }
     setState(() {
@@ -63,24 +89,24 @@ class _DrawingCellState extends State<DrawingCell> {
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         points: [
-          [d.localPosition.dx, d.localPosition.dy]
+          [pos.dx, pos.dy]
         ],
       );
     });
   }
 
-  void _panUpdate(DragUpdateDetails d) {
+  void _move(Offset pos) {
     if (_erasing) {
-      _eraseNear(d.localPosition);
+      _eraseNear(pos);
       return;
     }
     if (_active == null) return;
     setState(() {
-      _active!.points.add([d.localPosition.dx, d.localPosition.dy]);
+      _active!.points.add([pos.dx, pos.dy]);
     });
   }
 
-  void _panEnd(DragEndDetails _) {
+  void _end() {
     widget.onDrawEnd();
     if (_active == null) return;
     _active!.points.removeWhere(
@@ -126,74 +152,84 @@ class _DrawingCellState extends State<DrawingCell> {
     widget.onChanged(_data);
   }
 
+  void _clearAll() {
+    if (_data.strokes.isEmpty && _undoStack.isEmpty) return;
+    setState(() {
+      _undoStack.addAll(_data.strokes);
+      _data.strokes.clear();
+    });
+    widget.onChanged(_data);
+  }
+
+  void _toggleLock() {
+    setState(() => _locked = !_locked);
+    widget.onScrollLockChanged(_locked);
+  }
+
+  void _togglePalmRejection() {
+    setState(() => _palmRejection = !_palmRejection);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: inkGray.withAlpha(60),
-            border: Border.all(color: inkColor(context), width: borderWidth),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.header != null) widget.header!,
-              _buildToolbar(context),
-            ],
-          ),
-        ),
-        _buildCanvas(context),
-        _buildResizeHandle(context),
-      ],
+    return Container(
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineMid),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.header != null) widget.header!,
+          _buildToolbar(),
+          _buildCanvas(),
+          _buildResizeStrip(),
+        ],
+      ),
     );
   }
 
-  Widget _buildToolbar(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+  Widget _buildToolbar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
             _toolBtn(
-              context,
               icon: _locked ? Icons.lock : Icons.lock_open,
               active: _locked,
-              onTap: () {
-                setState(() => _locked = !_locked);
-                widget.onScrollLockChanged(_locked);
-              },
+              onTap: _toggleLock,
             ),
-            _divider(),
+            const SizedBox(width: 4),
             _toolBtn(
-              context,
               icon: Icons.edit_outlined,
               active: !_erasing,
               onTap: () => setState(() => _erasing = false),
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              context,
-              icon: Icons.auto_fix_normal,
+              icon: Icons.auto_fix_high,
               active: _erasing,
               onTap: () => setState(() => _erasing = true),
             ),
             _divider(),
-            for (final c in _colors) ...[
-              _colorBtn(context, c),
-              const SizedBox(width: 3),
+            for (final c in _palette) ...[
+              _colorBtn(c),
+              const SizedBox(width: 4),
             ],
             _divider(),
             for (final w in _widths) ...[
-              _widthBtn(context, w),
-              const SizedBox(width: 3),
+              _widthBtn(w),
+              const SizedBox(width: 4),
             ],
             _divider(),
             _toolBtn(
-              context,
               icon: Icons.undo,
               active: false,
               enabled: _data.strokes.isNotEmpty,
@@ -201,147 +237,181 @@ class _DrawingCellState extends State<DrawingCell> {
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              context,
               icon: Icons.redo,
               active: false,
               enabled: _undoStack.isNotEmpty,
               onTap: _redo,
             ),
+            _divider(),
+            _toolBtn(
+              icon: Icons.back_hand_outlined,
+              active: _palmRejection,
+              label: 'PALMA',
+              onTap: _togglePalmRejection,
+            ),
             const SizedBox(width: 8),
             _toolBtn(
-              context,
               icon: Icons.delete_outline,
               active: false,
-              onTap: widget.onDelete,
+              onTap: _confirmClear,
             ),
           ],
-          ),
         ),
-      );
-    }
-
-  Widget _buildCanvas(BuildContext context) {
-    return GestureDetector(
-      onPanStart: _locked ? _panStart : null,
-      onPanUpdate: _locked ? _panUpdate : null,
-      onPanEnd: _locked ? _panEnd : null,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: _data.height,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(
-            left: BorderSide(color: accentLab, width: 3),
-            right: BorderSide(color: accentLab, width: 3),
-          ),
-        ),
-        child: _locked
-            ? ClipRect(
-                child: CustomPaint(
-                  painter: _StrokePainter(
-                    strokes: _data.strokes,
-                    active: _active,
-                  ),
-                  size: Size.infinite,
-                ),
-              )
-            : Stack(
-                children: [
-                  ClipRect(
-                    child: CustomPaint(
-                      painter: _StrokePainter(
-                        strokes: _data.strokes,
-                        active: _active,
-                      ),
-                      size: Size.infinite,
-                    ),
-                  ),
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(
-                        'Bloquear scroll para dibujar',
-                        style: bodyS.copyWith(
-                          color: inkGray.withAlpha(120),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
       ),
     );
   }
 
-  Widget _buildResizeHandle(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: inkGray.withAlpha(60),
-        border: Border.all(color: inkColor(context), width: borderWidth),
+  Future<void> _confirmClear() async {
+    if (_data.strokes.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: yCream,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Borrar dibujo',
+            style: ySans(size: 18, weight: FontWeight.w700)),
+        content: Text('¿Borrar todos los trazos del bloque?',
+            style: yBody(size: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Borrar')),
+        ],
       ),
+    );
+    if (ok == true) _clearAll();
+  }
+
+  Widget _buildCanvas() {
+    final canvas = Container(
+      height: _data.height,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: yCream,
+      ),
+      child: ClipRect(
+        child: Stack(
+          children: [
+            CustomPaint(
+              painter: _StrokePainter(
+                strokes: _data.strokes,
+                active: _active,
+              ),
+              size: Size.infinite,
+            ),
+            if (!_locked)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'BLOQUEAR SCROLL PARA DIBUJAR',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yMuted.withValues(alpha: 0.7),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (!_locked) return canvas;
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (e) {
+        if (!_shouldAcceptPointer(e.kind)) return;
+        _start(e.localPosition);
+      },
+      onPointerMove: (e) {
+        if (!_shouldAcceptPointer(e.kind)) return;
+        if (_active == null && !_erasing) return;
+        _move(e.localPosition);
+      },
+      onPointerUp: (e) {
+        if (!_shouldAcceptPointer(e.kind)) return;
+        _end();
+      },
+      onPointerCancel: (e) {
+        if (!_shouldAcceptPointer(e.kind)) return;
+        _end();
+      },
+      child: canvas,
+    );
+  }
+
+  Widget _buildResizeStrip() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _data.height = (_data.height - 60).clamp(120.0, 1200.0);
-                _cropStrokes();
-              });
-              widget.onChanged(_data);
-            },
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                border: Border.all(color: inkColor(context), width: borderWidth),
-              ),
-              child: Icon(Icons.remove, size: 16, color: inkColor(context)),
-            ),
-          ),
-          const SizedBox(width: 8),
+          _resizeBtn(Icons.remove, () => _resize(-60)),
+          const SizedBox(width: 6),
           GestureDetector(
             onVerticalDragUpdate: (d) {
               setState(() {
                 final prev = _data.height;
-                _data.height = (_data.height + d.delta.dy).clamp(120.0, 1200.0);
+                _data.height =
+                    (_data.height + d.delta.dy).clamp(120.0, 1200.0);
                 if (_data.height < prev) _cropStrokes();
               });
               widget.onChanged(_data);
             },
             child: Container(
-              width: 30,
-              height: 30,
+              width: 36,
+              height: 26,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                border: Border.all(color: inkColor(context), width: borderWidth),
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineThin),
               ),
-              child: Icon(Icons.swap_vert, size: 18, color: inkColor(context)),
+              child: const Icon(Icons.swap_vert, size: 14, color: yInk),
             ),
           ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _data.height = (_data.height + 60).clamp(120.0, 1200.0);
-              });
-              widget.onChanged(_data);
-            },
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                border: Border.all(color: inkColor(context), width: borderWidth),
-              ),
-              child: Icon(Icons.add, size: 16, color: inkColor(context)),
-            ),
-          ),
+          const SizedBox(width: 6),
+          _resizeBtn(Icons.add, () => _resize(60)),
         ],
       ),
     );
+  }
+
+  Widget _resizeBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 26,
+        height: 26,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yInk, width: yLineThin),
+        ),
+        child: Icon(icon, size: 14, color: yInk),
+      ),
+    );
+  }
+
+  void _resize(double delta) {
+    setState(() {
+      final prev = _data.height;
+      _data.height = (_data.height + delta).clamp(120.0, 1200.0);
+      if (_data.height < prev) _cropStrokes();
+    });
+    widget.onChanged(_data);
   }
 
   void _cropStrokes() {
@@ -364,9 +434,7 @@ class _DrawingCellState extends State<DrawingCell> {
     if (points.isEmpty) return;
     final result = <List<double>>[];
     bool prevInside = points[0][1] <= h;
-    if (prevInside) {
-      result.add(points[0]);
-    }
+    if (prevInside) result.add(points[0]);
     for (int i = 1; i < points.length; i++) {
       final currInside = points[i][1] <= h;
       if (prevInside && !currInside) {
@@ -401,84 +469,103 @@ class _DrawingCellState extends State<DrawingCell> {
       width: 1,
       height: 22,
       margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: inkGray.withAlpha(40),
+      color: yInk.withValues(alpha: 0.2),
     );
   }
 
-  Widget _toolBtn(
-    BuildContext context, {
+  Widget _toolBtn({
     required IconData icon,
     required bool active,
     bool enabled = true,
+    String? label,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
       child: Container(
-        width: 30,
         height: 30,
+        padding: EdgeInsets.symmetric(horizontal: label != null ? 8 : 6),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? inkColor(context) : Colors.transparent,
+          color: active ? yInk : yCream,
           border: Border.all(
-            color: enabled ? inkColor(context) : inkGray.withAlpha(50),
-            width: 1,
+            color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
+            width: yLineThin,
           ),
         ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: active
-              ? paperColor(context)
-              : enabled
-                  ? inkColor(context)
-                  : inkGray.withAlpha(50),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: active
+                  ? yCream
+                  : enabled
+                      ? yInk
+                      : yMuted.withValues(alpha: 0.4),
+            ),
+            if (label != null) ...[
+              const SizedBox(width: 4),
+              Text(label,
+                  style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: active ? yCream : yInk,
+                  )),
+            ],
+          ],
         ),
       ),
     );
   }
 
-  Widget _colorBtn(BuildContext context, Color c) {
+  Widget _colorBtn(Color c) {
     final sel = _color.toARGB32() == c.toARGB32() && !_erasing;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         _color = c;
         _erasing = false;
       }),
       child: Container(
-        width: 22,
-        height: 22,
+        width: 26,
+        height: 26,
         decoration: BoxDecoration(
           color: c,
           border: Border.all(
-            color: sel ? inkColor(context) : Colors.transparent,
-            width: sel ? 2.5 : 0,
+            color: yInk,
+            width: sel ? 3 : yLineThin,
           ),
         ),
       ),
     );
   }
 
-  Widget _widthBtn(BuildContext context, double w) {
+  Widget _widthBtn(double w) {
     final sel = _strokeW == w;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _strokeW = w),
       child: Container(
         width: 26,
         height: 26,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
+          color: yCream,
           border: Border.all(
-            color: sel ? accentFlight : inkGray.withAlpha(50),
-            width: sel ? 2 : 1,
+            color: sel ? yInk : yMuted.withValues(alpha: 0.4),
+            width: sel ? 2.5 : yLineThin,
           ),
         ),
-        child: Center(
-          child: Container(
-            width: (w * 2.5).clamp(4.0, 16.0),
-            height: (w * 2.5).clamp(4.0, 16.0),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: inkColor(context),
-            ),
+        child: Container(
+          width: w.clamp(3.0, 14.0),
+          height: w.clamp(3.0, 14.0),
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: yInk,
           ),
         ),
       ),
@@ -486,22 +573,7 @@ class _DrawingCellState extends State<DrawingCell> {
   }
 }
 
-// ─── Painter ─────────────────────────────────────────────────────────────────
-
-class DrawingPreviewPainter extends CustomPainter {
-  final List<DrawingStroke> strokes;
-  const DrawingPreviewPainter({required this.strokes});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final s in strokes) {
-      _draw(canvas, s);
-    }
-  }
-
-  @override
-  bool shouldRepaint(DrawingPreviewPainter old) => true;
-}
+// ─── Painters ─────────────────────────────────────────────────────────────
 
 class _StrokePainter extends CustomPainter {
   final List<DrawingStroke> strokes;
@@ -519,6 +591,21 @@ class _StrokePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StrokePainter old) => true;
+}
+
+class DrawingPreviewPainter extends CustomPainter {
+  final List<DrawingStroke> strokes;
+  const DrawingPreviewPainter({required this.strokes});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final s in strokes) {
+      _draw(canvas, s);
+    }
+  }
+
+  @override
+  bool shouldRepaint(DrawingPreviewPainter old) => true;
 }
 
 void _draw(Canvas canvas, DrawingStroke stroke) {

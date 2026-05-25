@@ -5,6 +5,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/flight_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
+import '../../providers/task_propagation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/yuli_design.dart';
@@ -686,61 +687,109 @@ class _TareasStrip extends StatelessWidget {
                 mainAxisSpacing: 8,
               ),
               itemCount: tasks.length,
-              itemBuilder: (_, i) {
-                final t = tasks[i];
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: yCream,
-                    border: Border.all(color: yInk, width: yLineThin),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: yInk, width: yLineThin),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              t.content,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ySans(
-                                size: 13,
-                                weight: FontWeight.w600,
-                                letterSpacing: -0.2,
-                                color: yInk,
-                                height: 1.2,
-                              ),
-                            ),
-                            Text(
-                              'PENDIENTE',
-                              style: yMono(
-                                size: 9,
-                                weight: FontWeight.w700,
-                                tracking: 1.2,
-                                color: yMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              itemBuilder: (_, i) => _TareaStripRow(task: tasks[i]),
             );
           }),
         ],
+      ),
+    );
+  }
+}
+
+class _TareaStripRow extends ConsumerWidget {
+  final domain_task.Task task;
+  const _TareaStripRow({required this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prop = ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
+        TaskPropagation.empty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineThin),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              border: Border.all(color: yInk, width: yLineThin),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.content,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ySans(
+                    size: 13,
+                    weight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                    color: yInk,
+                    height: 1.2,
+                  ),
+                ),
+                Text(
+                  'PENDIENTE',
+                  style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: yMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (prop.hasNoteLinks) ...[
+            const SizedBox(width: 6),
+            _StripChip(
+                text: prop.noteCount > 1 ? '↳ ${prop.noteCount}' : '↳ NOTA',
+                bg: yFlight),
+          ],
+          if (prop.spaceName != null) ...[
+            const SizedBox(width: 4),
+            _StripChip(
+              text: '→ ${prop.spaceName!.toUpperCase()}',
+              bg: yLab,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StripChip extends StatelessWidget {
+  final String text;
+  final Color bg;
+
+  const _StripChip({required this.text, required this.bg});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: yInk, width: 1.5),
+      ),
+      child: Text(
+        text,
+        style: yMono(
+          size: 8,
+          weight: FontWeight.w700,
+          tracking: 1,
+          color: yCream,
+        ),
       ),
     );
   }

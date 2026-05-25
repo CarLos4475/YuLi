@@ -2395,6 +2395,453 @@ class NoteTaskLinksCompanion extends UpdateCompanion<NoteTaskLinkRow> {
   }
 }
 
+class $NoteBlocksTable extends NoteBlocks
+    with TableInfo<$NoteBlocksTable, NoteBlockRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NoteBlocksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadMeta = const VerificationMeta(
+    'payload',
+  );
+  @override
+  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
+    'payload',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    noteId,
+    position,
+    type,
+    payload,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'note_blocks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteBlockRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('payload')) {
+      context.handle(
+        _payloadMeta,
+        payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NoteBlockRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteBlockRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      noteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}note_id'],
+          )!,
+      position:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}position'],
+          )!,
+      type:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}type'],
+          )!,
+      payload:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}payload'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      updatedAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}updated_at'],
+          )!,
+    );
+  }
+
+  @override
+  $NoteBlocksTable createAlias(String alias) {
+    return $NoteBlocksTable(attachedDatabase, alias);
+  }
+}
+
+class NoteBlockRow extends DataClass implements Insertable<NoteBlockRow> {
+  final int id;
+  final int noteId;
+  final int position;
+  final String type;
+  final String payload;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const NoteBlockRow({
+    required this.id,
+    required this.noteId,
+    required this.position,
+    required this.type,
+    required this.payload,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['note_id'] = Variable<int>(noteId);
+    map['position'] = Variable<int>(position);
+    map['type'] = Variable<String>(type);
+    map['payload'] = Variable<String>(payload);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  NoteBlocksCompanion toCompanion(bool nullToAbsent) {
+    return NoteBlocksCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      position: Value(position),
+      type: Value(type),
+      payload: Value(payload),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory NoteBlockRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteBlockRow(
+      id: serializer.fromJson<int>(json['id']),
+      noteId: serializer.fromJson<int>(json['noteId']),
+      position: serializer.fromJson<int>(json['position']),
+      type: serializer.fromJson<String>(json['type']),
+      payload: serializer.fromJson<String>(json['payload']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'noteId': serializer.toJson<int>(noteId),
+      'position': serializer.toJson<int>(position),
+      'type': serializer.toJson<String>(type),
+      'payload': serializer.toJson<String>(payload),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  NoteBlockRow copyWith({
+    int? id,
+    int? noteId,
+    int? position,
+    String? type,
+    String? payload,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => NoteBlockRow(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    position: position ?? this.position,
+    type: type ?? this.type,
+    payload: payload ?? this.payload,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  NoteBlockRow copyWithCompanion(NoteBlocksCompanion data) {
+    return NoteBlockRow(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      position: data.position.present ? data.position.value : this.position,
+      type: data.type.present ? data.type.value : this.type,
+      payload: data.payload.present ? data.payload.value : this.payload,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteBlockRow(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('position: $position, ')
+          ..write('type: $type, ')
+          ..write('payload: $payload, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, noteId, position, type, payload, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteBlockRow &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.position == this.position &&
+          other.type == this.type &&
+          other.payload == this.payload &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class NoteBlocksCompanion extends UpdateCompanion<NoteBlockRow> {
+  final Value<int> id;
+  final Value<int> noteId;
+  final Value<int> position;
+  final Value<String> type;
+  final Value<String> payload;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const NoteBlocksCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.type = const Value.absent(),
+    this.payload = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  NoteBlocksCompanion.insert({
+    this.id = const Value.absent(),
+    required int noteId,
+    required int position,
+    required String type,
+    this.payload = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : noteId = Value(noteId),
+       position = Value(position),
+       type = Value(type);
+  static Insertable<NoteBlockRow> custom({
+    Expression<int>? id,
+    Expression<int>? noteId,
+    Expression<int>? position,
+    Expression<String>? type,
+    Expression<String>? payload,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (position != null) 'position': position,
+      if (type != null) 'type': type,
+      if (payload != null) 'payload': payload,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  NoteBlocksCompanion copyWith({
+    Value<int>? id,
+    Value<int>? noteId,
+    Value<int>? position,
+    Value<String>? type,
+    Value<String>? payload,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return NoteBlocksCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      position: position ?? this.position,
+      type: type ?? this.type,
+      payload: payload ?? this.payload,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (payload.present) {
+      map['payload'] = Variable<String>(payload.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteBlocksCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('position: $position, ')
+          ..write('type: $type, ')
+          ..write('payload: $payload, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LabSpacesTable extends LabSpaces
     with TableInfo<$LabSpacesTable, LabSpaceRow> {
   @override
@@ -6201,6 +6648,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NoteImagesTable noteImages = $NoteImagesTable(this);
   late final $NoteVersionsTable noteVersions = $NoteVersionsTable(this);
   late final $NoteTaskLinksTable noteTaskLinks = $NoteTaskLinksTable(this);
+  late final $NoteBlocksTable noteBlocks = $NoteBlocksTable(this);
   late final $LabSpacesTable labSpaces = $LabSpacesTable(this);
   late final $KanbanColumnsTable kanbanColumns = $KanbanColumnsTable(this);
   late final $KanbanCardsTable kanbanCards = $KanbanCardsTable(this);
@@ -6219,6 +6667,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ScheduleWeekNotesTable(this);
   late final TasksDao tasksDao = TasksDao(this as AppDatabase);
   late final NotesDao notesDao = NotesDao(this as AppDatabase);
+  late final NoteBlocksDao noteBlocksDao = NoteBlocksDao(this as AppDatabase);
   late final FoldersDao foldersDao = FoldersDao(this as AppDatabase);
   late final LabSpacesDao labSpacesDao = LabSpacesDao(this as AppDatabase);
   late final KanbanDao kanbanDao = KanbanDao(this as AppDatabase);
@@ -6237,6 +6686,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     noteImages,
     noteVersions,
     noteTaskLinks,
+    noteBlocks,
     labSpaces,
     kanbanColumns,
     kanbanCards,
@@ -6247,6 +6697,16 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     scheduleSettings,
     scheduleWeekNotes,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'notes',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('note_blocks', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$FoldersTableCreateCompanionBuilder =
@@ -7429,6 +7889,24 @@ final class $$NotesTableReferences
     );
   }
 
+  static MultiTypedResultKey<$NoteBlocksTable, List<NoteBlockRow>>
+  _noteBlocksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.noteBlocks,
+    aliasName: $_aliasNameGenerator(db.notes.id, db.noteBlocks.noteId),
+  );
+
+  $$NoteBlocksTableProcessedTableManager get noteBlocksRefs {
+    final manager = $$NoteBlocksTableTableManager(
+      $_db,
+      $_db.noteBlocks,
+    ).filter((f) => f.noteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_noteBlocksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$KanbanCardsTable, List<KanbanCardRow>>
   _kanbanCardsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.kanbanCards,
@@ -7585,6 +8063,31 @@ class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
           }) => $$NoteTaskLinksTableFilterComposer(
             $db: $db,
             $table: $db.noteTaskLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> noteBlocksRefs(
+    Expression<bool> Function($$NoteBlocksTableFilterComposer f) f,
+  ) {
+    final $$NoteBlocksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableFilterComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7826,6 +8329,31 @@ class $$NotesTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> noteBlocksRefs<T extends Object>(
+    Expression<T> Function($$NoteBlocksTableAnnotationComposer a) f,
+  ) {
+    final $$NoteBlocksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> kanbanCardsRefs<T extends Object>(
     Expression<T> Function($$KanbanCardsTableAnnotationComposer a) f,
   ) {
@@ -7870,6 +8398,7 @@ class $$NotesTableTableManager
             bool noteImagesRefs,
             bool noteVersionsRefs,
             bool noteTaskLinksRefs,
+            bool noteBlocksRefs,
             bool kanbanCardsRefs,
           })
         > {
@@ -7943,6 +8472,7 @@ class $$NotesTableTableManager
             noteImagesRefs = false,
             noteVersionsRefs = false,
             noteTaskLinksRefs = false,
+            noteBlocksRefs = false,
             kanbanCardsRefs = false,
           }) {
             return PrefetchHooks(
@@ -7951,6 +8481,7 @@ class $$NotesTableTableManager
                 if (noteImagesRefs) db.noteImages,
                 if (noteVersionsRefs) db.noteVersions,
                 if (noteTaskLinksRefs) db.noteTaskLinks,
+                if (noteBlocksRefs) db.noteBlocks,
                 if (kanbanCardsRefs) db.kanbanCards,
               ],
               addJoins: <
@@ -8048,6 +8579,27 @@ class $$NotesTableTableManager
                               referencedItems.where((e) => e.noteId == item.id),
                       typedResults: items,
                     ),
+                  if (noteBlocksRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      NoteBlockRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._noteBlocksRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).noteBlocksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) =>
+                              referencedItems.where((e) => e.noteId == item.id),
+                      typedResults: items,
+                    ),
                   if (kanbanCardsRefs)
                     await $_getPrefetchedData<
                       NoteRow,
@@ -8095,6 +8647,7 @@ typedef $$NotesTableProcessedTableManager =
         bool noteImagesRefs,
         bool noteVersionsRefs,
         bool noteTaskLinksRefs,
+        bool noteBlocksRefs,
         bool kanbanCardsRefs,
       })
     >;
@@ -9086,6 +9639,356 @@ typedef $$NoteTaskLinksTableProcessedTableManager =
       (NoteTaskLinkRow, $$NoteTaskLinksTableReferences),
       NoteTaskLinkRow,
       PrefetchHooks Function({bool noteId, bool taskId})
+    >;
+typedef $$NoteBlocksTableCreateCompanionBuilder =
+    NoteBlocksCompanion Function({
+      Value<int> id,
+      required int noteId,
+      required int position,
+      required String type,
+      Value<String> payload,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$NoteBlocksTableUpdateCompanionBuilder =
+    NoteBlocksCompanion Function({
+      Value<int> id,
+      Value<int> noteId,
+      Value<int> position,
+      Value<String> type,
+      Value<String> payload,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$NoteBlocksTableReferences
+    extends BaseReferences<_$AppDatabase, $NoteBlocksTable, NoteBlockRow> {
+  $$NoteBlocksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NotesTable _noteIdTable(_$AppDatabase db) => db.notes.createAlias(
+    $_aliasNameGenerator(db.noteBlocks.noteId, db.notes.id),
+  );
+
+  $$NotesTableProcessedTableManager get noteId {
+    final $_column = $_itemColumn<int>('note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_noteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NoteBlocksTableFilterComposer
+    extends Composer<_$AppDatabase, $NoteBlocksTable> {
+  $$NoteBlocksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NotesTableFilterComposer get noteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteBlocksTableOrderingComposer
+    extends Composer<_$AppDatabase, $NoteBlocksTable> {
+  $$NoteBlocksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NotesTableOrderingComposer get noteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteBlocksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NoteBlocksTable> {
+  $$NoteBlocksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get payload =>
+      $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$NotesTableAnnotationComposer get noteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteBlocksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NoteBlocksTable,
+          NoteBlockRow,
+          $$NoteBlocksTableFilterComposer,
+          $$NoteBlocksTableOrderingComposer,
+          $$NoteBlocksTableAnnotationComposer,
+          $$NoteBlocksTableCreateCompanionBuilder,
+          $$NoteBlocksTableUpdateCompanionBuilder,
+          (NoteBlockRow, $$NoteBlocksTableReferences),
+          NoteBlockRow,
+          PrefetchHooks Function({bool noteId})
+        > {
+  $$NoteBlocksTableTableManager(_$AppDatabase db, $NoteBlocksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$NoteBlocksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$NoteBlocksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$NoteBlocksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> payload = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => NoteBlocksCompanion(
+                id: id,
+                noteId: noteId,
+                position: position,
+                type: type,
+                payload: payload,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int noteId,
+                required int position,
+                required String type,
+                Value<String> payload = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => NoteBlocksCompanion.insert(
+                id: id,
+                noteId: noteId,
+                position: position,
+                type: type,
+                payload: payload,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$NoteBlocksTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({noteId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (noteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.noteId,
+                            referencedTable: $$NoteBlocksTableReferences
+                                ._noteIdTable(db),
+                            referencedColumn:
+                                $$NoteBlocksTableReferences._noteIdTable(db).id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NoteBlocksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NoteBlocksTable,
+      NoteBlockRow,
+      $$NoteBlocksTableFilterComposer,
+      $$NoteBlocksTableOrderingComposer,
+      $$NoteBlocksTableAnnotationComposer,
+      $$NoteBlocksTableCreateCompanionBuilder,
+      $$NoteBlocksTableUpdateCompanionBuilder,
+      (NoteBlockRow, $$NoteBlocksTableReferences),
+      NoteBlockRow,
+      PrefetchHooks Function({bool noteId})
     >;
 typedef $$LabSpacesTableCreateCompanionBuilder =
     LabSpacesCompanion Function({
@@ -12963,6 +13866,8 @@ class $AppDatabaseManager {
       $$NoteVersionsTableTableManager(_db, _db.noteVersions);
   $$NoteTaskLinksTableTableManager get noteTaskLinks =>
       $$NoteTaskLinksTableTableManager(_db, _db.noteTaskLinks);
+  $$NoteBlocksTableTableManager get noteBlocks =>
+      $$NoteBlocksTableTableManager(_db, _db.noteBlocks);
   $$LabSpacesTableTableManager get labSpaces =>
       $$LabSpacesTableTableManager(_db, _db.labSpaces);
   $$KanbanColumnsTableTableManager get kanbanColumns =>

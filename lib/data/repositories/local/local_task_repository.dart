@@ -21,6 +21,16 @@ class LocalTaskRepository implements TaskRepository {
       _db.tasksDao.watchVencidas().map((rows) => rows.map(_rowToTask).toList());
 
   @override
+  Stream<List<Task>> watchByIds(List<int> ids) =>
+      _db.tasksDao.watchByIds(ids).map((rows) => rows.map(_rowToTask).toList());
+
+  @override
+  Future<Task?> getById(int id) async {
+    final row = await _db.tasksDao.getById(id);
+    return row == null ? null : _rowToTask(row);
+  }
+
+  @override
   Stream<List<Task>> watchDoneToday() =>
       _db.tasksDao.watchDoneToday().map((rows) => rows.map(_rowToTask).toList());
 

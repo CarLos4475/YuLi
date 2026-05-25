@@ -118,6 +118,18 @@ class LocalNoteRepository implements NoteRepository {
   Future<List<int>> getLinkedTaskIds(int noteId) =>
       _db.notesDao.getLinkedTaskIds(noteId);
 
+  @override
+  Stream<List<int>> watchLinkedTaskIds(int noteId) =>
+      _db.notesDao.watchLinkedTaskIds(noteId);
+
+  @override
+  Stream<List<int>> watchLinkedNoteIds(int taskId) =>
+      _db.notesDao.watchLinkedNoteIds(taskId);
+
+  @override
+  Future<List<int>> getLinkedNoteIds(int taskId) =>
+      _db.notesDao.getLinkedNoteIds(taskId);
+
   Note _rowToNote(NoteRow row) => Note(
         id: row.id,
         folderId: row.folderId,

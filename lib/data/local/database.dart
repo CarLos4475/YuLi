@@ -7,6 +7,7 @@ import 'tables/notes_table.dart';
 import 'tables/note_images_table.dart';
 import 'tables/note_versions_table.dart';
 import 'tables/note_task_links_table.dart';
+import 'tables/note_blocks_table.dart';
 import 'tables/lab_spaces_table.dart';
 import 'tables/kanban_columns_table.dart';
 import 'tables/kanban_cards_table.dart';
@@ -18,6 +19,7 @@ import 'tables/schedule_settings_table.dart';
 import 'tables/schedule_week_notes_table.dart';
 import 'daos/tasks_dao.dart';
 import 'daos/notes_dao.dart';
+import 'daos/note_blocks_dao.dart';
 import 'daos/folders_dao.dart';
 import 'daos/lab_spaces_dao.dart';
 import 'daos/kanban_dao.dart';
@@ -34,6 +36,7 @@ part 'database.g.dart';
     NoteImages,
     NoteVersions,
     NoteTaskLinks,
+    NoteBlocks,
     LabSpaces,
     KanbanColumns,
     KanbanCards,
@@ -47,6 +50,7 @@ part 'database.g.dart';
   daos: [
     TasksDao,
     NotesDao,
+    NoteBlocksDao,
     FoldersDao,
     LabSpacesDao,
     KanbanDao,
@@ -59,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -94,6 +98,18 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(scheduleSettings, scheduleSettings.showSaturday);
               await m.addColumn(scheduleSettings, scheduleSettings.showSunday);
             } catch (_) {}
+          }
+          if (from <= 10) {
+            // Block editor migration: wipe legacy markdown notes (single-user
+            // app, no production data) and create the typed-block table.
+            try {
+              await customStatement(
+                  "DELETE FROM note_task_links WHERE note_id IN (SELECT id FROM notes)");
+              await customStatement("DELETE FROM note_images");
+              await customStatement("DELETE FROM note_versions");
+              await customStatement("DELETE FROM notes");
+            } catch (_) {}
+            await m.createTable(noteBlocks);
           }
         },
       );

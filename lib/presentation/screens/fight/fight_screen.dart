@@ -5,6 +5,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
+import '../../providers/task_propagation_provider.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/task.dart' as domain_task;
@@ -783,6 +784,8 @@ class _TaskCardBody extends ConsumerWidget {
     final folder = task.folderId == null
         ? null
         : ref.watch(folderByIdProvider(task.folderId!)).valueOrNull;
+    final prop = ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
+        TaskPropagation.empty;
 
     final bg = expiring ? yCream2 : yCream;
 
@@ -837,7 +840,55 @@ class _TaskCardBody extends ConsumerWidget {
               ),
             ],
           ),
+          if (prop.hasNoteLinks || prop.spaceName != null) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                if (prop.hasNoteLinks)
+                  _TaskLinkChip(
+                    text: prop.noteCount > 1
+                        ? '↳ ${prop.noteCount} NOTAS'
+                        : '↳ NOTA',
+                    bg: yFlight,
+                  ),
+                if (prop.spaceName != null)
+                  _TaskLinkChip(
+                    text: '→ ${prop.spaceName!.toUpperCase()}',
+                    bg: yLab,
+                  ),
+              ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _TaskLinkChip extends StatelessWidget {
+  final String text;
+  final Color bg;
+
+  const _TaskLinkChip({required this.text, required this.bg});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: yInk, width: 1.5),
+      ),
+      child: Text(
+        text,
+        style: yMono(
+          size: 8,
+          weight: FontWeight.w700,
+          tracking: 1,
+          color: yCream,
+        ),
       ),
     );
   }

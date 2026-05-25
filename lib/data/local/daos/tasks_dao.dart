@@ -23,6 +23,14 @@ class TasksDao extends DatabaseAccessor<AppDatabase> with _$TasksDaoMixin {
         ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
       .watch();
 
+  Stream<List<TaskRow>> watchByIds(List<int> ids) {
+    if (ids.isEmpty) return Stream.value(const []);
+    return (select(tasks)..where((t) => t.id.isIn(ids))).watch();
+  }
+
+  Future<TaskRow?> getById(int id) =>
+      (select(tasks)..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Stream<List<TaskRow>> watchDoneToday() {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);

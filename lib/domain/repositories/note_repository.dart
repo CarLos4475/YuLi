@@ -21,6 +21,9 @@ abstract class NoteRepository {
   Future<void> linkTask(int noteId, int taskId);
   Future<void> unlinkTask(int noteId, int taskId);
   Future<List<int>> getLinkedTaskIds(int noteId);
+  Stream<List<int>> watchLinkedTaskIds(int noteId);
+  Stream<List<int>> watchLinkedNoteIds(int taskId);
+  Future<List<int>> getLinkedNoteIds(int taskId);
   Stream<List<Note>> watchAllActive();
   Stream<List<Note>> watchDeleted();
 }

@@ -111,4 +111,21 @@ class NotesDao extends DatabaseAccessor<AppDatabase> with _$NotesDaoMixin {
         .get();
     return rows.map((r) => r.taskId).toList();
   }
+
+  Stream<List<int>> watchLinkedTaskIds(int noteId) =>
+      (select(noteTaskLinks)..where((l) => l.noteId.equals(noteId)))
+          .watch()
+          .map((rows) => rows.map((r) => r.taskId).toList());
+
+  Stream<List<int>> watchLinkedNoteIds(int taskId) =>
+      (select(noteTaskLinks)..where((l) => l.taskId.equals(taskId)))
+          .watch()
+          .map((rows) => rows.map((r) => r.noteId).toList());
+
+  Future<List<int>> getLinkedNoteIds(int taskId) async {
+    final rows = await (select(noteTaskLinks)
+          ..where((l) => l.taskId.equals(taskId)))
+        .get();
+    return rows.map((r) => r.noteId).toList();
+  }
 }
