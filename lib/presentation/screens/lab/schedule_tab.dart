@@ -298,11 +298,18 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                           painter: _GridPainter(
                                             ink: ink,
                                             totalMinutes: totalMins,
-                                            startMinutes: sMin,
                                             numDays: days.length,
                                             dayWidth: dayWidth,
                                             halfHourHeight: _halfHourHeight,
                                           ),
+                                        ),
+                                        // Current time line (on top of everything)
+                                        _TimeLineWidget(
+                                          startMinutes: sMin,
+                                          totalMinutes: totalMins,
+                                          halfHourHeight: _halfHourHeight,
+                                          totalWidth:
+                                              constraints.maxWidth - _hoursWidth,
                                         ),
                                         // Blocks per day
                                         for (int di = 0; di < days.length; di++)
@@ -830,10 +837,73 @@ class _DayHeaderRow extends StatelessWidget {
 
 // ─── Grid Painter ──────────────────────────────────────────────────────────
 
+// ─── Current Time Line ─────────────────────────────────────────────────────
+
+class _TimeLineWidget extends StatelessWidget {
+  final int startMinutes;
+  final int totalMinutes;
+  final double halfHourHeight;
+  final double totalWidth;
+
+  const _TimeLineWidget({
+    required this.startMinutes,
+    required this.totalMinutes,
+    required this.halfHourHeight,
+    required this.totalWidth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    if (nowMinutes < startMinutes ||
+        nowMinutes > startMinutes + totalMinutes) {
+      return const SizedBox.shrink();
+    }
+
+    final nowY = ((nowMinutes - startMinutes) / 30.0) * halfHourHeight;
+
+    return Positioned(
+      left: 0,
+      top: nowY,
+      width: totalWidth,
+      child: Row(
+        children: [
+          CustomPaint(
+            size: Size(totalWidth, 2),
+            painter: _TimeLinePainter(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = accentError
+      ..strokeWidth = 2.0;
+    canvas.drawLine(Offset(0, 0), Offset(size.width, 0), paint);
+    final triangle = Path()
+      ..moveTo(0, -4)
+      ..lineTo(6, 0)
+      ..lineTo(0, 4)
+      ..close();
+    canvas.drawPath(triangle, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ─── Grid Painter ──────────────────────────────────────────────────────────
+
 class _GridPainter extends CustomPainter {
   final Color ink;
   final int totalMinutes;
-  final int startMinutes;
   final int numDays;
   final double dayWidth;
   final double halfHourHeight;
@@ -841,7 +911,6 @@ class _GridPainter extends CustomPainter {
   _GridPainter({
     required this.ink,
     required this.totalMinutes,
-    required this.startMinutes,
     required this.numDays,
     required this.dayWidth,
     required this.halfHourHeight,
@@ -857,12 +926,8 @@ class _GridPainter extends CustomPainter {
       ..color = ink.withAlpha(40)
       ..strokeWidth = borderWidth;
 
-    final now = DateTime.now();
-    final nowMinutes = now.hour * 60 + now.minute;
-
     final slots = totalMinutes ~/ 30;
 
-    // Horizontal lines
     for (int i = 0; i <= slots; i++) {
       final y = i * halfHourHeight;
       canvas.drawLine(
@@ -872,7 +937,6 @@ class _GridPainter extends CustomPainter {
       );
     }
 
-    // Vertical lines (day separators)
     for (int i = 1; i < numDays; i++) {
       final x = i * dayWidth;
       canvas.drawLine(
@@ -880,28 +944,6 @@ class _GridPainter extends CustomPainter {
         Offset(x, size.height),
         borderPaint,
       );
-    }
-
-    // Current time line (red horizontal)
-    if (nowMinutes >= startMinutes &&
-        nowMinutes <= startMinutes + totalMinutes) {
-      final nowY =
-          ((nowMinutes - startMinutes) / 30.0) * halfHourHeight;
-      final nowPaint = Paint()
-        ..color = accentError
-        ..strokeWidth = 2.0;
-      canvas.drawLine(
-        Offset(0, nowY),
-        Offset(size.width, nowY),
-        nowPaint,
-      );
-      // Small triangle pointer at the left
-      final trianglePath = Path()
-        ..moveTo(0, nowY - 4)
-        ..lineTo(6, nowY)
-        ..lineTo(0, nowY + 4)
-        ..close();
-      canvas.drawPath(trianglePath, nowPaint);
     }
   }
 
