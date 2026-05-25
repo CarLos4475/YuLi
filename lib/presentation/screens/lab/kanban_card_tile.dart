@@ -54,12 +54,25 @@ class KanbanCardTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          card.title,
-                          style: bodyM.copyWith(
-                            color: ink,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        Row(
+                          children: [
+                            if (card.originFolderColor != null)
+                              Container(
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(right: 6),
+                                color: Color(card.originFolderColor!),
+                              ),
+                            Expanded(
+                              child: Text(
+                                card.title,
+                                style: bodyM.copyWith(
+                                  color: ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         if (card.sourceNoteId != null)
                           Padding(
