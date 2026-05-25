@@ -11,7 +11,17 @@ import 'kanban_card_detail.dart';
 
 class CalendarTab extends ConsumerStatefulWidget {
   final LabSpace space;
-  const CalendarTab({super.key, required this.space});
+  final Set<int> selectedCardIds;
+  final void Function(int) onToggleSelection;
+  final bool selectionMode;
+
+  const CalendarTab({
+    super.key,
+    required this.space,
+    required this.selectedCardIds,
+    required this.onToggleSelection,
+    required this.selectionMode,
+  });
 
   @override
   ConsumerState<CalendarTab> createState() => _CalendarTabState();
@@ -145,7 +155,12 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                   children: dayCards.map((card) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: GestureDetector(
-                      onTap: () => _openCardDetail(context, card),
+                      onTap: () => widget.selectionMode
+                          ? widget.onToggleSelection(card.id)
+                          : _openCardDetail(context, card),
+                      onLongPress: widget.selectionMode
+                          ? null
+                          : () => widget.onToggleSelection(card.id),
                       child: Container(
                         decoration: BoxDecoration(
                           border: Border.all(color: inkBlack, width: borderWidth),
@@ -254,14 +269,20 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
           children: [
             _buildHeader(ink),
             Expanded(
-              child: _isWeekView
+                child: _isWeekView
                   ? _WeekView(
                       weekStart: _currentWeekStart,
                       cards: withDate,
                       ink: ink,
                       onCardDropped: (card, date) =>
                           _onCardDropped(card, date, repo, taskRepo),
-                      onCardTap: (card) => _openCardDetail(context, card),
+                      onCardTap: (card) => widget.selectionMode
+                          ? widget.onToggleSelection(card.id)
+                          : _openCardDetail(context, card),
+                      onCardLongPress: (card) =>
+                          widget.onToggleSelection(card.id),
+                      selectedCardIds: widget.selectedCardIds,
+                      selectionMode: widget.selectionMode,
                     )
                   : _MonthView(
                       month: _currentMonth,
@@ -277,7 +298,12 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
               _SinFechaSection(
                 cards: noDate,
                 ink: ink,
-                onCardTap: (card) => _openCardDetail(context, card),
+                onCardTap: (card) => widget.selectionMode
+                    ? widget.onToggleSelection(card.id)
+                    : _openCardDetail(context, card),
+                onCardLongPress: (card) => widget.onToggleSelection(card.id),
+                selectedCardIds: widget.selectedCardIds,
+                selectionMode: widget.selectionMode,
               ),
           ],
         );
@@ -471,6 +497,9 @@ class _WeekView extends StatelessWidget {
   final Color ink;
   final void Function(KanbanCard, DateTime) onCardDropped;
   final void Function(KanbanCard) onCardTap;
+  final void Function(KanbanCard) onCardLongPress;
+  final Set<int> selectedCardIds;
+  final bool selectionMode;
 
   const _WeekView({
     required this.weekStart,
@@ -478,7 +507,12 @@ class _WeekView extends StatelessWidget {
     required this.ink,
     required this.onCardDropped,
     required this.onCardTap,
+    this.onCardLongPress = _noop,
+    this.selectedCardIds = const {},
+    this.selectionMode = false,
   });
+
+  static void _noop(KanbanCard _) {}
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -570,6 +604,10 @@ class _WeekView extends StatelessWidget {
                               card: dayCards[i],
                               ink: ink,
                               onTap: () => onCardTap(dayCards[i]),
+                              onLongPress: () =>
+                                  onCardLongPress(dayCards[i]),
+                              isSelected:
+                                  selectedCardIds.contains(dayCards[i].id),
                             );
                           },
                         ),
@@ -597,7 +635,16 @@ class _DraggableCard extends StatelessWidget {
   final KanbanCard card;
   final Color ink;
   final VoidCallback? onTap;
-  const _DraggableCard({required this.card, required this.ink, this.onTap});
+  final VoidCallback? onLongPress;
+  final bool isSelected;
+
+  const _DraggableCard({
+    required this.card,
+    required this.ink,
+    this.onTap,
+    this.onLongPress,
+    this.isSelected = false,
+  });
 
   Color _priorityColor() {
     if (card.originTaskDoneAt != null) return accentSuccess;
@@ -644,7 +691,11 @@ class _DraggableCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        border: Border.all(color: ink.withAlpha(60), width: borderWidth),
+        color: isSelected ? ink.withAlpha(25) : Colors.transparent,
+        border: Border.all(
+          color: isSelected ? ink : ink.withAlpha(60),
+          width: isSelected ? borderWidthHeavy : borderWidth,
+        ),
       ),
       child: Row(
         children: [
@@ -652,7 +703,7 @@ class _DraggableCard extends StatelessWidget {
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: _priorityColor(),
+              color: isSelected ? ink : _priorityColor(),
               shape: BoxShape.rectangle,
             ),
           ),
@@ -665,12 +716,18 @@ class _DraggableCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (isSelected)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Icon(Icons.check, size: 10, color: ink),
+            ),
         ],
       ),
     );
-    if (onTap == null) return cardWidget;
+    if (onTap == null && onLongPress == null) return cardWidget;
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: cardWidget,
     );
@@ -856,11 +913,17 @@ class _SinFechaSection extends StatelessWidget {
   final List<KanbanCard> cards;
   final Color ink;
   final void Function(KanbanCard)? onCardTap;
+  final void Function(KanbanCard)? onCardLongPress;
+  final Set<int> selectedCardIds;
+  final bool selectionMode;
 
   const _SinFechaSection({
     required this.cards,
     required this.ink,
     this.onCardTap,
+    this.onCardLongPress,
+    this.selectedCardIds = const {},
+    this.selectionMode = false,
   });
 
   @override
@@ -901,30 +964,48 @@ class _SinFechaSection extends StatelessWidget {
                 final bg = cards[i].originTaskDoneAt != null
                     ? accentSuccess
                     : _priorityColor(cards[i].priority);
+                final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
+                  onLongPress: onCardLongPress != null
+                      ? () => onCardLongPress!(cards[i])
+                      : null,
                   child: Container(
                     width: 140,
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: bg,
+                      color: isSelected ? ink : bg,
                       border: Border.all(
-                        color: inkBlack,
-                        width: borderWidth,
+                        color: isSelected ? ink : inkBlack,
+                        width: isSelected ? borderWidthHeavy : borderWidth,
                       ),
-                      boxShadow: shadowM,
+                      boxShadow: isSelected ? null : shadowM,
                     ),
-                    child: Text(
-                      cards[i].title,
-                      style: bodyS.copyWith(
-                        color: bg.computeLuminance() > 0.5
-                            ? inkBlack
-                            : paperColor(context),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            cards[i].title,
+                            style: bodyS.copyWith(
+                              color: isSelected
+                                  ? paperColor(context)
+                                  : bg.computeLuminance() > 0.5
+                                      ? inkBlack
+                                      : paperColor(context),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isSelected)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(Icons.check,
+                                size: 10, color: paperColor(context)),
+                          ),
+                      ],
                     ),
                   ),
                 );

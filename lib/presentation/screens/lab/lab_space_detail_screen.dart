@@ -31,6 +31,60 @@ class LabSpaceDetailScreen extends ConsumerStatefulWidget {
 
 class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
   int _tabIndex = 0;
+  final Set<int> _selectedCardIds = {};
+  bool _selectionActive = false;
+
+  bool get _selectionMode => _selectionActive || _selectedCardIds.isNotEmpty;
+
+  void _toggleSelection(int cardId) {
+    setState(() {
+      _selectionActive = true;
+      if (_selectedCardIds.contains(cardId)) {
+        _selectedCardIds.remove(cardId);
+      } else {
+        _selectedCardIds.add(cardId);
+      }
+    });
+  }
+
+  void _clearSelection() => setState(() {
+        _selectedCardIds.clear();
+        _selectionActive = false;
+      });
+
+  Future<void> _deleteSelected() async {
+    if (_selectedCardIds.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: paperColor(context),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Eliminar tarjetas',
+            style: displayM.copyWith(color: inkColor(context))),
+        content: Text(
+          'Se eliminarán ${_selectedCardIds.length} tarjeta(s). Esta acción no se puede deshacer.',
+          style: bodyM.copyWith(color: inkColor(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancelar',
+                style: labelBold.copyWith(color: inkGray)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Eliminar',
+                style: labelBold.copyWith(color: accentFight)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      final repo = ref.read(kanbanCardRepositoryProvider);
+      await repo.deleteMultiple(_selectedCardIds.toList());
+      _clearSelection();
+    }
+  }
 
   void _showAddTabSheet() {
     final tabsNotifier = ref.read(labTabsProvider(widget.space.id).notifier);
@@ -61,12 +115,25 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
           data: (columns) => _KanbanBoard(
             space: widget.space,
             columns: columns,
+            selectedCardIds: _selectedCardIds,
+            onToggleSelection: _toggleSelection,
+            selectionMode: _selectionMode,
           ),
         );
       case 'Calendario':
-        return CalendarTab(space: widget.space);
+        return CalendarTab(
+          space: widget.space,
+          selectedCardIds: _selectedCardIds,
+          onToggleSelection: _toggleSelection,
+          selectionMode: _selectionMode,
+        );
       case 'Timeline':
-        return TimelineTab(space: widget.space);
+        return TimelineTab(
+          space: widget.space,
+          selectedCardIds: _selectedCardIds,
+          onToggleSelection: _toggleSelection,
+          selectionMode: _selectionMode,
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -82,7 +149,13 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _KanbanHeader(space: widget.space),
+            _KanbanHeader(
+              space: widget.space,
+              selectionMode: _selectionMode,
+              onToggleSelectionMode: _selectionMode
+                  ? _clearSelection
+                  : () => setState(() => _selectionActive = true),
+            ),
             Container(
               decoration: BoxDecoration(
                 border: Border(
@@ -91,6 +164,16 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
               ),
               child: Row(
                 children: [
+                  if (_selectionMode)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _clearSelection,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        child: Icon(Icons.clear, size: 16, color: inkGray),
+                      ),
+                    ),
                   ...tabs.asMap().entries.map((e) => Row(
                         children: [
                           if (e.key > 0)
@@ -101,8 +184,10 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                           _TabButton(
                             label: e.value,
                             isActive: _tabIndex == e.key,
-                            onTap: () =>
-                                setState(() => _tabIndex = e.key),
+                            onTap: _selectionMode
+                                ? null
+                                : () =>
+                                    setState(() => _tabIndex = e.key),
                             onClose: e.value == 'Kanban'
                                 ? null
                                 : () {
@@ -123,7 +208,7 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                   Container(width: 1, height: 28, color: ink.withAlpha(60)),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: _showAddTabSheet,
+                    onTap: _selectionMode ? null : _showAddTabSheet,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 10),
@@ -136,6 +221,12 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
             Expanded(
               child: _buildTabContent(),
             ),
+            if (_selectedCardIds.isNotEmpty)
+              _SelectionBar(
+                count: _selectedCardIds.length,
+                onDelete: _deleteSelected,
+                onCancel: _clearSelection,
+              ),
           ],
         ),
       ),
@@ -208,13 +299,13 @@ class _AddTabSheet extends StatelessWidget {
 class _TabButton extends StatelessWidget {
   final String label;
   final bool isActive;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final VoidCallback? onClose;
 
   const _TabButton({
     required this.label,
     required this.isActive,
-    required this.onTap,
+    this.onTap,
     this.onClose,
   });
 
@@ -262,8 +353,14 @@ class _TabButton extends StatelessWidget {
 
 class _KanbanHeader extends ConsumerWidget {
   final LabSpace space;
+  final bool selectionMode;
+  final void Function()? onToggleSelectionMode;
 
-  const _KanbanHeader({required this.space});
+  const _KanbanHeader({
+    required this.space,
+    this.selectionMode = false,
+    this.onToggleSelectionMode,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -396,6 +493,32 @@ class _KanbanHeader extends ConsumerWidget {
               ),
             ),
           ),
+          if (onToggleSelectionMode != null) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onToggleSelectionMode,
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: selectionMode ? accentFight : Colors.transparent,
+                  border: Border.all(
+                    color: selectionMode ? accentFight : inkBlack,
+                    width: borderWidth,
+                  ),
+                  boxShadow: selectionMode ? shadowM : null,
+                ),
+                child: Icon(
+                  Icons.checklist,
+                  size: 16,
+                  color: selectionMode
+                      ? paperLight
+                      : inkGray,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -695,8 +818,17 @@ class _DateRow extends StatelessWidget {
 class _KanbanBoard extends ConsumerWidget {
   final LabSpace space;
   final List<KanbanColumn> columns;
+  final Set<int> selectedCardIds;
+  final void Function(int) onToggleSelection;
+  final bool selectionMode;
 
-  const _KanbanBoard({required this.space, required this.columns});
+  const _KanbanBoard({
+    required this.space,
+    required this.columns,
+    required this.selectedCardIds,
+    required this.onToggleSelection,
+    required this.selectionMode,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -710,7 +842,12 @@ class _KanbanBoard extends ConsumerWidget {
           itemBuilder: (_, i) {
             if (i < columns.length) {
               return _KanbanColumn(
-                  space: space, column: columns[i]);
+                space: space,
+                column: columns[i],
+                selectedCardIds: selectedCardIds,
+                onToggleSelection: onToggleSelection,
+                selectionMode: selectionMode,
+              );
             }
             return _AddColumnButton(spaceId: space.id);
           },
@@ -755,8 +892,17 @@ class _KanbanBoard extends ConsumerWidget {
 class _KanbanColumn extends ConsumerWidget {
   final LabSpace space;
   final KanbanColumn column;
+  final Set<int> selectedCardIds;
+  final void Function(int) onToggleSelection;
+  final bool selectionMode;
 
-  const _KanbanColumn({required this.space, required this.column});
+  const _KanbanColumn({
+    required this.space,
+    required this.column,
+    required this.selectedCardIds,
+    required this.onToggleSelection,
+    required this.selectionMode,
+  });
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final isProtected = column.name == 'Entregado' || column.name == 'Vencido';
@@ -848,24 +994,47 @@ class _KanbanColumn extends ConsumerWidget {
                                 onDrop: (_DragData data) =>
                                     _handleDrop(ref, data, cards, i),
                               ),
-                              LongPressDraggable<_DragData>(
-                                key: ValueKey(cards[i].id),
-                                data: _DragData(cards[i]),
-                                feedback: Material(
-                                  elevation: 4,
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.zero,
-                                  child: SizedBox(
-                                    width: 260,
+                              if (selectionMode)
+                                GestureDetector(
+                                  key: ValueKey('sel_${cards[i].id}'),
+                                  onTap: () =>
+                                      onToggleSelection(cards[i].id),
+                                  child: KanbanCardTile(
+                                    card: cards[i],
+                                    accentColor: space.accentColor,
+                                    onTap: () =>
+                                        onToggleSelection(cards[i].id),
+                                    isSelected:
+                                        selectedCardIds.contains(cards[i].id),
+                                    selectionMode: true,
+                                  ),
+                                )
+                              else
+                                LongPressDraggable<_DragData>(
+                                  key: ValueKey(cards[i].id),
+                                  data: _DragData(cards[i]),
+                                  feedback: Material(
+                                    elevation: 4,
+                                    color: Colors.transparent,
+                                    borderRadius: BorderRadius.zero,
+                                    child: SizedBox(
+                                      width: 260,
+                                      child: KanbanCardTile(
+                                        card: cards[i],
+                                        accentColor: space.accentColor,
+                                        onTap: () {},
+                                      ),
+                                    ),
+                                  ),
+                                  childWhenDragging: Opacity(
+                                    opacity: 0.3,
                                     child: KanbanCardTile(
                                       card: cards[i],
                                       accentColor: space.accentColor,
-                                      onTap: () {},
+                                      onTap: () =>
+                                          _openCard(context, cards[i]),
                                     ),
                                   ),
-                                ),
-                                childWhenDragging: Opacity(
-                                  opacity: 0.3,
                                   child: KanbanCardTile(
                                     card: cards[i],
                                     accentColor: space.accentColor,
@@ -873,13 +1042,6 @@ class _KanbanColumn extends ConsumerWidget {
                                         _openCard(context, cards[i]),
                                   ),
                                 ),
-                                child: KanbanCardTile(
-                                  card: cards[i],
-                                  accentColor: space.accentColor,
-                                  onTap: () =>
-                                      _openCard(context, cards[i]),
-                                ),
-                              ),
                             ],
                             _CardDropZone(
                               column: column,
@@ -1473,6 +1635,89 @@ class _NoteRow extends ConsumerWidget {
       builder: (_) => _ColumnPickerSheet(
         space: space,
         note: note,
+      ),
+    );
+  }
+}
+
+class _SelectionBar extends StatelessWidget {
+  final int count;
+  final VoidCallback onDelete;
+  final VoidCallback onCancel;
+
+  const _SelectionBar({
+    required this.count,
+    required this.onDelete,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border(
+          top: BorderSide(color: ink, width: borderWidthHeavy),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onCancel,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: inkGray, width: borderWidth),
+                  ),
+                  child: Text(
+                    'Cancelar',
+                    style: labelBold.copyWith(
+                      color: inkGray,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '$count seleccionada(s)',
+                  style: labelBold.copyWith(color: ink),
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onDelete,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: accentFight,
+                    border: Border.all(
+                      color: accentFight,
+                      width: borderWidth,
+                    ),
+                    boxShadow: shadowM,
+                  ),
+                  child: Text(
+                    'Eliminar',
+                    style: labelBold.copyWith(
+                      color: paperLight,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

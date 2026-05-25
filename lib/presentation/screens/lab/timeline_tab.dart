@@ -10,7 +10,17 @@ import 'kanban_card_detail.dart';
 
 class TimelineTab extends ConsumerStatefulWidget {
   final LabSpace space;
-  const TimelineTab({super.key, required this.space});
+  final Set<int> selectedCardIds;
+  final void Function(int) onToggleSelection;
+  final bool selectionMode;
+
+  const TimelineTab({
+    super.key,
+    required this.space,
+    required this.selectedCardIds,
+    required this.onToggleSelection,
+    required this.selectionMode,
+  });
 
   @override
   ConsumerState<TimelineTab> createState() => _TimelineTabState();
@@ -68,29 +78,39 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
               _transformationController.value = Matrix4.diagonal3Values(zoom, zoom, 1);
             });
 
-            return Column(
-              children: [
-                // Timeline zoom area
-                Expanded(
-                  child: _TimelineViewer(
-                    key: ValueKey('${reactiveSpace.id}_${columns.length}_${withDate.length}'),
-                    space: reactiveSpace,
-                    columns: columns,
-                    cards: withDate,
-                    ink: ink,
-                    transformationController: _transformationController,
-                    onCardTap: (card) => _openCardDetail(context, card),
-                  ),
-                ),
-                // SIN FECHA section
-                if (noDate.isNotEmpty)
-                  _SinFechaSection(
-                    cards: noDate,
-                    ink: ink,
-                    onCardTap: (card) => _openCardDetail(context, card),
-                  ),
-              ],
-            );
+                return Column(
+                  children: [
+                    Expanded(
+                      child: _TimelineViewer(
+                        key: ValueKey('${reactiveSpace.id}_${columns.length}_${withDate.length}'),
+                        space: reactiveSpace,
+                        columns: columns,
+                        cards: withDate,
+                        ink: ink,
+                        transformationController: _transformationController,
+                        onCardTap: (card) => widget.selectionMode
+                            ? widget.onToggleSelection(card.id)
+                            : _openCardDetail(context, card),
+                        onCardLongPress: (card) =>
+                            widget.onToggleSelection(card.id),
+                        selectedCardIds: widget.selectedCardIds,
+                        selectionMode: widget.selectionMode,
+                      ),
+                    ),
+                    if (noDate.isNotEmpty)
+                      _SinFechaSection(
+                        cards: noDate,
+                        ink: ink,
+                        onCardTap: (card) => widget.selectionMode
+                            ? widget.onToggleSelection(card.id)
+                            : _openCardDetail(context, card),
+                        onCardLongPress: (card) =>
+                            widget.onToggleSelection(card.id),
+                        selectedCardIds: widget.selectedCardIds,
+                        selectionMode: widget.selectionMode,
+                      ),
+                  ],
+                );
           },
         );
       },
@@ -166,6 +186,9 @@ class _TimelineViewer extends StatelessWidget {
   final Color ink;
   final TransformationController transformationController;
   final void Function(KanbanCard) onCardTap;
+  final void Function(KanbanCard) onCardLongPress;
+  final Set<int> selectedCardIds;
+  final bool selectionMode;
 
   const _TimelineViewer({
     super.key,
@@ -175,7 +198,12 @@ class _TimelineViewer extends StatelessWidget {
     required this.ink,
     required this.transformationController,
     required this.onCardTap,
+    this.onCardLongPress = _noop,
+    this.selectedCardIds = const {},
+    this.selectionMode = false,
   });
+
+  static void _noop(KanbanCard _) {}
 
   @override
   Widget build(BuildContext context) {
@@ -207,6 +235,7 @@ class _TimelineViewer extends StatelessWidget {
       final cardWidth = dayWidth - 4;
       final cardHeight = laneHeight - 28;
 
+      final isSelected = selectedCardIds.contains(card.id);
       cardWidgets.add(
         Positioned(
           left: x,
@@ -215,11 +244,15 @@ class _TimelineViewer extends StatelessWidget {
           height: cardHeight,
           child: GestureDetector(
             onTap: () => onCardTap(card),
+            onLongPress: () => onCardLongPress(card),
             behavior: HitTestBehavior.opaque,
             child: Container(
               decoration: BoxDecoration(
-                color: paper,
-                border: Border.all(color: ink.withAlpha(80), width: borderWidth),
+                color: isSelected ? ink : paper,
+                border: Border.all(
+                  color: isSelected ? ink : ink.withAlpha(80),
+                  width: isSelected ? borderWidthHeavy : borderWidth,
+                ),
               ),
               padding: const EdgeInsets.fromLTRB(5, 4, 4, 4),
               child: Row(
@@ -235,7 +268,7 @@ class _TimelineViewer extends StatelessWidget {
                     child: Text(
                       card.title,
                       style: TextStyle(
-                        color: ink,
+                        color: isSelected ? paper : ink,
                         fontSize: 9,
                         fontFamily: 'Inter',
                       ),
@@ -243,6 +276,12 @@ class _TimelineViewer extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (isSelected)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2),
+                      child: Icon(Icons.check,
+                          size: 8, color: paper),
+                    ),
                 ],
               ),
             ),
@@ -477,11 +516,17 @@ class _SinFechaSection extends StatelessWidget {
   final List<KanbanCard> cards;
   final Color ink;
   final void Function(KanbanCard)? onCardTap;
+  final void Function(KanbanCard)? onCardLongPress;
+  final Set<int> selectedCardIds;
+  final bool selectionMode;
 
   const _SinFechaSection({
     required this.cards,
     required this.ink,
     this.onCardTap,
+    this.onCardLongPress,
+    this.selectedCardIds = const {},
+    this.selectionMode = false,
   });
 
   @override
@@ -525,30 +570,48 @@ class _SinFechaSection extends StatelessWidget {
                 final bg = cards[i].originTaskDoneAt != null
                     ? accentSuccess
                     : _priorityColor(cards[i].priority);
+                final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
+                  onLongPress: onCardLongPress != null
+                      ? () => onCardLongPress!(cards[i])
+                      : null,
                   child: Container(
                     width: 140,
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: bg,
+                      color: isSelected ? ink : bg,
                       border: Border.all(
-                        color: inkBlack,
-                        width: borderWidth,
+                        color: isSelected ? ink : inkBlack,
+                        width: isSelected ? borderWidthHeavy : borderWidth,
                       ),
-                      boxShadow: shadowM,
+                      boxShadow: isSelected ? null : shadowM,
                     ),
-                    child: Text(
-                      cards[i].title,
-                      style: bodyS.copyWith(
-                        color: bg.computeLuminance() > 0.5
-                            ? inkBlack
-                            : paperColor(context),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            cards[i].title,
+                            style: bodyS.copyWith(
+                              color: isSelected
+                                  ? paperColor(context)
+                                  : bg.computeLuminance() > 0.5
+                                      ? inkBlack
+                                      : paperColor(context),
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isSelected)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(Icons.check,
+                                size: 10, color: paperColor(context)),
+                          ),
+                      ],
                     ),
                   ),
                 );

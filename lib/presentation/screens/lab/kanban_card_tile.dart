@@ -6,27 +6,38 @@ class KanbanCardTile extends StatelessWidget {
   final KanbanCard card;
   final Color accentColor;
   final VoidCallback onTap;
+  final bool isSelected;
+  final bool selectionMode;
 
   const KanbanCardTile({
     super.key,
     required this.card,
     required this.accentColor,
     required this.onTap,
+    this.isSelected = false,
+    this.selectionMode = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final priorityColor = _priorityColor(card.priority);
+    final ink = inkColor(context);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: cardBackground(context),
-            border: Border.all(color: inkColor(context), width: borderWidth),
+            color: isSelected
+                ? accentColor.withAlpha(30)
+                : cardBackground(context),
+            border: Border.all(
+              color: isSelected ? accentColor : ink,
+              width: isSelected ? borderWidthHeavy : borderWidth,
+            ),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -35,7 +46,7 @@ class KanbanCardTile extends StatelessWidget {
                 // Priority indicator bar
                 Container(
                   width: 4,
-                  color: priorityColor,
+                  color: isSelected ? accentColor : priorityColor,
                 ),
                 Expanded(
                   child: Padding(
@@ -46,7 +57,7 @@ class KanbanCardTile extends StatelessWidget {
                         Text(
                           card.title,
                           style: bodyM.copyWith(
-                            color: inkColor(context),
+                            color: ink,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -128,6 +139,18 @@ class KanbanCardTile extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (selectionMode)
+                  Container(
+                    width: 32,
+                    color: isSelected ? accentColor : Colors.transparent,
+                    child: Center(
+                      child: Icon(
+                        isSelected ? Icons.check : Icons.check_box_outline_blank,
+                        size: 14,
+                        color: isSelected ? paperLight : inkGray,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

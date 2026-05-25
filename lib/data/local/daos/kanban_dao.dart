@@ -36,6 +36,9 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
   Future<void> deleteCard(int id) =>
       (delete(kanbanCards)..where((c) => c.id.equals(id))).go();
 
+  Future<void> deleteCards(List<int> ids) =>
+      (delete(kanbanCards)..where((c) => c.id.isIn(ids))).go();
+
   Future<void> moveToColumn(
       int cardId, int newColumnId, int newPosition) async {
     await (update(kanbanCards)..where((c) => c.id.equals(cardId))).write(

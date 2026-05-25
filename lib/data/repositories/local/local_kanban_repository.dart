@@ -88,6 +88,9 @@ class LocalKanbanRepository implements KanbanCardRepository {
   Future<void> delete(int id) => _db.kanbanDao.deleteCard(id);
 
   @override
+  Future<void> deleteMultiple(List<int> ids) => _db.kanbanDao.deleteCards(ids);
+
+  @override
   Future<void> moveToColumn(int cardId, int newColumnId, int newPosition) async {
     final card = await _db.kanbanDao.getById(cardId);
     if (card == null) return;
