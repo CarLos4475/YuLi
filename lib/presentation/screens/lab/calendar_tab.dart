@@ -544,11 +544,11 @@ class _WeekView extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Container(
+                  Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
-                    color: isToday ? accentColor.withAlpha(25) : Colors.transparent,
+                    color: isToday ? accentColor : Colors.transparent,
                     border: Border(
                       bottom: BorderSide(
                         color: ink.withAlpha(40),
@@ -560,13 +560,23 @@ class _WeekView extends StatelessWidget {
                     children: [
                       Text(
                         _dayLabel(day.weekday),
-                        style: labelXS.copyWith(color: inkGray),
+                        style: labelXS.copyWith(
+                          color: isToday
+                              ? accentColor.computeLuminance() > 0.5
+                                  ? inkBlack
+                                  : paperLight
+                              : inkGray,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${day.day}',
                         style: labelM.copyWith(
-                          color: isToday ? accentError : ink,
+                          color: isToday
+                              ? accentColor.computeLuminance() > 0.5
+                                  ? inkBlack
+                                  : paperLight
+                              : ink,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -835,11 +845,11 @@ class _MonthView extends StatelessWidget {
                     onTap: () => onDayTap(day, dayCards),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: candidateData.isNotEmpty
-                            ? ink.withAlpha(20)
-                                : isToday
-                                    ? accentColor.withAlpha(20)
-                                    : Colors.transparent,
+                        color: isToday
+                            ? accentColor
+                            : candidateData.isNotEmpty
+                                ? ink.withAlpha(20)
+                                : Colors.transparent,
                         border: Border.all(
                           color: ink.withAlpha(40),
                           width: borderWidth,
@@ -851,7 +861,11 @@ class _MonthView extends StatelessWidget {
                           Text(
                             '${day.day}',
                             style: labelS.copyWith(
-                          color: isToday ? accentColor : ink,
+                              color: isToday
+                                  ? accentColor.computeLuminance() > 0.5
+                                      ? inkBlack
+                                      : paperLight
+                                  : ink,
                               fontWeight:
                                   isToday ? FontWeight.w700 : FontWeight.w400,
                             ),
