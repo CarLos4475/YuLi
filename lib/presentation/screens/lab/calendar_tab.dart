@@ -156,62 +156,50 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                           : () => widget.onToggleSelection(card.id),
                       child: Container(
                         decoration: BoxDecoration(
+                          color: card.originFolderColor != null
+                              ? Color(card.originFolderColor!)
+                              : _cardPriorityColor(card.priority),
                           border: Border.all(color: inkBlack, width: borderWidth),
+                          boxShadow: shadowM,
                         ),
-                        child: IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Container(
-                                width: 4,
-                                color: card.originFolderColor != null
-                                    ? Color(card.originFolderColor!)
-                                    : _cardPriorityColor(card.priority),
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              card.title,
+                              style: bodyM.copyWith(
+                                color: (card.originFolderColor != null
+                                        ? Color(card.originFolderColor!)
+                                        : _cardPriorityColor(card.priority))
+                                    .computeLuminance() > 0.5
+                                    ? inkBlack
+                                    : paperLight,
                               ),
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(10),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        card.title,
-                                        style: bodyM.copyWith(color: inkColor(context)),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      if (card.dueDate != null) ...[
-                                        const SizedBox(height: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: card.dueDate!.isBefore(DateTime.now())
-                                                ? accentFight
-                                                : folderPalette[3],
-                                            border: Border.all(color: inkBlack, width: borderWidth),
-                                            boxShadow: const [
-                                              BoxShadow(
-                                                color: inkBlack,
-                                                offset: shadowOffset,
-                                                blurRadius: shadowBlurRadius,
-                                              ),
-                                            ],
-                                          ),
-                                          child: Text(
-                                            _dialogFormatDate(card.dueDate!),
-                                            style: labelBold.copyWith(
-                                              color: paperLight,
-                                              fontSize: 9,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (card.dueDate != null) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: card.dueDate!.isBefore(DateTime.now())
+                                      ? accentFight
+                                      : folderPalette[3],
+                                  border: Border.all(color: inkBlack, width: borderWidth),
+                                  boxShadow: shadowM,
+                                ),
+                                child: Text(
+                                  _dialogFormatDate(card.dueDate!),
+                                  style: labelBold.copyWith(
+                                    color: paperLight,
+                                    fontSize: 9,
                                   ),
                                 ),
                               ),
                             ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
@@ -690,30 +678,30 @@ class _DraggableCard extends StatelessWidget {
   }
 
   Widget _cardContent(BuildContext context) {
+    final bg = _priorityColor();
     final cardWidget = Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isSelected ? accentColor.withAlpha(25) : Colors.transparent,
+        color: isSelected ? accentColor : bg,
         border: Border.all(
-          color: isSelected ? accentColor : ink.withAlpha(60),
+          color: inkBlack,
           width: isSelected ? borderWidthHeavy : borderWidth,
         ),
+        boxShadow: shadowM,
       ),
       child: Row(
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: isSelected ? accentColor : _priorityColor(),
-            ),
-          ),
-          const SizedBox(width: 6),
           Expanded(
             child: Text(
               card.title,
-              style: bodyXS.copyWith(color: ink),
+              style: bodyXS.copyWith(
+                color: isSelected
+                    ? paperLight
+                    : bg.computeLuminance() > 0.5
+                        ? inkBlack
+                        : paperLight,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -721,7 +709,7 @@ class _DraggableCard extends StatelessWidget {
           if (isSelected)
             Padding(
               padding: const EdgeInsets.only(left: 4),
-              child: Icon(Icons.check, size: 10, color: accentColor),
+              child: Icon(Icons.check, size: 10, color: paperLight),
             ),
         ],
       ),
