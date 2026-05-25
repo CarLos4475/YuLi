@@ -642,9 +642,11 @@ class _ScheduleHeader extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                border: Border.all(color: inkGray, width: borderWidth),
+                color: accentLab,
+                border: Border.all(color: inkBlack, width: borderWidth),
+                boxShadow: shadowM,
               ),
-              child: const Icon(Icons.chevron_left, size: 16, color: inkGray),
+              child: const Icon(Icons.chevron_left, size: 16, color: paperLight),
             ),
           ),
           const SizedBox(width: 6),
@@ -661,9 +663,11 @@ class _ScheduleHeader extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                border: Border.all(color: inkGray, width: borderWidth),
+                color: accentLab,
+                border: Border.all(color: inkBlack, width: borderWidth),
+                boxShadow: shadowM,
               ),
-              child: const Icon(Icons.chevron_right, size: 16, color: inkGray),
+              child: const Icon(Icons.chevron_right, size: 16, color: paperLight),
             ),
           ),
           const SizedBox(width: 12),
@@ -672,10 +676,12 @@ class _ScheduleHeader extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                border: Border.all(color: inkGray, width: borderWidth),
+                color: accentLab,
+                border: Border.all(color: inkBlack, width: borderWidth),
+                boxShadow: shadowM,
               ),
               child: Text('Ajustar',
-                  style: labelBold.copyWith(color: inkGray, fontSize: 11)),
+                  style: labelBold.copyWith(color: paperLight, fontSize: 11)),
             ),
           ),
         ],
