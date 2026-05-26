@@ -44,6 +44,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   TextEditingController? _lastTextCtrl;
   InsertPanelType? _activePanel;
   bool _isPreview = false;
+  bool _scrollLocked = false;
 
   @override
   void initState() {
@@ -245,7 +246,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       bg: widget.folder.color,
                       fg: yCream,
                     ),
-                    IconSquareBtn(icon: Icons.help_outline),
                   ],
                 ),
                 _NoteHeroHeader(
@@ -271,6 +271,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         : _isPreview
                             ? _buildPreview(blocks)
                             : ReorderableListView.builder(
+                                physics: _scrollLocked
+                                    ? const NeverScrollableScrollPhysics()
+                                    : null,
                                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                                 buildDefaultDragHandles: false,
                                 proxyDecorator: (child, _, _) => Material(
@@ -291,6 +294,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                                     folder: widget.folder,
                                     index: i,
                                     onTextBlockFocusChanged: _onTextBlockFocusChanged,
+                                    onScrollLockChanged: (locked) {
+                                      setState(() => _scrollLocked = locked);
+                                    },
                                   ),
                                 ),
                                 itemCount: blocks.length,
@@ -607,7 +613,7 @@ class _LabBadge extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final spaceAsync = ref.watch(labSpaceByIdProvider(spaceId));
     final space = spaceAsync.valueOrNull;
-    if (space == null) return const SizedBox.shrink();
+    if (space == null || !space.isActive) return const SizedBox.shrink();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

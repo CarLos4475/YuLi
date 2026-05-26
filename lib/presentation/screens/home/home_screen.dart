@@ -73,9 +73,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
+  static const _maxChars = 280;
+
+  int get _contentLength =>
+      _taskController.text.replaceAll(RegExp(r'@\S+'), '').length;
+
   void _addQuickTask() {
     final raw = _taskController.text.trim();
-    if (raw.isEmpty) return;
+    if (raw.isEmpty || _contentLength > _maxChars) return;
     final now = DateTime.now();
     final expires = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
@@ -628,67 +633,95 @@ class _FightPillar extends ConsumerWidget {
             link: layerLink,
             child: _BrutalSlab(
               bg: _yCream,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: _yInk,
-                        ),
-                        cursorColor: _yInk,
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 14),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          filled: false,
-                          hintText: 'Captura una tarea…',
-                          hintStyle: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: _yMuted,
+              child: ValueListenableBuilder(
+                valueListenable: controller,
+                builder: (context, value, _) {
+                  final contentLen = value.text.replaceAll(RegExp(r'@\S+'), '').length;
+                  final overLimit = contentLen > _HomeScreenState._maxChars;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: _yInk,
+                            ),
+                            cursorColor: _yInk,
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              filled: false,
+                              hintText: 'Captura una tarea…',
+                              hintStyle: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                                color: _yMuted,
+                              ),
+                            ),
+                            onSubmitted: (_) => onSubmit(),
                           ),
                         ),
-                        onSubmitted: (_) => onSubmit(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onSubmit,
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: _yFight,
-                          border: Border.all(color: _yInk, width: 2),
-                        ),
-                        child: const Text(
-                          '+',
-                          style: TextStyle(
-                            fontFamily: 'SpaceGrotesk',
-                            color: _yCream,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            height: 1.0,
+                        if (value.text.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '$contentLen',
+                            style: TextStyle(
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: overLimit
+                                  ? _yFight
+                                  : contentLen > 260
+                                      ? const Color(0xFFC7822F)
+                                      : _yMuted,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: (value.text.trim().isEmpty || overLimit)
+                              ? null
+                              : onSubmit,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: (value.text.trim().isEmpty || overLimit)
+                                  ? _yMuted.withValues(alpha: 0.3)
+                                  : _yFight,
+                              border: Border.all(color: _yInk, width: 2),
+                            ),
+                            child: const Text(
+                              '+',
+                              style: TextStyle(
+                                fontFamily: 'SpaceGrotesk',
+                                color: _yCream,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                height: 1.0,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),

@@ -233,6 +233,14 @@ class _SpacesGrid extends ConsumerWidget {
   }
 }
 
+class _SheetOption {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool destructive;
+  const _SheetOption(this.label, this.icon, this.onTap, {this.destructive = false});
+}
+
 // ─── Space card (dossier) ─────────────────────────────────────────────────
 
 class _SpaceCard extends ConsumerWidget {
@@ -249,6 +257,27 @@ class _SpaceCard extends ConsumerWidget {
     return 'En proceso';
   }
 
+  Color _stageColor(String stage) {
+    switch (stage) {
+      case 'En proceso':
+        return yLab;
+      case 'Pausado':
+        return yAmber;
+      case 'Completado':
+        return const Color(0xFF2D6E6E);
+      case 'Archivado':
+        return yMuted;
+      case 'Vencido':
+        return yFight;
+      case 'Por iniciar':
+        return yFlight;
+      case 'Sin fechas':
+        return yMuted;
+      default:
+        return yLab;
+    }
+  }
+
   int? _daysLeft(LabSpace s, DateTime now) {
     if (s.dueDate == null) return null;
     return s.dueDate!.difference(now).inDays;
@@ -257,31 +286,131 @@ class _SpaceCard extends ConsumerWidget {
   String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    final repo = ref.read(labSpaceRepositoryProvider);
+
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Eliminar space',
-            style: ySans(size: 18, weight: FontWeight.w700)),
-        content: Text(
-          '¿Eliminar "${space.name}"? Se moverá a la papelera.',
-          style: yBody(size: 14),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder: (ctx) {
+        final options = <_SheetOption>[];
+
+        if (space.status == LabSpaceStatus.paused) {
+          options.add(_SheetOption('Reanudar', Icons.play_arrow_outlined, () async {
+            Navigator.pop(ctx);
+            await repo.update(space.copyWith(status: LabSpaceStatus.active));
+          }));
+        } else if (space.status == LabSpaceStatus.active) {
+          options.add(_SheetOption('Pausar', Icons.pause_outlined, () async {
+            Navigator.pop(ctx);
+            await repo.update(space.copyWith(status: LabSpaceStatus.paused));
+          }));
+        }
+
+        if (space.status != LabSpaceStatus.completed) {
+          options.add(_SheetOption('Completar', Icons.check_circle_outline, () async {
+            Navigator.pop(ctx);
+            await repo.update(space.copyWith(status: LabSpaceStatus.completed));
+          }));
+        }
+
+        if (space.status != LabSpaceStatus.archived) {
+          options.add(_SheetOption('Archivar', Icons.archive_outlined, () async {
+            Navigator.pop(ctx);
+            await repo.update(space.copyWith(status: LabSpaceStatus.archived));
+          }));
+        }
+
+        if (space.status != LabSpaceStatus.active &&
+            space.status != LabSpaceStatus.paused) {
+          options.add(_SheetOption('Reactivar', Icons.replay_outlined, () async {
+            Navigator.pop(ctx);
+            await repo.update(space.copyWith(status: LabSpaceStatus.active));
+          }));
+        }
+
+        options.add(_SheetOption('Eliminar', Icons.delete_outline, () async {
+          Navigator.pop(ctx);
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (d) => AlertDialog(
+              backgroundColor: yCream,
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              title: Text('Eliminar space',
+                  style: ySans(size: 18, weight: FontWeight.w700)),
+              content: Text(
+                '¿Eliminar "${space.name}"? Se moverá a la papelera.',
+                style: yBody(size: 14),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(d, false),
+                    child: const Text('Cancelar')),
+                TextButton(
+                    onPressed: () => Navigator.pop(d, true),
+                    child: const Text('Eliminar')),
+              ],
+            ),
+          );
+          if (ok == true) await repo.softDelete(space.id);
+        }, destructive: true));
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  space.name.toUpperCase(),
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
+                ),
+              ),
+              for (final opt in options)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: opt.onTap,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 14),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                          top: BorderSide(color: yInk, width: 0.5)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(opt.icon, size: 18,
+                            color: opt.destructive
+                                ? const Color(0xFF8E2D4B)
+                                : yInk),
+                        const SizedBox(width: 12),
+                        Text(
+                          opt.label,
+                          style: ySans(
+                            size: 15,
+                            weight: FontWeight.w600,
+                            color: opt.destructive
+                                ? const Color(0xFF8E2D4B)
+                                : yInk,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
-    if (ok == true) {
-      await ref.read(labSpaceRepositoryProvider).softDelete(space.id);
-    }
   }
 
   @override
@@ -324,7 +453,7 @@ class _SpaceCard extends ConsumerWidget {
         context,
         MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: space)),
       ),
-      onLongPress: () => _confirmDelete(context, ref),
+      onLongPress: () => _showOptions(context, ref),
       child: Container(
         decoration: BoxDecoration(
           color: yCream,
@@ -392,7 +521,7 @@ class _SpaceCard extends ConsumerWidget {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      YBadge(label: stage, bg: yLab, fg: yCream, fontSize: 10),
+                      YBadge(label: stage, bg: _stageColor(stage), fg: yCream, fontSize: 10),
                       if (space.dueDate != null)
                         YBadge(
                           label: _fmtDate(space.dueDate!),

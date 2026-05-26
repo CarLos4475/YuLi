@@ -133,26 +133,32 @@ enum FlightSort { recent, alphabetical, count }
 
 enum FlightView { grid, list }
 
+enum FlightFilter { all, withNotes, empty, pinned }
+
 class FlightToolbarState {
   final FlightSort sort;
   final FlightView view;
   final String query;
+  final FlightFilter filter;
 
   const FlightToolbarState({
     this.sort = FlightSort.recent,
     this.view = FlightView.grid,
     this.query = '',
+    this.filter = FlightFilter.all,
   });
 
   FlightToolbarState copyWith({
     FlightSort? sort,
     FlightView? view,
     String? query,
+    FlightFilter? filter,
   }) =>
       FlightToolbarState(
         sort: sort ?? this.sort,
         view: view ?? this.view,
         query: query ?? this.query,
+        filter: filter ?? this.filter,
       );
 }
 
@@ -162,6 +168,7 @@ class FlightToolbarNotifier extends StateNotifier<FlightToolbarState> {
   void setSort(FlightSort s) => state = state.copyWith(sort: s);
   void setView(FlightView v) => state = state.copyWith(view: v);
   void setQuery(String q) => state = state.copyWith(query: q);
+  void setFilter(FlightFilter f) => state = state.copyWith(filter: f);
 }
 
 final flightToolbarProvider =

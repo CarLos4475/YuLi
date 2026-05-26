@@ -52,6 +52,13 @@ class _DrawingCellState extends State<DrawingCell> {
   final List<DrawingStroke> _undoStack = [];
   DrawingStroke? _active;
 
+  // Multi-finger tap tracking
+  final Set<int> _activePointers = {};
+  int _maxSimultaneous = 0;
+  bool _multiFingerMoved = false;
+  DateTime? _multiFingerDownTime;
+  final Map<int, Offset> _pointerDownPos = {};
+
   @override
   void initState() {
     super.initState();
@@ -115,6 +122,21 @@ class _DrawingCellState extends State<DrawingCell> {
       _active = null;
       return;
     }
+
+    if (!_erasing && isScribble(_active!.points)) {
+      final bounds = scribbleBounds(_active!.points);
+      final before = _data.strokes.length;
+      _data.strokes.removeWhere((s) {
+        for (final p in s.points) {
+          if (bounds.contains(Offset(p[0], p[1]))) return true;
+        }
+        return false;
+      });
+      setState(() => _active = null);
+      if (_data.strokes.length != before) widget.onChanged(_data);
+      return;
+    }
+
     setState(() {
       _data.strokes.add(_active!);
       _active = null;
@@ -328,19 +350,56 @@ class _DrawingCellState extends State<DrawingCell> {
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (e) {
+        _activePointers.add(e.pointer);
+        _pointerDownPos[e.pointer] = e.localPosition;
+        if (_activePointers.length > _maxSimultaneous) {
+          _maxSimultaneous = _activePointers.length;
+        }
+        if (_activePointers.length == 2) {
+          _multiFingerDownTime = DateTime.now();
+          _multiFingerMoved = false;
+          setState(() => _active = null);
+          return;
+        }
+        if (_activePointers.length > 2) return;
         if (!_shouldAcceptPointer(e.kind)) return;
         _start(e.localPosition);
       },
       onPointerMove: (e) {
+        if (_activePointers.length >= 2 && !_multiFingerMoved) {
+          final start = _pointerDownPos[e.pointer];
+          if (start != null && (e.localPosition - start).distance > 15) {
+            _multiFingerMoved = true;
+          }
+        }
+        if (_activePointers.length >= 2) return;
         if (!_shouldAcceptPointer(e.kind)) return;
         if (_active == null && !_erasing) return;
         _move(e.localPosition);
       },
       onPointerUp: (e) {
+        _activePointers.remove(e.pointer);
+        _pointerDownPos.remove(e.pointer);
+        if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
+          final elapsed = _multiFingerDownTime != null
+              ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
+              : 999;
+          if (!_multiFingerMoved && elapsed < 400) {
+            if (_maxSimultaneous == 2) _undo();
+            if (_maxSimultaneous >= 3) _redo();
+          }
+          _maxSimultaneous = 0;
+          _multiFingerDownTime = null;
+          return;
+        }
+        if (_activePointers.isEmpty) _maxSimultaneous = 0;
         if (!_shouldAcceptPointer(e.kind)) return;
         _end();
       },
       onPointerCancel: (e) {
+        _activePointers.remove(e.pointer);
+        _pointerDownPos.remove(e.pointer);
+        if (_activePointers.isEmpty) _maxSimultaneous = 0;
         if (!_shouldAcceptPointer(e.kind)) return;
         _end();
       },

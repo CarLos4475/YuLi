@@ -707,7 +707,7 @@ class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
 
     if (isExpiring) {
       return GestureDetector(
-        onTap: () {},
+        onTap: () => _showSendToLab(context),
         onLongPress: () => _showSendToLab(context),
         child: card,
       );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:markdown_widget/markdown_widget.dart';
@@ -29,6 +30,7 @@ class BlockRouter extends StatelessWidget {
   final Folder folder;
   final int index;
   final void Function(TextEditingController? ctrl)? onTextBlockFocusChanged;
+  final ValueChanged<bool>? onScrollLockChanged;
 
   const BlockRouter({
     super.key,
@@ -37,6 +39,7 @@ class BlockRouter extends StatelessWidget {
     required this.folder,
     required this.index,
     this.onTextBlockFocusChanged,
+    this.onScrollLockChanged,
   });
 
   @override
@@ -51,7 +54,8 @@ class BlockRouter extends StatelessWidget {
 
         BulletsBlock bl => _BulletsBlockBody(block: bl),
         TareasBlock tb => _TareasBlockBody(block: tb, note: note, folder: folder),
-        DrawingBlock d => _DrawingBlockBody(block: d, folder: folder),
+        DrawingBlock d => _DrawingBlockBody(
+            block: d, folder: folder, onScrollLockChanged: onScrollLockChanged),
       },
     );
   }
@@ -427,7 +431,27 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
 
   void _addCtrl(String text) {
     final c = TextEditingController(text: text);
-    final f = FocusNode();
+    late final FocusNode f;
+    f = FocusNode(
+      onKeyEvent: (node, event) {
+        if (event is KeyUpEvent) return KeyEventResult.ignored;
+        final idx = _focuses.indexOf(f);
+        if (event.logicalKey == LogicalKeyboardKey.backspace &&
+            c.text.isEmpty &&
+            idx >= 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _removeItem(idx);
+          });
+          return KeyEventResult.handled;
+        }
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.enter) {
+          _addItem();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+    );
     f.addListener(() {
       if (!f.hasFocus) flushSave(_persist);
     });
@@ -470,6 +494,10 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
       _focuses.removeAt(i).dispose();
     });
     scheduleSave(_persist);
+    final focusIdx = (i > 0) ? i - 1 : 0;
+    if (_focuses.isNotEmpty) {
+      _focuses[focusIdx].requestFocus();
+    }
   }
 
   @override
@@ -495,8 +523,12 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
                   child: TextField(
                     controller: _ctrls[i],
                     focusNode: _focuses[i],
+                    maxLines: null,
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.deny(RegExp(r'\n')),
+                    ],
                     onChanged: (_) => scheduleSave(_persist),
-                    onSubmitted: (_) => _addItem(),
                     style: yBody(size: 14, color: yInk2, height: 1.5),
                     decoration: InputDecoration(
                       isCollapsed: true,
@@ -510,15 +542,6 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
                       hintStyle:
                           yBody(size: 14, color: yMuted, height: 1.5),
                     ),
-                  ),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _removeItem(i),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8, top: 6),
-                    child: Icon(Icons.close,
-                        size: 14, color: yMuted.withValues(alpha: 0.5)),
                   ),
                 ),
               ],
@@ -988,8 +1011,13 @@ class _SpacePickerDialog extends StatelessWidget {
 class _DrawingBlockBody extends ConsumerStatefulWidget {
   final DrawingBlock block;
   final Folder folder;
+  final ValueChanged<bool>? onScrollLockChanged;
 
-  const _DrawingBlockBody({required this.block, required this.folder});
+  const _DrawingBlockBody({
+    required this.block,
+    required this.folder,
+    this.onScrollLockChanged,
+  });
 
   @override
   ConsumerState<_DrawingBlockBody> createState() =>
@@ -1037,7 +1065,9 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       },
       onDrawStart: () {},
       onDrawEnd: () {},
-      onScrollLockChanged: (_) {},
+      onScrollLockChanged: (locked) {
+        widget.onScrollLockChanged?.call(locked);
+      },
     );
   }
 }

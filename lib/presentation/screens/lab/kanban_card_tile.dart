@@ -24,6 +24,7 @@ class KanbanCardTile extends StatelessWidget {
     final folderColor =
         card.originFolderColor != null ? Color(card.originFolderColor!) : null;
     final overdue = _isOverdue();
+    final pColor = _priorityColor();
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -36,115 +37,176 @@ class KanbanCardTile extends StatelessWidget {
             width: isSelected ? yLineHeavy : 2,
           ),
         ),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Opacity(
-          opacity: isEndState ? 0.85 : 1.0,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      cleanMention(card.title),
-                      style: ySans(
-                        size: 13.5,
-                        weight: FontWeight.w600,
-                        letterSpacing: -0.1,
-                        color: isEndState ? yMuted : yInk,
-                        height: 1.3,
-                      ).copyWith(
-                        decoration:
-                            isEndState ? TextDecoration.lineThrough : null,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (pColor != null)
+              Container(width: 5, color: pColor),
+            Expanded(
+              child: Opacity(
+                opacity: isEndState ? 0.85 : 1.0,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                      pColor != null ? 8 : 12, 10, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              cleanMention(card.title),
+                              style: ySans(
+                                size: 13.5,
+                                weight: FontWeight.w600,
+                                letterSpacing: -0.1,
+                                color: isEndState ? yMuted : yInk,
+                                height: 1.3,
+                              ).copyWith(
+                                decoration: isEndState
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          if (selectionMode)
+                            Container(
+                              width: 20,
+                              height: 20,
+                              margin: const EdgeInsets.only(left: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? accentColor : yCream,
+                                border: Border.all(color: yInk, width: 1.5),
+                              ),
+                              child: isSelected
+                                  ? const Center(
+                                      child: Text('v',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              color: yCream,
+                                              fontWeight: FontWeight.w700,
+                                              height: 1.0)))
+                                  : null,
+                            ),
+                        ],
                       ),
-                    ),
-                  ),
-                  if (selectionMode)
-                    Container(
-                      width: 20,
-                      height: 20,
-                      margin: const EdgeInsets.only(left: 8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? accentColor : yCream,
-                        border: Border.all(color: yInk, width: 1.5),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          if (folderColor != null)
+                            Container(
+                              margin: const EdgeInsets.only(right: 5),
+                              padding:
+                                  const EdgeInsets.fromLTRB(6, 1, 6, 2),
+                              decoration: BoxDecoration(
+                                color: folderColor,
+                                border:
+                                    Border.all(color: yInk, width: 1.5),
+                              ),
+                              child: Text(
+                                '@${_folderName()}',
+                                style: yMono(
+                                  size: 9,
+                                  weight: FontWeight.w700,
+                                  color: yCream,
+                                  tracking: 0.5,
+                                ),
+                              ),
+                            ),
+                          if (card.originTaskId != null)
+                            _originBadge(isEndState, overdue),
+                          if (card.sourceNoteId != null)
+                            Container(
+                              margin: const EdgeInsets.only(right: 5),
+                              padding:
+                                  const EdgeInsets.fromLTRB(6, 1, 6, 2),
+                              decoration: BoxDecoration(
+                                color: yFlight,
+                                border:
+                                    Border.all(color: yInk, width: 1.5),
+                              ),
+                              child: Text(
+                                '✎ NOTA',
+                                style: yMono(
+                                  size: 9,
+                                  weight: FontWeight.w700,
+                                  color: yCream,
+                                  tracking: 0.5,
+                                ),
+                              ),
+                            ),
+                          const Spacer(),
+                          if (card.dueDate != null)
+                            Text(
+                              '${overdue ? "v " : ""}${_formatDue()}',
+                              style: yMono(
+                                size: 9,
+                                weight: FontWeight.w700,
+                                tracking: 1,
+                                color: overdue ? yFight : yMuted,
+                              ),
+                            ),
+                        ],
                       ),
-                      child: isSelected
-                          ? const Center(
-                              child: Text('v',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: yCream,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.0)))
-                          : null,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 7),
-              Row(
-                children: [
-                  if (folderColor != null)
-                    Container(
-                      margin: const EdgeInsets.only(right: 5),
-                      padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
-                      decoration: BoxDecoration(
-                        color: folderColor,
-                        border: Border.all(color: yInk, width: 1.5),
-                      ),
-                      child: Text(
-                        '@${_folderName()}',
-                        style: yMono(
-                          size: 9,
-                          weight: FontWeight.w700,
-                          color: yCream,
-                          tracking: 0.5,
+                      if (card.description != null &&
+                          card.description!.isNotEmpty &&
+                          !isEndState) ...[
+                        const SizedBox(height: 5),
+                        Text(
+                          card.description!
+                              .replaceAll(RegExp(r'[#*_`\[\]>\-]'), '')
+                              .trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: yBody(
+                            size: 11,
+                            color: yMuted,
+                            height: 1.3,
+                          ),
                         ),
-                      ),
-                    ),
-                  if (_priorityColor() != null)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(right: 5),
-                      decoration: BoxDecoration(
-                        color: _priorityColor(),
-                        border: Border.all(color: yInk, width: 1.5),
-                      ),
-                    ),
-                  const Spacer(),
-                  if (card.dueDate != null)
-                    Text(
-                      '${overdue ? "v " : ""}${_formatDue()}',
-                      style: yMono(
-                        size: 9,
-                        weight: FontWeight.w700,
-                        tracking: 1,
-                        color: overdue ? yFight : yMuted,
-                      ),
-                    ),
-                ],
-              ),
-              if (card.description != null &&
-                  card.description!.isNotEmpty &&
-                  !isEndState) ...[
-                const SizedBox(height: 5),
-                Text(
-                  card.description!
-                      .replaceAll(RegExp(r'[#*_`\[\]>\-]'), '')
-                      .trim(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: yBody(
-                    size: 11,
-                    color: yMuted,
-                    height: 1.3,
+                      ],
+                    ],
                   ),
                 ),
-              ],
-            ],
-          ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _originBadge(bool isEndState, bool overdue) {
+    final String label;
+    final Color bg;
+
+    if (isEndState) {
+      label = '✓ HECHO';
+      bg = yLab;
+    } else if (overdue) {
+      label = '▲ VENCIDO';
+      bg = yFight;
+    } else {
+      label = '⚔ TAREA';
+      bg = yAmber;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(right: 5),
+      padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: yInk, width: 1.5),
+      ),
+      child: Text(
+        label,
+        style: yMono(
+          size: 9,
+          weight: FontWeight.w700,
+          color: yCream,
+          tracking: 0.5,
         ),
       ),
     );

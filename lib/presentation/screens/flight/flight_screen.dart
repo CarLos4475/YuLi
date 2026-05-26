@@ -80,7 +80,8 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
     }
     final totalNotes = counts.values.fold<int>(0, (s, v) => s + v);
 
-    final sorted = _sortFolders(folders, counts, pinned, toolbar.sort);
+    final filtered = _filterFolders(folders, counts, pinned, toolbar.filter);
+    final sorted = _sortFolders(filtered, counts, pinned, toolbar.sort);
 
     return Column(
       children: [
@@ -93,7 +94,6 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
               ref.read(currentModeProvider.notifier).state = AppMode.home,
           headerRight: [
             _SearchBar(totalNotes: totalNotes),
-            IconSquareBtn(icon: Icons.help_outline),
           ],
         ),
         const _Toolbar(),
@@ -107,6 +107,24 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
         ),
       ],
     );
+  }
+
+  List<Folder> _filterFolders(
+    List<Folder> folders,
+    Map<int, int> counts,
+    Set<int> pinned,
+    FlightFilter filter,
+  ) {
+    switch (filter) {
+      case FlightFilter.all:
+        return folders;
+      case FlightFilter.withNotes:
+        return folders.where((f) => (counts[f.id] ?? 0) > 0).toList();
+      case FlightFilter.empty:
+        return folders.where((f) => (counts[f.id] ?? 0) == 0).toList();
+      case FlightFilter.pinned:
+        return folders.where((f) => pinned.contains(f.id)).toList();
+    }
   }
 
   List<Folder> _sortFolders(
@@ -193,8 +211,8 @@ class _Toolbar extends ConsumerWidget {
           const SizedBox(width: 6),
           ToolChip(
             label: 'FILTRO',
-            value: 'TODAS',
-            onTap: () {},
+            value: _filterLabel(toolbar.filter),
+            onTap: () => _showFilterMenu(context, ref),
           ),
           const Spacer(),
           ViewToggleBtn(
@@ -222,6 +240,38 @@ class _Toolbar extends ConsumerWidget {
       case FlightSort.count:
         return 'MÁS NOTAS';
     }
+  }
+
+  String _filterLabel(FlightFilter f) {
+    switch (f) {
+      case FlightFilter.all:
+        return 'TODAS';
+      case FlightFilter.withNotes:
+        return 'CON NOTAS';
+      case FlightFilter.empty:
+        return 'VACÍAS';
+      case FlightFilter.pinned:
+        return 'FIJADAS';
+    }
+  }
+
+  void _showFilterMenu(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(flightToolbarProvider.notifier);
+    showMenu<FlightFilter>(
+      context: context,
+      position: const RelativeRect.fromLTRB(280, 120, 0, 0),
+      color: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      items: const [
+        PopupMenuItem(value: FlightFilter.all, child: Text('Todas')),
+        PopupMenuItem(
+            value: FlightFilter.withNotes, child: Text('Con notas')),
+        PopupMenuItem(value: FlightFilter.empty, child: Text('Vacías')),
+        PopupMenuItem(value: FlightFilter.pinned, child: Text('Fijadas')),
+      ],
+    ).then((f) {
+      if (f != null) notifier.setFilter(f);
+    });
   }
 
   void _showSortMenu(BuildContext context, WidgetRef ref) {

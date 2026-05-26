@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show Rect;
 import 'package:uuid/uuid.dart';
 
 enum CellType { markdown, drawing }
@@ -66,6 +67,52 @@ class DrawingStroke {
                 (p as List).map((v) => (v as num).toDouble()).toList())
             .toList(),
       );
+}
+
+// ─── Scribble detection ──────────────────────────────────────────────────────
+
+bool isScribble(List<List<double>> points) {
+  if (points.length < 15) return false;
+
+  int crossings = 0;
+  final len = points.length;
+  for (int i = 0; i < len - 3 && crossings < 5; i++) {
+    for (int j = i + 2; j < len - 1; j++) {
+      if (_segmentsIntersect(
+        points[i][0], points[i][1], points[i + 1][0], points[i + 1][1],
+        points[j][0], points[j][1], points[j + 1][0], points[j + 1][1],
+      )) {
+        crossings++;
+        if (crossings >= 5) return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool _segmentsIntersect(
+  double ax, double ay, double bx, double by,
+  double cx, double cy, double dx, double dy,
+) {
+  double cross(double ux, double uy, double vx, double vy) => ux * vy - uy * vx;
+  final d1 = cross(dx - cx, dy - cy, ax - cx, ay - cy);
+  final d2 = cross(dx - cx, dy - cy, bx - cx, by - cy);
+  final d3 = cross(bx - ax, by - ay, cx - ax, cy - ay);
+  final d4 = cross(bx - ax, by - ay, dx - ax, dy - ay);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+Rect scribbleBounds(List<List<double>> points) {
+  double minX = double.infinity, maxX = double.negativeInfinity;
+  double minY = double.infinity, maxY = double.negativeInfinity;
+  for (final p in points) {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minY) minY = p[1];
+    if (p[1] > maxY) maxY = p[1];
+  }
+  return Rect.fromLTRB(minX, minY, maxX, maxY);
 }
 
 // ─── Serialization ───────────────────────────────────────────────────────────

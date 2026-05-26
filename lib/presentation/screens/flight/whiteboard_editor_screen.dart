@@ -68,6 +68,12 @@ class _WhiteboardEditorScreenState
   static const _holdTolerance2 = 400.0; // 20px squared
   late final List<Color> _palette;
 
+  // Multi-finger tap tracking
+  int _maxSimultaneous = 0;
+  bool _multiFingerMoved = false;
+  DateTime? _multiFingerDownTime;
+  final Map<int, Offset> _pointerDownPos = {};
+
   @override
   void initState() {
     super.initState();
@@ -159,8 +165,28 @@ class _WhiteboardEditorScreenState
 
   void _onDown(PointerDownEvent e) {
     _activePointers.add(e.pointer);
+    _pointerDownPos[e.pointer] = e.localPosition;
+    if (_activePointers.length > _maxSimultaneous) {
+      _maxSimultaneous = _activePointers.length;
+    }
+    if (_activePointers.length == 2) {
+      _multiFingerDownTime = DateTime.now();
+      _multiFingerMoved = false;
+    }
+
     final isStylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
     if (isStylus) _stylusActive = true;
+
+    if (!_palmRejection && !isStylus && _activePointers.length >= 2) {
+      setState(() {
+        _active = null;
+        _isDrawing = false;
+      });
+      _holdTimer?.cancel();
+      _holdAnchor = null;
+      return;
+    }
+
     final willDraw = _shouldDraw(e.kind);
     setState(() => _isDrawing = willDraw);
     if (!willDraw) return;
@@ -185,6 +211,12 @@ class _WhiteboardEditorScreenState
   static const _minDist2 = 9.0; // 3px squared
 
   void _onMove(PointerMoveEvent e) {
+    if (_activePointers.length >= 2 && !_multiFingerMoved) {
+      final start = _pointerDownPos[e.pointer];
+      if (start != null && (e.localPosition - start).distance > 15) {
+        _multiFingerMoved = true;
+      }
+    }
     if (!_isDrawing) return;
     final p = _screenToWorld(e.localPosition);
     if (_erasing) {
@@ -210,19 +242,42 @@ class _WhiteboardEditorScreenState
 
   void _onUp(PointerUpEvent e) {
     _activePointers.remove(e.pointer);
+    _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
     _holdAnchor = null;
     _stylusActive = false;
     setState(() => _isDrawing = false);
+
+    if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
+      final elapsed = _multiFingerDownTime != null
+          ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
+          : 999;
+      if (!_multiFingerMoved && elapsed < 400) {
+        if (_maxSimultaneous == 2) {
+          _undo();
+          HapticFeedback.lightImpact();
+        } else if (_maxSimultaneous >= 3) {
+          _redo();
+          HapticFeedback.lightImpact();
+        }
+      }
+      _maxSimultaneous = 0;
+      _multiFingerDownTime = null;
+      return;
+    }
+    if (_activePointers.isEmpty) _maxSimultaneous = 0;
+
     if (_active == null) return;
     _finishStroke();
   }
 
   void _onCancel(PointerCancelEvent e) {
     _activePointers.remove(e.pointer);
+    _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
     _holdAnchor = null;
     setState(() => _isDrawing = false);
+    if (_activePointers.isEmpty) _maxSimultaneous = 0;
     _finishStroke();
   }
 
@@ -234,6 +289,24 @@ class _WhiteboardEditorScreenState
       setState(() => _active = null);
       return;
     }
+
+    if (!_erasing && isScribble(_active!.points)) {
+      final bounds = scribbleBounds(_active!.points);
+      final before = _data.strokes.length;
+      _data.strokes.removeWhere((s) {
+        for (final p in s.points) {
+          if (bounds.contains(Offset(p[0], p[1]))) return true;
+        }
+        return false;
+      });
+      setState(() => _active = null);
+      if (_data.strokes.length != before) {
+        HapticFeedback.lightImpact();
+        _persist();
+      }
+      return;
+    }
+
     _active = DrawingStroke(
       colorValue: _active!.colorValue,
       strokeWidth: _active!.strokeWidth,
@@ -435,7 +508,9 @@ class _WhiteboardEditorScreenState
                           minScale: 0.3,
                           maxScale: 4.0,
                           boundaryMargin: const EdgeInsets.all(_kCanvasW * 0.5),
-                          panEnabled: !_stylusActive,
+                          panEnabled: _palmRejection
+                              ? !_stylusActive
+                              : !_isDrawing,
                           scaleEnabled: !_stylusActive && !_locked,
                           constrained: false,
                           child: SizedBox(

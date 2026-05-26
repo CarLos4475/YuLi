@@ -134,7 +134,6 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
                   bg: widget.folder.color,
                   fg: yCream,
                 ),
-                IconSquareBtn(icon: Icons.help_outline),
               ],
             ),
             _FolderHero(

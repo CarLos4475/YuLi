@@ -440,6 +440,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
           height: (height - 4.0).clamp(4.0, double.infinity),
           child: _ScheduleBlockWidget(
             block: b,
+            renderedDay: dayKey,
             onTap: () => _showBlockDetail(context, b),
           ),
         ),
@@ -1043,17 +1044,19 @@ class _DragOverlay extends StatelessWidget {
 
 class _ScheduleBlockWidget extends StatelessWidget {
   final ScheduleBlock block;
+  final String renderedDay;
   final VoidCallback onTap;
 
   const _ScheduleBlockWidget({
     required this.block,
+    required this.renderedDay,
     required this.onTap,
   });
 
   bool get _isCurrent {
     final now = DateTime.now();
     final nowDay = _dayNames[now.weekday - 1];
-    if (!block.days.contains(nowDay)) return false;
+    if (renderedDay != nowDay) return false;
     final nowMin = now.hour * 60 + now.minute;
     return nowMin >= block.startMinutes && nowMin < block.endMinutes;
   }
