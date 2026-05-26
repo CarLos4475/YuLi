@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show PointerDeviceKind;
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,12 +58,14 @@ class _WhiteboardEditorScreenState
   bool _erasing = false;
   bool _locked = false;
   bool _palmRejection = true;
-  bool _shapeSnap = true;
+  final Set<int> _activePointers = {};
+  bool _isDrawing = false;
+  bool _stylusActive = false;
   final List<DrawingStroke> _undoStack = [];
   DrawingStroke? _active;
-  bool _pointerDown = false;
   Timer? _holdTimer;
-  bool _snappedThisStroke = false;
+  Offset? _holdAnchor;
+  static const _holdTolerance2 = 400.0; // 20px squared
   late final List<Color> _palette;
 
   @override
@@ -80,27 +82,19 @@ class _WhiteboardEditorScreenState
     super.dispose();
   }
 
-  void _scheduleHoldTimer() {
-    _holdTimer?.cancel();
-    if (!_shapeSnap) return;
-    _holdTimer = Timer(const Duration(milliseconds: 800), _tryShapeSnap);
-  }
-
-  void _tryShapeSnap() {
-    if (!_pointerDown) return;
-    if (_active == null) return;
-    if (_snappedThisStroke) return;
+  bool _tryShapeSnap() {
+    if (_active == null) return false;
     final cleaned = ShapeRecognizer.detect(_active!.points);
-    if (cleaned == null) return;
-    final clean = shapeToStroke(cleaned, _color.toARGB32(), _strokeW);
+    if (cleaned == null) return false;
+    final clean = shapeToStroke(cleaned, _active!.colorValue, _active!.strokeWidth);
     setState(() {
       _data.strokes.add(clean);
       _active = null;
       _undoStack.clear();
-      _snappedThisStroke = true;
     });
     _persist();
     HapticFeedback.lightImpact();
+    return true;
   }
 
   Future<void> _ensureCanvasBlock() async {
@@ -148,17 +142,29 @@ class _WhiteboardEditorScreenState
     return Offset(x, y);
   }
 
-  bool _accept(PointerDeviceKind kind) {
+  bool _shouldDraw(PointerDeviceKind kind) {
+    if (kind == PointerDeviceKind.stylus ||
+        kind == PointerDeviceKind.invertedStylus) {
+      return true;
+    }
     if (!_palmRejection) return true;
-    return kind == PointerDeviceKind.stylus ||
-        kind == PointerDeviceKind.invertedStylus;
+    return false;
+  }
+
+  void _startHoldTimer(Offset worldPos) {
+    _holdTimer?.cancel();
+    _holdAnchor = worldPos;
+    _holdTimer = Timer(const Duration(milliseconds: 800), _tryShapeSnap);
   }
 
   void _onDown(PointerDownEvent e) {
-    if (!_locked) return;
-    if (!_accept(e.kind)) return;
-    _pointerDown = true;
-    _snappedThisStroke = false;
+    _activePointers.add(e.pointer);
+    final isStylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
+    if (isStylus) _stylusActive = true;
+    final willDraw = _shouldDraw(e.kind);
+    setState(() => _isDrawing = willDraw);
+    if (!willDraw) return;
+
     final p = _screenToWorld(e.localPosition);
     if (_erasing) {
       _eraseNear(p);
@@ -173,34 +179,50 @@ class _WhiteboardEditorScreenState
         ],
       );
     });
-    _scheduleHoldTimer();
+    _startHoldTimer(p);
   }
 
+  static const _minDist2 = 9.0; // 3px squared
+
   void _onMove(PointerMoveEvent e) {
-    if (!_locked) return;
-    if (!_accept(e.kind)) return;
+    if (!_isDrawing) return;
     final p = _screenToWorld(e.localPosition);
     if (_erasing) {
       _eraseNear(p);
       return;
     }
     if (_active == null) return;
-    setState(() => _active!.points.add([p.dx, p.dy]));
-    _scheduleHoldTimer();
+    final pts = _active!.points;
+    if (pts.isNotEmpty) {
+      final dx = p.dx - pts.last[0];
+      final dy = p.dy - pts.last[1];
+      if (dx * dx + dy * dy < _minDist2) return;
+    }
+    setState(() => pts.add([p.dx, p.dy]));
+    if (_holdAnchor != null) {
+      final dx = p.dx - _holdAnchor!.dx;
+      final dy = p.dy - _holdAnchor!.dy;
+      if (dx * dx + dy * dy > _holdTolerance2) {
+        _startHoldTimer(p);
+      }
+    }
   }
 
   void _onUp(PointerUpEvent e) {
+    _activePointers.remove(e.pointer);
     _holdTimer?.cancel();
-    _pointerDown = false;
-    if (!_locked) return;
-    if (!_accept(e.kind)) return;
+    _holdAnchor = null;
+    _stylusActive = false;
+    setState(() => _isDrawing = false);
+    if (_active == null) return;
     _finishStroke();
   }
 
   void _onCancel(PointerCancelEvent e) {
+    _activePointers.remove(e.pointer);
     _holdTimer?.cancel();
-    _pointerDown = false;
-    if (!_locked) return;
+    _holdAnchor = null;
+    setState(() => _isDrawing = false);
     _finishStroke();
   }
 
@@ -212,12 +234,30 @@ class _WhiteboardEditorScreenState
       setState(() => _active = null);
       return;
     }
+    _active = DrawingStroke(
+      colorValue: _active!.colorValue,
+      strokeWidth: _active!.strokeWidth,
+      points: _smooth(_active!.points),
+    );
     setState(() {
       _data.strokes.add(_active!);
       _active = null;
       _undoStack.clear();
     });
     _persist();
+  }
+
+  static List<List<double>> _smooth(List<List<double>> pts) {
+    if (pts.length < 3) return pts;
+    final out = <List<double>>[pts.first];
+    for (int i = 1; i < pts.length - 1; i++) {
+      out.add([
+        (pts[i - 1][0] + pts[i][0] * 2 + pts[i + 1][0]) / 4,
+        (pts[i - 1][1] + pts[i][1] * 2 + pts[i + 1][1]) / 4,
+      ]);
+    }
+    out.add(pts.last);
+    return out;
   }
 
   void _eraseNear(Offset pos) {
@@ -374,36 +414,48 @@ class _WhiteboardEditorScreenState
           ),
           _toolbar(),
             Expanded(
-              child: ClipRect(
-                child: Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: _onDown,
-                  onPointerMove: _onMove,
-                  onPointerUp: _onUp,
-                  onPointerCancel: _onCancel,
-                  child: InteractiveViewer(
-                    transformationController: _viewCtrl,
-                    minScale: 0.3,
-                    maxScale: 4.0,
-                    boundaryMargin:
-                        const EdgeInsets.all(_kCanvasW * 0.5),
-                    panEnabled: !_locked,
-                    scaleEnabled: !_locked,
-                    constrained: false,
-                    child: SizedBox(
-                      width: _kCanvasW,
-                      height: _kCanvasH,
-                      child: CustomPaint(
-                        painter: _CanvasPainter(
-                          strokes: _data.strokes,
-                          active: _active,
-                          locked: _locked,
+              child: LayoutBuilder(builder: (ctx, c) {
+                return AnimatedBuilder(
+                  animation: _viewCtrl,
+                  builder: (_, _) {
+                    final inv = Matrix4.inverted(_viewCtrl.value);
+                    final tl = MatrixUtils.transformPoint(inv, Offset.zero);
+                    final br = MatrixUtils.transformPoint(
+                        inv, Offset(c.maxWidth, c.maxHeight));
+                    final visibleRect = Rect.fromPoints(tl, br);
+                    return ClipRect(
+                      child: Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: _onDown,
+                        onPointerMove: _onMove,
+                        onPointerUp: _onUp,
+                        onPointerCancel: _onCancel,
+                        child: InteractiveViewer(
+                          transformationController: _viewCtrl,
+                          minScale: 0.3,
+                          maxScale: 4.0,
+                          boundaryMargin: const EdgeInsets.all(_kCanvasW * 0.5),
+                          panEnabled: !_stylusActive,
+                          scaleEnabled: !_stylusActive && !_locked,
+                          constrained: false,
+                          child: SizedBox(
+                            width: _kCanvasW,
+                            height: _kCanvasH,
+                            child: CustomPaint(
+                              painter: _CanvasPainter(
+                                strokes: _data.strokes,
+                                active: _active,
+                                locked: _locked,
+                                visibleRect: visibleRect,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
+                    );
+                  },
+                );
+              }),
             ),
           ],
         ),
@@ -426,7 +478,7 @@ class _WhiteboardEditorScreenState
             _toolBtn(
               icon: _locked ? Icons.lock : Icons.lock_open,
               active: _locked,
-              label: _locked ? 'DIBUJO' : 'NAV',
+              label: _locked ? 'ZOOM OFF' : 'ZOOM ON',
               onTap: () => setState(() => _locked = !_locked),
             ),
             const SizedBox(width: 16),
@@ -471,13 +523,6 @@ class _WhiteboardEditorScreenState
               active: _palmRejection,
               label: 'PALMA',
               onTap: () => setState(() => _palmRejection = !_palmRejection),
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.auto_awesome,
-              active: _shapeSnap,
-              label: 'SNAP',
-              onTap: () => setState(() => _shapeSnap = !_shapeSnap),
             ),
             const SizedBox(width: 16),
             _toolBtn(
@@ -601,54 +646,70 @@ class _CanvasPainter extends CustomPainter {
   final List<DrawingStroke> strokes;
   final DrawingStroke? active;
   final bool locked;
+  final Rect visibleRect;
 
   _CanvasPainter({
     required this.strokes,
     required this.active,
     required this.locked,
+    required this.visibleRect,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Grid background — gentle dotted texture so users have a frame.
-    final bg = Paint()..color = yCream;
-    canvas.drawRect(Offset.zero & size, bg);
-
+    final vr = visibleRect;
+    // Background — only the visible portion.
+    canvas.drawRect(vr, Paint()..color = yCream);
+    // Grid dots — only within visible rect (with 48px margin on each side).
     final dot = Paint()..color = yMuted.withValues(alpha: 0.16);
     const step = 48.0;
-    for (double x = 0; x < size.width; x += step) {
-      for (double y = 0; y < size.height; y += step) {
+    final startX = (vr.left / step).floor() * step;
+    final startY = (vr.top / step).floor() * step;
+    for (double x = startX; x < vr.right + step; x += step) {
+      for (double y = startY; y < vr.bottom + step; y += step) {
         canvas.drawCircle(Offset(x, y), 1.2, dot);
       }
     }
-
+    // Strokes — skip those that don't intersect the visible rect.
     for (final s in strokes) {
-      _draw(canvas, s);
+      if (_strokeInRect(s, vr)) _draw(canvas, s);
     }
-    if (active != null) _draw(canvas, active!);
-
+    if (active != null && _strokeInRect(active!, vr)) _draw(canvas, active!);
+    // Hint.
     if (!locked) {
-      // Hint banner — centered, small.
       const center = Offset(_kCanvasW / 2, _kCanvasH / 2 - 8);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: 'BLOQUEAR PARA DIBUJAR · PINCH PARA ZOOM',
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.4,
-            color: yMuted.withValues(alpha: 0.45),
+      if (vr.contains(center)) {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: 'BLOQUEAR PARA DIBUJAR · PINCH PARA ZOOM',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: yMuted.withValues(alpha: 0.45),
+            ),
           ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+      }
     }
   }
 
+  bool _strokeInRect(DrawingStroke s, Rect r) {
+    for (final p in s.points) {
+      if (r.contains(Offset(p[0], p[1]))) return true;
+    }
+    return false;
+  }
+
   @override
-  bool shouldRepaint(_CanvasPainter old) => true;
+  bool shouldRepaint(_CanvasPainter old) =>
+      old.visibleRect != visibleRect ||
+      old.locked != locked ||
+      old.strokes != strokes ||
+      old.active != active;
 }
 
 void _draw(Canvas canvas, DrawingStroke stroke) {

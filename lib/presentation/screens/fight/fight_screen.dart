@@ -19,6 +19,7 @@ class FightScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hoy = ref.watch(pendingTasksProvider).valueOrNull ?? [];
+    final hechas = ref.watch(doneTodayTasksProvider).valueOrNull ?? [];
     final ayer = ref.watch(yesterdayTasksProvider).valueOrNull ?? [];
     final vencidas = ref.watch(vencidasTasksProvider).valueOrNull ?? [];
 
@@ -44,12 +45,14 @@ class FightScreen extends ConsumerWidget {
               if (isWide) {
                 return _ThreeBuckets(
                   hoy: hoy,
+                  hechas: hechas,
                   ayer: ayer,
                   vencidas: vencidas,
                 );
               }
               return _StackedBuckets(
                 hoy: hoy,
+                hechas: hechas,
                 ayer: ayer,
                 vencidas: vencidas,
               );
@@ -168,9 +171,14 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
     _focusNode.requestFocus();
   }
 
+  static const _maxChars = 280;
+
+  int get _contentLength =>
+      _controller.text.replaceAll(RegExp(r'@\S+'), '').length;
+
   Future<void> _submit() async {
     final raw = _controller.text.trim();
-    if (raw.isEmpty) return;
+    if (raw.isEmpty || _contentLength > _maxChars) return;
     final folders = ref.read(activeFoldersProvider).valueOrNull ?? [];
     int? folderId;
     final m = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)').firstMatch(raw);
@@ -263,17 +271,39 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
                   ),
                 ),
               ),
+              // Char counter
+              if (_controller.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    '$_contentLength',
+                    style: yMono(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      tracking: 0.5,
+                      color: _contentLength > _maxChars
+                          ? yFight
+                          : _contentLength > 260
+                              ? yAmber
+                              : yMuted,
+                    ),
+                  ),
+                ),
               // Red + submit
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _submit,
+                onTap: (_controller.text.trim().isEmpty || _contentLength > _maxChars)
+                    ? null
+                    : _submit,
                 child: Container(
                   width: 76,
                   height: double.infinity,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: yFight,
-                    border: Border(left: BorderSide(color: yInk, width: yLineHeavy)),
+                  decoration: BoxDecoration(
+                    color: (_controller.text.trim().isEmpty || _contentLength > _maxChars)
+                        ? yMuted.withValues(alpha: 0.3)
+                        : yFight,
+                    border: const Border(left: BorderSide(color: yInk, width: yLineHeavy)),
                   ),
                   child: Text(
                     '+',
@@ -308,11 +338,13 @@ String _stripAccents(String s) {
 
 class _ThreeBuckets extends StatelessWidget {
   final List<domain_task.Task> hoy;
+  final List<domain_task.Task> hechas;
   final List<domain_task.Task> ayer;
   final List<domain_task.Task> vencidas;
 
   const _ThreeBuckets({
     required this.hoy,
+    required this.hechas,
     required this.ayer,
     required this.vencidas,
   });
@@ -328,6 +360,7 @@ class _ThreeBuckets extends StatelessWidget {
             subtitle: 'capturadas hoy',
             color: yFight,
             tasks: hoy,
+            doneTasks: hechas,
             gesture: _BucketGesture.swipe,
             borderRight: true,
           ),
@@ -362,11 +395,13 @@ class _ThreeBuckets extends StatelessWidget {
 
 class _StackedBuckets extends StatelessWidget {
   final List<domain_task.Task> hoy;
+  final List<domain_task.Task> hechas;
   final List<domain_task.Task> ayer;
   final List<domain_task.Task> vencidas;
 
   const _StackedBuckets({
     required this.hoy,
+    required this.hechas,
     required this.ayer,
     required this.vencidas,
   });
@@ -385,6 +420,11 @@ class _StackedBuckets extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
               child: _SwipeableTaskCard(
                   task: t, gesture: _BucketGesture.swipe),
+            )),
+        ...hechas.map((t) => Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: _SwipeableTaskCard(
+                  task: t, gesture: _BucketGesture.done),
             )),
         _InlineBucketHeader(
             title: 'AYER',
@@ -466,13 +506,14 @@ class _InlineBucketHeader extends StatelessWidget {
 
 // ─── Bucket column ────────────────────────────────────────────────────────
 
-enum _BucketGesture { swipe, expiring }
+enum _BucketGesture { swipe, expiring, done }
 
 class _BucketColumn extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color color;
   final List<domain_task.Task> tasks;
+  final List<domain_task.Task> doneTasks;
   final _BucketGesture gesture;
   final bool borderRight;
 
@@ -481,6 +522,7 @@ class _BucketColumn extends StatelessWidget {
     required this.subtitle,
     required this.color,
     required this.tasks,
+    this.doneTasks = const [],
     required this.gesture,
     this.borderRight = false,
   });
@@ -571,7 +613,7 @@ class _BucketColumn extends StatelessWidget {
           ),
           // List
           Expanded(
-            child: tasks.isEmpty
+            child: (tasks.isEmpty && doneTasks.isEmpty)
                 ? Center(
                     child: Text(
                       'NADA',
@@ -582,14 +624,18 @@ class _BucketColumn extends StatelessWidget {
                       ),
                     ),
                   )
-                : ListView.separated(
+                : ListView(
                     padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                    itemBuilder: (_, i) => _SwipeableTaskCard(
-                      task: tasks[i],
-                      gesture: gesture,
-                    ),
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemCount: tasks.length,
+                    children: [
+                      for (final t in tasks) ...[
+                        _SwipeableTaskCard(task: t, gesture: gesture),
+                        const SizedBox(height: 10),
+                      ],
+                      for (final t in doneTasks) ...[
+                        _SwipeableTaskCard(task: t, gesture: _BucketGesture.done),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
                   ),
           ),
         ],
@@ -631,12 +677,35 @@ class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDone = widget.gesture == _BucketGesture.done;
+    final isExpiring = widget.gesture == _BucketGesture.expiring;
+
     final card = _TaskCardBody(
       task: widget.task,
-      expiring: widget.gesture == _BucketGesture.expiring,
+      expiring: isExpiring,
+      done: isDone,
     );
 
-    if (widget.gesture == _BucketGesture.expiring) {
+    if (isDone) {
+      return Dismissible(
+        key: ValueKey('done_${widget.task.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          await _discard();
+          return false;
+        },
+        background: const SizedBox.shrink(),
+        secondaryBackground: const _SwipeBg(
+          color: Color(0xFF8E2D4B),
+          align: Alignment.centerRight,
+          icon: Icons.close,
+          label: 'QUITAR',
+        ),
+        child: card,
+      );
+    }
+
+    if (isExpiring) {
       return GestureDetector(
         onTap: () {},
         onLongPress: () => _showSendToLab(context),
@@ -718,8 +787,13 @@ class _SwipeBg extends StatelessWidget {
 class _TaskCardBody extends ConsumerWidget {
   final domain_task.Task task;
   final bool expiring;
+  final bool done;
 
-  const _TaskCardBody({required this.task, required this.expiring});
+  const _TaskCardBody({
+    required this.task,
+    required this.expiring,
+    this.done = false,
+  });
 
   String _captured(DateTime created) {
     return '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}';
@@ -735,6 +809,97 @@ class _TaskCardBody extends ConsumerWidget {
     return '${remaining.inMinutes} m';
   }
 
+  Color _dueDateColor(DateTime dueDate) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final diff = due.difference(today).inDays;
+    if (diff < 0) return yFight;
+    if (diff <= 1) return yAmber;
+    return yMuted;
+  }
+
+  String _formatDueDate(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = DateTime(d.year, d.month, d.day);
+    final diff = due.difference(today).inDays;
+    final time = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    if (diff == 0) return 'HOY $time';
+    if (diff == 1) return 'MAÑANA $time';
+    if (diff < 0) return 'VENCIDA ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} $time';
+  }
+
+  Future<void> _pickDueDate(BuildContext context, WidgetRef ref) async {
+    if (task.dueDate != null) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: yCream,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: Text('Fecha límite', style: ySans(size: 18, weight: FontWeight.w700, color: yInk)),
+          content: Text(
+            'Actual: ${_formatDueDate(task.dueDate!)}',
+            style: yBody(size: 14, color: yInk),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'clear'),
+              child: Text('BORRAR', style: yMono(size: 11, weight: FontWeight.w700, color: yFight, tracking: 1)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'change'),
+              child: Text('CAMBIAR', style: yMono(size: 11, weight: FontWeight.w700, color: yInk, tracking: 1)),
+            ),
+          ],
+        ),
+      );
+      if (action == 'clear') {
+        await ref.read(taskRepositoryProvider).updateDueDate(task.id, null);
+        return;
+      }
+      if (action != 'change') return;
+    }
+
+    if (!context.mounted) return;
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: task.dueDate ?? now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365 * 5)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          datePickerTheme: const DatePickerThemeData(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: task.dueDate != null
+          ? TimeOfDay.fromDateTime(task.dueDate!)
+          : const TimeOfDay(hour: 12, minute: 0),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          timePickerTheme: const TimePickerThemeData(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null) return;
+
+    final dt = DateTime(picked.year, picked.month, picked.day, time.hour, time.minute);
+    await ref.read(taskRepositoryProvider).updateDueDate(task.id, dt);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final folder = task.folderId == null
@@ -743,33 +908,97 @@ class _TaskCardBody extends ConsumerWidget {
     final prop = ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
         TaskPropagation.empty;
 
-    final bg = expiring ? yCream2 : yCream;
+    final bg = done
+        ? yInk.withValues(alpha: 0.06)
+        : expiring
+            ? yCream2
+            : yCream;
 
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: done ? yMuted : yInk, width: yLineMid),
       ),
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Opacity(
-            opacity: expiring ? 0.65 : 1.0,
-            child: buildMentionText(
-              content: task.content,
-              style: ySans(
-                size: 15,
-                weight: FontWeight.w600,
-                letterSpacing: -0.2,
-                color: yInk,
-                height: 1.25,
-              ).copyWith(decoration: expiring ? TextDecoration.lineThrough : null),
-              folderColor: folder?.color,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Opacity(
+                  opacity: (expiring || done) ? 0.5 : 1.0,
+                  child: buildMentionText(
+                    content: task.content,
+                    style: ySans(
+                      size: 15,
+                      weight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                      color: yInk,
+                      height: 1.25,
+                    ).copyWith(
+                      decoration: (expiring || done) ? TextDecoration.lineThrough : null,
+                    ),
+                    folderColor: folder?.color,
+                  ),
+                ),
+              ),
+              if (!done && !expiring)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _pickDueDate(context, ref),
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    margin: const EdgeInsets.only(left: 8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: task.dueDate != null ? yFight : yCream,
+                      border: Border.all(color: yInk, width: 1.5),
+                    ),
+                    child: Icon(
+                      task.dueDate != null ? Icons.access_time_filled : Icons.access_time,
+                      size: 12,
+                      color: task.dueDate != null ? yCream : yInk,
+                    ),
+                  ),
+                ),
+              if (done)
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.fromLTRB(6, 2, 6, 3),
+                  decoration: BoxDecoration(
+                    color: yLab,
+                    border: Border.all(color: yInk, width: 1.5),
+                  ),
+                  child: Text('✓ HECHO',
+                      style: yMono(size: 8, weight: FontWeight.w700, color: yCream, tracking: 1)),
+                ),
+            ],
           ),
+          const SizedBox(height: 4),
           Row(
             children: [
+              if (task.dueDate != null && !done) ...[
+                Container(
+                  padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+                  decoration: BoxDecoration(
+                    color: _dueDateColor(task.dueDate!),
+                    border: Border.all(color: yInk, width: 1.5),
+                  ),
+                  child: Text(
+                    _formatDueDate(task.dueDate!),
+                    style: yMono(size: 9, weight: FontWeight.w700, color: yCream, tracking: 0.8),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (folder != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: _FolderMention(folder: folder),
+                ),
               const Spacer(),
               Text(
                 expiring
@@ -833,6 +1062,26 @@ class _TaskLinkChip extends StatelessWidget {
           tracking: 1,
           color: yCream,
         ),
+      ),
+    );
+  }
+}
+
+class _FolderMention extends StatelessWidget {
+  final Folder folder;
+  const _FolderMention({required this.folder});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
+      decoration: BoxDecoration(
+        color: folder.color,
+        border: Border.all(color: yInk, width: 1.5),
+      ),
+      child: Text(
+        '@${folder.name}',
+        style: yMono(size: 10, weight: FontWeight.w700, color: yCream, tracking: 0.3),
       ),
     );
   }

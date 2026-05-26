@@ -30,11 +30,11 @@ class ShapeRecognizer {
     }
 
     if (closed) {
-      final circle = _tryCircle(points, bb, diag);
-      if (circle != null) return circle;
-
       final poly = _tryPolygon(points, bb, diag);
       if (poly != null) return poly;
+
+      final circle = _tryCircle(points, bb, diag);
+      if (circle != null) return circle;
     }
 
     return null;
@@ -191,7 +191,7 @@ List<List<double>>? _tryCircle(
 
   final aspect = bb.width / (bb.height < 1e-6 ? 1 : bb.height);
 
-  if (spread < 0.22) {
+  if (spread < 0.12 && aspect > 0.7 && aspect < 1.4) {
     // Circle.
     final rx = bb.width / 2;
     final ry = bb.height / 2;
@@ -232,20 +232,48 @@ List<List<double>> _ellipsePoints(
 
 List<List<double>>? _tryPolygon(
     List<List<double>> pts, _BBox bb, double diag) {
-  // Force closed loop for DP.
   final loop = [...pts];
   if (loop.last != loop.first) {
     loop.add([loop.first[0], loop.first[1]]);
   }
-  final eps = diag * 0.06;
-  final simp = _douglasPeucker(loop, eps);
-  if (simp.length < 4) return null; // first==last so n verts = simp.length-1
-  final verts = simp.sublist(0, simp.length - 1);
 
-  if (verts.length == 4) {
-    // Possible rectangle. Check angles ~90°.
-    if (_areAnglesNear(verts, math.pi / 2, math.pi / 9)) {
-      // Snap to axis-aligned bounding box for neatness.
+  // Try multiple epsilon values — hand-drawn corners are imprecise.
+  for (final epsFactor in [0.10, 0.08, 0.06]) {
+    final simp = _douglasPeucker(loop, diag * epsFactor);
+    if (simp.length < 4) continue;
+    var verts = simp.sublist(0, simp.length - 1);
+
+    // Merge vertices that are too close (imprecise corner = 2 points).
+    verts = _mergeClose(verts, diag * 0.08);
+
+    if (verts.length == 4) {
+      if (_areAnglesNear(verts, math.pi / 2, math.pi / 6)) {
+        return [
+          [bb.minX, bb.minY],
+          [bb.maxX, bb.minY],
+          [bb.maxX, bb.maxY],
+          [bb.minX, bb.maxY],
+          [bb.minX, bb.minY],
+        ];
+      }
+    }
+
+    if (verts.length == 3) {
+      return [
+        [verts[0][0], verts[0][1]],
+        [verts[1][0], verts[1][1]],
+        [verts[2][0], verts[2][1]],
+        [verts[0][0], verts[0][1]],
+      ];
+    }
+  }
+
+  // Fallback: if bbox aspect is rectangular-ish and points hug the bbox,
+  // it's likely a rectangle even if DP couldn't simplify cleanly.
+  final aspect = bb.width / (bb.height < 1e-6 ? 1 : bb.height);
+  if (aspect > 0.4 && aspect < 2.5 && bb.width > 30 && bb.height > 30) {
+    final maxDist = _maxDistToBbox(pts, bb);
+    if (maxDist < diag * 0.15) {
       return [
         [bb.minX, bb.minY],
         [bb.maxX, bb.minY],
@@ -256,16 +284,40 @@ List<List<double>>? _tryPolygon(
     }
   }
 
-  if (verts.length == 3) {
-    // Triangle — keep detected vertices but smooth (close loop).
-    return [
-      [verts[0][0], verts[0][1]],
-      [verts[1][0], verts[1][1]],
-      [verts[2][0], verts[2][1]],
-      [verts[0][0], verts[0][1]],
-    ];
-  }
   return null;
+}
+
+List<List<double>> _mergeClose(List<List<double>> verts, double minDist) {
+  if (verts.length <= 3) return verts;
+  final out = <List<double>>[verts.first];
+  for (int i = 1; i < verts.length; i++) {
+    final prev = out.last;
+    final dx = verts[i][0] - prev[0];
+    final dy = verts[i][1] - prev[1];
+    if (dx * dx + dy * dy < minDist * minDist) {
+      out.last = [(prev[0] + verts[i][0]) / 2, (prev[1] + verts[i][1]) / 2];
+    } else {
+      out.add(verts[i]);
+    }
+  }
+  return out;
+}
+
+double _maxDistToBbox(List<List<double>> pts, _BBox bb) {
+  double maxD = 0;
+  for (final p in pts) {
+    final dx = [
+      (p[0] - bb.minX).abs(),
+      (p[0] - bb.maxX).abs(),
+    ].reduce(math.min);
+    final dy = [
+      (p[1] - bb.minY).abs(),
+      (p[1] - bb.maxY).abs(),
+    ].reduce(math.min);
+    final d = math.min(dx, dy);
+    if (d > maxD) maxD = d;
+  }
+  return maxD;
 }
 
 bool _areAnglesNear(
