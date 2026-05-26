@@ -3482,6 +3482,21 @@ class $KanbanColumnsTable extends KanbanColumns
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isExpiredMeta = const VerificationMeta(
+    'isExpired',
+  );
+  @override
+  late final GeneratedColumn<bool> isExpired = GeneratedColumn<bool>(
+    'is_expired',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_expired" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3490,6 +3505,7 @@ class $KanbanColumnsTable extends KanbanColumns
     position,
     isDefault,
     isTerminal,
+    isExpired,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3545,6 +3561,12 @@ class $KanbanColumnsTable extends KanbanColumns
         isTerminal.isAcceptableOrUnknown(data['is_terminal']!, _isTerminalMeta),
       );
     }
+    if (data.containsKey('is_expired')) {
+      context.handle(
+        _isExpiredMeta,
+        isExpired.isAcceptableOrUnknown(data['is_expired']!, _isExpiredMeta),
+      );
+    }
     return context;
   }
 
@@ -3584,6 +3606,11 @@ class $KanbanColumnsTable extends KanbanColumns
             DriftSqlType.bool,
             data['${effectivePrefix}is_terminal'],
           )!,
+      isExpired:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}is_expired'],
+          )!,
     );
   }
 
@@ -3604,6 +3631,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
   /// columns count as "done" for space stats and visually appear
   /// strike-through. Defaults: Entregado + Vencido are terminal.
   final bool isTerminal;
+  final bool isExpired;
   const KanbanColumnRow({
     required this.id,
     required this.labSpaceId,
@@ -3611,6 +3639,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     required this.position,
     required this.isDefault,
     required this.isTerminal,
+    required this.isExpired,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3621,6 +3650,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     map['position'] = Variable<int>(position);
     map['is_default'] = Variable<bool>(isDefault);
     map['is_terminal'] = Variable<bool>(isTerminal);
+    map['is_expired'] = Variable<bool>(isExpired);
     return map;
   }
 
@@ -3632,6 +3662,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       position: Value(position),
       isDefault: Value(isDefault),
       isTerminal: Value(isTerminal),
+      isExpired: Value(isExpired),
     );
   }
 
@@ -3647,6 +3678,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       position: serializer.fromJson<int>(json['position']),
       isDefault: serializer.fromJson<bool>(json['isDefault']),
       isTerminal: serializer.fromJson<bool>(json['isTerminal']),
+      isExpired: serializer.fromJson<bool>(json['isExpired']),
     );
   }
   @override
@@ -3659,6 +3691,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       'position': serializer.toJson<int>(position),
       'isDefault': serializer.toJson<bool>(isDefault),
       'isTerminal': serializer.toJson<bool>(isTerminal),
+      'isExpired': serializer.toJson<bool>(isExpired),
     };
   }
 
@@ -3669,6 +3702,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     int? position,
     bool? isDefault,
     bool? isTerminal,
+    bool? isExpired,
   }) => KanbanColumnRow(
     id: id ?? this.id,
     labSpaceId: labSpaceId ?? this.labSpaceId,
@@ -3676,6 +3710,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     position: position ?? this.position,
     isDefault: isDefault ?? this.isDefault,
     isTerminal: isTerminal ?? this.isTerminal,
+    isExpired: isExpired ?? this.isExpired,
   );
   KanbanColumnRow copyWithCompanion(KanbanColumnsCompanion data) {
     return KanbanColumnRow(
@@ -3687,6 +3722,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
       isTerminal:
           data.isTerminal.present ? data.isTerminal.value : this.isTerminal,
+      isExpired: data.isExpired.present ? data.isExpired.value : this.isExpired,
     );
   }
 
@@ -3698,14 +3734,22 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           ..write('name: $name, ')
           ..write('position: $position, ')
           ..write('isDefault: $isDefault, ')
-          ..write('isTerminal: $isTerminal')
+          ..write('isTerminal: $isTerminal, ')
+          ..write('isExpired: $isExpired')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, labSpaceId, name, position, isDefault, isTerminal);
+  int get hashCode => Object.hash(
+    id,
+    labSpaceId,
+    name,
+    position,
+    isDefault,
+    isTerminal,
+    isExpired,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3715,7 +3759,8 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           other.name == this.name &&
           other.position == this.position &&
           other.isDefault == this.isDefault &&
-          other.isTerminal == this.isTerminal);
+          other.isTerminal == this.isTerminal &&
+          other.isExpired == this.isExpired);
 }
 
 class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
@@ -3725,6 +3770,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
   final Value<int> position;
   final Value<bool> isDefault;
   final Value<bool> isTerminal;
+  final Value<bool> isExpired;
   const KanbanColumnsCompanion({
     this.id = const Value.absent(),
     this.labSpaceId = const Value.absent(),
@@ -3732,6 +3778,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     this.position = const Value.absent(),
     this.isDefault = const Value.absent(),
     this.isTerminal = const Value.absent(),
+    this.isExpired = const Value.absent(),
   });
   KanbanColumnsCompanion.insert({
     this.id = const Value.absent(),
@@ -3740,6 +3787,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     required int position,
     this.isDefault = const Value.absent(),
     this.isTerminal = const Value.absent(),
+    this.isExpired = const Value.absent(),
   }) : labSpaceId = Value(labSpaceId),
        name = Value(name),
        position = Value(position);
@@ -3750,6 +3798,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     Expression<int>? position,
     Expression<bool>? isDefault,
     Expression<bool>? isTerminal,
+    Expression<bool>? isExpired,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3758,6 +3807,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
       if (position != null) 'position': position,
       if (isDefault != null) 'is_default': isDefault,
       if (isTerminal != null) 'is_terminal': isTerminal,
+      if (isExpired != null) 'is_expired': isExpired,
     });
   }
 
@@ -3768,6 +3818,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     Value<int>? position,
     Value<bool>? isDefault,
     Value<bool>? isTerminal,
+    Value<bool>? isExpired,
   }) {
     return KanbanColumnsCompanion(
       id: id ?? this.id,
@@ -3776,6 +3827,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
       position: position ?? this.position,
       isDefault: isDefault ?? this.isDefault,
       isTerminal: isTerminal ?? this.isTerminal,
+      isExpired: isExpired ?? this.isExpired,
     );
   }
 
@@ -3800,6 +3852,9 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     if (isTerminal.present) {
       map['is_terminal'] = Variable<bool>(isTerminal.value);
     }
+    if (isExpired.present) {
+      map['is_expired'] = Variable<bool>(isExpired.value);
+    }
     return map;
   }
 
@@ -3811,7 +3866,8 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
           ..write('name: $name, ')
           ..write('position: $position, ')
           ..write('isDefault: $isDefault, ')
-          ..write('isTerminal: $isTerminal')
+          ..write('isTerminal: $isTerminal, ')
+          ..write('isExpired: $isExpired')
           ..write(')'))
         .toString();
   }
@@ -10980,6 +11036,7 @@ typedef $$KanbanColumnsTableCreateCompanionBuilder =
       required int position,
       Value<bool> isDefault,
       Value<bool> isTerminal,
+      Value<bool> isExpired,
     });
 typedef $$KanbanColumnsTableUpdateCompanionBuilder =
     KanbanColumnsCompanion Function({
@@ -10989,6 +11046,7 @@ typedef $$KanbanColumnsTableUpdateCompanionBuilder =
       Value<int> position,
       Value<bool> isDefault,
       Value<bool> isTerminal,
+      Value<bool> isExpired,
     });
 
 final class $$KanbanColumnsTableReferences
@@ -11075,6 +11133,11 @@ class $$KanbanColumnsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isExpired => $composableBuilder(
+    column: $table.isExpired,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$LabSpacesTableFilterComposer get labSpaceId {
     final $$LabSpacesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11158,6 +11221,11 @@ class $$KanbanColumnsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isExpired => $composableBuilder(
+    column: $table.isExpired,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$LabSpacesTableOrderingComposer get labSpaceId {
     final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11207,6 +11275,9 @@ class $$KanbanColumnsTableAnnotationComposer
     column: $table.isTerminal,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get isExpired =>
+      $composableBuilder(column: $table.isExpired, builder: (column) => column);
 
   $$LabSpacesTableAnnotationComposer get labSpaceId {
     final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
@@ -11295,6 +11366,7 @@ class $$KanbanColumnsTableTableManager
                 Value<int> position = const Value.absent(),
                 Value<bool> isDefault = const Value.absent(),
                 Value<bool> isTerminal = const Value.absent(),
+                Value<bool> isExpired = const Value.absent(),
               }) => KanbanColumnsCompanion(
                 id: id,
                 labSpaceId: labSpaceId,
@@ -11302,6 +11374,7 @@ class $$KanbanColumnsTableTableManager
                 position: position,
                 isDefault: isDefault,
                 isTerminal: isTerminal,
+                isExpired: isExpired,
               ),
           createCompanionCallback:
               ({
@@ -11311,6 +11384,7 @@ class $$KanbanColumnsTableTableManager
                 required int position,
                 Value<bool> isDefault = const Value.absent(),
                 Value<bool> isTerminal = const Value.absent(),
+                Value<bool> isExpired = const Value.absent(),
               }) => KanbanColumnsCompanion.insert(
                 id: id,
                 labSpaceId: labSpaceId,
@@ -11318,6 +11392,7 @@ class $$KanbanColumnsTableTableManager
                 position: position,
                 isDefault: isDefault,
                 isTerminal: isTerminal,
+                isExpired: isExpired,
               ),
           withReferenceMapper:
               (p0) =>

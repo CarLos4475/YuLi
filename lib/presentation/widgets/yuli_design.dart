@@ -727,12 +727,14 @@ class ViewHead extends StatelessWidget {
   final String title;
   final String? kicker;
   final List<Widget> right;
+  final Color? titleColor;
 
   const ViewHead({
     super.key,
     required this.title,
     this.kicker,
     this.right = const [],
+    this.titleColor,
   });
 
   @override
@@ -757,7 +759,7 @@ class ViewHead extends StatelessWidget {
                       size: 26,
                       weight: FontWeight.w700,
                       letterSpacing: -0.8,
-                      color: yLab,
+                      color: titleColor ?? yLab,
                       height: 1.0,
                     ),
                     maxLines: 1,

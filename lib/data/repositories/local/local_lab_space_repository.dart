@@ -43,7 +43,8 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
           name: name,
           position: i,
           isDefault: const Value(true),
-          isTerminal: Value(_terminalDefaults.contains(name)),
+          isTerminal: Value(name == 'Entregado'),
+          isExpired: Value(name == 'Vencido'),
         ),
       );
     }
@@ -51,7 +52,6 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
   }
 
   static const _defaultColumns = ['Backlog', 'En Proceso', 'Entregado', 'Vencido'];
-  static const _terminalDefaults = {'Entregado', 'Vencido'};
 
   @override
   Future<void> update(LabSpace space) async {
@@ -113,6 +113,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         position: Value(column.position),
         isDefault: Value(column.isDefault),
         isTerminal: Value(column.isTerminal),
+        isExpired: Value(column.isExpired),
       ),
     );
   }
@@ -163,6 +164,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         position: row.position,
         isDefault: row.isDefault,
         isTerminal: row.isTerminal,
+        isExpired: row.isExpired,
       );
 
   Color _hexToColor(String hex) {

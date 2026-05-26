@@ -268,7 +268,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                         child: SingleChildScrollView(
                           child: SizedBox(
                             height: totalHeight + _hourHeight,
-                            child: Row(
+                            child: Stack(
+                              children: [
+                                Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Hours column
@@ -285,8 +287,12 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             padding: const EdgeInsets.only(right: 6, top: 2),
                                             child: Text(
                                               _minutesToTime(m),
-                                              style: bodyS.copyWith(
-                                                  color: inkGray, fontSize: 10),
+                                              style: y.yMono(
+                                                size: 10,
+                                                weight: FontWeight.w700,
+                                                tracking: 1,
+                                                color: y.yMuted,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -333,14 +339,6 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                             dayWidth: dayWidth,
                                             hoursWidth: _hoursWidth,
                                           ),
-                                        // Current time line (on top of blocks)
-                                        _TimeLineWidget(
-                                          startMinutes: sMin,
-                                          totalMinutes: totalMins,
-                                            hourHeight: _hourHeight,
-                                          totalWidth:
-                                              constraints.maxWidth - _hoursWidth,
-                                        ),
                                         // Drag gesture detector for each day
                                         for (int di = 0; di < days.length; di++)
                                           Positioned(
@@ -377,6 +375,15 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                       ],
                                     ),
                                   ),
+                                ),
+                              ],
+                            ),
+                                // Current time line (spans full width including hours column)
+                                _TimeLineWidget(
+                                  startMinutes: sMin,
+                                  totalMinutes: totalMins,
+                                  hourHeight: _hourHeight,
+                                  totalWidth: constraints.maxWidth,
                                 ),
                               ],
                             ),
@@ -693,8 +700,8 @@ class _ScheduleHeader extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         y.HeadBtn(
-          label: '⚙ AJUSTAR',
-          leadingIcon: null,
+          label: 'AJUSTAR',
+          leadingIcon: Icons.settings_outlined,
           onTap: onSettings,
         ),
       ],
@@ -770,25 +777,42 @@ class _DayHeaderRow extends StatelessWidget {
     required this.accentColor,
   });
 
+  int get _weekNumber {
+    final jan1 = DateTime(weekStart.year, 1, 1);
+    return ((weekStart.difference(jan1).inDays + jan1.weekday) / 7).ceil();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ink = inkColor(context);
     final today = DateTime.now();
     return Container(
       height: _dayHeaderHeight,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: ink.withAlpha(40), width: borderWidth),
+          bottom: BorderSide(color: y.yInk, width: 2),
         ),
       ),
       child: Row(
         children: [
-          SizedBox(width: _hoursWidth),
+          Container(
+            width: _hoursWidth,
+            decoration: BoxDecoration(
+              color: accentColor,
+              border: const Border(right: BorderSide(color: y.yInk, width: 2)),
+            ),
+            alignment: Alignment.center,
+            child: Text('SEM $_weekNumber',
+                style: y.yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: y.yCream)),
+          ),
           for (int i = 0; i < days.length; i++) ...[
             if (i > 0)
-              Container(width: borderWidth, color: ink.withAlpha(40)),
+              Container(width: 2, color: y.yInk.withAlpha(25)),
             Expanded(
-              child: _buildDayCell(days[i], i, today, ink),
+              child: _buildDayCell(days[i], i, today),
             ),
           ],
         ],
@@ -796,29 +820,37 @@ class _DayHeaderRow extends StatelessWidget {
     );
   }
 
-  Widget _buildDayCell(String dayName, int offset, DateTime today, Color ink) {
+  Widget _buildDayCell(String dayName, int offset, DateTime today) {
     final date = weekStart.add(Duration(days: offset));
     final isToday = date.year == today.year &&
         date.month == today.month &&
         date.day == today.day;
-    final dayIndex = _dayNames.indexOf(dayName);
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      color: isToday ? accentColor : y.yCream2,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            _dayNames[dayIndex],
-            style: labelBold.copyWith(
-              color: isToday ? accentColor : ink,
-              fontSize: 12,
+            '${dayName.toUpperCase()}${isToday ? ' . HOY' : ''}',
+            style: y.yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: isToday ? y.yCream.withAlpha(230) : y.yMuted,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             '${date.day}',
-            style: bodyS.copyWith(
-              color: isToday ? accentColor : inkGray,
+            style: y.ySans(
+              size: 22,
+              weight: FontWeight.w700,
+              letterSpacing: -0.6,
+              color: isToday ? y.yCream : y.yInk,
+              height: 1.0,
             ),
           ),
         ],
@@ -855,37 +887,68 @@ class _TimeLineWidget extends StatelessWidget {
     }
 
     final nowY = ((nowMinutes - startMinutes) / 60.0) * hourHeight;
+    final label =
+        'HOY . ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     return Positioned(
       left: 0,
-      top: nowY - 4,
-      width: totalWidth,
-      height: 10,
-      child: CustomPaint(
-        size: Size(totalWidth, 10),
-        painter: _TimeLinePainter(),
+      right: 0,
+      top: nowY - 1,
+      height: 2,
+      child: IgnorePointer(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Chip label in the hours column
+            Positioned(
+              left: 0,
+              top: -14,
+              width: _hoursWidth,
+              height: 28,
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: y.yFight,
+                  border: Border.all(color: y.yInk, width: 2),
+                ),
+                child: Text(label,
+                    style: y.yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: y.yCream,
+                    )),
+              ),
+            ),
+            // Horizontal line
+            Positioned(
+              left: _hoursWidth,
+              right: 0,
+              top: 0,
+              height: 2,
+              child: Container(color: y.yFight),
+            ),
+            // Diamond marker
+            Positioned(
+              left: _hoursWidth - 5,
+              top: -4,
+              child: Transform.rotate(
+                angle: 0.785398,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: y.yFight,
+                    border: Border.all(color: y.yInk, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
-}
-
-class _TimeLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF800020)
-      ..strokeWidth = 2.0;
-    canvas.drawLine(Offset(0, 4), Offset(size.width, 4), paint);
-    final triangle = Path()
-      ..moveTo(0, 0)
-      ..lineTo(8, 4)
-      ..lineTo(0, 8)
-      ..close();
-    canvas.drawPath(triangle, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ─── Grid Painter ──────────────────────────────────────────────────────────
@@ -987,10 +1050,21 @@ class _ScheduleBlockWidget extends StatelessWidget {
     required this.onTap,
   });
 
+  bool get _isCurrent {
+    final now = DateTime.now();
+    final nowDay = _dayNames[now.weekday - 1];
+    if (!block.days.contains(nowDay)) return false;
+    final nowMin = now.hour * 60 + now.minute;
+    return nowMin >= block.startMinutes && nowMin < block.endMinutes;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bg = _parseHex(block.color);
     final showLocation = block.location != null && block.location!.isNotEmpty;
+    final current = _isCurrent;
+    final timeStr =
+        '${_minutesToTime(block.startMinutes)}-${_minutesToTime(block.endMinutes)}';
 
     return GestureDetector(
       onTap: onTap,
@@ -998,31 +1072,61 @@ class _ScheduleBlockWidget extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: bg,
-          border: Border.all(color: inkBlack, width: borderWidth),
-          boxShadow: shadowM,
+          border: Border.all(
+              color: y.yInk, width: current ? y.yLineHeavy : 2),
+          boxShadow: current
+              ? [BoxShadow(color: y.yInk, offset: const Offset(3, 3))]
+              : null,
         ),
-        padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+        child: Stack(
           children: [
-            Text(
-              block.title,
-              style: labelBold.copyWith(
-                color: paperLight,
-                fontSize: 10,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (showLocation && block.durationMinutes >= 60)
-              Text(
-                block.location!,
-                style: bodyS.copyWith(
-                  color: paperLight.withAlpha(180),
-                  fontSize: 8,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  block.title,
+                  style: y.ySans(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                    color: y.yCream,
+                    height: 1.1,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                Text(
+                  '${showLocation ? "${block.location!} . " : ""}$timeStr',
+                  style: y.yMono(
+                    size: 9,
+                    tracking: 1.2,
+                    color: y.yCream.withAlpha(216),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+            if (current)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+                  decoration: BoxDecoration(
+                    color: y.yCream,
+                    border: Border.all(color: y.yInk, width: 1.5),
+                  ),
+                  child: Text('EN VIVO',
+                      style: y.yMono(
+                        size: 8,
+                        weight: FontWeight.w700,
+                        tracking: 1,
+                        color: bg,
+                      )),
+                ),
               ),
           ],
         ),

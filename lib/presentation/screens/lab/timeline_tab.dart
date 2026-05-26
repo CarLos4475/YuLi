@@ -83,6 +83,7 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
                   children: [
                     y.ViewHead(
                       title: 'Timeline',
+                      titleColor: reactiveSpace.accentColor,
                       kicker:
                           '${withDate.length} CON FECHA · ${columns.length} COLUMNAS',
                     ),
@@ -285,15 +286,19 @@ class _TimelineViewer extends StatelessWidget {
         final card = groupCards[gi];
         final dayW = dayWidths[dayIndex];
         final x = dayPositions[dayIndex] + 2;
-        final top = laneTopPositions[laneIndex] + 4 + gi * 24;
+        final top = laneTopPositions[laneIndex] + 4 + gi * 32;
         final cardWidth = dayW - 4;
-        final cardHeight = 20.0;
+        final cardHeight = 28.0;
         final isSelected = selectedCardIds.contains(card.id);
-        final bg = card.originFolderColor != null
-            ? Color(card.originFolderColor!)
-            : (card.originTaskDoneAt != null
-                ? accentSuccess
-                : _cardColor(card));
+        final isDone = card.originTaskDoneAt != null;
+        final isOverdue = columns.any((c) => c.id == card.columnId && c.isExpired);
+        final bg = isOverdue
+            ? y.yFight
+            : isDone
+                ? y.yCream2
+                : (card.originFolderColor != null
+                    ? Color(card.originFolderColor!)
+                    : _cardColor(card));
 
         cardWidgets.add(
           Positioned(
@@ -309,26 +314,49 @@ class _TimelineViewer extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected ? accentColor : bg,
                   border: Border.all(
-                    color: inkBlack,
-                    width: isSelected ? borderWidthHeavy : borderWidth,
+                    color: y.yInk,
+                    width: isSelected ? y.yLineHeavy : 2,
                   ),
-                  boxShadow: shadowM,
                 ),
-                padding: const EdgeInsets.fromLTRB(5, 2, 4, 2),
-                child: Text(
-                  card.title,
-                  style: TextStyle(
-                    color: isSelected
-                        ? paperLight
-                        : bg.computeLuminance() > 0.5
-                            ? inkBlack
-                            : paperLight,
-                    fontSize: 9,
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                padding: const EdgeInsets.fromLTRB(8, 0, 6, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        y.cleanMention(card.title),
+                        style: y.ySans(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          letterSpacing: -0.1,
+                          color: isSelected
+                              ? y.yCream
+                              : bg.computeLuminance() > 0.5
+                                  ? y.yInk
+                                  : y.yCream,
+                          height: 1.1,
+                        ).copyWith(
+                          decoration: card.originTaskDoneAt != null
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (card.dueDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Text(
+                          '${card.dueDate!.day.toString().padLeft(2, '0')}/${card.dueDate!.month.toString().padLeft(2, '0')}',
+                          style: y.yMono(
+                            size: 9,
+                            color: (isSelected || bg.computeLuminance() <= 0.5)
+                                ? y.yCream.withAlpha(216)
+                                : y.yMuted,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -416,10 +444,9 @@ class _TimelineGridPainter extends CustomPainter {
       ..color = ink.withAlpha(60)
       ..strokeWidth = borderWidth;
 
-    final wine = const Color(0xFF800020);
     final todayPaint = Paint()
-      ..color = wine
-      ..strokeWidth = 1.5;
+      ..color = y.yFight
+      ..strokeWidth = 2.0;
 
     const textStyle = TextStyle(
       color: inkGray,
@@ -538,13 +565,15 @@ class _TimelineGridPainter extends CustomPainter {
         todayPaint,
       );
 
-      // "HOY" label
+      // "HOY" label chip
       final hoySpan = TextSpan(
         text: 'HOY',
-        style: textStyle.copyWith(
-          color: const Color(0xFF800020),
+        style: const TextStyle(
+          color: y.yCream,
           fontWeight: FontWeight.w700,
-          fontSize: 9,
+          fontSize: 8,
+          fontFamily: 'monospace',
+          letterSpacing: 1.2,
         ),
       );
       final hoyPainter = TextPainter(
@@ -552,9 +581,22 @@ class _TimelineGridPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       );
       hoyPainter.layout();
+      final chipW = hoyPainter.width + 12;
+      final chipH = hoyPainter.height + 6;
+      canvas.drawRect(
+        Rect.fromLTWH(todayX - chipW / 2, -2, chipW, chipH),
+        Paint()..color = y.yFight,
+      );
+      canvas.drawRect(
+        Rect.fromLTWH(todayX - chipW / 2, -2, chipW, chipH),
+        Paint()
+          ..color = y.yInk
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
       hoyPainter.paint(
         canvas,
-        Offset(todayX + 2, size.height - 14),
+        Offset(todayX - hoyPainter.width / 2, 1),
       );
     }
   }

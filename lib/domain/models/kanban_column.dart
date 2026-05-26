@@ -5,6 +5,7 @@ class KanbanColumn {
   final int position;
   final bool isDefault;
   final bool isTerminal;
+  final bool isExpired;
 
   const KanbanColumn({
     required this.id,
@@ -13,7 +14,10 @@ class KanbanColumn {
     required this.position,
     required this.isDefault,
     this.isTerminal = false,
+    this.isExpired = false,
   });
+
+  bool get isEndState => isTerminal || isExpired;
 
   KanbanColumn copyWith({
     int? id,
@@ -22,6 +26,7 @@ class KanbanColumn {
     int? position,
     bool? isDefault,
     bool? isTerminal,
+    bool? isExpired,
   }) {
     return KanbanColumn(
       id: id ?? this.id,
@@ -30,6 +35,7 @@ class KanbanColumn {
       position: position ?? this.position,
       isDefault: isDefault ?? this.isDefault,
       isTerminal: isTerminal ?? this.isTerminal,
+      isExpired: isExpired ?? this.isExpired,
     );
   }
 }

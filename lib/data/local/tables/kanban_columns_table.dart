@@ -15,4 +15,7 @@ class KanbanColumns extends Table {
   /// strike-through. Defaults: Entregado + Vencido are terminal.
   BoolColumn get isTerminal =>
       boolean().withDefault(const Constant(false))();
+
+  BoolColumn get isExpired =>
+      boolean().withDefault(const Constant(false))();
 }

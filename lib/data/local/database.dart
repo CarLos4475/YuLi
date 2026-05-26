@@ -63,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -122,6 +122,14 @@ class AppDatabase extends _$AppDatabase {
               await customStatement(
                   "UPDATE kanban_columns SET is_terminal = 1 "
                   "WHERE name IN ('Entregado', 'Vencido')");
+            } catch (_) {}
+          }
+          if (from <= 13) {
+            try {
+              await m.addColumn(kanbanColumns, kanbanColumns.isExpired);
+              await customStatement(
+                  "UPDATE kanban_columns SET is_expired = 1, is_terminal = 0 "
+                  "WHERE name = 'Vencido'");
             } catch (_) {}
           }
         },

@@ -448,7 +448,7 @@ class _KanbanHeader extends ConsumerWidget {
                           size: 32,
                           weight: FontWeight.w700,
                           letterSpacing: -1.2,
-                          color: y.yFlight,
+                          color: space.accentColor,
                           height: 0.95,
                         ),
                         maxLines: 1,
@@ -478,7 +478,7 @@ class _KanbanHeader extends ConsumerWidget {
                   const SizedBox(height: 6),
                   y.YBadge(
                     label: _formatDateRange(space.startDate, space.dueDate),
-                    bg: y.yFlight,
+                    bg: space.accentColor,
                     fg: y.yCream,
                     fontSize: 10,
                   ),
@@ -490,29 +490,29 @@ class _KanbanHeader extends ConsumerWidget {
           if (linkedFolders.isNotEmpty) ...[
             _HeaderIcon(
               icon: Icons.description_outlined,
-              bg: y.yFlight,
+              bg: space.accentColor,
               onTap: () => _showLinkedNotes(context),
             ),
             const SizedBox(width: 6),
           ],
           _HeaderIcon(
             icon: Icons.folder_outlined,
-            bg: y.yLab,
+            bg: space.accentColor,
             onTap: () => _showLinkFolders(context, ref),
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
             icon: Icons.calendar_today,
-            bg: y.yFlight,
+            bg: space.accentColor,
             onTap: () => _showDateEditor(context, ref),
           ),
           if (onToggleSelectionMode != null) ...[
             const SizedBox(width: 6),
             _HeaderIcon(
               icon: Icons.checklist,
-              bg: selectionMode ? y.yFight : y.yCream,
-              fg: selectionMode ? y.yCream : y.yInk,
-              fill: !selectionMode,
+              bg: selectionMode ? y.yFight : space.accentColor,
+              fg: y.yCream,
+              fill: true,
               onTap: onToggleSelectionMode!,
             ),
           ],
@@ -829,11 +829,27 @@ class _KanbanBoard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Stack(
+    final allCards = ref.watch(kanbanCardsBySpaceProvider(space.id)).valueOrNull ?? [];
+    return Column(
+      children: [
+        y.ViewHead(
+          title: 'Kanban',
+          titleColor: space.accentColor,
+          kicker: '${allCards.length} tareas . ${columns.length} columnas',
+          right: [
+            y.HeadBtn(
+              label: '+ TAREA',
+              primary: true,
+              onTap: () => _showQuickAdd(context, ref),
+            ),
+          ],
+        ),
+        Expanded(
+          child: Stack(
       children: [
         ListView.separated(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
           itemCount: columns.length + 1,
           separatorBuilder: (_, _) => const SizedBox(width: 12),
           itemBuilder: (_, i) {
@@ -882,7 +898,57 @@ class _KanbanBoard extends ConsumerWidget {
             ),
           ),
         ],
-      );
+      ),
+        ),
+      ],
+    );
+  }
+
+  void _showQuickAdd(BuildContext context, WidgetRef ref) {
+    if (columns.isEmpty) return;
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: y.yCream,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Nueva tarea',
+            style: y.ySans(size: 18, weight: FontWeight.w700, color: y.yInk)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Titulo'),
+          onSubmitted: (t) async {
+            if (t.trim().isNotEmpty) {
+              await ref.read(kanbanCardRepositoryProvider).create(
+                    labSpaceId: space.id,
+                    columnId: columns.first.id,
+                    title: t.trim(),
+                  );
+            }
+            if (ctx.mounted) Navigator.pop(ctx);
+          },
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () async {
+                final t = ctrl.text.trim();
+                if (t.isNotEmpty) {
+                  await ref.read(kanbanCardRepositoryProvider).create(
+                        labSpaceId: space.id,
+                        columnId: columns.first.id,
+                        title: t,
+                      );
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Crear')),
+        ],
+      ),
+    );
   }
 }
 
@@ -988,8 +1054,30 @@ class _KanbanColumn extends ConsumerWidget {
                       ? space.accentColor.withAlpha(20)
                       : Colors.transparent,
                   child: cards.isEmpty
-                      ? const SizedBox.expand()
+                      ? Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: y.yMuted,
+                                width: 2,
+                                style: BorderStyle.solid,
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 20),
+                            child: Center(
+                              child: Text('vacio',
+                                  style: y.yMono(
+                                    size: 10,
+                                    tracking: 1.2,
+                                    color: y.yMuted,
+                                  )),
+                            ),
+                          ),
+                        )
                       : ListView(
+                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
                           children: [
                             for (int i = 0; i < cards.length; i++) ...[
                               _CardDropZone(
@@ -1075,7 +1163,7 @@ class _KanbanColumn extends ConsumerWidget {
   }
 
   Color _columnColor(KanbanColumn col, Color spaceAccent) {
-    if (col.name == 'Vencido') return y.yFight;
+    if (col.isExpired) return y.yFight;
     if (col.isTerminal) return y.yLab;
     if (col.name == 'En Proceso' || col.name == 'En proceso') return y.yAmber;
     if (col.name == 'Backlog') return y.yMuted;
@@ -1109,10 +1197,42 @@ class _KanbanColumn extends ConsumerWidget {
           Navigator.pop(ctx);
           await _moveColumn(ref, 1);
         },
-        onToggleTerminal: () async {
-          await ref
-              .read(labSpaceRepositoryProvider)
-              .updateColumn(column.copyWith(isTerminal: !column.isTerminal));
+        onToggleDone: () async {
+          final repo = ref.read(labSpaceRepositoryProvider);
+          final willBeTerminal = !column.isTerminal;
+          if (willBeTerminal) {
+            final all = await repo.getColumns(space.id);
+            for (final c in all) {
+              if (c.id != column.id && c.isTerminal) {
+                await repo.updateColumn(c.copyWith(isTerminal: false));
+              }
+            }
+          }
+          await repo.updateColumn(
+                column.copyWith(
+                  isTerminal: willBeTerminal,
+                  isExpired: false,
+                ),
+              );
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+        onToggleExpired: () async {
+          final repo = ref.read(labSpaceRepositoryProvider);
+          final willBeExpired = !column.isExpired;
+          if (willBeExpired) {
+            final all = await repo.getColumns(space.id);
+            for (final c in all) {
+              if (c.id != column.id && c.isExpired) {
+                await repo.updateColumn(c.copyWith(isExpired: false));
+              }
+            }
+          }
+          await repo.updateColumn(
+                column.copyWith(
+                  isExpired: willBeExpired,
+                  isTerminal: false,
+                ),
+              );
           if (ctx.mounted) Navigator.pop(ctx);
         },
         onDelete: () {
@@ -2000,6 +2120,23 @@ class _ColumnHead extends StatelessWidget {
                   )),
             ),
           ],
+          if (column.isExpired) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+              decoration: BoxDecoration(
+                color: y.yCream2,
+                border: Border.all(color: y.yFight, width: 1.5),
+              ),
+              child: Text('EXPIRED',
+                  style: y.yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1,
+                    color: y.yFight,
+                  )),
+            ),
+          ],
           const Spacer(),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -2027,7 +2164,8 @@ class _ColumnManagePopover extends StatelessWidget {
   final ValueChanged<Color> onColorChange;
   final VoidCallback onMoveLeft;
   final VoidCallback onMoveRight;
-  final VoidCallback onToggleTerminal;
+  final VoidCallback onToggleDone;
+  final VoidCallback onToggleExpired;
   final VoidCallback onDelete;
 
   const _ColumnManagePopover({
@@ -2038,7 +2176,8 @@ class _ColumnManagePopover extends StatelessWidget {
     required this.onColorChange,
     required this.onMoveLeft,
     required this.onMoveRight,
-    required this.onToggleTerminal,
+    required this.onToggleDone,
+    required this.onToggleExpired,
     required this.onDelete,
   });
 
@@ -2050,7 +2189,9 @@ class _ColumnManagePopover extends StatelessWidget {
       child: Container(
         width: 280,
         decoration: BoxDecoration(
+          color: y.yCream,
           border: Border.all(color: y.yInk, width: 3),
+          boxShadow: [BoxShadow(color: y.yInk, offset: const Offset(4, 4))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2071,18 +2212,22 @@ class _ColumnManagePopover extends StatelessWidget {
               ),
             ),
             Container(height: 2, color: y.yInk),
-            _PopRow(glyph: '✎', label: 'Renombrar', onTap: onRename),
-            _PopRow(glyph: '◀', label: 'Mover izquierda', onTap: onMoveLeft),
-            _PopRow(glyph: '▶', label: 'Mover derecha', onTap: onMoveRight),
+            _PopRow(icon: Icons.edit_outlined, label: 'Renombrar', onTap: onRename),
+            _PopRow(icon: Icons.chevron_left, label: 'Mover a la izquierda', onTap: onMoveLeft),
+            _PopRow(icon: Icons.chevron_right, label: 'Mover a la derecha', onTap: onMoveRight),
             _PopRow(
-              glyph: column.isTerminal ? '✓' : '○',
-              label:
-                  column.isTerminal ? 'Quitar terminal' : 'Marcar terminal',
-              onTap: onToggleTerminal,
+              icon: column.isTerminal ? Icons.check_box : Icons.check_box_outline_blank,
+              label: column.isTerminal ? 'Quitar DONE' : 'Marcar como DONE',
+              onTap: onToggleDone,
+            ),
+            _PopRow(
+              icon: column.isExpired ? Icons.warning : Icons.warning_amber_outlined,
+              label: column.isExpired ? 'Quitar EXPIRED' : 'Marcar como EXPIRED',
+              onTap: onToggleExpired,
             ),
             Container(height: 2, color: y.yInk.withValues(alpha: 0.15)),
             _PopRow(
-              glyph: '✕',
+              icon: Icons.close,
               label: 'Eliminar columna',
               danger: true,
               onTap: onDelete,
@@ -2095,13 +2240,13 @@ class _ColumnManagePopover extends StatelessWidget {
 }
 
 class _PopRow extends StatelessWidget {
-  final String glyph;
+  final IconData icon;
   final String label;
   final bool danger;
   final VoidCallback onTap;
 
   const _PopRow({
-    required this.glyph,
+    required this.icon,
     required this.label,
     this.danger = false,
     required this.onTap,
@@ -2112,21 +2257,13 @@ class _PopRow extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
+      child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
         child: Row(
           children: [
-            SizedBox(
-              width: 16,
-              child: Text(glyph,
-                  textAlign: TextAlign.center,
-                  style: y.yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    color: y.yMuted,
-                    tracking: 0,
-                  )),
-            ),
+            Icon(icon,
+                size: 16,
+                color: danger ? y.yFight : y.yMuted),
             const SizedBox(width: 10),
             Text(label,
                 style: y.yBody(

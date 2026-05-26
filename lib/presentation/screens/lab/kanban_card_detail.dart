@@ -214,28 +214,36 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
           ),
           const SizedBox(height: 20),
           // Description
+          Text('// DESCRIPCION . MARKDOWN . LATEX . CODIGO',
+              style: y.yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: y.yMuted)),
+          const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              border: Border.all(color: inkColor(context), width: borderWidth),
+              color: y.yCream2,
+              border: Border.all(color: y.yInk, width: y.yLineMid),
             ),
-            padding: const EdgeInsets.all(12),
-            constraints: const BoxConstraints(minHeight: 120),
+            padding: const EdgeInsets.all(14),
+            constraints: const BoxConstraints(minHeight: 160),
             child: _isPreview && _descController.text.isNotEmpty
                 ? MarkdownWidget(
                     data: _descController.text,
                     shrinkWrap: true,
                     config: MarkdownConfig(configs: [
-                      PConfig(textStyle: bodyM.copyWith(color: inkColor(context))),
+                      PConfig(textStyle: y.yBody(size: 13, color: y.yInk, height: 1.55)),
                     ]),
                   )
                 : TextField(
                     controller: _descController,
-                    style: bodyM.copyWith(color: inkColor(context)),
+                    style: y.yBody(size: 13, color: y.yInk, height: 1.55),
                     maxLines: null,
                     decoration: InputDecoration(
                       hintText:
-                          'Descripción (Markdown, LaTeX inline, código)',
-                      hintStyle: bodyM.copyWith(color: inkGray),
+                          'Descripcion (Markdown, LaTeX inline, codigo)',
+                      hintStyle: y.yBody(size: 13, color: y.yMuted, height: 1.55),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
@@ -258,21 +266,24 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: accentFlight.withAlpha(20),
-                  border: Border.all(color: accentFlight, width: borderWidth),
+                  color: y.yFlight.withAlpha(20),
+                  border: Border.all(color: y.yFlight, width: 2),
                 ),
                 child: Row(
                   children: [
                     Icon(Icons.description_outlined,
-                        size: 16, color: accentFlight),
+                        size: 16, color: y.yFlight),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Ver nota de origen',
-                        style: labelBold.copyWith(color: accentFlight),
+                        style: y.ySans(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: y.yFlight),
                       ),
                     ),
-                    Icon(Icons.arrow_forward, size: 14, color: accentFlight),
+                    Icon(Icons.arrow_forward, size: 14, color: y.yFlight),
                   ],
                 ),
               ),
@@ -338,22 +349,21 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
+        backgroundColor: y.yCream,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         title: Text('Eliminar tarjeta',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: Text('Esta acción no se puede deshacer.',
-            style: bodyM.copyWith(color: inkColor(context))),
+            style: y.ySans(size: 18, weight: FontWeight.w700, color: y.yInk)),
+        content: Text('Esta accion no se puede deshacer.',
+            style: y.yBody(size: 14, color: y.yInk)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
+            child: const Text('Cancelar'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text('Eliminar',
-                style: labelBold.copyWith(color: accentFight)),
+                style: TextStyle(color: y.yFight, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -380,24 +390,46 @@ class _ColumnSelector extends StatelessWidget {
     required this.onChanged,
   });
 
+  Color _colColor(KanbanColumn col) {
+    if (col.isExpired) return y.yFight;
+    if (col.isTerminal) return y.yLab;
+    if (col.name == 'En Proceso' || col.name == 'En proceso') return y.yAmber;
+    return y.yMuted;
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _showPicker(context),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         decoration: BoxDecoration(
-          border: Border.all(color: inkColor(context), width: borderWidth),
+          color: y.yCream2,
+          border: Border.all(color: y.yInk, width: y.yLineMid),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '[${currentColumn.name.toUpperCase()} ▾]',
-              style: labelBold.copyWith(color: inkColor(context)),
+            Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: _colColor(currentColumn),
+                border: Border.all(color: y.yInk, width: 1.5),
+              ),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                currentColumn.name,
+                style: y.ySans(
+                  size: 14,
+                  weight: FontWeight.w700,
+                  color: y.yInk,
+                ),
+              ),
+            ),
+            Text('v', style: y.yBody(size: 12, color: y.yMuted)),
           ],
         ),
       ),
@@ -463,28 +495,30 @@ class _PrioritySelector extends StatelessWidget {
     return Row(
       children: CardPriority.values.map((p) {
         final isSelected = card.priority == p;
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            final updated = card.copyWith(priority: p);
-            repo.update(updated);
-            onChanged(updated);
-          },
-          child: Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: isSelected ? inkColor(context) : Colors.transparent,
-              border: Border.all(
-                color: isSelected ? inkColor(context) : inkGray,
-                width: borderWidth,
+        return Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              final updated = card.copyWith(priority: p);
+              repo.update(updated);
+              onChanged(updated);
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected ? y.yInk : y.yCream,
+                border: Border.all(color: y.yInk, width: y.yLineMid),
               ),
-            ),
-            child: Text(
-              _label(p),
-              style: labelBold.copyWith(
-                color: isSelected ? paperColor(context) : inkGray,
+              child: Text(
+                _label(p),
+                style: y.yMono(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: isSelected ? y.yCream : y.yInk,
+                ),
               ),
             ),
           ),
@@ -514,61 +548,78 @@ class _DueDateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final overdue =
+        card.dueDate != null && card.dueDate!.isBefore(DateTime.now());
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _pickDate(context),
-          child: Row(
-            children: [
-              if (card.dueDate == null) ...[
-                Icon(Icons.calendar_today_outlined,
-                    size: 14, color: inkGray),
-                const SizedBox(width: 8),
-                Text(
-                  'Agregar fecha límite',
-                  style: bodyS.copyWith(color: inkGray),
+        Text('// VENCIMIENTO Y CONTEXTO',
+            style: y.yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: y.yMuted)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (card.dueDate != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: overdue ? y.yFight : y.yFlight,
+                  border: Border.all(color: y.yInk, width: 1.5),
                 ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: card.dueDate!.isBefore(DateTime.now())
-                        ? accentFight
-                        : folderPalette[3],
-                    border: Border.all(color: inkBlack, width: borderWidth),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: inkBlack,
-                        offset: shadowOffset,
-                        blurRadius: shadowBlurRadius,
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    _formatDate(card.dueDate!),
-                    style: labelBold.copyWith(
-                      color: paperLight,
-                      fontSize: 10,
-                    ),
-                  ),
+                child: Text(
+                  _formatDate(card.dueDate!),
+                  style: y.yMono(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: y.yCream,
+                      tracking: 0.5),
                 ),
-              ],
-            ],
-          ),
+              ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _pickDate(context),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                decoration: BoxDecoration(
+                  color: y.yCream,
+                  border: Border.all(color: y.yInk, width: 2),
+                ),
+                child: Text(
+                  'EDITAR FECHA',
+                  style: y.yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: y.yInk),
+                ),
+              ),
+            ),
+            if (card.originFolderColor != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Color(card.originFolderColor!),
+                  border: Border.all(color: y.yInk, width: 1.5),
+                ),
+                child: Text(
+                  '@${y.cleanMention(card.title) == card.title ? '' : ''}origen',
+                  style: y.yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      color: y.yCream,
+                      tracking: 0.5),
+                ),
+              ),
+          ],
         ),
-        if (card.dueDate != null) ...[
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              final updated = card.copyWith(clearDueDate: true);
-              repo.update(updated);
-              onChanged(updated);
-            },
-            child: Icon(Icons.close, size: 14, color: inkGray),
-          ),
-        ],
       ],
     );
   }

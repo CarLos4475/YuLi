@@ -299,6 +299,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
 
     return y.ViewHead(
       title: 'Calendario',
+      titleColor: widget.space.accentColor,
       kicker: dateText.toUpperCase(),
       right: [
         y.NavBtn(glyph: '‹', onTap: _prev),
@@ -402,21 +403,18 @@ class _ViewToggleButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
         decoration: BoxDecoration(
-          color: isActive ? accentColor : Colors.transparent,
-          border: Border.all(color: inkBlack, width: borderWidth),
-          boxShadow: isActive ? shadowM : null,
+          color: isActive ? accentColor : y.yCream,
+          border: Border.all(color: y.yInk, width: y.yLineMid),
         ),
         child: Text(
           label,
-          style: labelXS.copyWith(
-            color: isActive
-                ? (accentColor.computeLuminance() > 0.5
-                    ? inkBlack
-                    : paperColor(context))
-                : ink,
-            fontWeight: FontWeight.w600,
+          style: y.yMono(
+            size: 12,
+            weight: FontWeight.w700,
+            tracking: 1.2,
+            color: isActive ? y.yCream : y.yInk,
           ),
         ),
       ),
@@ -484,10 +482,11 @@ class _WeekView extends StatelessWidget {
         return Expanded(
           child: Container(
             decoration: BoxDecoration(
+              color: day.weekday >= 6 ? y.yCream2 : y.yCream,
               border: Border(
                 right: BorderSide(
-                  color: ink.withAlpha(40),
-                  width: borderWidth,
+                  color: y.yInk.withAlpha(45),
+                  width: 2,
                 ),
               ),
             ),
@@ -495,38 +494,40 @@ class _WeekView extends StatelessWidget {
               children: [
                   Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
                   decoration: BoxDecoration(
-                    color: isToday ? accentColor : Colors.transparent,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: ink.withAlpha(40),
-                        width: borderWidth,
-                      ),
+                    color: isToday
+                        ? accentColor
+                        : (day.weekday >= 6 ? y.yCream2 : y.yCream),
+                    border: const Border(
+                      bottom: BorderSide(color: y.yInk, width: 2),
                     ),
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _dayLabel(day.weekday),
-                        style: labelXS.copyWith(
+                        '${_dayLabel(day.weekday).toUpperCase()}${isToday ? ' . HOY' : ''}',
+                        style: y.yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
                           color: isToday
-                              ? accentColor.computeLuminance() > 0.5
-                                  ? inkBlack
-                                  : paperLight
-                              : inkGray,
+                              ? y.yCream.withAlpha(230)
+                              : (day.weekday >= 6
+                                  ? y.yMuted.withAlpha(140)
+                                  : y.yMuted),
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${day.day}',
-                        style: labelM.copyWith(
-                          color: isToday
-                              ? accentColor.computeLuminance() > 0.5
-                                  ? inkBlack
-                                  : paperLight
-                              : ink,
-                          fontWeight: FontWeight.w700,
+                        style: y.ySans(
+                          size: 30,
+                          weight: FontWeight.w700,
+                          letterSpacing: -1,
+                          color: isToday ? y.yCream : y.yInk,
+                          height: 1.0,
                         ),
                       ),
                     ],
@@ -596,17 +597,6 @@ class _DraggableCard extends StatelessWidget {
     this.isSelected = false,
   });
 
-  Color _priorityColor() {
-    if (card.originTaskDoneAt != null) return accentSuccess;
-    if (card.originFolderColor != null) return Color(card.originFolderColor!);
-    return switch (card.priority) {
-      CardPriority.high => accentError,
-      CardPriority.medium => const Color(0xFFF5A623),
-      CardPriority.low => accentSuccess,
-      CardPriority.none => inkGray,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     return Draggable<KanbanCard>(
@@ -641,43 +631,52 @@ class _DraggableCard extends StatelessWidget {
   }
 
   Widget _cardContent(BuildContext context) {
-    final bg = _priorityColor();
+    final folderColor = card.originFolderColor != null
+        ? Color(card.originFolderColor!)
+        : null;
+    final hasFolderBorder = folderColor != null && !isSelected;
     final cardWidget = Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
       decoration: BoxDecoration(
-        color: isSelected ? accentColor : bg,
-        border: Border.all(
-          color: inkBlack,
-          width: isSelected ? borderWidthHeavy : borderWidth,
-        ),
-        boxShadow: shadowM,
+        color: isSelected ? accentColor : y.yCream,
+        border: hasFolderBorder
+            ? Border(
+                left: BorderSide(color: folderColor, width: 6),
+                top: BorderSide(color: y.yInk, width: 2),
+                bottom: BorderSide(color: y.yInk, width: 2),
+                right: BorderSide(color: y.yInk, width: 2),
+              )
+            : Border.all(color: y.yInk, width: isSelected ? y.yLineHeavy : 2),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: y.buildMentionText(
-              content: card.title,
-              style: bodyXS.copyWith(
-                fontWeight: FontWeight.w700,
-                color: isSelected
-                    ? paperLight
-                    : bg.computeLuminance() > 0.5
-                        ? inkBlack
-                        : paperLight,
-              ),
-              folderColor: card.originFolderColor != null
-                  ? Color(card.originFolderColor!)
-                  : null,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (isSelected)
+          if (card.dueDate != null)
             Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Icon(Icons.check, size: 10, color: paperLight),
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                'TAREA . DUE',
+                style: y.yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: isSelected ? y.yCream : y.yMuted,
+                ),
+              ),
             ),
+          Text(
+            y.cleanMention(card.title),
+            style: y.ySans(
+              size: 12,
+              weight: FontWeight.w600,
+              letterSpacing: -0.2,
+              color: isSelected ? y.yCream : y.yInk,
+              height: 1.2,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -743,18 +742,35 @@ class _MonthView extends StatelessWidget {
       children: [
         // Day-of-week header
         Container(
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: ink.withAlpha(40), width: borderWidth),
-            ),
+          decoration: const BoxDecoration(
+            color: y.yInk,
+            border: Border(bottom: BorderSide(color: y.yInk, width: 2)),
           ),
           child: Row(
-            children: ['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((l) {
+            children: ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM']
+                .asMap()
+                .entries
+                .map((e) {
               return Expanded(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   alignment: Alignment.center,
-                  child: Text(l, style: labelXS.copyWith(color: inkGray)),
+                  decoration: BoxDecoration(
+                    border: e.key < 6
+                        ? Border(
+                            right: BorderSide(
+                                color: y.yCream.withAlpha(64), width: 1))
+                        : null,
+                  ),
+                  child: Text(e.value,
+                      style: y.yMono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: e.key >= 5
+                            ? y.yCream.withAlpha(178)
+                            : y.yCream,
+                      )),
                 ),
               );
             }).toList(),
@@ -789,6 +805,8 @@ class _MonthView extends StatelessWidget {
               final day = DateTime(month.year, month.month, cellIndex + 1);
               final dayCards = _cardsForDay(day);
               final isToday = _isToday(day);
+              final dow = index % 7;
+              final isWeekend = dow >= 5;
 
               return DragTarget<KanbanCard>(
                 onWillAcceptWithDetails: (_) => true,
@@ -801,68 +819,73 @@ class _MonthView extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         color: isToday
-                            ? accentColor
+                            ? y.yFlight
                             : candidateData.isNotEmpty
-                                ? ink.withAlpha(20)
-                                : Colors.transparent,
+                                ? y.yInk.withAlpha(20)
+                                : (isWeekend ? y.yCream2 : y.yCream),
                         border: Border.all(
-                          color: ink.withAlpha(40),
-                          width: borderWidth,
+                          color: y.yInk.withAlpha(46),
+                          width: 1,
                         ),
                       ),
-                      padding: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.fromLTRB(7, 7, 7, 6),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${day.day}',
-                            style: labelS.copyWith(
-                              color: isToday
-                                  ? accentColor.computeLuminance() > 0.5
-                                      ? inkBlack
-                                      : paperLight
-                                  : ink,
-                              fontWeight:
-                                  isToday ? FontWeight.w700 : FontWeight.w400,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${day.day}',
+                                style: y.ySans(
+                                  size: isToday ? 22 : 18,
+                                  weight: FontWeight.w700,
+                                  letterSpacing: -0.6,
+                                  color: isToday ? y.yCream : y.yInk,
+                                  height: 1.0,
+                                ),
+                              ),
+                              if (isToday)
+                                Text('HOY',
+                                    style: y.yMono(
+                                      size: 9,
+                                      weight: FontWeight.w700,
+                                      tracking: 1.2,
+                                      color: y.yCream.withAlpha(216),
+                                    )),
+                            ],
                           ),
                           const Spacer(),
                           if (dayCards.isNotEmpty)
                             Wrap(
-                              spacing: 2,
-                              runSpacing: 2,
-                              alignment: WrapAlignment.center,
+                              spacing: 3,
+                              runSpacing: 3,
                               children: dayCards.take(4).map((c) {
                                 final cBg = c.originFolderColor != null
                                     ? Color(c.originFolderColor!)
                                     : _dotColor(c.priority);
                                 return Container(
-                                  width: 8,
-                                  height: 8,
-                                  margin: const EdgeInsets.only(bottom: 1),
+                                  width: 6,
+                                  height: 6,
                                   decoration: BoxDecoration(
                                     color: cBg,
                                     border: Border.all(
-                                      color: inkBlack,
+                                      color: isToday ? y.yCream : y.yInk,
                                       width: 1,
                                     ),
                                   ),
                                 );
                               }).toList(),
                             ),
-                          if (dayCards.length > 4)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: accentColor,
-                                border: Border.all(color: inkBlack, width: 1),
-                              ),
+                          if (dayCards.length > 3)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
                               child: Text(
-                                '+${dayCards.length - 4}',
-                                style: labelXXS.copyWith(
-                                  color: accentColor.computeLuminance() > 0.5
-                                      ? inkBlack
-                                      : paperLight,
-                                  fontWeight: FontWeight.w700,
+                                '+${dayCards.length - 3}',
+                                style: y.yMono(
+                                  size: 8,
+                                  weight: FontWeight.w700,
+                                  color: isToday ? y.yCream : y.yMuted,
                                 ),
                               ),
                             ),
