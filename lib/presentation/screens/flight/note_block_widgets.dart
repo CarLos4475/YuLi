@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:markdown_widget/markdown_widget.dart';
+import 'package:markdown/markdown.dart' as m;
 
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
@@ -25,6 +28,7 @@ class BlockRouter extends StatelessWidget {
   final Note note;
   final Folder folder;
   final int index;
+  final void Function(TextEditingController? ctrl)? onTextBlockFocusChanged;
 
   const BlockRouter({
     super.key,
@@ -32,16 +36,19 @@ class BlockRouter extends StatelessWidget {
     required this.note,
     required this.folder,
     required this.index,
+    this.onTextBlockFocusChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return _BlockShell(
       block: block,
+      index: index,
       child: switch (block) {
-        TextBlock t => _TextBlockBody(block: t),
-        MathBlock m => _MathBlockBody(block: m),
-        HeadingBlock h => _HeadingBlockBody(block: h),
+        TextBlock t => _TextBlockBody(
+            block: t, onFocusChanged: onTextBlockFocusChanged),
+        MathBlock m => _MathBlockBody(block: m, accentColor: folder.color),
+
         BulletsBlock bl => _BulletsBlockBody(block: bl),
         TareasBlock tb => _TareasBlockBody(block: tb, note: note, folder: folder),
         DrawingBlock d => _DrawingBlockBody(block: d, folder: folder),
@@ -55,13 +62,14 @@ class BlockRouter extends StatelessWidget {
 class _BlockShell extends ConsumerWidget {
   final NoteBlock block;
   final Widget child;
+  final int index;
 
-  const _BlockShell({required this.block, required this.child});
+  const _BlockShell({required this.block, required this.child, required this.index});
 
   static const _glyphForType = {
     NoteBlockType.text: 'Tt',
     NoteBlockType.math: '∑',
-    NoteBlockType.heading: 'H',
+
     NoteBlockType.bullets: '•',
     NoteBlockType.tareas: '☑',
     NoteBlockType.drawing: '✎',
@@ -98,16 +106,34 @@ class _BlockShell extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              GestureDetector(
-                onLongPress: () => _confirmDelete(context, ref),
-                child: const Icon(Icons.drag_indicator,
-                    size: 14, color: yMuted),
+              ReorderableDragStartListener(
+                index: index,
+                child: const Icon(Icons.drag_indicator, size: 14, color: yMuted),
               ),
             ],
           ),
         ),
         const SizedBox(width: 6),
-        Expanded(child: child),
+        Expanded(
+          child: Stack(
+            children: [
+              child,
+              Positioned(
+                top: 0,
+                right: 0,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _confirmDelete(context, ref),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.close,
+                        size: 14, color: yMuted.withValues(alpha: 0.5)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -172,7 +198,8 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
 
 class _TextBlockBody extends ConsumerStatefulWidget {
   final TextBlock block;
-  const _TextBlockBody({required this.block});
+  final void Function(TextEditingController? ctrl)? onFocusChanged;
+  const _TextBlockBody({required this.block, this.onFocusChanged});
 
   @override
   ConsumerState<_TextBlockBody> createState() => _TextBlockBodyState();
@@ -182,6 +209,7 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
     with _AutosaveMixin {
   late final TextEditingController _ctrl;
   late final FocusNode _focus;
+  bool _hasFocus = false;
 
   @override
   void initState() {
@@ -200,7 +228,12 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   }
 
   void _onFocusChange() {
-    if (!_focus.hasFocus) {
+    final focused = _focus.hasFocus;
+    if (focused != _hasFocus) setState(() => _hasFocus = focused);
+    if (focused) {
+      widget.onFocusChanged?.call(_ctrl);
+    } else {
+      widget.onFocusChanged?.call(null);
       flushSave(_persist);
     }
   }
@@ -213,6 +246,18 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
 
   @override
   Widget build(BuildContext context) {
+    if (!_hasFocus && _ctrl.text.isNotEmpty) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          setState(() => _hasFocus = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _focus.requestFocus();
+          });
+        },
+        child: IgnorePointer(child: NoteMarkdownPreview(data: _ctrl.text)),
+      );
+    }
     return TextField(
       controller: _ctrl,
       focusNode: _focus,
@@ -237,7 +282,8 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
 
 class _MathBlockBody extends ConsumerStatefulWidget {
   final MathBlock block;
-  const _MathBlockBody({required this.block});
+  final Color accentColor;
+  const _MathBlockBody({required this.block, required this.accentColor});
 
   @override
   ConsumerState<_MathBlockBody> createState() => _MathBlockBodyState();
@@ -282,7 +328,7 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
       children: [
         Container(
           decoration: BoxDecoration(
-            color: yInk,
+            color: widget.accentColor,
             border: Border.all(color: yInk, width: yLineMid),
           ),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
@@ -349,84 +395,6 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
           ),
         ),
       ],
-    );
-  }
-}
-
-// ─── Heading block ────────────────────────────────────────────────────────
-
-class _HeadingBlockBody extends ConsumerStatefulWidget {
-  final HeadingBlock block;
-  const _HeadingBlockBody({required this.block});
-
-  @override
-  ConsumerState<_HeadingBlockBody> createState() => _HeadingBlockBodyState();
-}
-
-class _HeadingBlockBodyState extends ConsumerState<_HeadingBlockBody>
-    with _AutosaveMixin {
-  late final TextEditingController _ctrl;
-  late final FocusNode _focus;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.block.text);
-    _focus = FocusNode();
-    _focus.addListener(_onFocusChange);
-  }
-
-  @override
-  void dispose() {
-    _focus.removeListener(_onFocusChange);
-    _focus.dispose();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _onFocusChange() {
-    if (!_focus.hasFocus) flushSave(_persist);
-  }
-
-  Future<void> _persist() async {
-    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id,
-        {'level': widget.block.level, 'text': _ctrl.text});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: yInk, width: 2)),
-      ),
-      padding: const EdgeInsets.only(bottom: 4),
-      child: TextField(
-        controller: _ctrl,
-        focusNode: _focus,
-        onChanged: (_) => scheduleSave(_persist),
-        style: ySans(
-          size: 22,
-          weight: FontWeight.w700,
-          letterSpacing: -0.7,
-          color: yInk,
-        ),
-        decoration: InputDecoration(
-          isCollapsed: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 2),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          filled: false,
-          hintText: 'Encabezado…',
-          hintStyle: ySans(
-            size: 22,
-            weight: FontWeight.w700,
-            letterSpacing: -0.7,
-            color: yMuted,
-          ),
-        ),
-        maxLines: 1,
-      ),
     );
   }
 }
@@ -1071,5 +1039,276 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       onDrawEnd: () {},
       onScrollLockChanged: (_) {},
     );
+  }
+}
+
+// ─── Markdown preview (compiled) ─────────────────────────────────────────
+
+class NoteMarkdownPreview extends ConsumerWidget {
+  final String data;
+  const NoteMarkdownPreview({required this.data});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
+
+    SpanNode? customTextGenerator(
+        m.Node node, MarkdownConfig config, WidgetVisitor visitor) {
+      if (node is m.Text) {
+        final text = node.text;
+        final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
+        final matches = regex.allMatches(text).toList();
+        if (matches.isNotEmpty) {
+          final matchedSpans = <MapEntry<Match, Folder>>[];
+          for (final match in matches) {
+            final folderName = match.group(1)!;
+            final clean = cleanMention(folderName.toLowerCase());
+            final found = folders.where(
+              (f) => cleanMention(f.name.toLowerCase()) == clean,
+            );
+            if (found.isNotEmpty) {
+              matchedSpans.add(MapEntry(match, found.first));
+            }
+          }
+          if (matchedSpans.isNotEmpty) {
+            final root = ConcreteElementNode();
+            int lastIndex = 0;
+            final defaultStyle =
+                config.p.textStyle;
+            for (final item in matchedSpans) {
+              final match = item.key;
+              final folder = item.value;
+              if (match.start > lastIndex) {
+                root.accept(TextNode(
+                    text: text.substring(lastIndex, match.start),
+                    style: defaultStyle));
+              }
+              root.accept(TextNode(
+                  text: match.group(0)!.substring(1),
+                  style: defaultStyle.copyWith(
+                      color: folder.color, fontWeight: FontWeight.bold)));
+              lastIndex = match.end;
+            }
+            if (lastIndex < text.length) {
+              root.accept(TextNode(
+                  text: text.substring(lastIndex), style: defaultStyle));
+            }
+            return root;
+          }
+        }
+      }
+      return null;
+    }
+
+    final generator = MarkdownGenerator(
+      textGenerator: customTextGenerator,
+      inlineSyntaxList: [_LatexSyntax()],
+      blockSyntaxList: [const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
+      generators: [
+        SpanNodeGeneratorWithTag(
+          tag: 'latex',
+          generator: (e, config, visitor) =>
+              _LatexNode(e.attributes, e.textContent, config),
+        ),
+        SpanNodeGeneratorWithTag(
+          tag: 'align',
+          generator: (e, config, visitor) =>
+              _AlignmentNode(e.attributes['align'] ?? 'left', e.textContent, config),
+        ),
+      ],
+    );
+
+    return MarkdownWidget(
+      data: data,
+      shrinkWrap: true,
+      markdownGenerator: generator,
+      config: MarkdownConfig(configs: [
+        PConfig(textStyle: yBody(size: 15, color: yInk2, height: 1.55)),
+        H1Config(style: ySans(size: 28, weight: FontWeight.w700, letterSpacing: -0.8, color: yInk)),
+        H2Config(style: ySans(size: 22, weight: FontWeight.w700, letterSpacing: -0.5, color: yInk)),
+        H3Config(style: ySans(size: 18, weight: FontWeight.w700, letterSpacing: -0.3, color: yInk)),
+        CodeConfig(style: yMono(size: 12, color: yInk, tracking: 0.5).copyWith(backgroundColor: yCream2)),
+        BlockquoteConfig(textColor: yMuted, sideColor: yFlight),
+        ImgConfig(
+          builder: (url, attributes) {
+            final maxW = MediaQuery.of(context).size.width * 0.75;
+            Widget img;
+            if (url.startsWith('/')) {
+              img = Image.file(File(url),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => Text('[Imagen no encontrada]',
+                      style: yBody(size: 13, color: yMuted)));
+            } else {
+              img = Image.network(url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => Text('[Imagen: $url]',
+                      style: yBody(size: 13, color: yMuted)));
+            }
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: 300, maxWidth: maxW),
+                child: img,
+              ),
+            );
+          },
+        ),
+      ]),
+    );
+  }
+}
+
+// ─── LaTeX support ───────────────────────────────────────────────────────
+
+class _LatexNode extends SpanNode {
+  final Map<String, String> attributes;
+  final String textContent;
+  final MarkdownConfig config;
+
+  _LatexNode(this.attributes, this.textContent, this.config);
+
+  @override
+  InlineSpan build() {
+    final content = attributes['content'] ?? '';
+    final isInline = attributes['isInline'] == 'true';
+    final style = parentStyle ?? config.p.textStyle;
+    if (content.isEmpty) {
+      return TextSpan(style: style, text: textContent);
+    }
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Math.tex(
+        content,
+        mathStyle: isInline ? MathStyle.text : MathStyle.display,
+        textStyle: style,
+        onErrorFallback: (err) =>
+            Text(textContent, style: style.copyWith(color: Colors.red)),
+      ),
+    );
+  }
+}
+
+class _LatexBlockSyntax extends m.BlockSyntax {
+  @override
+  RegExp get pattern => RegExp(r'^\$\$\s*$');
+  const _LatexBlockSyntax() : super();
+
+  @override
+  m.Node? parse(m.BlockParser parser) {
+    final contentLines = <String>[];
+    parser.advance();
+    while (!parser.isDone) {
+      final line = parser.current.content;
+      if (pattern.hasMatch(line)) {
+        parser.advance();
+        break;
+      }
+      contentLines.add(line);
+      parser.advance();
+    }
+    final content = contentLines.join('\n');
+    final element = m.Element('latex', [m.Text(content)]);
+    element.attributes['content'] = content;
+    element.attributes['isInline'] = 'false';
+    return element;
+  }
+}
+
+class _LatexSyntax extends m.InlineSyntax {
+  _LatexSyntax()
+      : super(
+            r'(\$\$(?!\s)([\s\S]+?)(?<!\s)\$\$)|(\$(?!\s)([^$\n]+?)(?<!\s)\$)');
+
+  @override
+  bool onMatch(m.InlineParser parser, Match match) {
+    final matchValue = match.group(0)!;
+    String content = '';
+    bool isInline = true;
+    if (matchValue.startsWith(r'$$') && matchValue.endsWith(r'$$')) {
+      isInline = false;
+      content = matchValue.substring(2, matchValue.length - 2).trim();
+    } else if (matchValue.startsWith(r'$') && matchValue.endsWith(r'$')) {
+      isInline = true;
+      content = matchValue.substring(1, matchValue.length - 1).trim();
+    }
+    final element = m.Element.text('latex', matchValue);
+    element.attributes['content'] = content;
+    element.attributes['isInline'] = '$isInline';
+    parser.addNode(element);
+    return true;
+  }
+}
+
+class _AlignmentNode extends SpanNode {
+  final String align;
+  final String textContent;
+  final MarkdownConfig config;
+
+  _AlignmentNode(this.align, this.textContent, this.config);
+
+  @override
+  InlineSpan build() {
+    final textAlignment = switch (align) {
+      'center' => TextAlign.center,
+      'right' => TextAlign.right,
+      _ => TextAlign.left,
+    };
+    final trimmed = textContent.trim();
+    if (trimmed.isEmpty) return const TextSpan();
+
+    final generator = MarkdownGenerator(
+      linesMargin: const EdgeInsets.symmetric(vertical: 2),
+      inlineSyntaxList: [_LatexSyntax()],
+      blockSyntaxList: [const _LatexBlockSyntax()],
+      richTextBuilder: (span) => Text.rich(span, textAlign: textAlignment),
+      generators: [
+        SpanNodeGeneratorWithTag(
+          tag: 'latex',
+          generator: (e, cfg, visitor) =>
+              _LatexNode(e.attributes, e.textContent, cfg),
+        ),
+      ],
+    );
+
+    final widgets = generator.buildWidgets(trimmed, config: config);
+
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: widgets,
+        ),
+      ),
+    );
+  }
+}
+
+class _AlignmentBlockSyntax extends m.BlockSyntax {
+  @override
+  RegExp get pattern => RegExp(r'^:::\s*(left|center|right)\s*$');
+  const _AlignmentBlockSyntax() : super();
+
+  @override
+  m.Node? parse(m.BlockParser parser) {
+    final match = pattern.firstMatch(parser.current.content);
+    if (match == null) return null;
+    final align = match.group(1)!;
+    final contentLines = <String>[];
+    parser.advance();
+    while (!parser.isDone) {
+      final line = parser.current.content;
+      if (RegExp(r'^:::\s*$').hasMatch(line)) {
+        parser.advance();
+        break;
+      }
+      contentLines.add(line);
+      parser.advance();
+    }
+    final content = contentLines.join('\n');
+    final element = m.Element('align', [m.Text(content)]);
+    element.attributes['align'] = align;
+    return element;
   }
 }

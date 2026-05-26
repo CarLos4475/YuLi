@@ -257,6 +257,33 @@ class _SpaceCard extends ConsumerWidget {
   String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: yCream,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Eliminar space',
+            style: ySans(size: 18, weight: FontWeight.w700)),
+        content: Text(
+          '¿Eliminar "${space.name}"? Se moverá a la papelera.',
+          style: yBody(size: 14),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(labSpaceRepositoryProvider).softDelete(space.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final columns = ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [];
@@ -297,6 +324,7 @@ class _SpaceCard extends ConsumerWidget {
         context,
         MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: space)),
       ),
+      onLongPress: () => _confirmDelete(context, ref),
       child: Container(
         decoration: BoxDecoration(
           color: yCream,

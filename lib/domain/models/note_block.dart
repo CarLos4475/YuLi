@@ -61,12 +61,14 @@ sealed class NoteBlock {
           latex: (json['latex'] as String?) ?? '',
         );
       case NoteBlockType.heading:
-        return HeadingBlock(
+        // Legacy: transparently convert to TextBlock with markdown heading
+        final level = ((json['level'] as int?) ?? 2).clamp(1, 6);
+        final text = (json['text'] as String?) ?? '';
+        return TextBlock(
           id: id,
           noteId: noteId,
           position: position,
-          level: (json['level'] as int?) ?? 2,
-          text: (json['text'] as String?) ?? '',
+          markdown: '${'#' * level} $text',
         );
       case NoteBlockType.bullets:
         return BulletsBlock(
@@ -138,28 +140,6 @@ class MathBlock extends NoteBlock {
   Map<String, dynamic> payloadJson() => {'latex': latex};
 }
 
-class HeadingBlock extends NoteBlock {
-  final int level;
-  final String text;
-  const HeadingBlock({
-    required super.id,
-    required super.noteId,
-    required super.position,
-    required this.level,
-    required this.text,
-  }) : super(type: NoteBlockType.heading);
-
-  HeadingBlock copyWith({int? level, String? text}) => HeadingBlock(
-        id: id,
-        noteId: noteId,
-        position: position,
-        level: level ?? this.level,
-        text: text ?? this.text,
-      );
-
-  @override
-  Map<String, dynamic> payloadJson() => {'level': level, 'text': text};
-}
 
 class BulletsBlock extends NoteBlock {
   final List<String> items;

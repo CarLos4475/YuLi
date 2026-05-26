@@ -1,17 +1,26 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
+import '../../providers/navigation_provider.dart';
 import '../../providers/note_block_providers.dart';
 import '../../utils/pdf_export.dart';
+import '../../widgets/fight_panel.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
+import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
+import 'block_insert_menu.dart';
+import 'block_insert_panels.dart';
+import 'format_toolbar.dart';
 import 'note_block_widgets.dart';
+import 'note_cell_model.dart';
+import 'drawing_cell.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -31,6 +40,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   late final TextEditingController _titleCtrl;
   Timer? _titleSaveTimer;
   bool _dirty = false;
+  TextEditingController? _activeTextCtrl;
+  TextEditingController? _lastTextCtrl;
+  InsertPanelType? _activePanel;
+  bool _isPreview = false;
 
   @override
   void initState() {
@@ -73,7 +86,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       case NoteBlockType.math:
         payload = {'latex': ''};
       case NoteBlockType.heading:
-        payload = {'level': 2, 'text': ''};
+        payload = {'md': ''};
       case NoteBlockType.bullets:
         payload = {
           'items': ['']
@@ -116,14 +129,11 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           buf.writeln(t.markdown);
         case MathBlock m:
           buf.writeln('\$\$${m.latex}\$\$');
-        case HeadingBlock h:
-          buf.writeln('${'#' * h.level} ${h.text}');
         case BulletsBlock bl:
           for (final it in bl.items) {
             buf.writeln('- $it');
           }
         case TareasBlock _:
-          // Skipped in PDF: tasks live as entities, not markdown.
           continue;
         case DrawingBlock _:
           buf.writeln('[dibujo]');
@@ -131,6 +141,76 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       buf.writeln();
     }
     return buf.toString();
+  }
+
+  void _onTextBlockFocusChanged(TextEditingController? ctrl) {
+    setState(() {
+      _activeTextCtrl = ctrl;
+      if (ctrl != null) _lastTextCtrl = ctrl;
+    });
+  }
+
+  void _insertSyntax(String syntax) {
+    final ctrl = _lastTextCtrl ?? _activeTextCtrl;
+    if (ctrl == null) return;
+    final cursor = ctrl.selection.baseOffset;
+    final text = ctrl.text;
+    final newText = cursor >= 0
+        ? text.substring(0, cursor) + syntax + text.substring(cursor)
+        : text + syntax;
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: (cursor >= 0 ? cursor : text.length) + syntax.length,
+      ),
+    );
+  }
+
+  void _showInsertMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => BlockInsertMenu(
+        onDirectInsert: (syntax) => _insertSyntax(syntax),
+        onOpenPanel: (type) => setState(() => _activePanel = type),
+      ),
+    );
+  }
+
+  void _showFightPanel() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.2,
+        maxChildSize: 0.9,
+        builder: (ctx, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: yCream,
+            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          ),
+          child: FightPanel(
+            folderId: widget.folder.id,
+            scrollController: scrollController,
+            onTapTask: (task) async {
+              _insertSyntax('\n- [ ] ${task.content}\n');
+              await ref.read(taskRepositoryProvider).markDone(task.id);
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Tarea insertada como checklist y completada'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _showLinkToLab(List<LabSpace> spaces) async {
@@ -167,71 +247,189 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   Widget build(BuildContext context) {
     final blocks = ref.watch(noteBlocksProvider(widget.note.id)).valueOrNull ?? [];
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
+    final linkedCards = ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
 
     return Scaffold(
       backgroundColor: yCream,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            ModeHeader(
-              mode: 'FLIGHT',
-              subtitle: 'MODO NOTAS · CARPETA · NOTA ABIERTA',
-              color: yFlight,
-              onBack: () => Navigator.pop(context),
-              headerRight: [
-                YBadge(
-                  label: '@${widget.folder.name}',
-                  bg: widget.folder.color,
-                  fg: yCream,
+            Column(
+              children: [
+                ModeHeader(
+                  mode: 'FLIGHT',
+                  subtitle: 'MODO NOTAS · CARPETA · NOTA ABIERTA',
+                  color: yFlight,
+                  onBack: () => Navigator.pop(context),
+                  headerRight: [
+                    YBadge(
+                      label: '@${widget.folder.name}',
+                      bg: widget.folder.color,
+                      fg: yCream,
+                    ),
+                    IconSquareBtn(icon: Icons.help_outline),
+                  ],
                 ),
-                IconSquareBtn(icon: Icons.help_outline),
+                _NoteHeroHeader(
+                  folder: widget.folder,
+                  titleCtrl: _titleCtrl,
+                  dirty: _dirty,
+                  lastEdit: widget.note.updatedAt,
+                  wordCount: _countWords(blocks),
+                  linkedCards: linkedCards,
+                  onSave: _saveTitle,
+                  onImage: () => _addBlock(NoteBlockType.drawing),
+                  onLink: () => _showLinkToLab(spaces),
+                  onPdf: () => _exportPdf(blocks),
+                  onFight: _showFightPanel,
+                  onTogglePreview: () => setState(() => _isPreview = !_isPreview),
+                  isPreview: _isPreview,
+                ),
+                Expanded(
+                  child: Container(
+                    color: yCream,
+                    child: blocks.isEmpty
+                        ? _EmptyState(onAdd: _addBlock)
+                        : _isPreview
+                            ? _buildPreview(blocks)
+                            : ReorderableListView.builder(
+                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                                buildDefaultDragHandles: false,
+                                proxyDecorator: (child, _, _) => Material(
+                                  color: Colors.transparent,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: yFlight, width: yLineThin),
+                                    ),
+                                    child: child,
+                                  ),
+                                ),
+                                itemBuilder: (ctx, i) => Padding(
+                                  key: ValueKey('block_${blocks[i].id}'),
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: BlockRouter(
+                                    block: blocks[i],
+                                    note: widget.note,
+                                    folder: widget.folder,
+                                    index: i,
+                                    onTextBlockFocusChanged: _onTextBlockFocusChanged,
+                                  ),
+                                ),
+                                itemCount: blocks.length,
+                                onReorder: (a, b) => _onReorder(blocks, a, b),
+                              ),
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: _activeTextCtrl != null && !_isPreview
+                      ? FormatToolbar(
+                          controller: _activeTextCtrl,
+                          onOpenInsertMenu: _showInsertMenu,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                _EditorFooter(
+                  blocks: blocks,
+                  wordCount: _countWords(blocks),
+                  onAdd: _addBlock,
+                ),
               ],
             ),
-            _NoteHeroHeader(
-              folder: widget.folder,
-              titleCtrl: _titleCtrl,
-              dirty: _dirty,
-              lastEdit: widget.note.updatedAt,
-              wordCount: _countWords(blocks),
-              onSave: _saveTitle,
-              onImage: () => _addBlock(NoteBlockType.drawing),
-              onLink: () => _showLinkToLab(spaces),
-              onPdf: () => _exportPdf(blocks),
-            ),
-            Expanded(
-              child: Container(
-                color: yCream,
-                child: blocks.isEmpty
-                    ? _EmptyState(onAdd: _addBlock)
-                    : ReorderableListView.builder(
-                        padding:
-                            const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                        proxyDecorator: (child, _, _) => Material(
-                          color: Colors.transparent,
-                          child: child,
-                        ),
-                        itemBuilder: (ctx, i) => Padding(
-                          key: ValueKey('block_${blocks[i].id}'),
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: BlockRouter(
-                            block: blocks[i],
-                            note: widget.note,
-                            folder: widget.folder,
-                            index: i,
-                          ),
-                        ),
-                        itemCount: blocks.length,
-                        onReorder: (a, b) => _onReorder(blocks, a, b),
-                      ),
+            if (_activePanel != null)
+              Positioned.fill(
+                child: InsertPanelOverlay(
+                  type: _activePanel!,
+                  noteId: widget.note.id,
+                  onInsert: (md) {
+                    _insertSyntax(md);
+                    setState(() => _activePanel = null);
+                  },
+                  onClose: () => setState(() => _activePanel = null),
+                ),
               ),
-            ),
-            _EditorFooter(
-              blocks: blocks,
-              wordCount: _countWords(blocks),
-              onAdd: _addBlock,
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPreview(List<NoteBlock> blocks) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final b in blocks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: switch (b) {
+                TextBlock t => t.markdown.isNotEmpty
+                    ? NoteMarkdownPreview(data: t.markdown)
+                    : const SizedBox.shrink(),
+                MathBlock m => m.latex.isNotEmpty
+                    ? Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: widget.folder.color,
+                          border: Border.all(color: yInk, width: yLineMid),
+                        ),
+                        child: Center(
+                          child: Math.tex(
+                            m.latex,
+                            mathStyle: MathStyle.display,
+                            textStyle: const TextStyle(
+                              fontSize: 22,
+                              color: yCream,
+                            ),
+                            onErrorFallback: (err) => Text(
+                              err.message,
+                              style: yMono(size: 11, color: yAmber2, tracking: 0.8),
+                            ),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+                BulletsBlock bl => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final it in bl.items)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8, right: 10),
+                                child: SizedBox(width: 6, height: 6,
+                                    child: ColoredBox(color: yInk)),
+                              ),
+                              Expanded(
+                                child: Text(it,
+                                    style: yBody(size: 14, color: yInk2, height: 1.5)),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                TareasBlock _ => const SizedBox.shrink(),
+                DrawingBlock d => SizedBox(
+                    height: d.height,
+                    width: double.infinity,
+                    child: CustomPaint(
+                      painter: DrawingPreviewPainter(
+                          strokes: DrawingData.fromJson(
+                                  d.payloadJson())
+                              .strokes),
+                      size: Size.infinite,
+                    ),
+                  ),
+              },
+            ),
+        ],
       ),
     );
   }
@@ -244,8 +442,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           n += _wc(t.markdown);
         case MathBlock _:
           break;
-        case HeadingBlock h:
-          n += _wc(h.text);
         case BulletsBlock bl:
           for (final it in bl.items) {
             n += _wc(it);
@@ -265,16 +461,20 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
 // ─── Hero header ──────────────────────────────────────────────────────────
 
-class _NoteHeroHeader extends StatelessWidget {
+class _NoteHeroHeader extends ConsumerWidget {
   final Folder folder;
   final TextEditingController titleCtrl;
   final bool dirty;
   final DateTime lastEdit;
   final int wordCount;
+  final List<KanbanCard> linkedCards;
   final VoidCallback onSave;
   final VoidCallback onImage;
   final VoidCallback onLink;
   final VoidCallback onPdf;
+  final VoidCallback onFight;
+  final VoidCallback onTogglePreview;
+  final bool isPreview;
 
   const _NoteHeroHeader({
     required this.folder,
@@ -282,10 +482,14 @@ class _NoteHeroHeader extends StatelessWidget {
     required this.dirty,
     required this.lastEdit,
     required this.wordCount,
+    required this.linkedCards,
     required this.onSave,
     required this.onImage,
     required this.onLink,
     required this.onPdf,
+    required this.onFight,
+    required this.onTogglePreview,
+    required this.isPreview,
   });
 
   String _lastEditLabel(DateTime d) {
@@ -298,7 +502,9 @@ class _NoteHeroHeader extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uniqueSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
+
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
@@ -307,87 +513,152 @@ class _NoteHeroHeader extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            top: 0,
-            bottom: 0,
-            left: 0,
+            top: 0, bottom: 0, left: 0,
             child: Container(width: 6, color: folder.color),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '// ${folder.name.toUpperCase()} / NOTA · ED. ${_lastEditLabel(lastEdit).toUpperCase()} · $wordCount PALABRAS',
-                        style: yMono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          tracking: 1.4,
-                          color: yMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextField(
-                        controller: titleCtrl,
-                        style: ySans(
-                          size: 28,
-                          weight: FontWeight.w700,
-                          letterSpacing: -1,
-                          color: folder.color,
-                          height: 1.1,
-                        ),
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          filled: false,
-                          hintText: 'Sin título',
-                          hintStyle: ySans(
-                            size: 28,
-                            weight: FontWeight.w700,
-                            letterSpacing: -1,
-                            color: yMuted,
-                            height: 1.1,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '// ${folder.name.toUpperCase()} / NOTA · ED. ${_lastEditLabel(lastEdit).toUpperCase()} · $wordCount PALABRAS',
+                            style: yMono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              tracking: 1.4,
+                              color: yMuted,
+                            ),
                           ),
-                        ),
-                        maxLines: 1,
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: titleCtrl,
+                            style: ySans(
+                              size: 28,
+                              weight: FontWeight.w700,
+                              letterSpacing: -1,
+                              color: folder.color,
+                              height: 1.1,
+                            ),
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              filled: false,
+                              hintText: 'Sin título',
+                              hintStyle: ySans(
+                                size: 28,
+                                weight: FontWeight.w700,
+                                letterSpacing: -1,
+                                color: yMuted,
+                                height: 1.1,
+                              ),
+                            ),
+                            maxLines: 1,
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 10),
+                    _HeaderIcon(
+                      icon: Icons.check,
+                      fill: !dirty,
+                      color: dirty ? yAmber2 : yLab,
+                      onTap: onSave,
+                    ),
+                    const SizedBox(width: 6),
+                    _HeaderIcon(
+                      icon: isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
+                      fill: isPreview,
+                      color: yLab,
+                      onTap: onTogglePreview,
+                    ),
+                    const SizedBox(width: 6),
+                    _HeaderIcon(icon: Icons.flash_on, fill: true, color: yFight, onTap: onFight),
+                    const SizedBox(width: 6),
+                    _HeaderIcon(icon: Icons.image_outlined, onTap: onImage),
+                    const SizedBox(width: 6),
+                    _HeaderIcon(
+                      icon: Icons.all_inclusive,
+                      fill: true,
+                      color: yFlight,
+                      onTap: onLink,
+                    ),
+                    const SizedBox(width: 6),
+                    _HeaderIcon(
+                      icon: Icons.picture_as_pdf,
+                      fill: true,
+                      color: yAmber,
+                      onTap: onPdf,
+                    ),
+                  ],
+                ),
+                if (uniqueSpaceIds.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: uniqueSpaceIds.map((spaceId) =>
+                      _LabBadge(spaceId: spaceId),
+                    ).toList(),
                   ),
-                ),
-                const SizedBox(width: 10),
-                _HeaderIcon(
-                  icon: Icons.check,
-                  fill: !dirty,
-                  color: dirty ? yAmber2 : yLab,
-                  onTap: onSave,
-                ),
-                const SizedBox(width: 6),
-                _HeaderIcon(icon: Icons.image_outlined, onTap: onImage),
-                const SizedBox(width: 6),
-                _HeaderIcon(
-                  icon: Icons.all_inclusive,
-                  fill: true,
-                  color: yFlight,
-                  onTap: onLink,
-                ),
-                const SizedBox(width: 6),
-                _HeaderIcon(
-                  icon: Icons.picture_as_pdf,
-                  fill: true,
-                  color: yAmber,
-                  onTap: onPdf,
-                ),
+                ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LabBadge extends ConsumerWidget {
+  final int spaceId;
+  const _LabBadge({required this.spaceId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spaceAsync = ref.watch(labSpaceByIdProvider(spaceId));
+    final space = spaceAsync.valueOrNull;
+    if (space == null) return const SizedBox.shrink();
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        ref.read(pendingLabSpaceNavigationProvider.notifier).state = spaceId;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: space.accentColor,
+          border: Border.all(color: yInk, width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.science_outlined, size: 10, color: yCream),
+            const SizedBox(width: 4),
+            Text(
+              space.name.toUpperCase(),
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                color: yCream,
+                tracking: 1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -465,8 +736,6 @@ class _EditorFooter extends StatelessWidget {
           _AddBlockBtn(glyph: 'Tt', label: 'Texto', onTap: () => onAdd(NoteBlockType.text)),
           const SizedBox(width: 6),
           _AddBlockBtn(glyph: '∑', label: 'Math', onTap: () => onAdd(NoteBlockType.math)),
-          const SizedBox(width: 6),
-          _AddBlockBtn(glyph: 'H', label: 'Título', onTap: () => onAdd(NoteBlockType.heading)),
           const SizedBox(width: 6),
           _AddBlockBtn(glyph: '•', label: 'Lista', onTap: () => onAdd(NoteBlockType.bullets)),
           const SizedBox(width: 6),

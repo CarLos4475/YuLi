@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart';
 import '../../providers/database_providers.dart';
 
 enum InsertPanelType {
@@ -41,7 +41,7 @@ class InsertPanelOverlay extends StatelessWidget {
     return GestureDetector(
       onTap: onClose,
       child: Container(
-        color: Colors.black.withAlpha(100),
+        color: Colors.black.withValues(alpha: 0.4),
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: GestureDetector(
@@ -84,17 +84,17 @@ class _PanelScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: paperColor(context),
-        border: Border.all(color: inkColor(context), width: borderWidthHeavy),
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineHeavy),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: inkColor(context), width: borderWidth),
+                bottom: BorderSide(color: yInk, width: yLineMid),
               ),
             ),
             child: Row(
@@ -102,15 +102,15 @@ class _PanelScaffold extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: displayM.copyWith(color: inkColor(context)),
+                    style: ySans(size: 24, weight: FontWeight.w700, color: yInk),
                   ),
                 ),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: onClose,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Icon(Icons.close, color: inkColor(context), size: 22),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.close, color: yInk, size: 22),
                   ),
                 ),
               ],
@@ -129,19 +129,20 @@ class _PanelScaffold extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: accentFlight,
+                decoration: const BoxDecoration(
+                  color: yFlight,
                   border: Border(
-                    top: BorderSide(color: inkColor(context), width: borderWidth),
+                    top: BorderSide(color: yInk, width: yLineMid),
                   ),
                 ),
                 child: Center(
                   child: Text(
                     'INSERTAR',
-                    style: labelBold.copyWith(
-                      color: paperLight,
-                      letterSpacing: 1.0,
-                    ),
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                    ).copyWith(letterSpacing: 1.0),
                   ),
                 ),
               ),
@@ -154,21 +155,21 @@ class _PanelScaffold extends StatelessWidget {
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-InputDecoration _panelInputDecoration(BuildContext context, {String? hint}) {
+InputDecoration _panelInputDecoration({String? hint}) {
   return InputDecoration(
     hintText: hint,
-    hintStyle: bodyS.copyWith(color: inkGray),
+    hintStyle: yBody(size: 13, color: yMuted),
     border: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: inkGray, width: 1),
+      borderSide: BorderSide(color: yMuted, width: 1),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: inkGray.withAlpha(120), width: 1),
+      borderSide: BorderSide(color: yMuted.withValues(alpha: 0.5), width: 1),
     ),
     focusedBorder: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: accentFlight, width: 2),
+      borderSide: BorderSide(color: yFlight, width: 2),
     ),
     contentPadding: const EdgeInsets.all(12),
     isDense: true,
@@ -274,14 +275,13 @@ class _TablePanelState extends State<_TablePanel> {
     return buf.toString();
   }
 
-  Widget _counterBtn(
-    BuildContext context, {
+  Widget _counterBtn({
     required String label,
     required int value,
     required VoidCallback onAdd,
     VoidCallback? onRemove,
   }) {
-    final disabledColor = inkGray.withAlpha(80);
+    final disabledColor = yMuted.withValues(alpha: 0.4);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -289,46 +289,32 @@ class _TablePanelState extends State<_TablePanel> {
           behavior: HitTestBehavior.opaque,
           onTap: onRemove,
           child: Container(
-            width: 30,
-            height: 30,
+            width: 30, height: 30,
             decoration: BoxDecoration(
               border: Border.all(
-                color: onRemove != null ? inkColor(context) : disabledColor,
-                width: 1,
-              ),
+                color: onRemove != null ? yInk : disabledColor, width: 1),
             ),
             child: Center(
-              child: Text(
-                '−',
-                style: bodyM.copyWith(
-                  color: onRemove != null ? inkColor(context) : disabledColor,
-                  height: 1,
-                ),
-              ),
+              child: Text('−',
+                  style: yBody(size: 16,
+                      color: onRemove != null ? yInk : disabledColor, height: 1)),
             ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Text(
-            '$value $label',
-            style: bodyS.copyWith(color: inkColor(context)),
-          ),
+          child: Text('$value $label', style: yBody(size: 13, color: yInk)),
         ),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onAdd,
           child: Container(
-            width: 30,
-            height: 30,
+            width: 30, height: 30,
             decoration: BoxDecoration(
-              border: Border.all(color: inkColor(context), width: 1),
+              border: Border.all(color: yInk, width: 1),
             ),
             child: Center(
-              child: Text(
-                '+',
-                style: bodyM.copyWith(color: inkColor(context), height: 1),
-              ),
+              child: Text('+', style: yBody(size: 16, color: yInk, height: 1)),
             ),
           ),
         ),
@@ -336,32 +322,25 @@ class _TablePanelState extends State<_TablePanel> {
     );
   }
 
-  Widget _alignBtn(BuildContext context, IconData icon, TextAlign value) {
+  Widget _alignBtn(IconData icon, TextAlign value) {
     final selected = _alignment == value;
     return GestureDetector(
       onTap: () => setState(() => _alignment = value),
       child: Container(
-        width: 34,
-        height: 34,
+        width: 34, height: 34,
         decoration: BoxDecoration(
-          color: selected ? accentFlight : Colors.transparent,
+          color: selected ? yFlight : Colors.transparent,
           border: Border.all(
-            color: selected ? accentFlight : inkGray.withAlpha(80),
-            width: 1,
-          ),
+            color: selected ? yFlight : yMuted.withValues(alpha: 0.4), width: 1),
         ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: selected ? paperLight : inkColor(context),
-        ),
+        child: Icon(icon, size: 18, color: selected ? yCream : yInk),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final borderCol = inkGray.withAlpha(50);
+    final borderCol = yMuted.withValues(alpha: 0.3);
     return _PanelScaffold(
       title: 'Tabla',
       onClose: widget.onClose,
@@ -370,94 +349,75 @@ class _TablePanelState extends State<_TablePanel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Wrap(
-            spacing: 20,
-            runSpacing: 12,
+            spacing: 20, runSpacing: 12,
             alignment: WrapAlignment.center,
             children: [
-              _counterBtn(
-                context,
-                label: 'col',
-                value: _cols,
-                onAdd: _addColumn,
-                onRemove: _cols > 1 ? _removeColumn : null,
-              ),
-              _counterBtn(
-                context,
-                label: 'filas',
-                value: _cells.length - 1,
-                onAdd: _addRow,
-                onRemove: _cells.length > 2 ? _removeRow : null,
-              ),
+              _counterBtn(label: 'col', value: _cols,
+                  onAdd: _addColumn,
+                  onRemove: _cols > 1 ? _removeColumn : null),
+              _counterBtn(label: 'filas', value: _cells.length - 1,
+                  onAdd: _addRow,
+                  onRemove: _cells.length > 2 ? _removeRow : null),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _alignBtn(context, Icons.format_align_left, TextAlign.left),
+              _alignBtn(Icons.format_align_left, TextAlign.left),
               const SizedBox(width: 6),
-              _alignBtn(context, Icons.format_align_center, TextAlign.center),
+              _alignBtn(Icons.format_align_center, TextAlign.center),
               const SizedBox(width: 6),
-              _alignBtn(context, Icons.format_align_right, TextAlign.right),
+              _alignBtn(Icons.format_align_right, TextAlign.right),
             ],
           ),
           const SizedBox(height: 16),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              child: SizedBox(
-                width: _cols * 130.0,
-                child: Table(
-                  border: TableBorder(
-                    top: BorderSide(color: borderCol, width: 1.5),
-                    bottom: BorderSide(color: borderCol, width: 1.5),
-                    left: BorderSide(color: borderCol, width: 1.5),
-                    right: BorderSide(color: borderCol, width: 1.5),
-                    horizontalInside: BorderSide(color: borderCol, width: 0.5),
-                    verticalInside: BorderSide(color: borderCol, width: 0.5),
-                  ),
-                  children: [
-                    for (int r = 0; r < _cells.length; r++)
-                      TableRow(
-                        decoration: r == 0
-                            ? BoxDecoration(
-                                color: inkColor(context).withAlpha(12),
-                              )
-                            : null,
-                        children: [
-                          for (int c = 0; c < _cols; c++)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 4),
-                              child: SizedBox(
-                                height: 36,
-                                child: TextField(
-                                  controller: _cells[r][c],
-                                  style: r == 0
-                                      ? labelBold.copyWith(
-                                          color: inkColor(context),
-                                          fontSize: 13)
-                                      : bodyS.copyWith(
-                                          color: inkColor(context)),
-                                  textAlign: _alignment,
-                                  decoration: InputDecoration(
-                                    hintText: r == 0 ? 'Encab.' : '',
-                                    hintStyle: bodyS.copyWith(
-                                        color: inkGray.withAlpha(100)),
-                                    border: InputBorder.none,
-                                    contentPadding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: 4, vertical: 8),
-                                    isDense: true,
-                                  ),
+            child: SizedBox(
+              width: _cols * 130.0,
+              child: Table(
+                border: TableBorder(
+                  top: BorderSide(color: borderCol, width: 1.5),
+                  bottom: BorderSide(color: borderCol, width: 1.5),
+                  left: BorderSide(color: borderCol, width: 1.5),
+                  right: BorderSide(color: borderCol, width: 1.5),
+                  horizontalInside: BorderSide(color: borderCol, width: 0.5),
+                  verticalInside: BorderSide(color: borderCol, width: 0.5),
+                ),
+                children: [
+                  for (int r = 0; r < _cells.length; r++)
+                    TableRow(
+                      decoration: r == 0
+                          ? BoxDecoration(color: yInk.withValues(alpha: 0.05))
+                          : null,
+                      children: [
+                        for (int c = 0; c < _cols; c++)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 4),
+                            child: SizedBox(
+                              height: 36,
+                              child: TextField(
+                                controller: _cells[r][c],
+                                style: r == 0
+                                    ? yBody(size: 13, weight: FontWeight.w700, color: yInk)
+                                    : yBody(size: 13, color: yInk),
+                                textAlign: _alignment,
+                                decoration: InputDecoration(
+                                  hintText: r == 0 ? 'Encab.' : '',
+                                  hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 4, vertical: 8),
+                                  isDense: true,
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                  ],
-                ),
+                          ),
+                      ],
+                    ),
+                ],
               ),
             ),
           ),
@@ -504,23 +464,22 @@ class _CodePanelState extends State<_CodePanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Lenguaje', style: labelBold.copyWith(color: inkGray)),
+          Text('Lenguaje', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
           const SizedBox(height: 8),
           TextField(
             controller: _langController,
-            style: bodyM.copyWith(color: inkColor(context)),
-            decoration:
-                _panelInputDecoration(context, hint: 'python, dart, js...'),
+            style: yBody(size: 16, color: yInk),
+            decoration: _panelInputDecoration(hint: 'python, dart, js...'),
           ),
           const SizedBox(height: 16),
-          Text('Código', style: labelBold.copyWith(color: inkGray)),
+          Text('Código', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
           const SizedBox(height: 8),
           TextField(
             controller: _codeController,
-            style: mono.copyWith(color: inkColor(context)),
+            style: yMono(size: 14, color: yInk, tracking: 0),
             maxLines: 8,
             minLines: 4,
-            decoration: _panelInputDecoration(context),
+            decoration: _panelInputDecoration(),
           ),
         ],
       ),
@@ -563,14 +522,14 @@ class _QuotePanelState extends State<_QuotePanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Texto de la cita', style: labelBold.copyWith(color: inkGray)),
+          Text('Texto de la cita', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
-            style: bodyM.copyWith(color: inkColor(context)),
+            style: yBody(size: 16, color: yInk),
             maxLines: 6,
             minLines: 3,
-            decoration: _panelInputDecoration(context),
+            decoration: _panelInputDecoration(),
           ),
         ],
       ),
@@ -600,25 +559,18 @@ class _LatexPanelState extends State<_LatexPanel> {
     super.dispose();
   }
 
-  Widget _modeChip(BuildContext context, String label, bool value) {
+  Widget _modeChip(String label, bool value) {
     final selected = _isBlock == value;
     return GestureDetector(
       onTap: () => setState(() => _isBlock = value),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? accentFlight : Colors.transparent,
-          border: Border.all(
-            color: selected ? accentFlight : inkGray,
-            width: 1,
-          ),
+          color: selected ? yFlight : Colors.transparent,
+          border: Border.all(color: selected ? yFlight : yMuted, width: 1),
         ),
-        child: Text(
-          label,
-          style: bodyS.copyWith(
-            color: selected ? paperLight : inkColor(context),
-          ),
-        ),
+        child: Text(label,
+            style: yBody(size: 13, color: selected ? yCream : yInk)),
       ),
     );
   }
@@ -643,21 +595,20 @@ class _LatexPanelState extends State<_LatexPanel> {
         children: [
           Row(
             children: [
-              _modeChip(context, 'En línea', false),
+              _modeChip('En línea', false),
               const SizedBox(width: 8),
-              _modeChip(context, 'Bloque', true),
+              _modeChip('Bloque', true),
             ],
           ),
           const SizedBox(height: 16),
-          Text('Fórmula', style: labelBold.copyWith(color: inkGray)),
+          Text('Fórmula', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
-            style: mono.copyWith(color: inkColor(context)),
+            style: yMono(size: 14, color: yInk, tracking: 0),
             maxLines: _isBlock ? 6 : 1,
             minLines: _isBlock ? 3 : 1,
             decoration: _panelInputDecoration(
-              context,
               hint: r'f(x) = \int_0^1 x^2\,dx',
             ),
           ),
@@ -756,17 +707,15 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
                 width: double.infinity,
                 height: 180,
                 decoration: BoxDecoration(
-                  border: Border.all(color: inkGray, width: 1),
+                  border: Border.all(color: yMuted, width: 1),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.image_outlined, size: 48, color: inkGray),
+                    const Icon(Icons.image_outlined, size: 48, color: yMuted),
                     const SizedBox(height: 12),
-                    Text(
-                      'Seleccionar imagen',
-                      style: bodyM.copyWith(color: inkGray),
-                    ),
+                    Text('Seleccionar imagen',
+                        style: yBody(size: 16, color: yMuted)),
                   ],
                 ),
               ),
@@ -776,20 +725,16 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
               padding: const EdgeInsets.only(top: 12),
               child: GestureDetector(
                 onTap: _pickImage,
-                child: Text(
-                  'Cambiar imagen',
-                  style: labelBold.copyWith(color: accentFlight),
-                ),
+                child: Text('Cambiar imagen',
+                    style: yBody(size: 14, weight: FontWeight.w700, color: yFlight)),
               ),
             ),
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.only(top: 16),
               child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: accentFlight),
+                width: 24, height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2, color: yFlight),
               ),
             ),
         ],
@@ -797,4 +742,3 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
     );
   }
 }
-

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart';
 import 'block_insert_panels.dart';
 
 class BlockInsertMenu extends StatelessWidget {
@@ -27,10 +27,10 @@ class BlockInsertMenu extends StatelessWidget {
     ];
 
     return Container(
-      decoration: BoxDecoration(
-        color: paperColor(context),
+      decoration: const BoxDecoration(
+        color: yCream,
         border: Border(
-          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+          top: BorderSide(color: yInk, width: yLineHeavy),
         ),
       ),
       child: SafeArea(
@@ -42,8 +42,13 @@ class BlockInsertMenu extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
               child: Text(
-                'Insertar bloque',
-                style: labelBold.copyWith(color: inkGray),
+                'INSERTAR BLOQUE',
+                style: yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yMuted,
+                ),
               ),
             ),
             Flexible(
@@ -53,7 +58,7 @@ class BlockInsertMenu extends StatelessWidget {
                 itemCount: items.length,
                 separatorBuilder: (_, _) => Divider(
                   height: 1,
-                  color: inkGray.withAlpha(40),
+                  color: yMuted.withValues(alpha: 0.3),
                   indent: 24,
                   endIndent: 24,
                 ),
@@ -74,11 +79,11 @@ class BlockInsertMenu extends StatelessWidget {
                           horizontal: 24, vertical: 14),
                       child: Row(
                         children: [
-                          Icon(item.icon, size: 20, color: inkGray),
+                          Icon(item.icon, size: 20, color: yMuted),
                           const SizedBox(width: 16),
                           Text(
                             item.label,
-                            style: bodyM.copyWith(color: inkColor(context)),
+                            style: yBody(size: 16, color: yInk),
                           ),
                         ],
                       ),
