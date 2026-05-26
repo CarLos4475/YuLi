@@ -111,37 +111,15 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   Future<void> _exportPdf(List<NoteBlock> blocks) async {
-    final md = _blocksToMarkdown(blocks);
     await exportNoteToPdf(
       context: context,
       title: _titleCtrl.text.trim().isEmpty
           ? 'Sin título'
           : _titleCtrl.text.trim(),
-      content: md,
+      blocks: blocks,
     );
   }
 
-  String _blocksToMarkdown(List<NoteBlock> blocks) {
-    final buf = StringBuffer();
-    for (final b in blocks) {
-      switch (b) {
-        case TextBlock t:
-          buf.writeln(t.markdown);
-        case MathBlock m:
-          buf.writeln('\$\$${m.latex}\$\$');
-        case BulletsBlock bl:
-          for (final it in bl.items) {
-            buf.writeln('- $it');
-          }
-        case TareasBlock _:
-          continue;
-        case DrawingBlock _:
-          buf.writeln('[dibujo]');
-      }
-      buf.writeln();
-    }
-    return buf.toString();
-  }
 
   void _onTextBlockFocusChanged(TextEditingController? ctrl) {
     setState(() {
