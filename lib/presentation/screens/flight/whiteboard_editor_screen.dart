@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
+import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
@@ -339,32 +340,39 @@ class _WhiteboardEditorScreenState
 
     return Scaffold(
       backgroundColor: yCream,
-      body: SafeArea(
-        child: Column(
-          children: [
-            ModeHeader(
-              mode: 'PIZARRA',
-              subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
-              color: yFlight,
-              onBack: () => Navigator.pop(context),
-              headerRight: [
-                YBadge(
-                  label: '@${widget.folder.name}',
-                  bg: widget.folder.color,
-                  fg: yCream,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                ModeHeader(
+                  mode: 'PIZARRA',
+                  subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
+                  color: yFlight,
+                  onBack: () => Navigator.pop(context),
+                  headerRight: [
+                    YBadge(
+                      label: '@${widget.folder.name}',
+                      bg: widget.folder.color,
+                      fg: yCream,
+                    ),
+                    _BrutalBtn(
+                      icon: Icons.center_focus_strong,
+                      onTap: _resetView,
+                    ),
+                    _BrutalBtn(
+                      icon: Icons.all_inclusive,
+                      color: yLab,
+                      onTap: () => _linkToLab(spaces),
+                    ),
+                  ],
                 ),
-                IconSquareBtn(
-                    icon: Icons.center_focus_strong, onTap: _resetView),
-                IconSquareBtn(
-                  icon: Icons.all_inclusive,
-                  fill: true,
-                  color: yLab,
-                  onTap: () => _linkToLab(spaces),
-                ),
+                if (linkedSpaces.isNotEmpty) _LinkedSpacesBar(spaces: linkedSpaces),
               ],
             ),
-            if (linkedSpaces.isNotEmpty) _LinkedSpacesBar(spaces: linkedSpaces),
-            _toolbar(),
+          ),
+          _toolbar(),
             Expanded(
               child: ClipRect(
                 child: Listener(
@@ -399,20 +407,21 @@ class _WhiteboardEditorScreenState
             ),
           ],
         ),
-      ),
     );
   }
 
   Widget _toolbar() {
+    final paddingH = MediaQuery.of(context).size.width * 0.08;
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
         border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: paddingH.clamp(16.0, 120.0), vertical: 10),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
           children: [
             _toolBtn(
               icon: _locked ? Icons.lock : Icons.lock_open,
@@ -420,13 +429,13 @@ class _WhiteboardEditorScreenState
               label: _locked ? 'DIBUJO' : 'NAV',
               onTap: () => setState(() => _locked = !_locked),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 16),
             _toolBtn(
               icon: Icons.edit_outlined,
               active: !_erasing,
               onTap: () => setState(() => _erasing = false),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 12),
             _toolBtn(
               icon: Icons.auto_fix_high,
               active: _erasing,
@@ -435,12 +444,12 @@ class _WhiteboardEditorScreenState
             _divider(),
             for (final c in _palette) ...[
               _colorBtn(c),
-              const SizedBox(width: 4),
+              const SizedBox(width: 10),
             ],
             _divider(),
             for (final w in _widths) ...[
               _widthBtn(w),
-              const SizedBox(width: 4),
+              const SizedBox(width: 10),
             ],
             _divider(),
             _toolBtn(
@@ -449,7 +458,7 @@ class _WhiteboardEditorScreenState
               enabled: _data.strokes.isNotEmpty,
               onTap: _undo,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 10),
             _toolBtn(
               icon: Icons.redo,
               active: false,
@@ -463,14 +472,14 @@ class _WhiteboardEditorScreenState
               label: 'PALMA',
               onTap: () => setState(() => _palmRejection = !_palmRejection),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 12),
             _toolBtn(
               icon: Icons.auto_awesome,
               active: _shapeSnap,
               label: 'SNAP',
               onTap: () => setState(() => _shapeSnap = !_shapeSnap),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 16),
             _toolBtn(
               icon: Icons.delete_outline,
               active: false,
@@ -479,13 +488,13 @@ class _WhiteboardEditorScreenState
           ],
         ),
       ),
-    );
+    ));
   }
 
   Widget _divider() => Container(
         width: 1,
         height: 22,
-        margin: const EdgeInsets.symmetric(horizontal: 6),
+        margin: const EdgeInsets.symmetric(horizontal: 10),
         color: yInk.withValues(alpha: 0.2),
       );
 
@@ -504,7 +513,7 @@ class _WhiteboardEditorScreenState
         padding: EdgeInsets.symmetric(horizontal: label != null ? 10 : 8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? yInk : yCream,
+          color: active ? yFlight : yCream,
           border: Border.all(
             color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
             width: yLineThin,
@@ -717,7 +726,7 @@ class _LinkedSpacesBar extends StatelessWidget {
                             color: yCream,
                           )),
                     ),
-                    const SizedBox(width: 6),
+                const SizedBox(width: 2),
                   ],
                 ],
               ),
@@ -780,9 +789,41 @@ class _SpacePickerDialog extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BrutalBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  const _BrutalBtn({required this.icon, this.color = yCream, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: yInk, width: yLineMid),
+          boxShadow: const [
+            BoxShadow(
+              color: inkBlack,
+              offset: shadowOffset,
+              blurRadius: shadowBlurRadius,
+            ),
+          ],
+        ),
+        child: Icon(icon, size: 18, color: color == yCream ? yInk : yCream),
       ),
     );
   }

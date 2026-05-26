@@ -37,16 +37,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-  }
 
-  DateTime _startOfWeek(DateTime date) {
-    final wd = date.weekday;
-    return DateTime(date.year, date.month, date.day)
-        .subtract(Duration(days: wd - 1));
-  }
 
   void _prev() {
     setState(() {
@@ -167,8 +158,8 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              card.title,
+                            y.buildMentionText(
+                              content: card.title,
                               style: bodyM.copyWith(
                                 color: (card.originFolderColor != null
                                         ? Color(card.originFolderColor!)
@@ -177,6 +168,9 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                                     ? inkBlack
                                     : paperLight,
                               ),
+                              folderColor: card.originFolderColor != null
+                                  ? Color(card.originFolderColor!)
+                                  : null,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -244,7 +238,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
 
     return cardsAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (cards) {
         final withDate = cards.where((c) => c.dueDate != null).toList();
         final noDate = cards.where((c) => c.dueDate == null).toList();
@@ -627,9 +621,12 @@ class _DraggableCard extends StatelessWidget {
             border: Border.all(color: ink, width: borderWidth),
             boxShadow: shadowM,
           ),
-          child: Text(
-            card.title,
+          child: y.buildMentionText(
+            content: card.title,
             style: bodyS.copyWith(color: ink),
+            folderColor: card.originFolderColor != null
+                ? Color(card.originFolderColor!)
+                : null,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -659,8 +656,8 @@ class _DraggableCard extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              card.title,
+            child: y.buildMentionText(
+              content: card.title,
               style: bodyXS.copyWith(
                 fontWeight: FontWeight.w700,
                 color: isSelected
@@ -669,6 +666,9 @@ class _DraggableCard extends StatelessWidget {
                         ? inkBlack
                         : paperLight,
               ),
+              folderColor: card.originFolderColor != null
+                  ? Color(card.originFolderColor!)
+                  : null,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),

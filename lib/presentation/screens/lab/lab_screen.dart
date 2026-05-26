@@ -221,7 +221,7 @@ class _SpacesGrid extends ConsumerWidget {
           crossAxisCount: cols,
           mainAxisSpacing: 18,
           crossAxisSpacing: 18,
-          mainAxisExtent: 360,
+          mainAxisExtent: 394,
         ),
         itemCount: spaces.length + 1,
         itemBuilder: (_, i) {
@@ -585,7 +585,9 @@ class _StackedBar extends StatelessWidget {
     if (c.name == 'Vencido') return yFight;
     if (c.name == 'Entregado' ||
         c.name == 'Hecho' ||
-        c.name == 'Listo') return yLab;
+        c.name == 'Listo') {
+      return yLab;
+    }
     if (c.name == 'En Proceso' || c.name == 'En proceso') return yAmber;
     if (c.name == 'Backlog') return yMuted;
     return yInk;

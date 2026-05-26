@@ -67,10 +67,6 @@ class _TaskCardState extends ConsumerState<TaskCard>
     }
   }
 
-  Future<void> _rescue() async {
-    await ref.read(taskRepositoryProvider).rescueToday(widget.task.id);
-  }
-
   Future<void> _delete() async {
     await ref.read(taskRepositoryProvider).moveToTrash(widget.task.id);
   }
@@ -108,7 +104,8 @@ class _TaskCardState extends ConsumerState<TaskCard>
       ),
     );
 
-    if (widget.isDone) return Padding(
+    if (widget.isDone) {
+      return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Dismissible(
         key: ValueKey('done_${task.id}'),
@@ -126,6 +123,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
         child: card,
       ),
     );
+    }
 
     // Long-press to send to Kanban
     card = GestureDetector(
@@ -558,15 +556,12 @@ class _SpaceRow extends ConsumerWidget {
             if (task.folderId != null) {
               final folder =
                   await ref.read(folderRepositoryProvider).getById(task.folderId!);
-              folderColor = folder?.color.value;
+              folderColor = folder?.color.toARGB32();
             }
-            final cleanTitle = task.content.replaceAllMapped(
-              RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)'),
-              (m) => m.group(1)!,).trim();
             await ref.read(kanbanCardRepositoryProvider).create(
                   labSpaceId: space.id,
                   columnId: col.id,
-                  title: cleanTitle.isEmpty ? task.content : cleanTitle,
+                  title: task.content,
                   originTaskId: task.id,
                   originFolderColor: folderColor,
                   dueDate: task.dueDate,

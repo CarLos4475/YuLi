@@ -5,6 +5,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
+import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
@@ -870,18 +871,21 @@ class _NoteTaskRow extends ConsumerWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                task.content,
+              child: buildMentionText(
+                content: task.content,
+                  style: yBody(
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: done ? yMuted : yInk,
+                    height: 1.3,
+                  ).copyWith(
+                    decoration: done ? TextDecoration.lineThrough : null,
+                  ),
+                folderColor: task.folderId != null
+                    ? ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color
+                    : null,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: yBody(
-                  size: 14,
-                  weight: FontWeight.w500,
-                  color: done ? yMuted : yInk,
-                  height: 1.3,
-                ).copyWith(
-                  decoration: done ? TextDecoration.lineThrough : null,
-                ),
               ),
             ),
             if (task.dueDate != null) ...[

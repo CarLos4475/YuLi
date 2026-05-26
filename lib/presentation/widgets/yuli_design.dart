@@ -128,7 +128,7 @@ class ModeHeader extends StatelessWidget {
             ),
             const SizedBox(width: 18),
           ],
-          Flexible(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -186,7 +186,7 @@ class YuliBottomNav extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: yInk,
+        color: yCream,
         border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
       ),
       child: SafeArea(
@@ -194,6 +194,7 @@ class YuliBottomNav extends ConsumerWidget {
         child: SizedBox(
           height: 68,
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -204,11 +205,11 @@ class YuliBottomNav extends ConsumerWidget {
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     border: Border(
-                      right: BorderSide(color: yCream, width: yLineMid),
+                      right: BorderSide(color: yInk, width: yLineMid),
                     ),
                   ),
                   child: const Icon(Icons.home_outlined,
-                      color: yCream, size: 22),
+                      color: yInk, size: 22),
                 ),
               ),
               for (int i = 0; i < tabs.length; i++)
@@ -260,11 +261,11 @@ class _NavTabButton extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: active ? tab.color : Colors.transparent,
-          border: showBorder
-              ? const Border(
-                  right: BorderSide(color: yCream, width: yLineMid),
-                )
-              : null,
+              border: showBorder
+                  ? const Border(
+                      right: BorderSide(color: yInk, width: yLineMid),
+                    )
+                  : null,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(
@@ -280,7 +281,7 @@ class _NavTabButton extends StatelessWidget {
                     size: 22,
                     weight: FontWeight.w700,
                     letterSpacing: -0.6,
-                    color: yCream,
+                    color: active ? yCream : yInk,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -288,7 +289,7 @@ class _NavTabButton extends StatelessWidget {
                   tab.label,
                   style: yMono(
                     size: 10,
-                    color: yCream.withValues(alpha: active ? 0.85 : 0.5),
+                    color: active ? yCream : yInk.withValues(alpha: 0.5),
                     tracking: 1.4,
                   ),
                 ),
@@ -299,7 +300,7 @@ class _NavTabButton extends StatelessWidget {
                 '● activo',
                 style: yMono(
                   size: 9,
-                  color: yCream.withValues(alpha: 0.85),
+                  color: yCream,
                   tracking: 1.4,
                 ),
               ),
@@ -308,6 +309,65 @@ class _NavTabButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── MENTION HELPERS ──────────────────────────────────────────────────────
+
+final _mentionRegex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
+
+String cleanMention(String content) {
+  final cleaned = content.replaceAll(_mentionRegex, '').trim();
+  return cleaned.isEmpty ? content : cleaned;
+}
+
+Widget buildMentionText({
+  required String content,
+  required TextStyle style,
+  Color? folderColor,
+  int? maxLines,
+  TextOverflow? overflow,
+}) {
+  final matches = _mentionRegex.allMatches(content).toList();
+  if (matches.isEmpty || folderColor == null) {
+    return Text(
+      content,
+      style: style,
+      maxLines: maxLines,
+      overflow: overflow,
+    );
+  }
+
+  final spans = <InlineSpan>[];
+  int last = 0;
+  for (final m in matches) {
+    if (m.start > last) {
+      spans.add(TextSpan(text: content.substring(last, m.start), style: style));
+    }
+    spans.add(WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
+        decoration: BoxDecoration(
+          color: folderColor,
+          border: Border.all(color: yInk, width: 1.5),
+        ),
+        child: Text(
+          '@${m.group(1)}',
+          style: yMono(size: 10, weight: FontWeight.w700, color: yCream, tracking: 0.3),
+        ),
+      ),
+    ));
+    last = m.end;
+  }
+  if (last < content.length) {
+    spans.add(TextSpan(text: content.substring(last), style: style));
+  }
+  return Text.rich(
+    TextSpan(children: spans),
+    maxLines: maxLines,
+    overflow: overflow,
+  );
 }
 
 // ─── BRUTAL ATOMS ─────────────────────────────────────────────────────────
@@ -552,7 +612,7 @@ class PillTab extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 7, 14, 8),
         decoration: BoxDecoration(
-          color: active ? yInk : Colors.transparent,
+          color: active ? yLab : Colors.transparent,
           border: Border.all(color: yInk, width: yLineThin),
         ),
         child: Text(
@@ -643,7 +703,7 @@ class ViewToggleBtn extends StatelessWidget {
         height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? yInk : yCream,
+          color: active ? yFlight : yCream,
           border: Border.all(color: yInk, width: yLineThin),
         ),
         child: Text(

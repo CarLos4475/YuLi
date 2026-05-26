@@ -17,9 +17,9 @@ import '../../domain/repositories/note_block_repository.dart';
 import '../../domain/repositories/lab_space_repository.dart';
 import '../../domain/repositories/kanban_card_repository.dart';
 import '../../domain/models/notification_item.dart';
-import '../../domain/models/task.dart' as domainTask;
+import '../../domain/models/task.dart' as domain_task;
 import '../../domain/models/folder.dart';
-import '../../domain/models/note.dart' as domainNote;
+import '../../domain/models/note.dart' as domain_note;
 import '../../domain/models/lab_space.dart';
 
 // ─── App mode ─────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ final kanbanCardRepositoryProvider = Provider<KanbanCardRepository>((ref) {
 
 // ─── Trash ────────────────────────────────────────────────────────────────────
 
-final trashedTasksProvider = StreamProvider<List<domainTask.Task>>((ref) {
+final trashedTasksProvider = StreamProvider<List<domain_task.Task>>((ref) {
   return ref.watch(taskRepositoryProvider).watchTrashed();
 });
 
@@ -72,7 +72,7 @@ final deletedFoldersProvider = StreamProvider<List<Folder>>((ref) {
   return ref.watch(folderRepositoryProvider).watchDeleted();
 });
 
-final deletedNotesProvider = StreamProvider<List<domainNote.Note>>((ref) {
+final deletedNotesProvider = StreamProvider<List<domain_note.Note>>((ref) {
   return ref.watch(noteRepositoryProvider).watchDeleted();
 });
 

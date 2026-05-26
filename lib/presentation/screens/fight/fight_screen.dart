@@ -33,7 +33,7 @@ class FightScreen extends ConsumerWidget {
           headerRight: [
             YBadge(label: '${hoy.length} HOY', bg: yCream, fg: yInk),
             YBadge(label: '${ayer.length} AYER', bg: yAmber, fg: yCream),
-            YBadge(label: '${vencidas.length} VENCIDAS', bg: yInk, fg: yCream),
+            YBadge(label: '${vencidas.length} VENCIDAS', bg: Color(0xFF8E2D4B), fg: yCream),
           ],
         ),
         const _CapturaBar(),
@@ -215,7 +215,7 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
             children: [
               // FIGHT/ prefix
               Container(
-                color: yInk,
+                color: yFight,
                 padding: const EdgeInsets.symmetric(horizontal: 22),
                 alignment: Alignment.center,
                 child: Text(
@@ -348,7 +348,7 @@ class _ThreeBuckets extends StatelessWidget {
           child: _BucketColumn(
             title: 'VENCIDAS',
             subtitle: 'se borran pronto',
-            color: yInk,
+            color: Color(0xFF8E2D4B),
             tasks: vencidas,
             gesture: _BucketGesture.expiring,
           ),
@@ -399,7 +399,7 @@ class _StackedBuckets extends StatelessWidget {
         _InlineBucketHeader(
             title: 'VENCIDAS',
             subtitle: 'se borran pronto',
-            color: yInk,
+            color: Color(0xFF8E2D4B),
             count: vencidas.length),
         ...vencidas.map((t) => Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
@@ -498,7 +498,6 @@ class _BucketColumn extends StatelessWidget {
         children: [
           // Header
           Container(
-            color: color,
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
             decoration: BoxDecoration(
               color: color,
@@ -621,56 +620,13 @@ class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
     await ref.read(taskRepositoryProvider).moveToTrash(widget.task.id);
   }
 
-  void _showSendToLab(BuildContext context) async {
-    final spaces =
-        ref.read(activeLabSpacesProvider).valueOrNull ?? <LabSpace>[];
-    if (spaces.isEmpty) return;
-    final space = await showDialog<LabSpace>(
+  void _showSendToLab(BuildContext context) {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: yCream,
-        shape:
-            const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: yInk, width: yLineHeavy),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Enviar a LAB',
-                  style: ySans(
-                      size: 22, weight: FontWeight.w700, color: yInk)),
-              const SizedBox(height: 12),
-              for (final s in spaces)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.pop(ctx, s),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          color: s.accentColor,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(s.name, style: ySans(size: 16, color: yInk)),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _SendToLabSheet(task: widget.task),
     );
-    if (space != null) {
-      // No-op for now — left as integration point for kanban link.
-    }
   }
 
   @override
@@ -706,7 +662,7 @@ class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
         label: 'HECHO',
       ),
       secondaryBackground: const _SwipeBg(
-        color: yInk2,
+        color: Color(0xFF8E2D4B),
         align: Alignment.centerRight,
         icon: Icons.close,
         label: 'DESC.',
@@ -800,33 +756,21 @@ class _TaskCardBody extends ConsumerWidget {
         children: [
           Opacity(
             opacity: expiring ? 0.65 : 1.0,
-            child: Text(
-              task.content,
+            child: buildMentionText(
+              content: task.content,
               style: ySans(
                 size: 15,
                 weight: FontWeight.w600,
                 letterSpacing: -0.2,
                 color: yInk,
                 height: 1.25,
-              ).copyWith(
-                decoration: expiring ? TextDecoration.lineThrough : null,
-              ),
+              ).copyWith(decoration: expiring ? TextDecoration.lineThrough : null),
+              folderColor: folder?.color,
             ),
           ),
-          const SizedBox(height: 6),
           Row(
             children: [
-              Expanded(
-                child: folder == null
-                    ? Text('sin etiqueta',
-                        style: yMono(
-                          size: 10,
-                          tracking: 1.2,
-                          color: yMuted,
-                        ).copyWith(fontStyle: FontStyle.italic))
-                    : _FolderMention(folder: folder),
-              ),
-              const SizedBox(width: 6),
+              const Spacer(),
               Text(
                 expiring
                     ? 'BORRA EN ${_deleteIn(task.dueDate ?? task.createdAt).toUpperCase()}'
@@ -894,42 +838,6 @@ class _TaskLinkChip extends StatelessWidget {
   }
 }
 
-class _FolderMention extends StatelessWidget {
-  final Folder folder;
-  const _FolderMention({required this.folder});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(7, 2, 7, 3),
-      decoration: BoxDecoration(
-        color: folder.color,
-        border: Border.all(color: yInk, width: 1.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('@',
-              style: yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                color: yCream.withValues(alpha: 0.85),
-                tracking: 0.3,
-              )),
-          const SizedBox(width: 2),
-          Text(folder.name,
-              style: yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                color: yCream,
-                tracking: 0.5,
-              )),
-        ],
-      ),
-    );
-  }
-}
-
 // ─── Mention popup ────────────────────────────────────────────────────────
 
 class _MentionPopup extends StatelessWidget {
@@ -962,7 +870,7 @@ class _MentionPopup extends StatelessWidget {
                       style: yBody(
                         size: 14,
                         weight: FontWeight.w700,
-                        color: yInk,
+            color: Color(0xFF8E2D4B),
                       )),
                 ],
               ),
@@ -970,6 +878,109 @@ class _MentionPopup extends StatelessWidget {
           );
         }).toList(),
       ),
+    );
+  }
+}
+
+// ─── Send to Lab sheet ───────────────────────────────────────────────────
+
+class _SendToLabSheet extends ConsumerWidget {
+  final domain_task.Task task;
+  const _SendToLabSheet({required this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spaces =
+        ref.watch(activeLabSpacesProvider).valueOrNull ?? <LabSpace>[];
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream,
+        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: Text('ENVIAR A LAB',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  )),
+            ),
+            if (spaces.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                child: Text('No hay Lab Spaces. Crea uno primero.',
+                    style: yBody(size: 14, color: yMuted)),
+              )
+            else
+              ...spaces.map((s) => _LabSpaceRow(task: task, space: s)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LabSpaceRow extends ConsumerWidget {
+  final domain_task.Task task;
+  final LabSpace space;
+  const _LabSpaceRow({required this.task, required this.space});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final columns =
+        ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [];
+
+    return ExpansionTile(
+      tilePadding: const EdgeInsets.symmetric(horizontal: 24),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      title: Text(space.name,
+          style: ySans(
+            size: 16,
+            weight: FontWeight.w700,
+            color: space.accentColor,
+          )),
+      children: columns.map((col) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () async {
+            int? folderColor;
+            if (task.folderId != null) {
+              final folder = await ref
+                  .read(folderRepositoryProvider)
+                  .getById(task.folderId!);
+              folderColor = folder?.color.toARGB32();
+            }
+            await ref.read(kanbanCardRepositoryProvider).create(
+                  labSpaceId: space.id,
+                  columnId: col.id,
+                  title: task.content,
+                  originTaskId: task.id,
+                  originFolderColor: folderColor,
+                  dueDate: task.dueDate,
+                );
+            if (context.mounted) Navigator.pop(context);
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(col.name,
+                  style: ySans(size: 14, color: yInk)),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

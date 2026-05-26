@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/flight_providers.dart';
+import '../../providers/folder_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/task_propagation_provider.dart';
@@ -182,7 +183,7 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: yInk,
+            color: yFlight,
             border: Border.all(color: yInk, width: yLineMid),
           ),
           child: Text(
@@ -740,10 +741,8 @@ class _TareaStripRow extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  task.content,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                buildMentionText(
+                  content: task.content,
                   style: ySans(
                     size: 13,
                     weight: FontWeight.w600,
@@ -751,6 +750,9 @@ class _TareaStripRow extends ConsumerWidget {
                     color: yInk,
                     height: 1.2,
                   ),
+                  folderColor: ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   'PENDIENTE',

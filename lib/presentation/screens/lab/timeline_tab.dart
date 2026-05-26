@@ -60,11 +60,11 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
 
     return columnsAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (columns) {
         return cardsAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
           data: (cards) {
             final withDate = cards.where((c) => c.dueDate != null).toList();
             final noDate = cards.where((c) => c.dueDate == null).toList();
@@ -285,7 +285,7 @@ class _TimelineViewer extends StatelessWidget {
         final card = groupCards[gi];
         final dayW = dayWidths[dayIndex];
         final x = dayPositions[dayIndex] + 2;
-        final y = laneTopPositions[laneIndex] + 4 + gi * 24;
+        final top = laneTopPositions[laneIndex] + 4 + gi * 24;
         final cardWidth = dayW - 4;
         final cardHeight = 20.0;
         final isSelected = selectedCardIds.contains(card.id);
@@ -298,7 +298,7 @@ class _TimelineViewer extends StatelessWidget {
         cardWidgets.add(
           Positioned(
             left: x,
-            top: y,
+            top: top,
             width: cardWidth,
             height: cardHeight,
             child: GestureDetector(

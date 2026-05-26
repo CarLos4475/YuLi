@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
@@ -741,29 +742,23 @@ class _DoneTaskRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: _yCream.withValues(alpha: 0.08),
-        border: Border.all(color: _yCream, width: 2),
+        color: _yCream,
+        border: Border.all(color: yInk, width: 2),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              task.content,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: buildMentionText(
+              content: task.content,
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: _yCream.withValues(alpha: 0.7),
-                decoration: TextDecoration.lineThrough,
+                color: yInk,
               ),
+              folderColor: folder?.color,
             ),
           ),
-          if (folder != null && (folder!.id != -1)) ...[
-            const SizedBox(width: 8),
-            _FolderBadge(folder: folder!, fg: _yCream),
-          ],
         ],
       ),
     );
@@ -1241,18 +1236,6 @@ class _Badge extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _FolderBadge extends StatelessWidget {
-  final Folder folder;
-  final Color fg;
-
-  const _FolderBadge({required this.folder, required this.fg});
-
-  @override
-  Widget build(BuildContext context) {
-    return _Badge(label: folder.name, bg: folder.color, fg: fg);
   }
 }
 

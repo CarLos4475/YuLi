@@ -97,7 +97,7 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
         available: tabsNotifier.available,
         onSelect: (tab) {
           tabsNotifier.addTab(tab);
-          setState(() => _tabIndex = tabsNotifier.state.length - 1);
+          setState(() => _tabIndex = ref.read(labTabsProvider(widget.space.id)).length - 1);
           Navigator.pop(context);
         },
       ),
@@ -112,7 +112,7 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
         final columnsAsync = ref.watch(kanbanColumnsProvider(widget.space.id));
         return columnsAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
           data: (columns) => _KanbanBoard(
             space: widget.space,
             columns: columns,

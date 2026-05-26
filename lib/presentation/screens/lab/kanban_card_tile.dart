@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart';
 import '../../../domain/models/kanban_card.dart';
 
 class KanbanCardTile extends StatelessWidget {
@@ -64,12 +65,15 @@ class KanbanCardTile extends StatelessWidget {
                                 color: Color(card.originFolderColor!),
                               ),
                             Expanded(
-                              child: Text(
-                                card.title,
+                              child: buildMentionText(
+                                content: card.title,
                                 style: bodyM.copyWith(
                                   color: ink,
                                   fontWeight: FontWeight.w700,
                                 ),
+                                folderColor: card.originFolderColor != null
+                                    ? Color(card.originFolderColor!)
+                                    : null,
                               ),
                             ),
                           ],
