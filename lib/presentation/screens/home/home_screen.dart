@@ -780,16 +780,22 @@ class _DoneTaskRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (folder != null && folder!.id != -1)
+            Container(
+              width: 4,
+              height: 16,
+              margin: const EdgeInsets.only(right: 8),
+              color: folder!.color,
+            ),
           Expanded(
-            child: buildMentionText(
-              content: task.content,
+            child: Text(
+              cleanMention(task.content),
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: yInk,
               ),
-              folderColor: folder?.color,
             ),
           ),
         ],

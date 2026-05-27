@@ -43,7 +43,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
     _isPreview = widget.card.sourceNoteId != null &&
         (widget.card.description?.isNotEmpty ?? false);
     _titleController =
-        TextEditingController(text: widget.card.title);
+        TextEditingController(text: y.cleanMention(widget.card.title));
     _descController =
         TextEditingController(text: widget.card.description ?? '');
     _titleController.addListener(_markDirty);
@@ -601,7 +601,8 @@ class _DueDateRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (card.originFolderColor != null)
+            if (card.originFolderColor != null &&
+                RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').hasMatch(card.title))
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -610,7 +611,7 @@ class _DueDateRow extends StatelessWidget {
                   border: Border.all(color: y.yInk, width: 1.5),
                 ),
                 child: Text(
-                  '@${y.cleanMention(card.title) == card.title ? '' : ''}origen',
+                  '@${RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').firstMatch(card.title)!.group(1)!}',
                   style: y.yMono(
                       size: 10,
                       weight: FontWeight.w700,

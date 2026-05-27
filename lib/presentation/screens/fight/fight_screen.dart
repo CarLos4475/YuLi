@@ -929,8 +929,8 @@ class _TaskCardBody extends ConsumerWidget {
               Expanded(
                 child: Opacity(
                   opacity: (expiring || done) ? 0.5 : 1.0,
-                  child: buildMentionText(
-                    content: task.content,
+                  child: Text(
+                    cleanMention(task.content),
                     style: ySans(
                       size: 15,
                       weight: FontWeight.w600,
@@ -940,7 +940,6 @@ class _TaskCardBody extends ConsumerWidget {
                     ).copyWith(
                       decoration: (expiring || done) ? TextDecoration.lineThrough : null,
                     ),
-                    folderColor: folder?.color,
                   ),
                 ),
               ),

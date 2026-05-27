@@ -71,10 +71,15 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
     KanbanCardRepository repo,
     TaskRepository taskRepo,
   ) async {
-    final updated = card.copyWith(dueDate: targetDate);
+    final oldDue = card.dueDate;
+    final newDue = oldDue != null
+        ? DateTime(targetDate.year, targetDate.month, targetDate.day,
+            oldDue.hour, oldDue.minute, oldDue.second)
+        : targetDate;
+    final updated = card.copyWith(dueDate: newDue);
     await repo.update(updated);
     if (card.originTaskId != null) {
-      await taskRepo.updateDueDate(card.originTaskId!, targetDate);
+      await taskRepo.updateDueDate(card.originTaskId!, newDue);
     }
   }
 
@@ -158,8 +163,8 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            y.buildMentionText(
-                              content: card.title,
+                            Text(
+                              y.cleanMention(card.title),
                               style: bodyM.copyWith(
                                 color: (card.originFolderColor != null
                                         ? Color(card.originFolderColor!)
@@ -168,9 +173,6 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                                     ? inkBlack
                                     : paperLight,
                               ),
-                              folderColor: card.originFolderColor != null
-                                  ? Color(card.originFolderColor!)
-                                  : null,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -611,12 +613,9 @@ class _DraggableCard extends StatelessWidget {
             border: Border.all(color: ink, width: borderWidth),
             boxShadow: shadowM,
           ),
-          child: y.buildMentionText(
-            content: card.title,
+          child: Text(
+            y.cleanMention(card.title),
             style: bodyS.copyWith(color: ink),
-            folderColor: card.originFolderColor != null
-                ? Color(card.originFolderColor!)
-                : null,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),

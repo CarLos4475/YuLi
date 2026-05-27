@@ -861,20 +861,29 @@ class _NoteTaskRow extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 10),
+            if (task.folderId != null) ...[
+              Builder(builder: (context) {
+                final fColor = ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color;
+                if (fColor == null) return const SizedBox.shrink();
+                return Container(
+                  width: 4,
+                  height: 16,
+                  margin: const EdgeInsets.only(right: 6),
+                  color: fColor,
+                );
+              }),
+            ],
             Expanded(
-              child: buildMentionText(
-                content: task.content,
-                  style: yBody(
-                    size: 14,
-                    weight: FontWeight.w500,
-                    color: done ? yMuted : yInk,
-                    height: 1.3,
-                  ).copyWith(
-                    decoration: done ? TextDecoration.lineThrough : null,
-                  ),
-                folderColor: task.folderId != null
-                    ? ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color
-                    : null,
+              child: Text(
+                cleanMention(task.content),
+                style: yBody(
+                  size: 14,
+                  weight: FontWeight.w500,
+                  color: done ? yMuted : yInk,
+                  height: 1.3,
+                ).copyWith(
+                  decoration: done ? TextDecoration.lineThrough : null,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1080,53 +1089,8 @@ class NoteMarkdownPreview extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
-
     SpanNode? customTextGenerator(
         m.Node node, MarkdownConfig config, WidgetVisitor visitor) {
-      if (node is m.Text) {
-        final text = node.text;
-        final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
-        final matches = regex.allMatches(text).toList();
-        if (matches.isNotEmpty) {
-          final matchedSpans = <MapEntry<Match, Folder>>[];
-          for (final match in matches) {
-            final folderName = match.group(1)!;
-            final clean = cleanMention(folderName.toLowerCase());
-            final found = folders.where(
-              (f) => cleanMention(f.name.toLowerCase()) == clean,
-            );
-            if (found.isNotEmpty) {
-              matchedSpans.add(MapEntry(match, found.first));
-            }
-          }
-          if (matchedSpans.isNotEmpty) {
-            final root = ConcreteElementNode();
-            int lastIndex = 0;
-            final defaultStyle =
-                config.p.textStyle;
-            for (final item in matchedSpans) {
-              final match = item.key;
-              final folder = item.value;
-              if (match.start > lastIndex) {
-                root.accept(TextNode(
-                    text: text.substring(lastIndex, match.start),
-                    style: defaultStyle));
-              }
-              root.accept(TextNode(
-                  text: match.group(0)!.substring(1),
-                  style: defaultStyle.copyWith(
-                      color: folder.color, fontWeight: FontWeight.bold)));
-              lastIndex = match.end;
-            }
-            if (lastIndex < text.length) {
-              root.accept(TextNode(
-                  text: text.substring(lastIndex), style: defaultStyle));
-            }
-            return root;
-          }
-        }
-      }
       return null;
     }
 

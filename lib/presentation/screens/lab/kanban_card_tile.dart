@@ -37,9 +37,10 @@ class KanbanCardTile extends StatelessWidget {
             width: isSelected ? yLineHeavy : 2,
           ),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             if (pColor != null)
               Container(width: 5, color: pColor),
             Expanded(
@@ -95,7 +96,7 @@ class KanbanCardTile extends StatelessWidget {
                       const SizedBox(height: 7),
                       Row(
                         children: [
-                          if (folderColor != null)
+                          if (folderColor != null && _folderName().isNotEmpty)
                             Container(
                               margin: const EdgeInsets.only(right: 5),
                               padding:
@@ -128,7 +129,7 @@ class KanbanCardTile extends StatelessWidget {
                                     Border.all(color: yInk, width: 1.5),
                               ),
                               child: Text(
-                                '✎ NOTA',
+                                'NOTA',
                                 style: yMono(
                                   size: 9,
                                   weight: FontWeight.w700,
@@ -172,7 +173,8 @@ class KanbanCardTile extends StatelessWidget {
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -183,13 +185,13 @@ class KanbanCardTile extends StatelessWidget {
     final Color bg;
 
     if (isEndState) {
-      label = '✓ HECHO';
+      label = 'HECHO';
       bg = yLab;
     } else if (overdue) {
-      label = '▲ VENCIDO';
+      label = 'VENCIDO';
       bg = yFight;
     } else {
-      label = '⚔ TAREA';
+      label = 'TAREA';
       bg = yAmber;
     }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_tokens.dart';
+import 'yuli_design.dart' show cleanMention;
 import '../providers/database_providers.dart';
 import '../providers/task_providers.dart';
 import '../providers/folder_providers.dart';
@@ -92,62 +93,8 @@ class PanelTaskTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final folder = this.folder;
     final defaultStyle = bodyM.copyWith(color: inkColor(context));
-
-    InlineSpan contentSpan;
-
-    if (folder != null) {
-      final text = task.content;
-      final regex = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)');
-      final matches = regex.allMatches(text).toList();
-      final targetClean = removeAccents(folder.name.toLowerCase());
-      
-      final validMatches = matches.where((m) {
-        final matchedName = m.group(1)!;
-        return removeAccents(matchedName.toLowerCase()) == targetClean;
-      }).toList();
-
-      if (validMatches.isEmpty) {
-        contentSpan = TextSpan(text: text, style: defaultStyle);
-      } else {
-        final folderColor = folder.color;
-        final spans = <InlineSpan>[];
-        int lastIndex = 0;
-
-        final mentionStyle = defaultStyle.copyWith(
-          color: folderColor,
-          fontWeight: FontWeight.bold,
-        );
-
-        for (final match in validMatches) {
-          if (match.start > lastIndex) {
-            spans.add(TextSpan(
-              text: text.substring(lastIndex, match.start),
-              style: defaultStyle,
-            ));
-          }
-          final matchedText = match.group(0)!;
-          final folderPart = matchedText.substring(1);
-          spans.add(TextSpan(
-            text: folderPart,
-            style: mentionStyle,
-          ));
-          lastIndex = match.end;
-        }
-
-        if (lastIndex < text.length) {
-          spans.add(TextSpan(
-            text: text.substring(lastIndex),
-            style: defaultStyle,
-          ));
-        }
-
-        contentSpan = TextSpan(children: spans);
-      }
-    } else {
-      contentSpan = TextSpan(text: task.content, style: defaultStyle);
-    }
+    final contentText = cleanMention(task.content);
 
     Widget? dateChip;
     if (task.dueDate != null) {
@@ -186,7 +133,7 @@ class PanelTaskTile extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text.rich(contentSpan),
+                  Text(contentText, style: defaultStyle),
                   if (dateChip != null) dateChip,
                 ],
               ),

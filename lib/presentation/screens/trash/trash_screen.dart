@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/yuli_design.dart' show cleanMention;
 import '../../providers/database_providers.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -361,7 +362,7 @@ class _TrashTaskItem extends ConsumerWidget {
           children: [
             Expanded(
               child: Text(
-                task.content,
+                cleanMention(task.content),
                 style: bodyS.copyWith(color: inkColor(context)),
                 overflow: TextOverflow.ellipsis,
               ),

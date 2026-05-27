@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/flight_providers.dart';
-import '../../providers/folder_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/task_propagation_provider.dart';
@@ -740,8 +739,8 @@ class _TareaStripRow extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                buildMentionText(
-                  content: task.content,
+                Text(
+                  cleanMention(task.content),
                   style: ySans(
                     size: 13,
                     weight: FontWeight.w600,
@@ -749,7 +748,6 @@ class _TareaStripRow extends ConsumerWidget {
                     color: yInk,
                     height: 1.2,
                   ),
-                  folderColor: ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
