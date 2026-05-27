@@ -45,6 +45,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   InsertPanelType? _activePanel;
   bool _isPreview = false;
   bool _scrollLocked = false;
+  bool _headerCollapsed = false;
 
   @override
   void initState() {
@@ -235,34 +236,61 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           children: [
             Column(
               children: [
-                ModeHeader(
-                  mode: 'FLIGHT',
-                  subtitle: 'MODO NOTAS · CARPETA · NOTA ABIERTA',
-                  color: yFlight,
-                  onBack: () => Navigator.pop(context),
-                  headerRight: [
-                    YBadge(
-                      label: '@${widget.folder.name}',
-                      bg: widget.folder.color,
-                      fg: yCream,
-                    ),
-                  ],
-                ),
-                _NoteHeroHeader(
-                  folder: widget.folder,
-                  titleCtrl: _titleCtrl,
-                  dirty: _dirty,
-                  lastEdit: widget.note.updatedAt,
-                  wordCount: _countWords(blocks),
-                  linkedCards: linkedCards,
-                  onSave: _saveTitle,
-                  onImage: () => _addBlock(NoteBlockType.drawing),
-                  onLink: () => _showLinkToLab(spaces),
-                  onPdf: () => _exportPdf(blocks),
-                  onFight: _showFightPanel,
-                  onTogglePreview: () => setState(() => _isPreview = !_isPreview),
-                  isPreview: _isPreview,
-                ),
+                if (_headerCollapsed)
+                  _CollapsedHeader(
+                    folder: widget.folder,
+                    titleCtrl: _titleCtrl,
+                    dirty: _dirty,
+                    isPreview: _isPreview,
+                    onBack: () => Navigator.pop(context),
+                    onSave: _saveTitle,
+                    onTogglePreview: () => setState(() => _isPreview = !_isPreview),
+                    onExpand: () => setState(() => _headerCollapsed = false),
+                  )
+                else ...[
+                  ModeHeader(
+                    mode: 'FLIGHT',
+                    subtitle: 'MODO NOTAS · CARPETA · NOTA ABIERTA',
+                    color: yFlight,
+                    onBack: () => Navigator.pop(context),
+                    headerRight: [
+                      YBadge(
+                        label: '@${widget.folder.name}',
+                        bg: widget.folder.color,
+                        fg: yCream,
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _headerCollapsed = true),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: yCream,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+                  _NoteHeroHeader(
+                    folder: widget.folder,
+                    titleCtrl: _titleCtrl,
+                    dirty: _dirty,
+                    lastEdit: widget.note.updatedAt,
+                    wordCount: _countWords(blocks),
+                    linkedCards: linkedCards,
+                    onSave: _saveTitle,
+                    onImage: () => _addBlock(NoteBlockType.drawing),
+                    onLink: () => _showLinkToLab(spaces),
+                    onPdf: () => _exportPdf(blocks),
+                    onFight: _showFightPanel,
+                    onTogglePreview: () => setState(() => _isPreview = !_isPreview),
+                    isPreview: _isPreview,
+                  ),
+                ],
                 Expanded(
                   child: Container(
                     color: yCream,
@@ -441,6 +469,105 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
   int _wc(String s) =>
       s.trim().isEmpty ? 0 : s.trim().split(RegExp(r'\s+')).length;
+}
+
+// ─── Collapsed header ─────────────────────────────────────────────────────
+
+class _CollapsedHeader extends StatelessWidget {
+  final Folder folder;
+  final TextEditingController titleCtrl;
+  final bool dirty;
+  final bool isPreview;
+  final VoidCallback onBack;
+  final VoidCallback onSave;
+  final VoidCallback onTogglePreview;
+  final VoidCallback onExpand;
+
+  const _CollapsedHeader({
+    required this.folder,
+    required this.titleCtrl,
+    required this.dirty,
+    required this.isPreview,
+    required this.onBack,
+    required this.onSave,
+    required this.onTogglePreview,
+    required this.onExpand,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onBack,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(width: 4, height: 24, color: folder.color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              titleCtrl.text.isEmpty ? 'Sin titulo' : titleCtrl.text,
+              style: ySans(
+                size: 16,
+                weight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: folder.color,
+                height: 1.0,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _HeaderIcon(
+            icon: Icons.check,
+            fill: !dirty,
+            color: dirty ? yAmber2 : yLab,
+            onTap: onSave,
+          ),
+          const SizedBox(width: 6),
+          _HeaderIcon(
+            icon: isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
+            fill: isPreview,
+            color: yLab,
+            onTap: onTogglePreview,
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onExpand,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.keyboard_arrow_down, color: yInk, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─── Hero header ──────────────────────────────────────────────────────────
