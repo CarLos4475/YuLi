@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
-import '../../providers/navigation_provider.dart';
 import '../../providers/note_block_providers.dart';
 import '../../utils/pdf_export.dart';
 import '../../widgets/fight_panel.dart';
@@ -21,6 +20,7 @@ import 'format_toolbar.dart';
 import 'note_block_widgets.dart';
 import 'note_cell_model.dart';
 import 'drawing_cell.dart';
+import '../lab/lab_space_detail_screen.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -299,6 +299,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         : _isPreview
                             ? _buildPreview(blocks)
                             : ReorderableListView.builder(
+                                key: ValueKey(blocks.length),
                                 physics: _scrollLocked
                                     ? const NeverScrollableScrollPhysics()
                                     : null,
@@ -387,6 +388,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         decoration: BoxDecoration(
                           color: widget.folder.color,
                           border: Border.all(color: yInk, width: yLineMid),
+                          boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
                         ),
                         child: Center(
                           child: Math.tex(
@@ -745,8 +747,11 @@ class _LabBadge extends ConsumerWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        ref.read(pendingLabSpaceNavigationProvider.notifier).state = spaceId;
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: space)),
+          (route) => route.isFirst,
+        );
+        ref.read(currentModeProvider.notifier).state = AppMode.lab;
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

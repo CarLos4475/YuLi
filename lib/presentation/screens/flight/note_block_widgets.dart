@@ -225,6 +225,7 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
 
   @override
   void dispose() {
+    widget.onFocusChanged?.call(null);
     _focus.removeListener(_onFocusChange);
     _focus.dispose();
     _ctrl.dispose();
@@ -334,6 +335,7 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
           decoration: BoxDecoration(
             color: widget.accentColor,
             border: Border.all(color: yInk, width: yLineMid),
+            boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
           ),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
           child: Stack(
@@ -486,6 +488,24 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
     _focuses.last.requestFocus();
   }
 
+  void _copyAll() {
+    final text = _ctrls
+        .map((c) => c.text)
+        .where((t) => t.isNotEmpty)
+        .map((t) => '- $t')
+        .join('\n');
+    if (text.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lista copiada'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
   void _removeItem(int i) {
     if (_ctrls.length <= 1) return;
     setState(() {
@@ -547,22 +567,38 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
               ],
             ),
           ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _addItem,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4, left: 16),
-              child: Text('+ item',
-                  style: yMono(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  )),
+        Row(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _addItem,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, left: 16),
+                child: Text('+ item',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yMuted,
+                    )),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _copyAll,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('COPIAR TODO',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yMuted,
+                    )),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1097,7 +1133,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
     final generator = MarkdownGenerator(
       textGenerator: customTextGenerator,
       inlineSyntaxList: [_LatexSyntax()],
-      blockSyntaxList: [const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
+      blockSyntaxList: [const _DefinitionListSyntax(), const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
       generators: [
         SpanNodeGeneratorWithTag(
           tag: 'latex',
@@ -1108,6 +1144,11 @@ class NoteMarkdownPreview extends ConsumerWidget {
           tag: 'align',
           generator: (e, config, visitor) =>
               _AlignmentNode(e.attributes['align'] ?? 'left', e.textContent, config),
+        ),
+        SpanNodeGeneratorWithTag(
+          tag: 'deflist',
+          generator: (e, config, visitor) =>
+              _DefinitionListNode(e.attributes['data'] ?? '', config),
         ),
       ],
     );
@@ -1121,6 +1162,14 @@ class NoteMarkdownPreview extends ConsumerWidget {
         H1Config(style: ySans(size: 28, weight: FontWeight.w700, letterSpacing: -0.8, color: yInk)),
         H2Config(style: ySans(size: 22, weight: FontWeight.w700, letterSpacing: -0.5, color: yInk)),
         H3Config(style: ySans(size: 18, weight: FontWeight.w700, letterSpacing: -0.3, color: yInk)),
+        CheckBoxConfig(builder: (checked) => Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: Icon(
+            checked ? Icons.check_box : Icons.check_box_outline_blank,
+            size: 18,
+            color: yInk,
+          ),
+        )),
         CodeConfig(style: yMono(size: 12, color: yInk, tracking: 0.5).copyWith(backgroundColor: yCream2)),
         BlockquoteConfig(textColor: yMuted, sideColor: yFlight),
         ImgConfig(
@@ -1304,5 +1353,126 @@ class _AlignmentBlockSyntax extends m.BlockSyntax {
     final element = m.Element('align', [m.Text(content)]);
     element.attributes['align'] = align;
     return element;
+  }
+}
+
+// ─── Definition list syntax ─────────────────────────────────────────────
+
+class _DefinitionListSyntax extends m.BlockSyntax {
+  const _DefinitionListSyntax() : super();
+
+  static final _defLine = RegExp(r'^:\s+(.+)$');
+
+  @override
+  RegExp get pattern => RegExp(r'^.+$');
+
+  @override
+  bool canParse(m.BlockParser parser) {
+    if (parser.isDone) return false;
+    final current = parser.current.content;
+    if (current.trim().isEmpty || _defLine.hasMatch(current)) return false;
+    final next = parser.next;
+    return next != null && _defLine.hasMatch(next.content);
+  }
+
+  @override
+  m.Node? parse(m.BlockParser parser) {
+    final pairs = <String>[];
+    while (!parser.isDone) {
+      final termLine = parser.current.content;
+      if (termLine.trim().isEmpty) break;
+      if (_defLine.hasMatch(termLine)) break;
+      final term = termLine.trim();
+      parser.advance();
+      final defs = <String>[];
+      while (!parser.isDone && _defLine.hasMatch(parser.current.content)) {
+        defs.add(_defLine.firstMatch(parser.current.content)!.group(1)!);
+        parser.advance();
+      }
+      if (defs.isEmpty) break;
+      pairs.add('$term\x00${defs.join('\x00')}');
+    }
+    if (pairs.isEmpty) return null;
+    final element = m.Element('deflist', [m.Text(pairs.join('\x01'))]);
+    element.attributes['data'] = pairs.join('\x01');
+    return element;
+  }
+}
+
+class _DefinitionListNode extends SpanNode {
+  final String data;
+  final MarkdownConfig config;
+
+  _DefinitionListNode(this.data, this.config);
+
+  @override
+  InlineSpan build() {
+    final pairs = data.split('\x01');
+    final children = <InlineSpan>[];
+    for (final pair in pairs) {
+      final parts = pair.split('\x00');
+      if (parts.length < 2) continue;
+      final term = parts[0];
+      final defs = parts.sublist(1);
+      children.add(WidgetSpan(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                term,
+                style: ySans(
+                  size: 15,
+                  weight: FontWeight.w700,
+                  color: yInk,
+                  height: 1.4,
+                ),
+              ),
+              for (final def in defs)
+                Padding(
+                  padding: const EdgeInsets.only(left: 20, top: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5, right: 8),
+                        child: Container(
+                          width: 6,
+                          height: 2,
+                          color: yMuted,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          def,
+                          style: yBody(
+                            size: 14,
+                            color: yInk2,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ));
+    }
+    if (children.isEmpty) return const TextSpan();
+    if (children.length == 1) return children.first;
+    return WidgetSpan(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final c in children)
+            Builder(builder: (_) => Text.rich(TextSpan(children: [c]))),
+        ],
+      ),
+    );
   }
 }

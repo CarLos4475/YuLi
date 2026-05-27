@@ -68,11 +68,12 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
 
   Future<void> _save() async {
     if (!_isDirty) return;
+    final editedTitle = _titleController.text.trim();
+    final originalClean = y.cleanMention(widget.card.title).trim();
+    final titleChanged = editedTitle.isNotEmpty && editedTitle != originalClean;
     await _repository.update(
       _card.copyWith(
-        title: _titleController.text.trim().isEmpty
-            ? _card.title
-            : _titleController.text.trim(),
+        title: titleChanged ? editedTitle : null,
         description: _descController.text.isEmpty
             ? null
             : _descController.text,
@@ -88,7 +89,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
         ref.watch(kanbanColumnsProvider(widget.space.id));
     final columns = columnsAsync.valueOrNull ?? [];
     final currentColumn = columns
-        .where((c) => c.id == widget.card.columnId)
+        .where((c) => c.id == _card.columnId)
         .firstOrNull;
 
     return Container(
@@ -190,10 +191,10 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                 ),
                 const SizedBox(height: 16),
           // Column selector
-          if (currentColumn != null)
+          if (columns.isNotEmpty)
             _ColumnSelector(
               card: _card,
-              currentColumn: currentColumn,
+              currentColumn: columns.where((c) => c.id == _card.columnId).firstOrNull ?? columns.first,
               columns: columns,
               repo: _repository,
               onChanged: (c) => _onCardChanged(c),

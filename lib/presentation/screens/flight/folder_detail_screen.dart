@@ -10,7 +10,7 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/edit_item_dialog.dart';
-import '../../widgets/fight_panel.dart';
+
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/task.dart' as domain_task;
@@ -55,35 +55,6 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
         builder: (_) => note.kind == NoteKind.whiteboard
             ? WhiteboardEditorScreen(note: note, folder: folder)
             : NoteEditorScreen(note: note, folder: folder),
-      ),
-    );
-  }
-
-  void _openFightPanel() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.2,
-        maxChildSize: 0.9,
-        builder: (ctx, scrollController) => FightPanel(
-          folderId: widget.folder.id,
-          scrollController: scrollController,
-          onTapTask: (task) async {
-            await ref.read(taskRepositoryProvider).markDone(task.id);
-            await syncTaskCompletionToKanban(ref, task.id);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Tarea completada'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
-          },
-        ),
       ),
     );
   }
@@ -173,26 +144,6 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
                 },
               ),
           ],
-        ),
-      ),
-      floatingActionButton: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _openFightPanel,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: yFlight,
-            border: Border.all(color: yInk, width: yLineMid),
-          ),
-          child: Text(
-            pending.isEmpty ? 'TAREAS' : 'TAREAS · ${pending.length}',
-            style: yMono(
-              size: 11,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yCream,
-            ),
-          ),
         ),
       ),
     );
@@ -726,11 +677,18 @@ class _TareaStripRow extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              border: Border.all(color: yInk, width: yLineThin),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              await ref.read(taskRepositoryProvider).markDone(task.id);
+              await syncTaskCompletionToKanban(ref, task.id);
+            },
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                border: Border.all(color: yInk, width: yLineThin),
+              ),
             ),
           ),
           const SizedBox(width: 10),

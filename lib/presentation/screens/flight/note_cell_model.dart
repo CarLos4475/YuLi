@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' show Rect;
 import 'package:uuid/uuid.dart';
 
@@ -79,20 +80,50 @@ bool isScribble(List<List<double>> points) {
   final bounds = scribbleBounds(points);
   if (bounds.width > 120 || bounds.height > 120) return false;
 
+  // Path length
+  double pathLength = 0;
+  for (int i = 1; i < points.length; i++) {
+    final dx = points[i][0] - points[i - 1][0];
+    final dy = points[i][1] - points[i - 1][1];
+    pathLength += math.sqrt(dx * dx + dy * dy);
+  }
+  if (pathLength < 20) return false;
+
+  // (B) Angular variance: average |sin(angle)| between consecutive segments.
+  // Scribbles zigzag sharply; cursive flows smoothly even through loops.
+  double totalAngle = 0;
+  int angleSegments = 0;
+  for (int i = 1; i < points.length - 1; i++) {
+    final ax = points[i][0] - points[i - 1][0];
+    final ay = points[i][1] - points[i - 1][1];
+    final bx = points[i + 1][0] - points[i][0];
+    final by = points[i + 1][1] - points[i][1];
+    final magSqA = ax * ax + ay * ay;
+    final magSqB = bx * bx + by * by;
+    if (magSqA < 1 || magSqB < 1) continue;
+    totalAngle += (ax * by - ay * bx).abs() / math.sqrt(magSqA * magSqB);
+    angleSegments++;
+  }
+  if (angleSegments == 0) return false;
+  final angularVariance = totalAngle / angleSegments;
+
+  // (D) Crossing density: self-intersections per pixel of path.
   int crossings = 0;
   final len = points.length;
-  for (int i = 0; i < len - 3 && crossings < 5; i++) {
+  for (int i = 0; i < len - 3 && crossings < 50; i++) {
     for (int j = i + 2; j < len - 1; j++) {
       if (_segmentsIntersect(
         points[i][0], points[i][1], points[i + 1][0], points[i + 1][1],
         points[j][0], points[j][1], points[j + 1][0], points[j + 1][1],
       )) {
         crossings++;
-        if (crossings >= 5) return true;
       }
     }
   }
-  return false;
+
+  final crossingDensity = crossings / pathLength;
+
+  return crossings >= 5 && crossingDensity > 0.04 && angularVariance > 0.25;
 }
 
 bool _segmentsIntersect(

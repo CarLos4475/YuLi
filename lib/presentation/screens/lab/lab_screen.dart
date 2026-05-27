@@ -5,7 +5,9 @@ import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/edit_item_dialog.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
 import 'lab_space_detail_screen.dart';
@@ -13,10 +15,10 @@ import 'new_lab_space_dialog.dart';
 
 // ─── Toolbar state ────────────────────────────────────────────────────────
 
-enum LabTab { activos, pausados, completados, archivo }
+enum LabTab { todos, activos, pausados, completados, archivo }
 
 final labFilterProvider =
-    StateProvider<LabTab>((ref) => LabTab.activos);
+    StateProvider<LabTab>((ref) => LabTab.todos);
 
 // ─── Screen ───────────────────────────────────────────────────────────────
 
@@ -60,6 +62,7 @@ class _LabScreenState extends ConsumerState<LabScreen> {
     final archivo = allSpaces.where((s) => s.status == LabSpaceStatus.archived).toList();
 
     final shown = switch (filter) {
+      LabTab.todos => allSpaces,
       LabTab.activos => activos,
       LabTab.pausados => pausados,
       LabTab.completados => completados,
@@ -119,6 +122,7 @@ class _LabScreenState extends ConsumerState<LabScreen> {
         ),
         _LabToolbar(
           counts: {
+            LabTab.todos: allSpaces.length,
             LabTab.activos: activos.length,
             LabTab.pausados: pausados.length,
             LabTab.completados: completados.length,
@@ -155,6 +159,12 @@ class _LabToolbar extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(28, 16, 28, 16),
       child: Row(
         children: [
+          PillTab(
+            label: 'TODOS · ${counts[LabTab.todos] ?? 0}',
+            active: filter == LabTab.todos,
+            onTap: () => notifier.state = LabTab.todos,
+          ),
+          const SizedBox(width: 6),
           PillTab(
             label: 'EN PROCESO · ${counts[LabTab.activos] ?? 0}',
             active: filter == LabTab.activos,
@@ -286,6 +296,51 @@ class _SpaceCard extends ConsumerWidget {
   String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
+  void _showRename(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (_) => EditItemDialog(
+        title: 'Renombrar space',
+        initialName: space.name,
+        initialColor: space.accentColor,
+        onSave: (name, color) async {
+          await ref.read(labSpaceRepositoryProvider).update(space.copyWith(name: name, accentColor: color));
+        },
+        onDelete: () async {
+          await ref.read(labSpaceRepositoryProvider).softDelete(space.id);
+        },
+      ),
+    );
+  }
+
+  void _showColorPicker(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: yCream,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Color del space', style: ySans(size: 18, weight: FontWeight.w700)),
+        content: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: folderPalette.map((c) => GestureDetector(
+            onTap: () async {
+              await ref.read(labSpaceRepositoryProvider).update(space.copyWith(accentColor: c));
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: c,
+                border: Border.all(color: yInk, width: space.accentColor == c ? 3 : yLineThin),
+              ),
+            ),
+          )).toList(),
+        ),
+      ),
+    );
+  }
+
   void _showOptions(BuildContext context, WidgetRef ref) {
     final repo = ref.read(labSpaceRepositoryProvider);
 
@@ -295,6 +350,16 @@ class _SpaceCard extends ConsumerWidget {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (ctx) {
         final options = <_SheetOption>[];
+
+        options.add(_SheetOption('Cambiar nombre', Icons.edit_outlined, () {
+          Navigator.pop(ctx);
+          _showRename(context, ref);
+        }));
+
+        options.add(_SheetOption('Cambiar color', Icons.palette_outlined, () {
+          Navigator.pop(ctx);
+          _showColorPicker(context, ref);
+        }));
 
         if (space.status == LabSpaceStatus.paused) {
           options.add(_SheetOption('Reanudar', Icons.play_arrow_outlined, () async {

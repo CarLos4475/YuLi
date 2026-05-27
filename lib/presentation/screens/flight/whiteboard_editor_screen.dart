@@ -19,6 +19,7 @@ import 'shape_recognizer.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
+import '../lab/lab_space_detail_screen.dart';
 
 // World canvas size — large but finite to keep memory bounded. The user
 // pans inside this via InteractiveViewer. ~10kx10k logical pixels.
@@ -73,6 +74,7 @@ class _WhiteboardEditorScreenState
   late final List<Color> _palette;
   final LassoController _lassoCtrl = LassoController();
   late final AnimationController _lassoAnimCtrl;
+  Matrix4? _transformBeforeStylus;
   Timer? _pasteTimer;
   Offset? _pastePos;
   Offset? _showPasteAt;
@@ -179,7 +181,22 @@ class _WhiteboardEditorScreenState
     _holdTimer = Timer(const Duration(milliseconds: 800), _tryShapeSnap);
   }
 
+  Rect? _lassoToolbarScreenRect() {
+    if (_lassoCtrl.phase != LassoPhase.selected || _lassoCtrl.boundingBox == null) return null;
+    final bb = _lassoCtrl.boundingBox!;
+    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
+    return Rect.fromLTWH(screenPos.dx - 100, screenPos.dy - 10, 200, 80);
+  }
+
   void _onDown(PointerDownEvent e) {
+    final tbRect = _lassoToolbarScreenRect();
+    if (tbRect != null && tbRect.contains(e.localPosition)) return;
+    if (_showPasteAt != null) {
+      final sp = MatrixUtils.transformPoint(_viewCtrl.value, _showPasteAt!);
+      if ((e.localPosition - sp).distance < 60) return;
+    }
+
     _activePointers.add(e.pointer);
     _pointerDownPos[e.pointer] = e.localPosition;
     if (_activePointers.length > _maxSimultaneous) {
@@ -191,7 +208,10 @@ class _WhiteboardEditorScreenState
     }
 
     final isStylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
-    if (isStylus) _stylusActive = true;
+    if (isStylus) {
+      _stylusActive = true;
+      if (_palmRejection) _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
+    }
 
     if (_showPasteAt != null) {
       setState(() => _showPasteAt = null);
@@ -319,6 +339,10 @@ class _WhiteboardEditorScreenState
     _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
     _holdAnchor = null;
+    if (_stylusActive && _transformBeforeStylus != null && _palmRejection) {
+      _viewCtrl.value = _transformBeforeStylus!;
+      _transformBeforeStylus = null;
+    }
     _stylusActive = false;
     setState(() => _isDrawing = false);
 
@@ -749,10 +773,11 @@ class _WhiteboardEditorScreenState
                     final br = MatrixUtils.transformPoint(
                         inv, Offset(c.maxWidth, c.maxHeight));
                     final visibleRect = Rect.fromPoints(tl, br);
-                    return ClipRect(
-                      child: Stack(
-                        children: [
-                          Listener(
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipRect(
+                          child: Listener(
                             behavior: HitTestBehavior.opaque,
                             onPointerDown: _onDown,
                             onPointerMove: _onMove,
@@ -809,12 +834,12 @@ class _WhiteboardEditorScreenState
                               ),
                             ),
                           ),
-                          if (_lassoCtrl.phase == LassoPhase.selected)
-                            _buildLassoMiniToolbar(),
-                          if (_showPasteAt != null)
-                            _buildPasteButton(),
-                        ],
-                      ),
+                        ),
+                        if (_lassoCtrl.phase == LassoPhase.selected)
+                          _buildLassoMiniToolbar(),
+                        if (_showPasteAt != null)
+                          _buildPasteButton(),
+                      ],
                     );
                   },
                 );
@@ -1117,12 +1142,12 @@ void _draw(Canvas canvas, DrawingStroke stroke) {
 
 // ─── Linked-spaces bar (under header) ─────────────────────────────────────
 
-class _LinkedSpacesBar extends StatelessWidget {
+class _LinkedSpacesBar extends ConsumerWidget {
   final List<LabSpace> spaces;
   const _LinkedSpacesBar({required this.spaces});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
@@ -1145,20 +1170,29 @@ class _LinkedSpacesBar extends StatelessWidget {
               child: Row(
                 children: [
                   for (final s in spaces) ...[
-                    Container(
-                      padding:
-                          const EdgeInsets.fromLTRB(8, 3, 8, 4),
-                      decoration: BoxDecoration(
-                        color: s.accentColor,
-                        border: Border.all(color: yInk, width: 1.5),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: s)),
+                          (route) => route.isFirst,
+                        );
+                      },
+                      child: Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(8, 3, 8, 4),
+                        decoration: BoxDecoration(
+                          color: s.accentColor,
+                          border: Border.all(color: yInk, width: 1.5),
+                        ),
+                        child: Text('→ ${s.name.toUpperCase()}',
+                            style: yMono(
+                              size: 9,
+                              weight: FontWeight.w700,
+                              tracking: 1.2,
+                              color: yCream,
+                            )),
                       ),
-                      child: Text('→ ${s.name.toUpperCase()}',
-                          style: yMono(
-                            size: 9,
-                            weight: FontWeight.w700,
-                            tracking: 1.2,
-                            color: yCream,
-                          )),
                     ),
                 const SizedBox(width: 2),
                   ],

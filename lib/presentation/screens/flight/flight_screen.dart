@@ -6,6 +6,7 @@ import '../../providers/folder_providers.dart';
 import '../../providers/flight_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/note_providers.dart';
+import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -13,6 +14,7 @@ import 'folder_detail_screen.dart';
 import 'note_editor_screen.dart';
 import 'whiteboard_editor_screen.dart';
 import 'new_folder_dialog.dart';
+import '../../widgets/edit_item_dialog.dart';
 
 class FlightScreen extends ConsumerStatefulWidget {
   const FlightScreen({super.key});
@@ -575,8 +577,7 @@ class _FolderCard extends ConsumerWidget {
         context,
         MaterialPageRoute(builder: (_) => FolderDetailScreen(folder: folder)),
       ),
-      onLongPress: () =>
-          ref.read(pinnedFoldersProvider.notifier).toggle(folder.id),
+      onLongPress: () => _showFolderContextMenu(context, ref, folder, pinned),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -746,6 +747,10 @@ class _FolderListRow extends ConsumerWidget {
     required this.pinned,
   });
 
+  void _showFolderListMenu(BuildContext context, WidgetRef ref) {
+    _showFolderContextMenu(context, ref, folder, pinned);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
@@ -754,8 +759,7 @@ class _FolderListRow extends ConsumerWidget {
         context,
         MaterialPageRoute(builder: (_) => FolderDetailScreen(folder: folder)),
       ),
-      onLongPress: () =>
-          ref.read(pinnedFoldersProvider.notifier).toggle(folder.id),
+      onLongPress: () => _showFolderListMenu(context, ref),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
@@ -848,6 +852,149 @@ class _NewFolderTile extends StatelessWidget {
                   tracking: 1.4,
                   color: yMuted,
                 )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _showFolderContextMenu(BuildContext context, WidgetRef ref, Folder folder, bool pinned) {
+  final repo = ref.read(folderRepositoryProvider);
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: yCream,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Text(
+              folder.name.toUpperCase(),
+              style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted),
+            ),
+          ),
+          _FolderMenuItem(
+            icon: Icons.edit_outlined,
+            label: 'Cambiar nombre',
+            onTap: () {
+              Navigator.pop(ctx);
+              showDialog(
+                context: context,
+                builder: (_) => EditItemDialog(
+                  title: 'Renombrar carpeta',
+                  initialName: folder.name,
+                  initialColor: folder.color,
+                  onSave: (name, color) async {
+                    await repo.update(folder.copyWith(name: name, color: color));
+                  },
+                  onDelete: () async {
+                    await repo.softDelete(folder.id);
+                  },
+                ),
+              );
+            },
+          ),
+          _FolderMenuItem(
+            icon: Icons.palette_outlined,
+            label: 'Cambiar color',
+            onTap: () {
+              Navigator.pop(ctx);
+              showDialog(
+                context: context,
+                builder: (dCtx) => AlertDialog(
+                  backgroundColor: yCream,
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  title: Text('Color de carpeta', style: ySans(size: 18, weight: FontWeight.w700)),
+                  content: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: folderPalette.map((c) => GestureDetector(
+                      onTap: () async {
+                        await repo.update(folder.copyWith(color: c));
+                        if (dCtx.mounted) Navigator.pop(dCtx);
+                      },
+                      child: Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(
+                          color: c,
+                          border: Border.all(color: yInk, width: folder.color == c ? 3 : yLineThin),
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ),
+              );
+            },
+          ),
+          _FolderMenuItem(
+            icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+            label: pinned ? 'Desfijar' : 'Destacar',
+            onTap: () {
+              Navigator.pop(ctx);
+              ref.read(pinnedFoldersProvider.notifier).toggle(folder.id);
+            },
+          ),
+          _FolderMenuItem(
+            icon: Icons.delete_outline,
+            label: 'Eliminar',
+            destructive: true,
+            onTap: () async {
+              Navigator.pop(ctx);
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  backgroundColor: yCream,
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  title: Text('Eliminar carpeta', style: ySans(size: 18, weight: FontWeight.w700)),
+                  content: Text('¿Eliminar "${folder.name}"? Se moverá a la papelera.', style: yBody(size: 14)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+                    TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Eliminar')),
+                  ],
+                ),
+              );
+              if (ok == true) await repo.softDelete(folder.id);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+class _FolderMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  const _FolderMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: yInk, width: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: destructive ? const Color(0xFF8E2D4B) : yInk),
+            const SizedBox(width: 12),
+            Text(label, style: ySans(size: 15, weight: FontWeight.w600, color: destructive ? const Color(0xFF8E2D4B) : yInk)),
           ],
         ),
       ),
