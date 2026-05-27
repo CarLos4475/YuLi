@@ -295,7 +295,6 @@ class _WhiteboardEditorScreenState
             ],
           ],
         );
-        _isDrawing = true;
       });
       return;
     }
@@ -341,13 +340,12 @@ class _WhiteboardEditorScreenState
     if (_active == null) return;
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      _active!.points.add([
+      setState(() => _active!.points.add([
         p.dx,
         p.dy,
         pressure,
         DateTime.now().millisecondsSinceEpoch.toDouble(),
-      ]);
-      setState(() {});
+      ]));
       return;
     }
     final pts = _active!.points;
@@ -931,13 +929,21 @@ class _WhiteboardEditorScreenState
             _toolBtn(
               icon: Icons.edit_outlined,
               active: _tool == DrawTool.pen,
-              onTap: () => setState(() { _tool = DrawTool.pen; _lassoCtrl.deselect(); }),
+              onTap: () => setState(() {
+                _tool = DrawTool.pen;
+                _lassoCtrl.deselect();
+                _syncStrokeWidth();
+              }),
             ),
             const SizedBox(width: 12),
             _toolBtn(
               icon: Icons.gesture,
               active: _tool == DrawTool.fountainPen,
-              onTap: () => setState(() { _tool = DrawTool.fountainPen; _lassoCtrl.deselect(); }),
+              onTap: () => setState(() {
+                _tool = DrawTool.fountainPen;
+                _lassoCtrl.deselect();
+                _syncStrokeWidth();
+              }),
             ),
             const SizedBox(width: 12),
             _toolBtn(
@@ -1067,13 +1073,19 @@ class _WhiteboardEditorScreenState
     );
   }
 
+  void _syncStrokeWidth() {
+    final valid = _tool == DrawTool.fountainPen
+        ? [2.0, 4.0]
+        : [3.0, 6.0, 10.0];
+    if (!valid.contains(_strokeW)) {
+      _strokeW = valid.first;
+    }
+  }
+
   List<Widget> _widthButtons() {
     final widths = _tool == DrawTool.fountainPen
         ? [2.0, 4.0]
         : [3.0, 6.0, 10.0];
-    if (!widths.contains(_strokeW)) {
-      _strokeW = widths.first;
-    }
     return [
       for (final w in widths) ...[
         _widthBtn(w),
