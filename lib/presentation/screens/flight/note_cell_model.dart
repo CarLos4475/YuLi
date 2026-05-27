@@ -4,6 +4,8 @@ import 'package:uuid/uuid.dart';
 
 enum CellType { markdown, drawing }
 
+enum DrawTool { pen, eraser, lasso }
+
 class NoteCell {
   final String id;
   final CellType type;
@@ -73,6 +75,9 @@ class DrawingStroke {
 
 bool isScribble(List<List<double>> points) {
   if (points.length < 15) return false;
+
+  final bounds = scribbleBounds(points);
+  if (bounds.width > 120 || bounds.height > 120) return false;
 
   int crossings = 0;
   final len = points.length;

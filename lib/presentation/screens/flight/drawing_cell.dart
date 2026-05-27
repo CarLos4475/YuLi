@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../widgets/yuli_design.dart';
 import 'note_cell_model.dart';
+import 'lasso_controller.dart';
+import 'lasso_painter.dart';
+import 'lasso_mini_toolbar.dart';
 
 const _baseColors = <Color>[
   yInk,
@@ -41,16 +46,22 @@ class DrawingCell extends StatefulWidget {
   State<DrawingCell> createState() => _DrawingCellState();
 }
 
-class _DrawingCellState extends State<DrawingCell> {
+class _DrawingCellState extends State<DrawingCell>
+    with TickerProviderStateMixin {
   late DrawingData _data;
   late List<Color> _palette;
   Color _color = yInk;
   double _strokeW = 3.0;
-  bool _erasing = false;
+  DrawTool _tool = DrawTool.pen;
   bool _locked = false;
   bool _palmRejection = true;
   final List<DrawingStroke> _undoStack = [];
   DrawingStroke? _active;
+  final LassoController _lassoCtrl = LassoController();
+  late final AnimationController _lassoAnimCtrl;
+  Timer? _pasteTimer;
+  Offset? _pastePos;
+  Offset? _showPasteAt;
 
   // Multi-finger tap tracking
   final Set<int> _activePointers = {};
@@ -64,6 +75,18 @@ class _DrawingCellState extends State<DrawingCell> {
     super.initState();
     _data = widget.data;
     _palette = _buildPalette();
+    _lassoAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat();
+    _lassoCtrl.onChanged = () => setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _pasteTimer?.cancel();
+    _lassoAnimCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -87,7 +110,11 @@ class _DrawingCellState extends State<DrawingCell> {
 
   void _start(Offset pos) {
     widget.onDrawStart();
-    if (_erasing) {
+    if (_tool == DrawTool.lasso) {
+      _handleLassoDown(pos);
+      return;
+    }
+    if (_tool == DrawTool.eraser) {
       _eraseNear(pos);
       return;
     }
@@ -103,7 +130,11 @@ class _DrawingCellState extends State<DrawingCell> {
   }
 
   void _move(Offset pos) {
-    if (_erasing) {
+    if (_tool == DrawTool.lasso) {
+      _handleLassoMove(pos);
+      return;
+    }
+    if (_tool == DrawTool.eraser) {
       _eraseNear(pos);
       return;
     }
@@ -123,7 +154,7 @@ class _DrawingCellState extends State<DrawingCell> {
       return;
     }
 
-    if (!_erasing && isScribble(_active!.points)) {
+    if (_tool == DrawTool.pen && isScribble(_active!.points)) {
       final bounds = scribbleBounds(_active!.points);
       final before = _data.strokes.length;
       _data.strokes.removeWhere((s) {
@@ -160,6 +191,92 @@ class _DrawingCellState extends State<DrawingCell> {
       setState(() {});
       widget.onChanged(_data);
     }
+  }
+
+  // ─── Lasso handlers ──────────────────────────────────────────────────
+
+  void _handleLassoDown(Offset pos) {
+    _pasteTimer?.cancel();
+    if (_showPasteAt != null) {
+      setState(() => _showPasteAt = null);
+      return;
+    }
+    if (_lassoCtrl.phase == LassoPhase.selected) {
+      if (_lassoCtrl.hitTestRotationHandle(pos)) {
+        _lassoCtrl.startRotation(pos, _data.strokes);
+        return;
+      }
+      final corner = _lassoCtrl.hitTestCornerHandle(pos);
+      if (corner != null) {
+        _lassoCtrl.startResize(corner, pos, _data.strokes);
+        return;
+      }
+      final side = _lassoCtrl.hitTestSideHandle(pos);
+      if (side != null) {
+        _lassoCtrl.startSideResize(side, pos, _data.strokes);
+        return;
+      }
+      if (_lassoCtrl.isTapInsideBoundingBox(pos)) {
+        _lassoCtrl.startMove(pos, _data.strokes);
+        return;
+      }
+      _lassoCtrl.deselect();
+    }
+    _lassoCtrl.startTracing(pos);
+  }
+
+  void _handleLassoMove(Offset pos) {
+    if (_pastePos != null) {
+      if ((pos - _pastePos!).distanceSquared > 400) {
+        _pasteTimer?.cancel();
+        _pastePos = null;
+        _lassoCtrl.startTracing(pos);
+      }
+      return;
+    }
+    if (_lassoCtrl.phase == LassoPhase.tracing) {
+      _lassoCtrl.addTracePoint(pos);
+    } else if (_lassoCtrl.phase == LassoPhase.moving) {
+      _lassoCtrl.updateMove(pos);
+    } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      _lassoCtrl.isSideResize
+          ? _lassoCtrl.updateSideResize(pos)
+          : _lassoCtrl.updateResize(pos);
+    } else if (_lassoCtrl.phase == LassoPhase.rotating) {
+      _lassoCtrl.updateRotation(pos);
+    }
+  }
+
+  void _handleLassoUp() {
+    if (_pastePos != null) {
+      _pasteTimer?.cancel();
+      _pastePos = null;
+      return;
+    }
+    if (_lassoCtrl.phase == LassoPhase.tracing) {
+      _lassoCtrl.finishTracing(_data.strokes);
+    } else if (_lassoCtrl.phase == LassoPhase.moving) {
+      _lassoCtrl.finishMove(_data.strokes);
+      widget.onChanged(_data);
+    } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      _lassoCtrl.isSideResize
+          ? _lassoCtrl.finishSideResize(_data.strokes)
+          : _lassoCtrl.finishResize(_data.strokes);
+      widget.onChanged(_data);
+    } else if (_lassoCtrl.phase == LassoPhase.rotating) {
+      _lassoCtrl.finishRotation(_data.strokes);
+      widget.onChanged(_data);
+    }
+  }
+
+  void _lassoDelete() {
+    _lassoCtrl.deleteSelected(_data.strokes);
+    widget.onChanged(_data);
+  }
+
+  void _lassoDuplicate() {
+    _lassoCtrl.duplicateSelected(_data.strokes);
+    widget.onChanged(_data);
   }
 
   void _undo() {
@@ -231,14 +348,21 @@ class _DrawingCellState extends State<DrawingCell> {
             const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.edit_outlined,
-              active: !_erasing,
-              onTap: () => setState(() => _erasing = false),
+              active: _tool == DrawTool.pen,
+              onTap: () => setState(() { _tool = DrawTool.pen; _lassoCtrl.deselect(); }),
             ),
             const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.auto_fix_high,
-              active: _erasing,
-              onTap: () => setState(() => _erasing = true),
+              active: _tool == DrawTool.eraser,
+              onTap: () => setState(() { _tool = DrawTool.eraser; _lassoCtrl.deselect(); }),
+            ),
+            const SizedBox(width: 4),
+            _toolBtn(
+              icon: Icons.highlight_alt,
+              active: _tool == DrawTool.lasso,
+              label: 'LAZO',
+              onTap: () => setState(() => _tool = DrawTool.lasso),
             ),
             _divider(),
             for (final c in _palette) ...[
@@ -321,9 +445,26 @@ class _DrawingCellState extends State<DrawingCell> {
               painter: _StrokePainter(
                 strokes: _data.strokes,
                 active: _active,
+                hiddenIndices: (_lassoCtrl.phase == LassoPhase.moving ||
+                        _lassoCtrl.phase == LassoPhase.resizing ||
+                        _lassoCtrl.phase == LassoPhase.rotating)
+                    ? _lassoCtrl.selectedIndices
+                    : null,
               ),
               size: Size.infinite,
             ),
+            if (_lassoCtrl.phase != LassoPhase.idle)
+              AnimatedBuilder(
+                animation: _lassoAnimCtrl,
+                builder: (_, _) => CustomPaint(
+                  painter: LassoPainter(
+                    ctrl: _lassoCtrl,
+                    animValue: _lassoAnimCtrl.value,
+                    strokes: _data.strokes,
+                  ),
+                  size: Size.infinite,
+                ),
+              ),
             if (!_locked)
               Center(
                 child: Padding(
@@ -347,7 +488,10 @@ class _DrawingCellState extends State<DrawingCell> {
 
     if (!_locked) return canvas;
 
-    return Listener(
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (e) {
         _activePointers.add(e.pointer);
@@ -362,6 +506,48 @@ class _DrawingCellState extends State<DrawingCell> {
           return;
         }
         if (_activePointers.length > 2) return;
+
+        final isStylus = e.kind == PointerDeviceKind.stylus ||
+            e.kind == PointerDeviceKind.invertedStylus;
+
+        if (_showPasteAt != null) {
+          setState(() => _showPasteAt = null);
+          return;
+        }
+
+        final isFinger = !isStylus;
+        if (_lassoCtrl.hasClipboard && _activePointers.length == 1 &&
+            _lassoCtrl.phase == LassoPhase.idle) {
+          final canPaste = (isFinger && _palmRejection) || _tool == DrawTool.lasso;
+          if (canPaste) {
+            _pastePos = e.localPosition;
+            _pasteTimer?.cancel();
+            _pasteTimer = Timer(const Duration(milliseconds: 500), () {
+              if (_pastePos != null) {
+                setState(() => _showPasteAt = _pastePos);
+                HapticFeedback.lightImpact();
+                _pastePos = null;
+              }
+            });
+            if (isFinger && _palmRejection) return;
+          }
+        }
+
+        if (_tool == DrawTool.lasso && isFinger && _palmRejection) {
+          if (_lassoCtrl.phase == LassoPhase.selected) {
+            final pos = e.localPosition;
+            if (_lassoCtrl.hitTestRotationHandle(pos) ||
+                _lassoCtrl.hitTestCornerHandle(pos) != null ||
+                _lassoCtrl.hitTestSideHandle(pos) != null ||
+                _lassoCtrl.isTapInsideBoundingBox(pos)) {
+              _start(pos);
+              return;
+            }
+            _lassoCtrl.deselect();
+          }
+          return;
+        }
+
         if (!_shouldAcceptPointer(e.kind)) return;
         _start(e.localPosition);
       },
@@ -372,9 +558,16 @@ class _DrawingCellState extends State<DrawingCell> {
             _multiFingerMoved = true;
           }
         }
+        if (_pastePos != null) {
+          if ((e.localPosition - _pastePos!).distanceSquared > 400) {
+            _pasteTimer?.cancel();
+            _pastePos = null;
+          }
+          return;
+        }
         if (_activePointers.length >= 2) return;
         if (!_shouldAcceptPointer(e.kind)) return;
-        if (_active == null && !_erasing) return;
+        if (_active == null && _tool == DrawTool.pen) return;
         _move(e.localPosition);
       },
       onPointerUp: (e) {
@@ -393,7 +586,17 @@ class _DrawingCellState extends State<DrawingCell> {
           return;
         }
         if (_activePointers.isEmpty) _maxSimultaneous = 0;
+        if (_pastePos != null) {
+          _pasteTimer?.cancel();
+          _pastePos = null;
+          return;
+        }
         if (!_shouldAcceptPointer(e.kind)) return;
+        if (_tool == DrawTool.lasso) {
+          _handleLassoUp();
+          widget.onDrawEnd();
+          return;
+        }
         _end();
       },
       onPointerCancel: (e) {
@@ -403,7 +606,83 @@ class _DrawingCellState extends State<DrawingCell> {
         if (!_shouldAcceptPointer(e.kind)) return;
         _end();
       },
-      child: canvas,
+        child: canvas,
+        ),
+        if (_lassoCtrl.phase == LassoPhase.selected &&
+            _lassoCtrl.boundingBox != null)
+          Positioned(
+            left: _lassoCtrl.boundingBox!.center.dx - 80,
+            top: _lassoCtrl.boundingBox!.top - 64,
+            child: LassoMiniToolbar(
+              onDelete: _lassoDelete,
+              onDuplicate: _lassoDuplicate,
+              palette: _palette,
+              onColorChange: (c) {
+                _lassoCtrl.changeColor(_data.strokes, c.toARGB32());
+                widget.onChanged(_data);
+              },
+              onWidthChange: (w) {
+                _lassoCtrl.changeWidth(_data.strokes, w);
+                widget.onChanged(_data);
+              },
+              onFlipH: () {
+                _lassoCtrl.flipHorizontal(_data.strokes);
+                widget.onChanged(_data);
+              },
+              onFlipV: () {
+                _lassoCtrl.flipVertical(_data.strokes);
+                widget.onChanged(_data);
+              },
+              onCopy: () {
+                _lassoCtrl.copySelected(_data.strokes);
+                HapticFeedback.lightImpact();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('COPIADO'),
+                    duration: Duration(milliseconds: 800),
+                  ),
+                );
+              },
+              onCut: () {
+                _lassoCtrl.cutSelected(_data.strokes);
+                widget.onChanged(_data);
+                HapticFeedback.lightImpact();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('CORTADO'),
+                    duration: Duration(milliseconds: 800),
+                  ),
+                );
+              },
+            ),
+          ),
+        if (_showPasteAt != null)
+          Positioned(
+            left: _showPasteAt!.dx - 40,
+            top: _showPasteAt!.dy - 40,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes);
+                widget.onChanged(_data);
+                HapticFeedback.mediumImpact();
+                setState(() => _showPasteAt = null);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: yCream,
+                  border: Border.all(color: yInk, width: yLineMid),
+                  boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+                ),
+                child: Text(
+                  'PEGAR',
+                  style: yMono(size: 11, weight: FontWeight.w700, tracking: 1.4, color: yInk),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -582,12 +861,12 @@ class _DrawingCellState extends State<DrawingCell> {
   }
 
   Widget _colorBtn(Color c) {
-    final sel = _color.toARGB32() == c.toARGB32() && !_erasing;
+    final sel = _color.toARGB32() == c.toARGB32() && _tool == DrawTool.pen;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         _color = c;
-        _erasing = false;
+        _tool = DrawTool.pen;
       }),
       child: Container(
         width: 26,
@@ -637,13 +916,15 @@ class _DrawingCellState extends State<DrawingCell> {
 class _StrokePainter extends CustomPainter {
   final List<DrawingStroke> strokes;
   final DrawingStroke? active;
+  final Set<int>? hiddenIndices;
 
-  _StrokePainter({required this.strokes, this.active});
+  _StrokePainter({required this.strokes, this.active, this.hiddenIndices});
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final s in strokes) {
-      _draw(canvas, s);
+    for (int i = 0; i < strokes.length; i++) {
+      if (hiddenIndices != null && hiddenIndices!.contains(i)) continue;
+      _draw(canvas, strokes[i]);
     }
     if (active != null) _draw(canvas, active!);
   }
