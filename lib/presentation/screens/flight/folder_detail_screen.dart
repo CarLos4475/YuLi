@@ -16,6 +16,7 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import 'note_editor_screen.dart';
 import 'new_note_picker.dart';
+import 'notebook_editor_screen.dart';
 import 'whiteboard_editor_screen.dart';
 
 class FolderDetailScreen extends ConsumerStatefulWidget {
@@ -52,9 +53,11 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => note.kind == NoteKind.whiteboard
-            ? WhiteboardEditorScreen(note: note, folder: folder)
-            : NoteEditorScreen(note: note, folder: folder),
+        builder: (_) => switch (note.kind) {
+              NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: folder),
+              NoteKind.notebook => NotebookEditorScreen(note: note, folder: folder),
+              _ => NoteEditorScreen(note: note, folder: folder),
+            },
       ),
     );
   }

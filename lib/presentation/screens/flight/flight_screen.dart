@@ -12,6 +12,7 @@ import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import 'folder_detail_screen.dart';
 import 'note_editor_screen.dart';
+import 'notebook_editor_screen.dart';
 import 'whiteboard_editor_screen.dart';
 import 'new_folder_dialog.dart';
 import '../../widgets/edit_item_dialog.dart';
@@ -61,9 +62,11 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => note.kind == NoteKind.whiteboard
-            ? WhiteboardEditorScreen(note: note, folder: folder)
-            : NoteEditorScreen(note: note, folder: folder),
+        builder: (_) => switch (note.kind) {
+              NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: folder),
+              NoteKind.notebook => NotebookEditorScreen(note: note, folder: folder),
+              _ => NoteEditorScreen(note: note, folder: folder),
+            },
       ),
     );
   }

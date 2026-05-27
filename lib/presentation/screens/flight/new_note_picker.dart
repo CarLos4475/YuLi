@@ -58,7 +58,20 @@ class _NewNotePickerDialog extends StatelessWidget {
                         Navigator.pop(context, NoteKind.block),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _KindOption(
+                    label: 'CUADERNO',
+                    sublabel: 'PÁGINAS',
+                    description:
+                        'Páginas A4 apiladas. Dibujo con stylus.',
+                    icon: '▤',
+                    accent: yAmber,
+                    onTap: () =>
+                        Navigator.pop(context, NoteKind.notebook),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: _KindOption(
                     label: 'PIZARRA',

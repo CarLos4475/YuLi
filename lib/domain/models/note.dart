@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 
 enum NoteKind {
   block,
-  whiteboard;
+  whiteboard,
+  notebook;
 
   String toDbString() => name;
 
   static NoteKind fromString(String value) => switch (value) {
         'block' => NoteKind.block,
         'whiteboard' => NoteKind.whiteboard,
+        'notebook' => NoteKind.notebook,
         _ => NoteKind.block,
       };
 }

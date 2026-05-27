@@ -1,0 +1,1416 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' show PointerDeviceKind;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../domain/models/folder.dart';
+import '../../../domain/models/note.dart';
+import '../../../domain/models/note_block.dart';
+import '../../../domain/models/page_background.dart';
+import '../../providers/database_providers.dart';
+import '../../widgets/yuli_design.dart';
+import 'drawing_engine.dart';
+import 'lasso_controller.dart';
+import 'lasso_mini_toolbar.dart';
+import 'lasso_painter.dart';
+import 'note_cell_model.dart';
+import 'notebook_constants.dart';
+import 'shape_recognizer.dart';
+
+const _baseColors = <Color>[yInk, yFight, yFlight, yLab, yAmber, yAmber2];
+const _widths = [3.0, 6.0, 10.0];
+
+class NotebookEditorScreen extends ConsumerStatefulWidget {
+  final Note note;
+  final Folder folder;
+
+  const NotebookEditorScreen({
+    super.key,
+    required this.note,
+    required this.folder,
+  });
+
+  @override
+  ConsumerState<NotebookEditorScreen> createState() =>
+      _NotebookEditorScreenState();
+}
+
+class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
+    with TickerProviderStateMixin {
+  final Map<int, DrawingData> _pageData = {};
+  final List<int> _pageBlockIds = [];
+
+  final TransformationController _viewCtrl = TransformationController();
+  Color _color = yInk;
+  double _strokeW = 3.0;
+  DrawTool _tool = DrawTool.pen;
+  bool _palmRejection = true;
+  DrawingStroke? _active;
+  int? _activePageIndex;
+  final List<DrawingStroke> _undoStack = [];
+  int? _undoPageIndex;
+  bool _isDrawing = false;
+  bool _stylusActive = false;
+  final Set<int> _activePointers = {};
+  Timer? _holdTimer;
+  Offset? _holdAnchor;
+  static const _holdTolerance2 = 400.0;
+  late final List<Color> _palette;
+  final LassoController _lassoCtrl = LassoController();
+  late final AnimationController _lassoAnimCtrl;
+  PageBackground _pageBackground = PageBackground.blank;
+  Matrix4? _transformBeforeStylus;
+
+  int _maxSimultaneous = 0;
+  bool _multiFingerMoved = false;
+  DateTime? _multiFingerDownTime;
+  final Map<int, Offset> _pointerDownPos = {};
+
+  Timer? _pasteTimer;
+  Offset? _pastePos;
+  Offset? _showPasteAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _palette = [..._baseColors.sublist(0, 5), widget.folder.color];
+    _lassoAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat();
+    _lassoCtrl.onChanged = () => setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPages());
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    _pasteTimer?.cancel();
+    _lassoAnimCtrl.dispose();
+    _viewCtrl.dispose();
+    super.dispose();
+  }
+
+  // ─── Page management ───────────────────────────────────────────────────
+
+  Future<void> _loadPages() async {
+    final repo = ref.read(noteBlockRepositoryProvider);
+    final blocks = await repo.getByNote(widget.note.id);
+    final drawingBlocks = blocks.whereType<DrawingBlock>().toList()
+      ..sort((a, b) => a.position.compareTo(b.position));
+
+    if (drawingBlocks.isEmpty) {
+      await _ensurePageAt(0);
+    } else {
+      for (final b in drawingBlocks) {
+        _pageBlockIds.add(b.id);
+        _pageData[b.id] = _decodeData(b);
+      }
+      _readBackground(drawingBlocks.first);
+    }
+
+    // Read notebook-level background preference
+    if (widget.note.rawMarkdown.isNotEmpty) {
+      try {
+        final meta = jsonDecode(widget.note.rawMarkdown);
+        if (meta is Map && meta['pageBackground'] != null) {
+          _pageBackground = PageBackground.fromString(meta['pageBackground']);
+        }
+      } catch (_) {}
+    }
+
+    setState(() {});
+  }
+
+  void _readBackground(DrawingBlock b) {
+    try {
+      final payload = b.payloadJson();
+      final bg = payload['bg'];
+      if (bg is String) {
+        _pageBackground = PageBackground.fromString(bg);
+      }
+    } catch (_) {}
+  }
+
+  DrawingData _decodeData(DrawingBlock b) {
+    List<dynamic> strokes = const [];
+    try {
+      final decoded = jsonDecode(b.strokesJson);
+      if (decoded is List) strokes = decoded;
+    } catch (_) {}
+    return DrawingData.fromJson({'h': kNotebookPageHeight, 's': strokes});
+  }
+
+  Future<void> _ensurePageAt(int pageIndex) async {
+    final repo = ref.read(noteBlockRepositoryProvider);
+    while (_pageBlockIds.length <= pageIndex) {
+      final block = await repo.insertAtEnd(
+        widget.note.id,
+        NoteBlockType.drawing,
+        payload: {
+          'h': kNotebookPageHeight,
+          's': [],
+          'bg': _pageBackground.toDbString(),
+        },
+      ) as DrawingBlock;
+      _pageBlockIds.add(block.id);
+      _pageData[block.id] = DrawingData(height: kNotebookPageHeight);
+    }
+    setState(() {});
+  }
+
+  Future<void> _persistPage(int pageIndex) async {
+    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
+    final blockId = _pageBlockIds[pageIndex];
+    final data = _pageData[blockId];
+    if (data == null) return;
+    await ref.read(noteBlockRepositoryProvider).updatePayload(blockId, {
+      'h': kNotebookPageHeight,
+      's': data.strokes.map((s) => s.toJson()).toList(),
+      'bg': _pageBackground.toDbString(),
+    });
+  }
+
+  Future<void> _saveBackgroundPreference() async {
+    await ref.read(noteRepositoryProvider).update(
+          widget.note.copyWith(
+            rawMarkdown: jsonEncode({'pageBackground': _pageBackground.toDbString()}),
+          ),
+        );
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      await _persistPage(i);
+    }
+  }
+
+  double get _totalCanvasHeight {
+    final pages = _pageBlockIds.length.clamp(1, 9999);
+    return pages * kNotebookPageHeight + (pages - 1) * kNotebookPageGap + 200;
+  }
+
+  // ─── Coordinate transforms ────────────────────────────────────────────
+
+  Offset _screenToWorld(Offset screen) {
+    final inv = Matrix4.copy(_viewCtrl.value)..invert();
+    final m = inv.storage;
+    final w = m[3] * screen.dx + m[7] * screen.dy + m[15];
+    final x = (m[0] * screen.dx + m[4] * screen.dy + m[12]) / w;
+    final y = (m[1] * screen.dx + m[5] * screen.dy + m[13]) / w;
+    return Offset(x, y);
+  }
+
+  int _pageIndexFromWorldY(double worldY) {
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final pageTop = i * (kNotebookPageHeight + kNotebookPageGap);
+      final pageBottom = pageTop + kNotebookPageHeight;
+      if (worldY >= pageTop && worldY < pageBottom) return i;
+    }
+    final lastBottom = _pageBlockIds.isNotEmpty
+        ? (_pageBlockIds.length - 1) * (kNotebookPageHeight + kNotebookPageGap) +
+            kNotebookPageHeight
+        : 0.0;
+    if (worldY >= lastBottom) return _pageBlockIds.length;
+    return -1;
+  }
+
+  Offset _worldToPageLocal(Offset world, int pageIndex) {
+    final pageTop = pageIndex * (kNotebookPageHeight + kNotebookPageGap);
+    return Offset(world.dx, world.dy - pageTop);
+  }
+
+  // ─── Drawing helpers ───────────────────────────────────────────────────
+
+  bool _shouldDraw(PointerDeviceKind kind) {
+    if (kind == PointerDeviceKind.stylus ||
+        kind == PointerDeviceKind.invertedStylus) {
+      return true;
+    }
+    if (!_palmRejection) return true;
+    return false;
+  }
+
+  DrawingData? _activePageData() {
+    if (_activePageIndex == null || _activePageIndex! >= _pageBlockIds.length) {
+      return null;
+    }
+    return _pageData[_pageBlockIds[_activePageIndex!]];
+  }
+
+  bool _tryShapeSnap() {
+    if (_active == null || _activePageIndex == null) return false;
+    final cleaned = ShapeRecognizer.detect(_active!.points);
+    if (cleaned == null) return false;
+    final clean =
+        shapeToStroke(cleaned, _active!.colorValue, _active!.strokeWidth);
+    final data = _activePageData();
+    if (data == null) return false;
+    setState(() {
+      data.strokes.add(clean);
+      _active = null;
+      _undoStack.clear();
+    });
+    _persistPage(_activePageIndex!);
+    HapticFeedback.lightImpact();
+    return true;
+  }
+
+  void _startHoldTimer(Offset worldPos) {
+    _holdTimer?.cancel();
+    _holdAnchor = worldPos;
+    _holdTimer = Timer(const Duration(milliseconds: 800), _tryShapeSnap);
+  }
+
+  // ─── Pointer events ────────────────────────────────────────────────────
+
+  Rect? _lassoToolbarScreenRect() {
+    if (_lassoCtrl.phase != LassoPhase.selected ||
+        _lassoCtrl.boundingBox == null) return null;
+    final bb = _lassoCtrl.boundingBox!;
+    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
+    return Rect.fromLTWH(screenPos.dx - 100, screenPos.dy - 10, 200, 80);
+  }
+
+  void _onDown(PointerDownEvent e) {
+    final tbRect = _lassoToolbarScreenRect();
+    if (tbRect != null && tbRect.contains(e.localPosition)) return;
+    if (_showPasteAt != null) {
+      final sp = MatrixUtils.transformPoint(_viewCtrl.value, _showPasteAt!);
+      if ((e.localPosition - sp).distance < 60) return;
+    }
+
+    _activePointers.add(e.pointer);
+    _pointerDownPos[e.pointer] = e.localPosition;
+    if (_activePointers.length > _maxSimultaneous) {
+      _maxSimultaneous = _activePointers.length;
+    }
+    if (_activePointers.length == 2) {
+      _multiFingerDownTime = DateTime.now();
+      _multiFingerMoved = false;
+    }
+
+    final isStylus = e.kind == PointerDeviceKind.stylus ||
+        e.kind == PointerDeviceKind.invertedStylus;
+    if (isStylus) {
+      _stylusActive = true;
+      if (_palmRejection) {
+        _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
+      }
+    }
+
+    if (_showPasteAt != null) {
+      setState(() => _showPasteAt = null);
+      return;
+    }
+
+    if (!_palmRejection && !isStylus && _activePointers.length >= 2) {
+      setState(() {
+        _active = null;
+        _isDrawing = false;
+      });
+      _holdTimer?.cancel();
+      _holdAnchor = null;
+      return;
+    }
+
+    final isFinger = !isStylus;
+
+    // Paste via long-press
+    if (_lassoCtrl.hasClipboard && _activePointers.length == 1) {
+      final canPaste =
+          (isFinger && _palmRejection) || _tool == DrawTool.lasso;
+      if (canPaste && _lassoCtrl.phase == LassoPhase.idle) {
+        final p = _screenToWorld(e.localPosition);
+        _pastePos = p;
+        _pasteTimer?.cancel();
+        _pasteTimer = Timer(const Duration(milliseconds: 500), () {
+          if (_pastePos != null) {
+            setState(() => _showPasteAt = _pastePos);
+            HapticFeedback.lightImpact();
+            _pastePos = null;
+          }
+        });
+        if (isFinger && _palmRejection) return;
+      }
+    }
+
+    // Lasso + palm rejection + finger
+    if (_tool == DrawTool.lasso && isFinger && _palmRejection) {
+      if (_lassoCtrl.phase == LassoPhase.selected) {
+        final p = _screenToWorld(e.localPosition);
+        if (_lassoCtrl.hitTestRotationHandle(p) ||
+            _lassoCtrl.hitTestCornerHandle(p) != null ||
+            _lassoCtrl.hitTestSideHandle(p) != null ||
+            _lassoCtrl.isTapInsideBoundingBox(p)) {
+          setState(() => _isDrawing = true);
+          _handleLassoDown(p);
+          return;
+        }
+        _lassoCtrl.deselect();
+      }
+      return;
+    }
+
+    final willDraw = _shouldDraw(e.kind);
+    setState(() => _isDrawing = willDraw);
+    if (!willDraw) return;
+
+    final world = _screenToWorld(e.localPosition);
+    var pageIdx = _pageIndexFromWorldY(world.dy);
+
+    if (pageIdx < 0) return;
+    if (pageIdx >= _pageBlockIds.length) {
+      _ensurePageAt(pageIdx);
+      if (pageIdx >= _pageBlockIds.length) return;
+    }
+
+    _activePageIndex = pageIdx;
+    final local = _worldToPageLocal(world, pageIdx);
+
+    if (_tool == DrawTool.lasso) {
+      _handleLassoDown(world);
+      return;
+    }
+    if (_tool == DrawTool.eraser) {
+      _eraseNear(local, pageIdx);
+      return;
+    }
+
+    if (_undoPageIndex != pageIdx) {
+      _undoStack.clear();
+      _undoPageIndex = pageIdx;
+    }
+
+    setState(() {
+      _active = DrawingStroke(
+        colorValue: _color.toARGB32(),
+        strokeWidth: _strokeW,
+        points: [
+          [local.dx, local.dy]
+        ],
+      );
+    });
+    _startHoldTimer(world);
+  }
+
+  static const _minDist2 = 9.0;
+
+  void _onMove(PointerMoveEvent e) {
+    if (_activePointers.length >= 2 && !_multiFingerMoved) {
+      final start = _pointerDownPos[e.pointer];
+      if (start != null && (e.localPosition - start).distance > 15) {
+        _multiFingerMoved = true;
+      }
+    }
+    if (_pastePos != null) {
+      final p = _screenToWorld(e.localPosition);
+      if ((p - _pastePos!).distanceSquared > 400) {
+        _pasteTimer?.cancel();
+        _pastePos = null;
+      }
+      return;
+    }
+    if (!_isDrawing) return;
+
+    final world = _screenToWorld(e.localPosition);
+
+    if (_tool == DrawTool.lasso) {
+      _handleLassoMove(world);
+      return;
+    }
+    if (_activePageIndex == null) return;
+    final local = _worldToPageLocal(world, _activePageIndex!);
+
+    if (_tool == DrawTool.eraser) {
+      _eraseNear(local, _activePageIndex!);
+      return;
+    }
+    if (_active == null) return;
+    final pts = _active!.points;
+    if (pts.isNotEmpty) {
+      final dx = local.dx - pts.last[0];
+      final dy = local.dy - pts.last[1];
+      if (dx * dx + dy * dy < _minDist2) return;
+    }
+    setState(() => pts.add([local.dx, local.dy]));
+    if (_holdAnchor != null) {
+      final dx = world.dx - _holdAnchor!.dx;
+      final dy = world.dy - _holdAnchor!.dy;
+      if (dx * dx + dy * dy > _holdTolerance2) {
+        _startHoldTimer(world);
+      }
+    }
+  }
+
+  void _onUp(PointerUpEvent e) {
+    _activePointers.remove(e.pointer);
+    _pointerDownPos.remove(e.pointer);
+    _holdTimer?.cancel();
+    _holdAnchor = null;
+    if (_stylusActive && _transformBeforeStylus != null && _palmRejection) {
+      _viewCtrl.value = _transformBeforeStylus!;
+      _transformBeforeStylus = null;
+    }
+    _stylusActive = false;
+    setState(() => _isDrawing = false);
+
+    if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
+      final elapsed = _multiFingerDownTime != null
+          ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
+          : 999;
+      if (!_multiFingerMoved && elapsed < 400) {
+        if (_maxSimultaneous == 2) {
+          _undo();
+          HapticFeedback.lightImpact();
+        } else if (_maxSimultaneous >= 3) {
+          _redo();
+          HapticFeedback.lightImpact();
+        }
+      }
+      _maxSimultaneous = 0;
+      _multiFingerDownTime = null;
+      return;
+    }
+    if (_activePointers.isEmpty) _maxSimultaneous = 0;
+
+    if (_pastePos != null) {
+      _pasteTimer?.cancel();
+      _pastePos = null;
+      return;
+    }
+
+    if (_tool == DrawTool.lasso) {
+      _handleLassoUp();
+      return;
+    }
+    if (_active == null) return;
+    _finishStroke();
+  }
+
+  void _onCancel(PointerCancelEvent e) {
+    _activePointers.remove(e.pointer);
+    _pointerDownPos.remove(e.pointer);
+    _holdTimer?.cancel();
+    _holdAnchor = null;
+    setState(() => _isDrawing = false);
+    if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    _finishStroke();
+  }
+
+  void _finishStroke() {
+    if (_active == null || _activePageIndex == null) return;
+    _active!.points.removeWhere(
+        (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite);
+    if (_active!.points.isEmpty) {
+      setState(() => _active = null);
+      return;
+    }
+
+    final data = _activePageData();
+    if (data == null) {
+      setState(() => _active = null);
+      return;
+    }
+
+    if (_tool == DrawTool.pen && isScribble(_active!.points)) {
+      final bounds = scribbleBounds(_active!.points);
+      final before = data.strokes.length;
+      data.strokes.removeWhere((s) {
+        for (final p in s.points) {
+          if (bounds.contains(Offset(p[0], p[1]))) return true;
+        }
+        return false;
+      });
+      setState(() => _active = null);
+      if (data.strokes.length != before) {
+        HapticFeedback.lightImpact();
+        _persistPage(_activePageIndex!);
+      }
+      return;
+    }
+
+    _active = DrawingStroke(
+      colorValue: _active!.colorValue,
+      strokeWidth: _active!.strokeWidth,
+      points: smoothPoints(_active!.points),
+    );
+    setState(() {
+      data.strokes.add(_active!);
+      _active = null;
+      _undoStack.clear();
+    });
+    _persistPage(_activePageIndex!);
+  }
+
+  void _eraseNear(Offset local, int pageIndex) {
+    const r2 = 24.0 * 24.0;
+    final data = _pageData[_pageBlockIds[pageIndex]];
+    if (data == null) return;
+    final before = data.strokes.length;
+    data.strokes.removeWhere((s) {
+      for (final p in s.points) {
+        final dx = p[0] - local.dx;
+        final dy = p[1] - local.dy;
+        if (dx * dx + dy * dy < r2) return true;
+      }
+      return false;
+    });
+    if (data.strokes.length != before) {
+      setState(() {});
+      _persistPage(pageIndex);
+    }
+  }
+
+  // ─── Lasso ─────────────────────────────────────────────────────────────
+
+  List<DrawingStroke> get _allVisibleStrokes {
+    final all = <DrawingStroke>[];
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      if (data == null) continue;
+      final offset = i * (kNotebookPageHeight + kNotebookPageGap);
+      for (final s in data.strokes) {
+        all.add(DrawingStroke(
+          colorValue: s.colorValue,
+          strokeWidth: s.strokeWidth,
+          points: s.points.map((p) => [p[0], p[1] + offset]).toList(),
+        ));
+      }
+    }
+    return all;
+  }
+
+  void _handleLassoDown(Offset worldPos) {
+    _pasteTimer?.cancel();
+    if (_showPasteAt != null) {
+      setState(() => _showPasteAt = null);
+      return;
+    }
+    final strokes = _allVisibleStrokes;
+    if (_lassoCtrl.phase == LassoPhase.selected) {
+      if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
+        _lassoCtrl.startRotation(worldPos, strokes);
+        return;
+      }
+      final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
+      if (corner != null) {
+        _lassoCtrl.startResize(corner, worldPos, strokes);
+        return;
+      }
+      final side = _lassoCtrl.hitTestSideHandle(worldPos);
+      if (side != null) {
+        _lassoCtrl.startSideResize(side, worldPos, strokes);
+        return;
+      }
+      if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
+        _lassoCtrl.startMove(worldPos, strokes);
+        return;
+      }
+      _lassoCtrl.deselect();
+    }
+    _lassoCtrl.startTracing(worldPos);
+  }
+
+  void _handleLassoMove(Offset worldPos) {
+    if (_pastePos != null) {
+      if ((worldPos - _pastePos!).distanceSquared > 400) {
+        _pasteTimer?.cancel();
+        _pastePos = null;
+        _lassoCtrl.startTracing(worldPos);
+      }
+      return;
+    }
+    if (_lassoCtrl.phase == LassoPhase.tracing) {
+      _lassoCtrl.addTracePoint(worldPos);
+    } else if (_lassoCtrl.phase == LassoPhase.moving) {
+      _lassoCtrl.updateMove(worldPos);
+    } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      _lassoCtrl.isSideResize
+          ? _lassoCtrl.updateSideResize(worldPos)
+          : _lassoCtrl.updateResize(worldPos);
+    } else if (_lassoCtrl.phase == LassoPhase.rotating) {
+      _lassoCtrl.updateRotation(worldPos);
+    }
+  }
+
+  void _handleLassoUp() {
+    if (_pastePos != null) {
+      _pasteTimer?.cancel();
+      _pastePos = null;
+      return;
+    }
+    final strokes = _allVisibleStrokes;
+    if (_lassoCtrl.phase == LassoPhase.tracing) {
+      _lassoCtrl.finishTracing(strokes);
+    } else if (_lassoCtrl.phase == LassoPhase.moving) {
+      _lassoCtrl.finishMove(strokes);
+      _syncLassoStrokesToPages(strokes);
+    } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      _lassoCtrl.isSideResize
+          ? _lassoCtrl.finishSideResize(strokes)
+          : _lassoCtrl.finishResize(strokes);
+      _syncLassoStrokesToPages(strokes);
+    } else if (_lassoCtrl.phase == LassoPhase.rotating) {
+      _lassoCtrl.finishRotation(strokes);
+      _syncLassoStrokesToPages(strokes);
+    }
+  }
+
+  void _syncLassoStrokesToPages(List<DrawingStroke> worldStrokes) {
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final pageTop = i * (kNotebookPageHeight + kNotebookPageGap);
+      final pageBottom = pageTop + kNotebookPageHeight;
+      final pageStrokes = <DrawingStroke>[];
+      for (final s in worldStrokes) {
+        final inPage = s.points.any(
+            (p) => p[1] >= pageTop && p[1] < pageBottom);
+        if (inPage) {
+          pageStrokes.add(DrawingStroke(
+            colorValue: s.colorValue,
+            strokeWidth: s.strokeWidth,
+            points: s.points.map((p) => [p[0], p[1] - pageTop]).toList(),
+          ));
+        }
+      }
+      _pageData[_pageBlockIds[i]] =
+          DrawingData(height: kNotebookPageHeight, strokes: pageStrokes);
+      _persistPage(i);
+    }
+    setState(() {});
+  }
+
+  void _lassoDelete() {
+    final strokes = _allVisibleStrokes;
+    _lassoCtrl.deleteSelected(strokes);
+    _syncLassoStrokesToPages(strokes);
+    HapticFeedback.lightImpact();
+  }
+
+  void _lassoDuplicate() {
+    final strokes = _allVisibleStrokes;
+    _lassoCtrl.duplicateSelected(strokes);
+    _syncLassoStrokesToPages(strokes);
+    HapticFeedback.lightImpact();
+  }
+
+  // ─── Undo / redo ───────────────────────────────────────────────────────
+
+  void _undo() {
+    if (_undoPageIndex == null) return;
+    final data = _pageData[_pageBlockIds[_undoPageIndex!]];
+    if (data == null || data.strokes.isEmpty) return;
+    setState(() => _undoStack.add(data.strokes.removeLast()));
+    _persistPage(_undoPageIndex!);
+  }
+
+  void _redo() {
+    if (_undoPageIndex == null || _undoStack.isEmpty) return;
+    final data = _pageData[_pageBlockIds[_undoPageIndex!]];
+    if (data == null) return;
+    setState(() => data.strokes.add(_undoStack.removeLast()));
+    _persistPage(_undoPageIndex!);
+  }
+
+  // ─── Current page ──────────────────────────────────────────────────────
+
+  int get _currentVisiblePage {
+    if (_pageBlockIds.isEmpty) return 0;
+    final inv = Matrix4.inverted(_viewCtrl.value);
+    final center = MatrixUtils.transformPoint(
+        inv,
+        Offset(
+          MediaQuery.of(context).size.width / 2,
+          MediaQuery.of(context).size.height / 2,
+        ));
+    final idx = _pageIndexFromWorldY(center.dy);
+    return idx.clamp(0, _pageBlockIds.length - 1);
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────
+
+  Widget _buildLassoMiniToolbar() {
+    final bb = _lassoCtrl.boundingBox!;
+    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
+    return Positioned(
+      left: screenPos.dx - 80,
+      top: screenPos.dy,
+      child: LassoMiniToolbar(
+        onDelete: _lassoDelete,
+        onDuplicate: _lassoDuplicate,
+        palette: _palette,
+        onColorChange: (c) {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.changeColor(strokes, c.toARGB32());
+          _syncLassoStrokesToPages(strokes);
+        },
+        onWidthChange: (w) {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.changeWidth(strokes, w);
+          _syncLassoStrokesToPages(strokes);
+        },
+        onFlipH: () {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.flipHorizontal(strokes);
+          _syncLassoStrokesToPages(strokes);
+        },
+        onFlipV: () {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.flipVertical(strokes);
+          _syncLassoStrokesToPages(strokes);
+        },
+        onCopy: () {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.copySelected(strokes);
+          HapticFeedback.lightImpact();
+        },
+        onCut: () {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.cutSelected(strokes);
+          _syncLassoStrokesToPages(strokes);
+          HapticFeedback.lightImpact();
+        },
+      ),
+    );
+  }
+
+  Widget _buildPasteButton() {
+    final screenPos =
+        MatrixUtils.transformPoint(_viewCtrl.value, _showPasteAt!);
+    return Positioned(
+      left: screenPos.dx - 40,
+      top: screenPos.dy - 40,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          final strokes = _allVisibleStrokes;
+          _lassoCtrl.pasteAt(_showPasteAt!, strokes);
+          _syncLassoStrokesToPages(strokes);
+          HapticFeedback.mediumImpact();
+          setState(() => _showPasteAt = null);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: yCream,
+            border: Border.all(color: yInk, width: yLineMid),
+            boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+          ),
+          child: Text(
+            'PEGAR',
+            style: yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yInk),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: yCream,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SafeArea(
+            child: ModeHeader(
+              mode: 'CUADERNO',
+              subtitle:
+                  'A4 · ${_pageBlockIds.length} PÁGINAS · ${_pageBackground.name.toUpperCase()}',
+              color: yAmber,
+              onBack: () => Navigator.pop(context),
+              headerRight: [
+                YBadge(
+                  label: '@${widget.folder.name}',
+                  bg: widget.folder.color,
+                  fg: yCream,
+                ),
+              ],
+            ),
+          ),
+          _toolbar(),
+          Expanded(
+            child: _pageBlockIds.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : LayoutBuilder(builder: (ctx, c) {
+                    return AnimatedBuilder(
+                      animation: _viewCtrl,
+                      builder: (_, _) {
+                        final inv = Matrix4.inverted(_viewCtrl.value);
+                        final tl =
+                            MatrixUtils.transformPoint(inv, Offset.zero);
+                        final br = MatrixUtils.transformPoint(
+                            inv, Offset(c.maxWidth, c.maxHeight));
+                        final visibleRect = Rect.fromPoints(tl, br);
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ClipRect(
+                              child: Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerDown: _onDown,
+                                onPointerMove: _onMove,
+                                onPointerUp: _onUp,
+                                onPointerCancel: _onCancel,
+                                child: InteractiveViewer(
+                                  transformationController: _viewCtrl,
+                                  minScale: 0.3,
+                                  maxScale: 4.0,
+                                  boundaryMargin: EdgeInsets.symmetric(
+                                    horizontal: kNotebookPageWidth * 0.3,
+                                    vertical: _totalCanvasHeight * 0.1,
+                                  ),
+                                  panEnabled: _tool == DrawTool.lasso
+                                      ? (_lassoCtrl.phase ==
+                                              LassoPhase.idle &&
+                                          !_isDrawing)
+                                      : _palmRejection
+                                          ? !_stylusActive
+                                          : !_isDrawing,
+                                  scaleEnabled: _tool == DrawTool.lasso
+                                      ? (_lassoCtrl.phase ==
+                                              LassoPhase.idle &&
+                                          !_isDrawing)
+                                      : !_stylusActive,
+                                  constrained: false,
+                                  child: SizedBox(
+                                    width: kNotebookPageWidth,
+                                    height: _totalCanvasHeight,
+                                    child: Stack(
+                                      children: [
+                                        CustomPaint(
+                                          painter: _NotebookCanvasPainter(
+                                            pageBlockIds: _pageBlockIds,
+                                            pageData: _pageData,
+                                            active: _active,
+                                            activePageIndex:
+                                                _activePageIndex,
+                                            visibleRect: visibleRect,
+                                            background: _pageBackground,
+                                            accentColor: widget.folder.color,
+                                          ),
+                                          size: Size(kNotebookPageWidth,
+                                              _totalCanvasHeight),
+                                        ),
+                                        if (_lassoCtrl.phase !=
+                                            LassoPhase.idle)
+                                          AnimatedBuilder(
+                                            animation: _lassoAnimCtrl,
+                                            builder: (_, _) => CustomPaint(
+                                              painter: LassoPainter(
+                                                ctrl: _lassoCtrl,
+                                                animValue:
+                                                    _lassoAnimCtrl.value,
+                                                strokes:
+                                                    _allVisibleStrokes,
+                                                visibleRect: visibleRect,
+                                              ),
+                                              size: Size(
+                                                  kNotebookPageWidth,
+                                                  _totalCanvasHeight),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_lassoCtrl.phase == LassoPhase.selected)
+                              _buildLassoMiniToolbar(),
+                            if (_showPasteAt != null) _buildPasteButton(),
+                          ],
+                        );
+                      },
+                    );
+                  }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Toolbar ───────────────────────────────────────────────────────────
+
+  Widget _toolbar() {
+    final paddingH = MediaQuery.of(context).size.width * 0.04;
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+            horizontal: paddingH.clamp(8.0, 60.0), vertical: 10),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _toolBtn(
+                icon: Icons.edit_outlined,
+                active: _tool == DrawTool.pen,
+                onTap: () => setState(() {
+                  _tool = DrawTool.pen;
+                  _lassoCtrl.deselect();
+                }),
+              ),
+              const SizedBox(width: 12),
+              _toolBtn(
+                icon: Icons.auto_fix_high,
+                active: _tool == DrawTool.eraser,
+                onTap: () => setState(() {
+                  _tool = DrawTool.eraser;
+                  _lassoCtrl.deselect();
+                }),
+              ),
+              const SizedBox(width: 12),
+              _toolBtn(
+                icon: Icons.highlight_alt,
+                active: _tool == DrawTool.lasso,
+                label: 'LAZO',
+                onTap: () => setState(() => _tool = DrawTool.lasso),
+              ),
+              _divider(),
+              for (final c in _palette) ...[
+                _colorBtn(c),
+                const SizedBox(width: 10),
+              ],
+              _divider(),
+              for (final w in _widths) ...[
+                _widthBtn(w),
+                const SizedBox(width: 10),
+              ],
+              _divider(),
+              _toolBtn(
+                icon: Icons.undo,
+                active: false,
+                enabled: _undoPageIndex != null &&
+                    _undoPageIndex! < _pageBlockIds.length &&
+                    (_pageData[_pageBlockIds[_undoPageIndex!]]
+                                ?.strokes
+                                .isNotEmpty ??
+                            false),
+                onTap: _undo,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.redo,
+                active: false,
+                enabled: _undoStack.isNotEmpty,
+                onTap: _redo,
+              ),
+              _divider(),
+              _toolBtn(
+                icon: Icons.back_hand_outlined,
+                active: _palmRejection,
+                label: 'PALMA',
+                onTap: () =>
+                    setState(() => _palmRejection = !_palmRejection),
+              ),
+              _divider(),
+              _bgBtn(),
+              _divider(),
+              Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: yAmber,
+                  border: Border.all(color: yInk, width: yLineThin),
+                ),
+                child: Text(
+                  'PG ${_currentVisiblePage + 1}/${_pageBlockIds.length}',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: yCream,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bgBtn() {
+    final label = switch (_pageBackground) {
+      PageBackground.blank => 'BLANCO',
+      PageBackground.lined => 'LÍNEAS',
+      PageBackground.grid => 'CUADRÍCULA',
+      PageBackground.dotted => 'PUNTOS',
+    };
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _showBackgroundPicker,
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yInk, width: yLineThin),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.grid_on, size: 14, color: yInk),
+            const SizedBox(width: 5),
+            Text(label,
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: yInk,
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBackgroundPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text('FONDO DE PÁGINA',
+                  style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yMuted)),
+            ),
+            for (final bg in PageBackground.values)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() => _pageBackground = bg);
+                  _saveBackgroundPreference();
+                  Navigator.pop(ctx);
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                        top: BorderSide(color: yInk, width: 0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _pageBackground == bg
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: 18,
+                        color: _pageBackground == bg ? yAmber : yMuted,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        switch (bg) {
+                          PageBackground.blank => 'Blanco',
+                          PageBackground.lined => 'Líneas',
+                          PageBackground.grid => 'Cuadrícula',
+                          PageBackground.dotted => 'Puntos',
+                        },
+                        style: ySans(
+                          size: 15,
+                          weight: FontWeight.w600,
+                          color: yInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _divider() => Container(
+        width: 1,
+        height: 22,
+        margin: const EdgeInsets.symmetric(horizontal: 10),
+        color: yInk.withValues(alpha: 0.2),
+      );
+
+  Widget _toolBtn({
+    required IconData icon,
+    required bool active,
+    bool enabled = true,
+    String? label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Container(
+        height: 32,
+        padding: EdgeInsets.symmetric(horizontal: label != null ? 10 : 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? yAmber : yCream,
+          border: Border.all(
+            color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
+            width: yLineThin,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: active
+                  ? yCream
+                  : enabled
+                      ? yInk
+                      : yMuted.withValues(alpha: 0.4),
+            ),
+            if (label != null) ...[
+              const SizedBox(width: 5),
+              Text(label,
+                  style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: active ? yCream : yInk,
+                  )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _colorBtn(Color c) {
+    final sel = _color.toARGB32() == c.toARGB32() && _tool == DrawTool.pen;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() {
+        _color = c;
+        _tool = DrawTool.pen;
+      }),
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: c,
+          border: Border.all(color: yInk, width: sel ? 3 : yLineThin),
+        ),
+      ),
+    );
+  }
+
+  Widget _widthBtn(double w) {
+    final sel = _strokeW == w;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _strokeW = w),
+      child: Container(
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(
+            color: sel ? yInk : yMuted.withValues(alpha: 0.4),
+            width: sel ? 2.5 : yLineThin,
+          ),
+        ),
+        child: Container(
+          width: w.clamp(3.0, 14.0),
+          height: w.clamp(3.0, 14.0),
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: yInk,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Canvas painter ──────────────────────────────────────────────────────
+
+class _NotebookCanvasPainter extends CustomPainter {
+  final List<int> pageBlockIds;
+  final Map<int, DrawingData> pageData;
+  final DrawingStroke? active;
+  final int? activePageIndex;
+  final Rect visibleRect;
+  final PageBackground background;
+  final Color accentColor;
+
+  _NotebookCanvasPainter({
+    required this.pageBlockIds,
+    required this.pageData,
+    required this.active,
+    required this.activePageIndex,
+    required this.visibleRect,
+    required this.background,
+    required this.accentColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Background behind pages
+    canvas.drawRect(
+      visibleRect,
+      Paint()..color = const Color(0xFFF0EDE6),
+    );
+
+    for (int i = 0; i < pageBlockIds.length; i++) {
+      final pageTop = i * (kNotebookPageHeight + kNotebookPageGap);
+      final pageRect = Rect.fromLTWH(
+          0, pageTop, kNotebookPageWidth, kNotebookPageHeight);
+
+      if (!pageRect.overlaps(visibleRect)) continue;
+
+      // Page shadow
+      canvas.drawRect(
+        pageRect.shift(const Offset(4, 4)),
+        Paint()..color = yInk.withValues(alpha: 0.12),
+      );
+
+      // White page
+      canvas.drawRect(pageRect, Paint()..color = const Color(0xFFFFFDF8));
+
+      // Page background pattern
+      _drawBackground(canvas, pageRect, background);
+
+      // Page border
+      canvas.drawRect(
+        pageRect,
+        Paint()
+          ..color = yInk.withValues(alpha: 0.3)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
+
+      // Page number
+      final tp = TextPainter(
+        text: TextSpan(
+          text: '${i + 1}',
+          style: TextStyle(
+            fontSize: 10,
+            color: yMuted.withValues(alpha: 0.4),
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(
+        canvas,
+        Offset(
+          kNotebookPageWidth - tp.width - 16,
+          pageTop + kNotebookPageHeight - tp.height - 12,
+        ),
+      );
+
+      // Strokes
+      canvas.save();
+      canvas.clipRect(pageRect);
+      canvas.translate(0, pageTop);
+
+      final data = pageData[pageBlockIds[i]];
+      if (data != null) {
+        for (final stroke in data.strokes) {
+          drawStroke(canvas, stroke);
+        }
+      }
+
+      if (active != null && activePageIndex == i) {
+        drawStroke(canvas, active!);
+      }
+
+      canvas.restore();
+    }
+  }
+
+  void _drawBackground(Canvas canvas, Rect page, PageBackground bg) {
+    switch (bg) {
+      case PageBackground.blank:
+        break;
+      case PageBackground.lined:
+        _drawLines(canvas, page);
+      case PageBackground.grid:
+        _drawGrid(canvas, page);
+      case PageBackground.dotted:
+        _drawDots(canvas, page);
+    }
+  }
+
+  void _drawLines(Canvas canvas, Rect page) {
+    final paint = Paint()
+      ..color = const Color(0xFFD6D1C8)
+      ..strokeWidth = 0.5;
+    const step = 28.0;
+    final startY = page.top + 60;
+    for (double y = startY; y < page.bottom - 20; y += step) {
+      canvas.drawLine(
+        Offset(page.left + 40, y),
+        Offset(page.right - 20, y),
+        paint,
+      );
+    }
+    canvas.drawLine(
+      Offset(page.left + 36, page.top + 40),
+      Offset(page.left + 36, page.bottom - 20),
+      Paint()
+        ..color = accentColor.withValues(alpha: 0.45)
+        ..strokeWidth = 0.8,
+    );
+  }
+
+  void _drawGrid(Canvas canvas, Rect page) {
+    final paint = Paint()
+      ..color = const Color(0xFFDAD6CE)
+      ..strokeWidth = 0.4;
+    const step = 28.0;
+    for (double y = page.top + step; y < page.bottom; y += step) {
+      canvas.drawLine(
+          Offset(page.left, y), Offset(page.right, y), paint);
+    }
+    for (double x = page.left + step; x < page.right; x += step) {
+      canvas.drawLine(
+          Offset(x, page.top), Offset(x, page.bottom), paint);
+    }
+  }
+
+  void _drawDots(Canvas canvas, Rect page) {
+    final dot = Paint()..color = yMuted.withValues(alpha: 0.2);
+    const step = 28.0;
+    for (double x = page.left + step; x < page.right; x += step) {
+      for (double y = page.top + step; y < page.bottom; y += step) {
+        canvas.drawCircle(Offset(x, y), 1.0, dot);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_NotebookCanvasPainter old) =>
+      old.visibleRect != visibleRect ||
+      old.active != active ||
+      old.pageBlockIds.length != pageBlockIds.length ||
+      old.background != background;
+}
