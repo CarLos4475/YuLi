@@ -1,9 +1,14 @@
 import 'dart:ui';
 
+import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
 
 void drawStroke(Canvas canvas, DrawingStroke stroke) {
   if (stroke.points.isEmpty) return;
+  if (stroke.isFountainPen) {
+    drawFountainPenStroke(canvas, stroke);
+    return;
+  }
   final paint = Paint()
     ..color = Color(stroke.colorValue)
     ..strokeWidth = stroke.strokeWidth

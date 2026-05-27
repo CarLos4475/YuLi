@@ -14,6 +14,8 @@ import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
+import 'fountain_pen_engine.dart';
+import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
 import 'shape_recognizer.dart';
 import 'lasso_controller.dart';
@@ -35,7 +37,6 @@ const _baseColors = <Color>[
   yAmber,
   yAmber2,
 ];
-const _widths = [3.0, 6.0, 10.0];
 
 class WhiteboardEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -278,6 +279,26 @@ class _WhiteboardEditorScreenState
       _eraseNear(p);
       return;
     }
+    if (_tool == DrawTool.fountainPen) {
+      final pressure = e.pressure.isFinite ? e.pressure : 0.5;
+      setState(() {
+        _active = DrawingStroke(
+          colorValue: _color.toARGB32(),
+          strokeWidth: _strokeW,
+          isFountainPen: true,
+          points: [
+            [
+              p.dx,
+              p.dy,
+              pressure,
+              DateTime.now().millisecondsSinceEpoch.toDouble(),
+            ],
+          ],
+        );
+        _isDrawing = true;
+      });
+      return;
+    }
     setState(() {
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
@@ -318,6 +339,17 @@ class _WhiteboardEditorScreenState
       return;
     }
     if (_active == null) return;
+    if (_tool == DrawTool.fountainPen) {
+      final pressure = e.pressure.isFinite ? e.pressure : 0.5;
+      _active!.points.add([
+        p.dx,
+        p.dy,
+        pressure,
+        DateTime.now().millisecondsSinceEpoch.toDouble(),
+      ]);
+      setState(() {});
+      return;
+    }
     final pts = _active!.points;
     if (pts.isNotEmpty) {
       final dx = p.dx - pts.last[0];
@@ -375,6 +407,10 @@ class _WhiteboardEditorScreenState
       _handleLassoUp();
       return;
     }
+    if (_tool == DrawTool.fountainPen) {
+      _finishFountainStroke();
+      return;
+    }
     if (_active == null) return;
     _finishStroke();
   }
@@ -386,6 +422,10 @@ class _WhiteboardEditorScreenState
     _holdAnchor = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    if (_tool == DrawTool.fountainPen) {
+      _active = null;
+      return;
+    }
     _finishStroke();
   }
 
@@ -422,6 +462,24 @@ class _WhiteboardEditorScreenState
     );
     setState(() {
       _data.strokes.add(_active!);
+      _active = null;
+      _undoStack.clear();
+    });
+    _persist();
+  }
+
+  void _finishFountainStroke() {
+    if (_active == null) return;
+    _active!.points.removeWhere(
+        (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite);
+    if (_active!.points.length < 2) {
+      setState(() => _active = null);
+      return;
+    }
+
+    final baked = FountainPenEngine.finishStroke(_active!);
+    setState(() {
+      _data.strokes.add(baked);
       _active = null;
       _undoStack.clear();
     });
@@ -877,6 +935,12 @@ class _WhiteboardEditorScreenState
             ),
             const SizedBox(width: 12),
             _toolBtn(
+              icon: Icons.gesture,
+              active: _tool == DrawTool.fountainPen,
+              onTap: () => setState(() { _tool = DrawTool.fountainPen; _lassoCtrl.deselect(); }),
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
               icon: Icons.auto_fix_high,
               active: _tool == DrawTool.eraser,
               onTap: () => setState(() { _tool = DrawTool.eraser; _lassoCtrl.deselect(); }),
@@ -894,10 +958,7 @@ class _WhiteboardEditorScreenState
               const SizedBox(width: 10),
             ],
             _divider(),
-            for (final w in _widths) ...[
-              _widthBtn(w),
-              const SizedBox(width: 10),
-            ],
+            ..._widthButtons(),
             _divider(),
             _toolBtn(
               icon: Icons.undo,
@@ -1006,30 +1067,56 @@ class _WhiteboardEditorScreenState
     );
   }
 
+  List<Widget> _widthButtons() {
+    final widths = _tool == DrawTool.fountainPen
+        ? [2.0, 4.0]
+        : [3.0, 6.0, 10.0];
+    if (!widths.contains(_strokeW)) {
+      _strokeW = widths.first;
+    }
+    return [
+      for (final w in widths) ...[
+        _widthBtn(w),
+        const SizedBox(width: 10),
+      ],
+    ];
+  }
+
   Widget _widthBtn(double w) {
     final sel = _strokeW == w;
+    final label = _tool == DrawTool.fountainPen
+        ? (w == 2.0 ? 'FINA' : 'MEDIA')
+        : null;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _strokeW = w),
       child: Container(
-        width: 28,
+        width: label != null ? 52 : 28,
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: yCream,
+          color: sel ? yFlight : yCream,
           border: Border.all(
             color: sel ? yInk : yMuted.withValues(alpha: 0.4),
             width: sel ? 2.5 : yLineThin,
           ),
         ),
-        child: Container(
-          width: w.clamp(3.0, 14.0),
-          height: w.clamp(3.0, 14.0),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: yInk,
-          ),
-        ),
+        child: label != null
+            ? Text(label,
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: sel ? yCream : yInk,
+                ))
+            : Container(
+                width: w.clamp(3.0, 14.0),
+                height: w.clamp(3.0, 14.0),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: yInk,
+                ),
+              ),
       ),
     );
   }
@@ -1112,6 +1199,10 @@ class _CanvasPainter extends CustomPainter {
 
 void _draw(Canvas canvas, DrawingStroke stroke) {
   if (stroke.points.isEmpty) return;
+  if (stroke.isFountainPen) {
+    drawFountainPenStroke(canvas, stroke);
+    return;
+  }
   final paint = Paint()
     ..color = Color(stroke.colorValue)
     ..strokeWidth = stroke.strokeWidth

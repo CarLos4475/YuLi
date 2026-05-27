@@ -1,0 +1,209 @@
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'note_cell_model.dart';
+
+class FountainPenEngine {
+  /// Chaikin corner cutting — eliminates hand jitter while preserving curve
+  /// shape. One iteration for live preview, two for final stroke.
+  static List<Offset> chaikinSmooth(List<Offset> pts, {int iterations = 1}) {
+    if (pts.length < 3) return pts;
+    var current = pts;
+    for (int iter = 0; iter < iterations; iter++) {
+      final out = <Offset>[current[0]];
+      for (int i = 0; i < current.length - 1; i++) {
+        final p0 = current[i];
+        final p1 = current[i + 1];
+        out.add(Offset(
+          p0.dx * 0.75 + p1.dx * 0.25,
+          p0.dy * 0.75 + p1.dy * 0.25,
+        ));
+        out.add(Offset(
+          p0.dx * 0.25 + p1.dx * 0.75,
+          p0.dy * 0.25 + p1.dy * 0.75,
+        ));
+      }
+      out.add(current.last);
+      current = out;
+    }
+    return current;
+  }
+
+  /// Compute per-point stroke width based on writing direction, velocity,
+  /// and stylus pressure. Direction is the dominant factor (nib effect).
+  static List<double> computeWidths(
+    List<Offset> centerline,
+    double baseWidth,
+    List<double> pressures,
+    List<int> timestamps,
+  ) {
+    final n = centerline.length;
+    if (n < 2) return List.filled(n, baseWidth);
+    final widths = List<double>.filled(n, baseWidth);
+    final rawN = pressures.length;
+
+    for (int i = 0; i < n; i++) {
+      final rawIdx =
+          rawN > 0 ? (i * rawN ~/ n).clamp(0, rawN - 1) : 0;
+
+      double dx, dy;
+      if (i == 0) {
+        dx = centerline[1].dx - centerline[0].dx;
+        dy = centerline[1].dy - centerline[0].dy;
+      } else if (i == n - 1) {
+        dx = centerline[i].dx - centerline[i - 1].dx;
+        dy = centerline[i].dy - centerline[i - 1].dy;
+      } else {
+        dx = centerline[i + 1].dx - centerline[i - 1].dx;
+        dy = centerline[i + 1].dy - centerline[i - 1].dy;
+      }
+
+      final dist = math.sqrt(dx * dx + dy * dy);
+      if (dist < 0.001) {
+        if (i > 0) widths[i] = widths[i - 1];
+        continue;
+      }
+
+      // 1. Direction factor (nib effect):
+      //    vertical/down strokes → thicker, horizontal/up → thinner.
+      final angle = math.atan2(dy, dx);
+      final directionFactor = 1.0 + math.sin(angle) * 0.35;
+
+      // 2. Pressure factor:  light → thinner, firm → thicker.
+      final pressure = pressures.length > rawIdx ? pressures[rawIdx] : 0.5;
+      final pressureFactor = 0.75 + pressure * 0.50;
+
+      // 3. Velocity factor:  fast → slightly thinner, slow → slightly thicker.
+      double velocityFactor = 1.0;
+      if (rawN > 1 && rawIdx > 0 && timestamps.length > rawIdx) {
+        final dt = timestamps[rawIdx] - timestamps[rawIdx - 1];
+        if (dt > 0) {
+          final prev = centerline[(i - 1).clamp(0, n - 1)];
+          final segDist = math.sqrt(
+            (centerline[i].dx - prev.dx) *
+                    (centerline[i].dx - prev.dx) +
+                (centerline[i].dy - prev.dy) *
+                    (centerline[i].dy - prev.dy),
+          );
+          final vel = segDist / dt;
+          velocityFactor = 1.0 - (vel - 0.3) * 0.15;
+          velocityFactor = velocityFactor.clamp(0.80, 1.20);
+        }
+      }
+
+      widths[i] =
+          baseWidth * directionFactor * velocityFactor * pressureFactor;
+    }
+
+    return widths;
+  }
+
+  /// Smooth start/end tapering using smoothstep.
+  /// Makes stroke beginnings feel elegant and endings natural.
+  static void taperWidths(List<double> widths, {int taperLength = 5}) {
+    final n = widths.length;
+    if (n < 3) return;
+    final len = taperLength.clamp(1, n ~/ 2);
+    for (int i = 0; i < len; i++) {
+      final t = (i + 1) / len;
+      final eased = t * t * (3 - 2 * t);
+      widths[i] *= eased;
+      widths[n - 1 - i] *= eased;
+    }
+  }
+
+  /// Tessellate a centerline + per-point widths into a filled polygon Path.
+  /// Adds sub-pixel deterministic noise to edges for organic feel.
+  static Path tessellate(List<Offset> centerline, List<double> widths) {
+    final path = Path();
+    final n = centerline.length;
+    if (n < 2) return path;
+
+    final left = <Offset>[];
+    final right = <Offset>[];
+
+    for (int i = 0; i < n; i++) {
+      double dx, dy;
+      if (i == 0) {
+        dx = centerline[1].dx - centerline[0].dx;
+        dy = centerline[1].dy - centerline[0].dy;
+      } else if (i == n - 1) {
+        dx = centerline[i].dx - centerline[i - 1].dx;
+        dy = centerline[i].dy - centerline[i - 1].dy;
+      } else {
+        dx = centerline[i + 1].dx - centerline[i - 1].dx;
+        dy = centerline[i + 1].dy - centerline[i - 1].dy;
+      }
+
+      final len = math.sqrt(dx * dx + dy * dy);
+      final halfW = widths[i] / 2;
+
+      if (len < 0.001) {
+        left.add(centerline[i]);
+        right.add(centerline[i]);
+        continue;
+      }
+
+      final perpX = -dy / len;
+      final perpY = dx / len;
+
+      // Deterministic sub-pixel noise — breaks mathematical perfection
+      // without visible roughness.
+      final noise = math.sin(i * 0.37) * 0.15;
+      final w = halfW + noise;
+
+      left.add(Offset(
+        centerline[i].dx + perpX * w,
+        centerline[i].dy + perpY * w,
+      ));
+      right.add(Offset(
+        centerline[i].dx - perpX * w,
+        centerline[i].dy - perpY * w,
+      ));
+    }
+
+    path.moveTo(left[0].dx, left[0].dy);
+    for (int i = 1; i < left.length; i++) {
+      path.lineTo(left[i].dx, left[i].dy);
+    }
+    for (int i = right.length - 1; i >= 0; i--) {
+      path.lineTo(right[i].dx, right[i].dy);
+    }
+    path.close();
+    return path;
+  }
+
+  /// Finalize an active (raw) fountain-pen stroke into a baked DrawingStroke.
+  ///
+  /// Input points:  [x, y, pressure, timestamp]
+  /// Output points: [x, y, bakedWidth]
+  static DrawingStroke finishStroke(DrawingStroke active) {
+    final raw = active.points;
+    final rawPts = raw.map((p) => Offset(p[0], p[1])).toList();
+    final pressures =
+        raw.map((p) => p.length > 2 ? p[2] : 0.5).toList();
+    final timestamps =
+        raw.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
+
+    final centerline = chaikinSmooth(rawPts, iterations: 2);
+    final widths = computeWidths(
+      centerline,
+      active.strokeWidth,
+      pressures,
+      timestamps,
+    );
+    taperWidths(widths);
+
+    final baked = <List<double>>[];
+    for (int i = 0; i < centerline.length; i++) {
+      baked.add([centerline[i].dx, centerline[i].dy, widths[i]]);
+    }
+
+    return DrawingStroke(
+      colorValue: active.colorValue,
+      strokeWidth: active.strokeWidth,
+      isFountainPen: true,
+      points: baked,
+    );
+  }
+}

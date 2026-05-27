@@ -13,6 +13,7 @@ import '../../../domain/models/page_background.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
 import 'drawing_engine.dart';
+import 'fountain_pen_engine.dart';
 import 'lasso_controller.dart';
 import 'lasso_mini_toolbar.dart';
 import 'lasso_painter.dart';
@@ -21,7 +22,6 @@ import 'notebook_constants.dart';
 import 'shape_recognizer.dart';
 
 const _baseColors = <Color>[yInk, yFight, yFlight, yLab, yAmber, yAmber2];
-const _widths = [3.0, 6.0, 10.0];
 
 class NotebookEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -383,6 +383,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _undoPageIndex = pageIdx;
     }
 
+    if (_tool == DrawTool.fountainPen) {
+      final pressure = e.pressure.isFinite ? e.pressure : 0.5;
+      setState(() {
+        _active = DrawingStroke(
+          colorValue: _color.toARGB32(),
+          strokeWidth: _strokeW,
+          isFountainPen: true,
+          points: [
+            [
+              local.dx,
+              local.dy,
+              pressure,
+              DateTime.now().millisecondsSinceEpoch.toDouble(),
+            ],
+          ],
+        );
+      });
+      return;
+    }
+
     setState(() {
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
@@ -428,6 +448,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_active == null) return;
+    if (_tool == DrawTool.fountainPen) {
+      final pressure = e.pressure.isFinite ? e.pressure : 0.5;
+      _active!.points.add([
+        local.dx,
+        local.dy,
+        pressure,
+        DateTime.now().millisecondsSinceEpoch.toDouble(),
+      ]);
+      setState(() {});
+      return;
+    }
     final pts = _active!.points;
     if (pts.isNotEmpty) {
       final dx = local.dx - pts.last[0];
@@ -485,6 +516,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _handleLassoUp();
       return;
     }
+    if (_tool == DrawTool.fountainPen) {
+      _finishFountainStroke();
+      return;
+    }
     if (_active == null) return;
     _finishStroke();
   }
@@ -496,6 +531,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _holdAnchor = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    if (_tool == DrawTool.fountainPen) {
+      _active = null;
+      return;
+    }
     _finishStroke();
   }
 
@@ -538,6 +577,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
     setState(() {
       data.strokes.add(_active!);
+      _active = null;
+      _undoStack.clear();
+    });
+    _persistPage(_activePageIndex!);
+  }
+
+  void _finishFountainStroke() {
+    if (_active == null || _activePageIndex == null) return;
+    _active!.points.removeWhere(
+        (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite);
+    if (_active!.points.length < 2) {
+      setState(() => _active = null);
+      return;
+    }
+
+    final data = _activePageData();
+    if (data == null) {
+      setState(() => _active = null);
+      return;
+    }
+
+    final baked = FountainPenEngine.finishStroke(_active!);
+    setState(() {
+      data.strokes.add(baked);
       _active = null;
       _undoStack.clear();
     });
@@ -962,6 +1025,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 12),
               _toolBtn(
+                icon: Icons.gesture,
+                active: _tool == DrawTool.fountainPen,
+                onTap: () => setState(() {
+                  _tool = DrawTool.fountainPen;
+                  _lassoCtrl.deselect();
+                }),
+              ),
+              const SizedBox(width: 12),
+              _toolBtn(
                 icon: Icons.auto_fix_high,
                 active: _tool == DrawTool.eraser,
                 onTap: () => setState(() {
@@ -982,10 +1054,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 const SizedBox(width: 10),
               ],
               _divider(),
-              for (final w in _widths) ...[
-                _widthBtn(w),
-                const SizedBox(width: 10),
-              ],
+              ..._widthButtons(),
               _divider(),
               _toolBtn(
                 icon: Icons.undo,
@@ -1220,30 +1289,56 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
+  List<Widget> _widthButtons() {
+    final widths = _tool == DrawTool.fountainPen
+        ? [2.0, 4.0]
+        : [3.0, 6.0, 10.0];
+    if (!widths.contains(_strokeW)) {
+      _strokeW = widths.first;
+    }
+    return [
+      for (final w in widths) ...[
+        _widthBtn(w),
+        const SizedBox(width: 10),
+      ],
+    ];
+  }
+
   Widget _widthBtn(double w) {
     final sel = _strokeW == w;
+    final label = _tool == DrawTool.fountainPen
+        ? (w == 2.0 ? 'FINA' : 'MEDIA')
+        : null;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _strokeW = w),
       child: Container(
-        width: 28,
+        width: label != null ? 52 : 28,
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: yCream,
+          color: sel ? yAmber : yCream,
           border: Border.all(
             color: sel ? yInk : yMuted.withValues(alpha: 0.4),
             width: sel ? 2.5 : yLineThin,
           ),
         ),
-        child: Container(
-          width: w.clamp(3.0, 14.0),
-          height: w.clamp(3.0, 14.0),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: yInk,
-          ),
-        ),
+        child: label != null
+            ? Text(label,
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: sel ? yCream : yInk,
+                ))
+            : Container(
+                width: w.clamp(3.0, 14.0),
+                height: w.clamp(3.0, 14.0),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: yInk,
+                ),
+              ),
       ),
     );
   }

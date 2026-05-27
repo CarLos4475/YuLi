@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 
 enum CellType { markdown, drawing }
 
-enum DrawTool { pen, eraser, lasso }
+enum DrawTool { pen, fountainPen, eraser, lasso }
 
 class NoteCell {
   final String id;
@@ -49,17 +49,20 @@ class DrawingStroke {
   final int colorValue;
   final double strokeWidth;
   final List<List<double>> points;
+  final bool isFountainPen;
 
   DrawingStroke({
     required this.colorValue,
     required this.strokeWidth,
     List<List<double>>? points,
+    this.isFountainPen = false,
   }) : points = points ?? [];
 
   Map<String, dynamic> toJson() => {
         'c': colorValue,
         'w': strokeWidth,
         'p': points,
+        if (isFountainPen) 'f': 1,
       };
 
   factory DrawingStroke.fromJson(Map<String, dynamic> json) => DrawingStroke(
@@ -69,6 +72,7 @@ class DrawingStroke {
             .map((p) =>
                 (p as List).map((v) => (v as num).toDouble()).toList())
             .toList(),
+        isFountainPen: (json['f'] as int?) == 1,
       );
 }
 
