@@ -991,12 +991,11 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   Widget _colorBtn(Color c) {
-    final sel = _color.toARGB32() == c.toARGB32() && _tool == DrawTool.pen;
+    final sel = _color.toARGB32() == c.toARGB32();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         _color = c;
-        _tool = DrawTool.pen;
       }),
       child: Container(
         width: 26,
@@ -1004,7 +1003,7 @@ class _DrawingCellState extends State<DrawingCell>
         decoration: BoxDecoration(
           color: c,
           border: Border.all(
-            color: yInk,
+            color: sel ? yCream : yInk,
             width: sel ? 3 : yLineThin,
           ),
         ),
