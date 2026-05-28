@@ -48,8 +48,6 @@ app.*.map.json
 .claude/
 CLAUDE.md
 AGENTS.md
-CONTEXT.md
-PROGRESS.md
 
 # CodeGraph index (local database)
 .codegraph/*.db

@@ -1,10 +1,18 @@
 # MEMORY — YuLi
 
-## Persistent Preferences
+Índice de contexto persistente. No acumules basura aquí — si algo dura más de unas semanas, se mueve al archivo correspondiente.
 
-- **Branch:** `fountainPen`
-- **Header collapsed by default** on all editors (note, whiteboard, notebook). Expand via arrow-down button.
-- **Palm rejection ON** by default in all drawing contexts.
-- **Shape recognition SNAP ON** by default in whiteboard.
-- **Note accent color** resolves to `widget.note.color ?? widget.folder.color` (three editors).
-- **Stroke width** persisted via `SharedPreferences` (`recent_stroke_widths_v1`).
+## Archivos de contexto
+
+| Archivo | Qué contiene |
+|---|---|
+| `AGENTS.md` | Instrucciones para agentes, convenciones, reglas de persistencia |
+| `ARCHITECTURE.md` | Stack, capas, estructura de carpetas, flujo de datos |
+| `DECISIONS.md` | Decisiones técnicas con fecha y razonamiento |
+| `KNOWN_ISSUES.md` | Bugs persistentes, edge cases, pitfalls |
+| `user_profile.md` | Quién eres, idioma, expertise |
+| `feedback_workflow.md` | Regla "explica antes de codear" en bugs complejos |
+| `feedback_style.md` | Español, conciso, sin emojis |
+
+## Referencias externas
+

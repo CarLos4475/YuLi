@@ -1,12 +1,5 @@
 # AGENTS — YuLi
 
-## Startup (LEER ANTES DE CUALQUIER COSA)
-
-1. Leer `ARCHITECTURE.md` — entender stack, capas, carpetas.
-2. Leer `DECISIONS.md` — entender por qué se hicieron las cosas.
-3. Leer `KNOWN_ISSUES.md` — evitar reintroducir bugs conocidos.
-4. Leer `MEMORY.md` — preferencias persistentes y contexto recurrente.
-
 ## Codegraph Policy
 
 Prefer `codegraph` when the task benefits from semantic search, symbol lookup, architecture discovery, or impact analysis. The project is already initialized (native backend, better-sqlite3).
@@ -45,7 +38,18 @@ Do NOT install, reinitialize, or reconfigure codegraph unless explicitly asked.
 | `ARCHITECTURE.md` | High-level system architecture, stack, folder structure |
 | `DECISIONS.md` | Important technical decisions with reasoning |
 | `KNOWN_ISSUES.md` | Persistent bugs, framework pitfalls, edge cases |
-| `MEMORY.md` | Small durable preferences and recurrent context |
+| `MEMORY.md` | Índice de todos los archivos de contexto |
+| `user_profile.md` | Perfil del usuario (idioma, expertise, preferencias) |
+| `feedback_workflow.md` | Regla "explica antes de codear" en bugs complejos |
+| `feedback_style.md` | Estilo de comunicación (español, conciso) |
+
+## Startup (LEER ANTES DE CUALQUIER COSA)
+
+1. Leer `user_profile.md` — saber quién es el usuario y cómo comunicarse.
+2. Leer `feedback_workflow.md` y `feedback_style.md` — saber cómo interactuar.
+3. Leer `ARCHITECTURE.md` — entender stack, capas, carpetas.
+4. Leer `DECISIONS.md` — entender por qué se hicieron las cosas.
+5. Leer `KNOWN_ISSUES.md` — evitar reintroducir bugs conocidos.
 
 ## Maintenance Rules for Future Agents
 
