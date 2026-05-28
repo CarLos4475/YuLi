@@ -19,7 +19,9 @@ import 'lasso_mini_toolbar.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'notebook_constants.dart';
+import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
+import 'stroke_width_picker.dart';
 
 const _baseColors = <Color>[yInk, yFight, yFlight, yLab, yAmber, yAmber2];
 
@@ -78,6 +80,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Offset? _pastePos;
   Offset? _showPasteAt;
 
+  bool _pageDrawerOpen = false;
+  late final AnimationController _drawerAnimCtrl;
+  late final Animation<Offset> _drawerSlide;
+  final Set<int> _starredBlockIds = {};
+  int _drawerSnapshotPage = 0;
+
+  bool _widthPickerOpen = false;
+  List<double> _recentWidths = const [3.0, 6.0, 10.0];
+
   @override
   void initState() {
     super.initState();
@@ -90,7 +101,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
+    _drawerAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _drawerSlide = Tween<Offset>(
+      begin: const Offset(1.0, 0.0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _drawerAnimCtrl,
+      curve: Curves.easeOutCubic,
+    ));
     _lassoCtrl.onChanged = () => setState(() {});
+    StrokeWidthPrefs.load().then((widths) {
+      if (!mounted) return;
+      setState(() {
+        _recentWidths = widths;
+        if (widths.isNotEmpty) _strokeW = widths.first;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadPages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -105,6 +134,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
     _pullAnimCtrl.dispose();
+    _drawerAnimCtrl.dispose();
     _viewCtrl.dispose();
     super.dispose();
   }
@@ -123,6 +153,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       for (final b in drawingBlocks) {
         _pageBlockIds.add(b.id);
         _pageData[b.id] = _decodeData(b);
+        try {
+          if (b.payloadJson()['starred'] == true) {
+            _starredBlockIds.add(b.id);
+          }
+        } catch (_) {}
       }
       _readBackground(drawingBlocks.first);
     }
@@ -204,7 +239,123 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       'h': kNotebookPageHeight,
       's': data.strokes.map((s) => s.toJson()).toList(),
       'bg': _pageBackground.toDbString(),
+      'starred': _starredBlockIds.contains(blockId),
     });
+  }
+
+  // ─── Width picker ──────────────────────────────────────────────────────
+
+  void _toggleWidthPicker() {
+    setState(() => _widthPickerOpen = !_widthPickerOpen);
+  }
+
+  void _commitWidth(double value) {
+    setState(() {
+      _strokeW = value;
+      _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
+    });
+    StrokeWidthPrefs.save(_recentWidths);
+  }
+
+  // ─── Page drawer ───────────────────────────────────────────────────────
+
+  void _togglePageDrawer() {
+    if (_pageDrawerOpen) {
+      _drawerAnimCtrl.reverse().then((_) {
+        if (mounted) setState(() => _pageDrawerOpen = false);
+      });
+    } else {
+      _drawerSnapshotPage = _currentVisiblePage;
+      setState(() => _pageDrawerOpen = true);
+      _drawerAnimCtrl.forward();
+    }
+  }
+
+  void _navigateToPage(int pageIndex) {
+    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
+    final pageTop = pageIndex * (kNotebookPageHeight + kNotebookPageGap);
+    final vw = MediaQuery.of(context).size.width;
+    final dx = (vw - kNotebookPageWidth) / 2;
+    final dy = -pageTop + 40;
+    _viewCtrl.value = Matrix4.translationValues(dx, dy, 0);
+    _togglePageDrawer();
+  }
+
+  Future<void> _toggleStarred(int blockId) async {
+    final idx = _pageBlockIds.indexOf(blockId);
+    if (idx < 0) return;
+    setState(() {
+      if (_starredBlockIds.contains(blockId)) {
+        _starredBlockIds.remove(blockId);
+      } else {
+        _starredBlockIds.add(blockId);
+      }
+    });
+    await _persistPage(idx);
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> _deletePage(int pageIndex) async {
+    if (_pageBlockIds.length <= 1) return;
+    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
+    final blockId = _pageBlockIds[pageIndex];
+    final repo = ref.read(noteBlockRepositoryProvider);
+
+    setState(() {
+      _pageBlockIds.removeAt(pageIndex);
+      _pageData.remove(blockId);
+      _starredBlockIds.remove(blockId);
+      if (_activePageIndex == pageIndex) _activePageIndex = null;
+      if (_undoPageIndex == pageIndex) {
+        _undoPageIndex = null;
+        _undoStack.clear();
+      }
+      if (_drawerSnapshotPage >= _pageBlockIds.length) {
+        _drawerSnapshotPage = _pageBlockIds.length - 1;
+      }
+    });
+
+    await repo.delete(blockId);
+    await repo.reorder(widget.note.id, List<int>.from(_pageBlockIds));
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> _reorderPages(int oldUnstarredIdx, int newUnstarredIdx) async {
+    final unstarred = <int>[];
+    for (final id in _pageBlockIds) {
+      if (!_starredBlockIds.contains(id)) unstarred.add(id);
+    }
+    if (oldUnstarredIdx < 0 || oldUnstarredIdx >= unstarred.length) return;
+
+    final adjusted = newUnstarredIdx > oldUnstarredIdx
+        ? newUnstarredIdx - 1
+        : newUnstarredIdx;
+    final movedId = unstarred.removeAt(oldUnstarredIdx);
+    unstarred.insert(adjusted.clamp(0, unstarred.length), movedId);
+
+    final newOrder = <int>[];
+    int unstarredCursor = 0;
+    for (final id in _pageBlockIds) {
+      if (_starredBlockIds.contains(id)) {
+        newOrder.add(id);
+      } else {
+        newOrder.add(unstarred[unstarredCursor++]);
+      }
+    }
+
+    setState(() {
+      _pageBlockIds
+        ..clear()
+        ..addAll(newOrder);
+      _activePageIndex = null;
+      _undoPageIndex = null;
+      _undoStack.clear();
+    });
+
+    await ref
+        .read(noteBlockRepositoryProvider)
+        .reorder(widget.note.id, newOrder);
+    HapticFeedback.lightImpact();
   }
 
   Future<void> _saveBackgroundPreference() async {
@@ -952,7 +1103,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: yCream,
-      body: Column(
+      body: Stack(
+        children: [
+          Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_headerCollapsed)
@@ -963,6 +1116,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 background: _pageBackground,
                 accent: _accent,
                 onExpand: () => setState(() => _headerCollapsed = false),
+                onOpenPages: _togglePageDrawer,
               ),
             )
           else ...[
@@ -978,6 +1132,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     label: '@${widget.folder.name}',
                     bg: widget.folder.color,
                     fg: yCream,
+                  ),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _togglePageDrawer,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: yCream,
+                        border: Border.all(color: yInk, width: yLineMid),
+                      ),
+                      child: const Icon(Icons.auto_stories, color: yInk, size: 18),
+                    ),
                   ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -1153,6 +1321,70 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             _toolbar(),
           ],
         ),
+          if (_pageDrawerOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _togglePageDrawer,
+                child: FadeTransition(
+                  opacity: _drawerAnimCtrl,
+                  child: Container(color: yInk.withValues(alpha: 0.35)),
+                ),
+              ),
+            ),
+          if (_pageDrawerOpen)
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: MediaQuery.of(context).size.width * 0.40,
+              child: SlideTransition(
+                position: _drawerSlide,
+                child: NotebookPageDrawer(
+                  pageBlockIds: _pageBlockIds,
+                  pageData: _pageData,
+                  starredBlockIds: _starredBlockIds,
+                  background: _pageBackground,
+                  accentColor: _accent,
+                  currentPageIndex: _drawerSnapshotPage,
+                  onNavigate: _navigateToPage,
+                  onToggleStar: _toggleStarred,
+                  onDelete: _deletePage,
+                  onReorder: _reorderPages,
+                  onClose: _togglePageDrawer,
+                  onAddPage: () {
+                    _addPageAtEnd();
+                    HapticFeedback.lightImpact();
+                  },
+                ),
+              ),
+            ),
+          if (_widthPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleWidthPicker,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: StrokeWidthPopup(
+                  currentWidth: _strokeW,
+                  recentWidths: _recentWidths,
+                  accentColor: _accent,
+                  onPreview: (v) => setState(() => _strokeW = v),
+                  onCommit: _commitWidth,
+                  onClose: _toggleWidthPicker,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1178,7 +1410,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 onTap: () => setState(() {
                   _tool = DrawTool.pen;
                   _lassoCtrl.deselect();
-                  _syncStrokeWidth();
                 }),
               ),
               const SizedBox(width: 12),
@@ -1188,7 +1419,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 onTap: () => setState(() {
                   _tool = DrawTool.fountainPen;
                   _lassoCtrl.deselect();
-                  _syncStrokeWidth();
                 }),
               ),
               const SizedBox(width: 12),
@@ -1213,7 +1443,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 const SizedBox(width: 10),
               ],
               _divider(),
-              ..._widthButtons(),
+              StrokeWidthButton(
+                currentWidth: _strokeW,
+                isOpen: _widthPickerOpen,
+                accentColor: _accent,
+                onTap: _toggleWidthPicker,
+              ),
+              const SizedBox(width: 10),
               _divider(),
               _toolBtn(
                 icon: Icons.undo,
@@ -1447,65 +1683,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
-  void _syncStrokeWidth() {
-    final valid = _tool == DrawTool.fountainPen
-        ? [2.0, 4.0]
-        : [3.0, 6.0, 10.0];
-    if (!valid.contains(_strokeW)) {
-      _strokeW = valid.first;
-    }
-  }
-
-  List<Widget> _widthButtons() {
-    final widths = _tool == DrawTool.fountainPen
-        ? [2.0, 4.0]
-        : [3.0, 6.0, 10.0];
-    return [
-      for (final w in widths) ...[
-        _widthBtn(w),
-        const SizedBox(width: 10),
-      ],
-    ];
-  }
-
-  Widget _widthBtn(double w) {
-    final sel = _strokeW == w;
-    final label = _tool == DrawTool.fountainPen
-        ? (w == 2.0 ? 'FINA' : 'MEDIA')
-        : null;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _strokeW = w),
-      child: Container(
-        width: label != null ? 52 : 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: sel ? _accent : yCream,
-          border: Border.all(
-            color: sel ? yInk : yMuted.withValues(alpha: 0.4),
-            width: sel ? 2.5 : yLineThin,
-          ),
-        ),
-        child: label != null
-            ? Text(label,
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: sel ? yCream : yInk,
-                ))
-            : Container(
-                width: w.clamp(3.0, 14.0),
-                height: w.clamp(3.0, 14.0),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: yInk,
-                ),
-              ),
-      ),
-    );
-  }
 }
 
 class _CollapsedNotebookHeader extends StatelessWidget {
@@ -1514,6 +1691,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final PageBackground background;
   final Color accent;
   final VoidCallback onExpand;
+  final VoidCallback onOpenPages;
 
   const _CollapsedNotebookHeader({
     required this.folder,
@@ -1521,6 +1699,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
     required this.background,
     required this.accent,
     required this.onExpand,
+    required this.onOpenPages,
   });
 
   @override
@@ -1559,6 +1738,21 @@ class _CollapsedNotebookHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onOpenPages,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.auto_stories, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onExpand,
@@ -1664,11 +1858,20 @@ class _NotebookCanvasPainter extends CustomPainter {
       canvas.clipRect(pageRect);
       canvas.translate(0, pageTop);
 
+      // visibleRect in page-local coordinates (after translate).
+      final pageVisible = Rect.fromLTRB(
+        visibleRect.left,
+        visibleRect.top - pageTop,
+        visibleRect.right,
+        visibleRect.bottom - pageTop,
+      );
+
       final data = pageData[pageBlockIds[i]];
       if (data != null) {
         final skip = hiddenStrokes[i];
         for (int si = 0; si < data.strokes.length; si++) {
           if (skip != null && skip.contains(si)) continue;
+          if (!_strokeInRect(data.strokes[si], pageVisible)) continue;
           drawStroke(canvas, data.strokes[si]);
         }
       }
@@ -1679,6 +1882,13 @@ class _NotebookCanvasPainter extends CustomPainter {
 
       canvas.restore();
     }
+  }
+
+  bool _strokeInRect(DrawingStroke s, Rect r) {
+    for (final p in s.points) {
+      if (r.contains(Offset(p[0], p[1]))) return true;
+    }
+    return false;
   }
 
   void _drawBackground(Canvas canvas, Rect page, PageBackground bg) {

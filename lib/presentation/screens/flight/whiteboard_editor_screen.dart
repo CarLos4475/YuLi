@@ -21,6 +21,7 @@ import 'shape_recognizer.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
+import 'stroke_width_picker.dart';
 import '../lab/lab_space_detail_screen.dart';
 
 // World canvas size — large but finite to keep memory bounded. The user
@@ -81,6 +82,9 @@ class _WhiteboardEditorScreenState
   Offset? _pastePos;
   Offset? _showPasteAt;
 
+  bool _widthPickerOpen = false;
+  List<double> _recentWidths = const [3.0, 6.0, 10.0];
+
   // Multi-finger tap tracking
   int _maxSimultaneous = 0;
   bool _multiFingerMoved = false;
@@ -96,7 +100,26 @@ class _WhiteboardEditorScreenState
       duration: const Duration(seconds: 1),
     )..repeat();
     _lassoCtrl.onChanged = () => setState(() {});
+    StrokeWidthPrefs.load().then((widths) {
+      if (!mounted) return;
+      setState(() {
+        _recentWidths = widths;
+        if (widths.isNotEmpty) _strokeW = widths.first;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCanvasBlock());
+  }
+
+  void _toggleWidthPicker() {
+    setState(() => _widthPickerOpen = !_widthPickerOpen);
+  }
+
+  void _commitWidth(double value) {
+    setState(() {
+      _strokeW = value;
+      _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
+    });
+    StrokeWidthPrefs.save(_recentWidths);
   }
 
   @override
@@ -789,7 +812,9 @@ class _WhiteboardEditorScreenState
 
     return Scaffold(
       backgroundColor: yCream,
-      body: Column(
+      body: Stack(
+        children: [
+          Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_headerCollapsed)
@@ -933,6 +958,32 @@ class _WhiteboardEditorScreenState
             _toolbar(),
           ],
         ),
+          if (_widthPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleWidthPicker,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: StrokeWidthPopup(
+                  currentWidth: _strokeW,
+                  recentWidths: _recentWidths,
+                  accentColor: _accent,
+                  onPreview: (v) => setState(() => _strokeW = v),
+                  onCommit: _commitWidth,
+                  onClose: _toggleWidthPicker,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -962,7 +1013,6 @@ class _WhiteboardEditorScreenState
               onTap: () => setState(() {
                 _tool = DrawTool.pen;
                 _lassoCtrl.deselect();
-                _syncStrokeWidth();
               }),
             ),
             const SizedBox(width: 12),
@@ -972,7 +1022,6 @@ class _WhiteboardEditorScreenState
               onTap: () => setState(() {
                 _tool = DrawTool.fountainPen;
                 _lassoCtrl.deselect();
-                _syncStrokeWidth();
               }),
             ),
             const SizedBox(width: 12),
@@ -994,7 +1043,13 @@ class _WhiteboardEditorScreenState
               const SizedBox(width: 10),
             ],
             _divider(),
-            ..._widthButtons(),
+              StrokeWidthButton(
+                currentWidth: _strokeW,
+                isOpen: _widthPickerOpen,
+                accentColor: _accent,
+                onTap: _toggleWidthPicker,
+              ),
+            const SizedBox(width: 10),
             _divider(),
             _toolBtn(
               icon: Icons.undo,
@@ -1102,65 +1157,6 @@ class _WhiteboardEditorScreenState
     );
   }
 
-  void _syncStrokeWidth() {
-    final valid = _tool == DrawTool.fountainPen
-        ? [2.0, 4.0]
-        : [3.0, 6.0, 10.0];
-    if (!valid.contains(_strokeW)) {
-      _strokeW = valid.first;
-    }
-  }
-
-  List<Widget> _widthButtons() {
-    final widths = _tool == DrawTool.fountainPen
-        ? [2.0, 4.0]
-        : [3.0, 6.0, 10.0];
-    return [
-      for (final w in widths) ...[
-        _widthBtn(w),
-        const SizedBox(width: 10),
-      ],
-    ];
-  }
-
-  Widget _widthBtn(double w) {
-    final sel = _strokeW == w;
-    final label = _tool == DrawTool.fountainPen
-        ? (w == 2.0 ? 'FINA' : 'MEDIA')
-        : null;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _strokeW = w),
-      child: Container(
-        width: label != null ? 52 : 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: sel ? _accent : yCream,
-          border: Border.all(
-            color: sel ? yInk : yMuted.withValues(alpha: 0.4),
-            width: sel ? 2.5 : yLineThin,
-          ),
-        ),
-        child: label != null
-            ? Text(label,
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: sel ? yCream : yInk,
-                ))
-            : Container(
-                width: w.clamp(3.0, 14.0),
-                height: w.clamp(3.0, 14.0),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: yInk,
-                ),
-              ),
-      ),
-    );
-  }
 }
 
 class _CollapsedWhiteboardHeader extends StatelessWidget {

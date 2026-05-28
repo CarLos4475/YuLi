@@ -10,6 +10,7 @@ import 'note_cell_model.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
+import 'stroke_width_picker.dart';
 
 const _baseColors = <Color>[
   yInk,
@@ -63,6 +64,9 @@ class _DrawingCellState extends State<DrawingCell>
   Offset? _pastePos;
   Offset? _showPasteAt;
 
+  bool _widthPickerOpen = false;
+  List<double> _recentWidths = const [3.0, 6.0, 10.0];
+
   // Multi-finger tap tracking
   final Set<int> _activePointers = {};
   int _maxSimultaneous = 0;
@@ -80,6 +84,25 @@ class _DrawingCellState extends State<DrawingCell>
       duration: const Duration(seconds: 1),
     )..repeat();
     _lassoCtrl.onChanged = () => setState(() {});
+    StrokeWidthPrefs.load().then((widths) {
+      if (!mounted) return;
+      setState(() {
+        _recentWidths = widths;
+        if (widths.isNotEmpty) _strokeW = widths.first;
+      });
+    });
+  }
+
+  void _toggleWidthPicker() {
+    setState(() => _widthPickerOpen = !_widthPickerOpen);
+  }
+
+  void _commitWidth(double value) {
+    setState(() {
+      _strokeW = value;
+      _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
+    });
+    StrokeWidthPrefs.save(_recentWidths);
   }
 
   @override
@@ -337,14 +360,42 @@ class _DrawingCellState extends State<DrawingCell>
         color: yCream,
         border: Border.all(color: yInk, width: yLineMid),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          if (widget.header != null) widget.header!,
-          _buildToolbar(),
-          _buildCanvas(),
-          _buildResizeStrip(),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.header != null) widget.header!,
+              _buildToolbar(),
+              _buildCanvas(),
+              _buildResizeStrip(),
+            ],
+          ),
+          if (_widthPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleWidthPicker,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              top: (widget.header != null ? 48 : 0) + 50,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: StrokeWidthPopup(
+                  currentWidth: _strokeW,
+                  recentWidths: _recentWidths,
+                  accentColor: widget.accent ?? yAmber,
+                  onPreview: (v) => setState(() => _strokeW = v),
+                  onCommit: _commitWidth,
+                  onClose: _toggleWidthPicker,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -373,7 +424,6 @@ class _DrawingCellState extends State<DrawingCell>
               onTap: () => setState(() {
                 _tool = DrawTool.pen;
                 _lassoCtrl.deselect();
-                _syncStrokeWidth();
               }),
             ),
             const SizedBox(width: 4),
@@ -383,7 +433,6 @@ class _DrawingCellState extends State<DrawingCell>
               onTap: () => setState(() {
                 _tool = DrawTool.fountainPen;
                 _lassoCtrl.deselect();
-                _syncStrokeWidth();
               }),
             ),
             const SizedBox(width: 4),
@@ -405,7 +454,13 @@ class _DrawingCellState extends State<DrawingCell>
               const SizedBox(width: 4),
             ],
             _divider(),
-            ..._widthButtons(),
+            StrokeWidthButton(
+              currentWidth: _strokeW,
+              isOpen: _widthPickerOpen,
+              accentColor: widget.accent ?? yAmber,
+              onTap: _toggleWidthPicker,
+            ),
+            const SizedBox(width: 4),
             _divider(),
             _toolBtn(
               icon: Icons.undo,
@@ -957,65 +1012,6 @@ class _DrawingCellState extends State<DrawingCell>
     );
   }
 
-  void _syncStrokeWidth() {
-    final valid = _tool == DrawTool.fountainPen
-        ? [2.0, 4.0]
-        : [3.0, 6.0, 10.0];
-    if (!valid.contains(_strokeW)) {
-      _strokeW = valid.first;
-    }
-  }
-
-  List<Widget> _widthButtons() {
-    final widths = _tool == DrawTool.fountainPen
-        ? [2.0, 4.0]
-        : [3.0, 6.0, 10.0];
-    return [
-      for (final w in widths) ...[
-        _widthBtn(w),
-        const SizedBox(width: 4),
-      ],
-    ];
-  }
-
-  Widget _widthBtn(double w) {
-    final sel = _strokeW == w;
-    final label = _tool == DrawTool.fountainPen
-        ? (w == 2.0 ? 'FINA' : 'MEDIA')
-        : null;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _strokeW = w),
-      child: Container(
-        width: label != null ? 46 : 26,
-        height: 26,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: sel ? yInk : yCream,
-          border: Border.all(
-            color: sel ? yInk : yMuted.withValues(alpha: 0.4),
-            width: sel ? 2.5 : yLineThin,
-          ),
-        ),
-        child: label != null
-            ? Text(label,
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: sel ? yCream : yInk,
-                ))
-            : Container(
-                width: w.clamp(3.0, 14.0),
-                height: w.clamp(3.0, 14.0),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: yInk,
-                ),
-              ),
-      ),
-    );
-  }
 }
 
 // ─── Painters ─────────────────────────────────────────────────────────────
