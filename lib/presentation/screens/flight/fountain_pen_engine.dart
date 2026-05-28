@@ -4,8 +4,36 @@ import 'dart:ui';
 import 'note_cell_model.dart';
 
 class FountainPenEngine {
+  /// Remove excess points that are closer than [minDist] pixels.
+  /// Slow strokes produce very dense points that destabilize direction vectors.
+  static (List<Offset>, List<double>, List<int>) downsample(
+    List<Offset> pts,
+    List<double> pressures,
+    List<int> timestamps, {
+    double minDist = 2.0,
+  }) {
+    if (pts.length < 3) return (pts, pressures, timestamps);
+    final minDist2 = minDist * minDist;
+    final outPts = <Offset>[pts.first];
+    final outPre = <double>[pressures.first];
+    final outTs = <int>[timestamps.first];
+    for (int i = 1; i < pts.length - 1; i++) {
+      final dx = pts[i].dx - outPts.last.dx;
+      final dy = pts[i].dy - outPts.last.dy;
+      if (dx * dx + dy * dy >= minDist2) {
+        outPts.add(pts[i]);
+        outPre.add(pressures[i]);
+        outTs.add(timestamps[i]);
+      }
+    }
+    outPts.add(pts.last);
+    outPre.add(pressures.last);
+    outTs.add(timestamps.last);
+    return (outPts, outPre, outTs);
+  }
+
   /// Chaikin corner cutting — eliminates hand jitter while preserving curve
-  /// shape. One iteration for live preview, two for final stroke.
+  /// shape.
   static List<Offset> chaikinSmooth(List<Offset> pts, {int iterations = 1}) {
     if (pts.length < 3) return pts;
     var current = pts;
@@ -112,6 +140,41 @@ class FountainPenEngine {
     }
   }
 
+  /// Linearly interpolate a width array from [rawLength] to [targetLength].
+  static List<double> interpolateWidths(
+      List<double> rawWidths, int targetLength) {
+    if (rawWidths.isEmpty) return List.filled(targetLength, 1.0);
+    if (rawWidths.length == 1) return List.filled(targetLength, rawWidths[0]);
+    if (targetLength == rawWidths.length) return List.of(rawWidths);
+    final result = List<double>.filled(targetLength, 0);
+    for (int i = 0; i < targetLength; i++) {
+      final t = i / (targetLength - 1) * (rawWidths.length - 1);
+      final idx = t.floor().clamp(0, rawWidths.length - 2);
+      final frac = t - idx;
+      result[i] = rawWidths[idx] * (1 - frac) + rawWidths[idx + 1] * frac;
+    }
+    return result;
+  }
+
+  /// Moving-average smoother for width arrays.
+  static List<double> smoothWidths(List<double> widths, {int windowSize = 3}) {
+    if (widths.length < windowSize) return widths;
+    final result = List<double>.filled(widths.length, 0);
+    final half = windowSize ~/ 2;
+    for (int i = 0; i < widths.length; i++) {
+      double sum = 0;
+      int count = 0;
+      for (int j = i - half; j <= i + half; j++) {
+        if (j >= 0 && j < widths.length) {
+          sum += widths[j];
+          count++;
+        }
+      }
+      result[i] = sum / count;
+    }
+    return result;
+  }
+
   /// Tessellate a centerline + per-point widths into a filled polygon Path.
   /// Adds sub-pixel deterministic noise to edges for organic feel.
   static Path tessellate(List<Offset> centerline, List<double> widths) {
@@ -185,14 +248,17 @@ class FountainPenEngine {
     final timestamps =
         raw.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
 
-    final centerline = chaikinSmooth(rawPts, iterations: 2);
-    final widths = computeWidths(
-      centerline,
-      active.strokeWidth,
-      pressures,
-      timestamps,
-    );
-    taperWidths(widths);
+    // Filter out excess density from slow strokes.
+    final (dsPts, dsPre, dsTs) = downsample(rawPts, pressures, timestamps);
+
+    final rawWidths = computeWidths(dsPts, active.strokeWidth, dsPre, dsTs);
+    final smoothed = smoothWidths(rawWidths, windowSize: 3);
+    taperWidths(smoothed);
+
+    final centerline = chaikinSmooth(dsPts, iterations: 1);
+
+    // Interpolate widths to match the densified centerline.
+    final widths = interpolateWidths(smoothed, centerline.length);
 
     final baked = <List<double>>[];
     for (int i = 0; i < centerline.length; i++) {

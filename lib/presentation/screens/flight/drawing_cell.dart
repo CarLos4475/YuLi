@@ -93,7 +93,9 @@ class _DrawingCellState extends State<DrawingCell>
   void didUpdateWidget(covariant DrawingCell oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.accent != widget.accent) {
-      setState(() => _palette = _buildPalette());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _palette = _buildPalette());
+      });
     }
   }
 

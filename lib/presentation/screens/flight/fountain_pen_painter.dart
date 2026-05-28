@@ -24,15 +24,17 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke) {
     final timestamps =
         stroke.points.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
 
-    centerline =
-        FountainPenEngine.chaikinSmooth(rawPts, iterations: 1);
-    widths = FountainPenEngine.computeWidths(
-      centerline,
-      stroke.strokeWidth,
-      pressures,
-      timestamps,
+    final (dsPts, dsPre, dsTs) =
+        FountainPenEngine.downsample(rawPts, pressures, timestamps);
+
+    final rawWidths = FountainPenEngine.computeWidths(
+      dsPts, stroke.strokeWidth, dsPre, dsTs,
     );
-    FountainPenEngine.taperWidths(widths);
+    final smoothed = FountainPenEngine.smoothWidths(rawWidths, windowSize: 3);
+    FountainPenEngine.taperWidths(smoothed);
+
+    centerline = FountainPenEngine.chaikinSmooth(dsPts, iterations: 1);
+    widths = FountainPenEngine.interpolateWidths(smoothed, centerline.length);
   } else {
     centerline =
         stroke.points.map((p) => Offset(p[0], p[1])).toList();

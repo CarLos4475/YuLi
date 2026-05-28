@@ -45,7 +45,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   InsertPanelType? _activePanel;
   bool _isPreview = false;
   bool _scrollLocked = false;
-  bool _headerCollapsed = false;
+  bool _headerCollapsed = true;
+
+  Color get _accent => widget.note.color ?? widget.folder.color;
 
   @override
   void initState() {
@@ -249,9 +251,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                   )
                 else ...[
                   ModeHeader(
-                    mode: 'FLIGHT',
+                    mode: 'NOTA',
                     subtitle: 'MODO NOTAS · CARPETA · NOTA ABIERTA',
-                    color: yFlight,
+                    color: _accent,
                     onBack: () => Navigator.pop(context),
                     headerRight: [
                       YBadge(
@@ -282,6 +284,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     lastEdit: widget.note.updatedAt,
                     wordCount: _countWords(blocks),
                     linkedCards: linkedCards,
+                    accent: _accent,
                     onSave: _saveTitle,
                     onImage: () => _addBlock(NoteBlockType.drawing),
                     onLink: () => _showLinkToLab(spaces),
@@ -295,11 +298,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                   child: Container(
                     color: yCream,
                     child: blocks.isEmpty
-                        ? _EmptyState(onAdd: _addBlock)
+                        ? _EmptyState(onAdd: _addBlock, accent: _accent)
                         : _isPreview
                             ? _buildPreview(blocks)
                             : ReorderableListView.builder(
-                                key: ValueKey(blocks.length),
                                 physics: _scrollLocked
                                     ? const NeverScrollableScrollPhysics()
                                     : null,
@@ -309,7 +311,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                                   color: Colors.transparent,
                                   child: DecoratedBox(
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: yFlight, width: yLineThin),
+                                      border: Border.all(color: _accent, width: yLineThin),
                                     ),
                                     child: child,
                                   ),
@@ -588,6 +590,7 @@ class _NoteHeroHeader extends ConsumerWidget {
   final VoidCallback onFight;
   final VoidCallback onTogglePreview;
   final bool isPreview;
+  final Color accent;
 
   const _NoteHeroHeader({
     required this.folder,
@@ -603,6 +606,7 @@ class _NoteHeroHeader extends ConsumerWidget {
     required this.onFight,
     required this.onTogglePreview,
     required this.isPreview,
+    required this.accent,
   });
 
   String _lastEditLabel(DateTime d) {
@@ -703,7 +707,7 @@ class _NoteHeroHeader extends ConsumerWidget {
                     _HeaderIcon(
                       icon: Icons.all_inclusive,
                       fill: true,
-                      color: yFlight,
+                      color: accent,
                       onTap: onLink,
                     ),
                     const SizedBox(width: 6),
@@ -924,7 +928,8 @@ class _AddBlockBtn extends StatelessWidget {
 
 class _EmptyState extends StatelessWidget {
   final void Function(NoteBlockType) onAdd;
-  const _EmptyState({required this.onAdd});
+  final Color accent;
+  const _EmptyState({required this.onAdd, required this.accent});
 
   @override
   Widget build(BuildContext context) {
@@ -952,7 +957,7 @@ class _EmptyState extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: yFlight,
+                  color: accent,
                   border: Border.all(color: yInk, width: yLineMid),
                 ),
                 child: Text(

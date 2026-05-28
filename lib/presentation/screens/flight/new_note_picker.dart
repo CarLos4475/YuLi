@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/app_tokens.dart';
 import '../../../domain/models/note.dart';
 
 Future<NoteKind?> showNewNotePicker(BuildContext context) {
@@ -19,11 +20,11 @@ class _NewNotePickerDialog extends StatelessWidget {
       backgroundColor: yCream,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 480),
+        constraints: const BoxConstraints(maxWidth: 600),
         decoration: BoxDecoration(
           border: Border.all(color: yInk, width: yLineHeavy),
         ),
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(10, 18, 10, 18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -58,27 +59,27 @@ class _NewNotePickerDialog extends StatelessWidget {
                         Navigator.pop(context, NoteKind.block),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _KindOption(
                     label: 'CUADERNO',
                     sublabel: 'PÁGINAS',
                     description:
                         'Páginas A4 apiladas. Dibujo con stylus.',
-                    icon: '▤',
+                    icon: '\u25A4',
                     accent: yAmber,
                     onTap: () =>
                         Navigator.pop(context, NoteKind.notebook),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _KindOption(
                     label: 'PIZARRA',
                     sublabel: 'INFINITA',
                     description:
                         'Canvas infinito. Solo dibujo. Pan + zoom.',
-                    icon: '✎',
+                    icon: '\u270E',
                     accent: yLab,
                     onTap: () =>
                         Navigator.pop(context, NoteKind.whiteboard),
@@ -129,7 +130,7 @@ class _KindOption extends StatelessWidget {
               color: accent,
               child: Text(icon,
                   style: ySans(
-                    size: 44,
+                    size: 38,
                     weight: FontWeight.w700,
                     color: yCream,
                     height: 1.0,
@@ -137,7 +138,7 @@ class _KindOption extends StatelessWidget {
             ),
             Container(height: 2, color: yInk),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -145,13 +146,16 @@ class _KindOption extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text(label,
-                          style: ySans(
-                            size: 24,
-                            weight: FontWeight.w700,
-                            letterSpacing: -0.5,
-                            color: yInk,
-                          )),
+                      Flexible(
+                        child: Text(label,
+                            overflow: TextOverflow.ellipsis,
+                            style: ySans(
+                              size: 24,
+                              weight: FontWeight.w700,
+                              letterSpacing: -0.5,
+                              color: yInk,
+                            )),
+                      ),
                       const SizedBox(width: 6),
                       Text(sublabel,
                           style: yMono(
@@ -164,6 +168,9 @@ class _KindOption extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(description,
+                      softWrap: true,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 3,
                       style: yBody(
                         size: 12,
                         color: yInk2,
@@ -177,4 +184,188 @@ class _KindOption extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NewNoteDetails extends StatefulWidget {
+  final NoteKind kind;
+
+  const _NewNoteDetails({required this.kind});
+
+  @override
+  State<_NewNoteDetails> createState() => _NewNoteDetailsState();
+}
+
+class _NewNoteDetailsState extends State<_NewNoteDetails> {
+  final _nameCtrl = TextEditingController();
+  Color _selectedColor = folderPalette[1];
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final kindLabel = switch (widget.kind) {
+      NoteKind.block => 'NOTA',
+      NoteKind.notebook => 'CUADERNO',
+      NoteKind.whiteboard => 'PIZARRA',
+    };
+    final kindColor = switch (widget.kind) {
+      NoteKind.block => yFlight,
+      NoteKind.notebook => yAmber,
+      NoteKind.whiteboard => yLab,
+    };
+
+    return Dialog(
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 440),
+        decoration: BoxDecoration(
+          border: Border.all(color: yInk, width: yLineHeavy),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: kindColor,
+                    border: Border.all(color: yInk, width: yLineThin),
+                  ),
+                  child: Text(kindLabel,
+                      style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: yCream)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _nameCtrl,
+              autofocus: true,
+              style: ySans(size: 18, weight: FontWeight.w600, color: yInk),
+              decoration: InputDecoration(
+                hintText: 'Nombre',
+                hintStyle: ySans(
+                    size: 18,
+                    weight: FontWeight.w600,
+                    color: yInk.withValues(alpha: 0.3)),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: yInk, width: yLineThin)),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: yInk, width: yLineThin)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.zero,
+                    borderSide: BorderSide(color: yInk, width: yLineHeavy)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              onSubmitted: (_) => _doCreate(),
+            ),
+            const SizedBox(height: 14),
+            Text('Color',
+                style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: folderPalette.map((c) {
+                final sel = c == _selectedColor;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedColor = c),
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: c,
+                      border: Border.all(
+                          color: sel ? yInk : Colors.transparent,
+                          width: yLineHeavy),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    child: Text('Cancelar',
+                        style: yMono(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            tracking: 1.4,
+                            color: yMuted)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _doCreate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: kindColor,
+                      border:
+                          Border.all(color: yInk, width: yLineHeavy),
+                    ),
+                    child: Text('Crear',
+                        style: yBody(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: yCream)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _doCreate() {
+    Navigator.pop(
+      context,
+      NewNoteDetails(
+        title: _nameCtrl.text.trim(),
+        color: _selectedColor,
+      ),
+    );
+  }
+}
+
+Future<NewNoteDetails?> showNewNoteDetailsDialog(
+    BuildContext context, NoteKind kind) {
+  return showDialog<NewNoteDetails>(
+    context: context,
+    builder: (_) => _NewNoteDetails(kind: kind),
+  );
+}
+
+class NewNoteDetails {
+  final String? title;
+  final Color color;
+  const NewNoteDetails({this.title, required this.color});
 }

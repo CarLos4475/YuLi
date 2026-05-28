@@ -225,7 +225,6 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
 
   @override
   void dispose() {
-    widget.onFocusChanged?.call(null);
     _focus.removeListener(_onFocusChange);
     _focus.dispose();
     _ctrl.dispose();

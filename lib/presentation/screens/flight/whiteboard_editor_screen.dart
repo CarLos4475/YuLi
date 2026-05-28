@@ -67,6 +67,7 @@ class _WhiteboardEditorScreenState
   final Set<int> _activePointers = {};
   bool _isDrawing = false;
   bool _stylusActive = false;
+  bool _headerCollapsed = true;
   final List<DrawingStroke> _undoStack = [];
   DrawingStroke? _active;
   Timer? _holdTimer;
@@ -775,6 +776,8 @@ class _WhiteboardEditorScreenState
     ));
   }
 
+  Color get _accent => widget.note.color ?? widget.folder.color;
+
   @override
   Widget build(BuildContext context) {
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
@@ -789,37 +792,63 @@ class _WhiteboardEditorScreenState
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SafeArea(
-            child: Column(
-              children: [
-                ModeHeader(
-                  mode: 'PIZARRA',
-                  subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
-                  color: yFlight,
-                  onBack: () => Navigator.pop(context),
-                  headerRight: [
-                    YBadge(
-                      label: '@${widget.folder.name}',
-                      bg: widget.folder.color,
-                      fg: yCream,
-                    ),
-                    _BrutalBtn(
-                      icon: Icons.center_focus_strong,
-                      onTap: _resetView,
-                    ),
-                    _BrutalBtn(
-                      icon: Icons.all_inclusive,
-                      color: yLab,
-                      onTap: () => _linkToLab(spaces),
-                    ),
-                  ],
-                ),
-                if (linkedSpaces.isNotEmpty) _LinkedSpacesBar(spaces: linkedSpaces),
-              ],
+          if (_headerCollapsed)
+            SafeArea(
+              child: _CollapsedWhiteboardHeader(
+                folder: widget.folder,
+                spaces: spaces,
+                accent: _accent,
+                onExpand: () => setState(() => _headerCollapsed = false),
+                onReset: _resetView,
+                onLink: () => _linkToLab(spaces),
+              ),
+            )
+          else ...[
+            SafeArea(
+              child: Column(
+                children: [
+                  ModeHeader(
+                    mode: 'PIZARRA',
+                    subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
+                    color: _accent,
+                    onBack: () => Navigator.pop(context),
+                    headerRight: [
+                      YBadge(
+                        label: '@${widget.folder.name}',
+                        bg: widget.folder.color,
+                        fg: yCream,
+                      ),
+                      _BrutalBtn(
+                        icon: Icons.center_focus_strong,
+                        onTap: _resetView,
+                      ),
+                      _BrutalBtn(
+                        icon: Icons.all_inclusive,
+                        color: yLab,
+                        onTap: () => _linkToLab(spaces),
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _headerCollapsed = true),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: yCream,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (linkedSpaces.isNotEmpty) _LinkedSpacesBar(spaces: linkedSpaces),
+                ],
+              ),
             ),
-          ),
-          _toolbar(),
-            Expanded(
+          ],
+          Expanded(
               child: LayoutBuilder(builder: (ctx, c) {
                 return AnimatedBuilder(
                   animation: _viewCtrl,
@@ -901,6 +930,7 @@ class _WhiteboardEditorScreenState
                 );
               }),
             ),
+            _toolbar(),
           ],
         ),
     );
@@ -911,7 +941,7 @@ class _WhiteboardEditorScreenState
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
       ),
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: paddingH.clamp(16.0, 120.0), vertical: 10),
@@ -1020,7 +1050,7 @@ class _WhiteboardEditorScreenState
         padding: EdgeInsets.symmetric(horizontal: label != null ? 10 : 8),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? yFlight : yCream,
+          color: active ? _accent : yCream,
           border: Border.all(
             color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
             width: yLineThin,
@@ -1055,19 +1085,18 @@ class _WhiteboardEditorScreenState
   }
 
   Widget _colorBtn(Color c) {
-    final sel = _color.toARGB32() == c.toARGB32() && _tool == DrawTool.pen;
+    final sel = _color.toARGB32() == c.toARGB32();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         _color = c;
-        _tool = DrawTool.pen;
       }),
       child: Container(
         width: 28,
         height: 28,
         decoration: BoxDecoration(
           color: c,
-          border: Border.all(color: yInk, width: sel ? 3 : yLineThin),
+          border: Border.all(color: sel ? yCream : yInk, width: sel ? 3 : yLineThin),
         ),
       ),
     );
@@ -1107,7 +1136,7 @@ class _WhiteboardEditorScreenState
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: sel ? yFlight : yCream,
+          color: sel ? _accent : yCream,
           border: Border.all(
             color: sel ? yInk : yMuted.withValues(alpha: 0.4),
             width: sel ? 2.5 : yLineThin,
@@ -1129,6 +1158,109 @@ class _WhiteboardEditorScreenState
                   color: yInk,
                 ),
               ),
+      ),
+    );
+  }
+}
+
+class _CollapsedWhiteboardHeader extends StatelessWidget {
+  final Folder folder;
+  final List<LabSpace> spaces;
+  final Color accent;
+  final VoidCallback onExpand;
+  final VoidCallback onReset;
+  final VoidCallback onLink;
+
+  const _CollapsedWhiteboardHeader({
+    required this.folder,
+    required this.spaces,
+    required this.accent,
+    required this.onExpand,
+    required this.onReset,
+    required this.onLink,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(width: 4, height: 24, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'PIZARRA · @${folder.name}',
+              style: ySans(size: 15, weight: FontWeight.w700, letterSpacing: -0.3, color: accent, height: 1.0),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onReset,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.center_focus_strong, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onLink,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yLab,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.all_inclusive, color: yCream, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onExpand,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: const Icon(Icons.keyboard_arrow_down, color: yInk, size: 18),
+            ),
+          ),
+        ],
       ),
     );
   }
