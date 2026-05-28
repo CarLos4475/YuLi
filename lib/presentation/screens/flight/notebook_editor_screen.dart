@@ -12,6 +12,7 @@ import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
+import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'fountain_pen_engine.dart';
 import 'lasso_controller.dart';
@@ -22,8 +23,6 @@ import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
 import 'stroke_width_picker.dart';
-
-const _baseColors = <Color>[yInk, yFight, yFlight, yLab, yAmber, yAmber2];
 
 class NotebookEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -89,10 +88,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _widthPickerOpen = false;
   List<double> _recentWidths = const [3.0, 6.0, 10.0];
 
+  bool _colorPickerOpen = false;
+  List<Color> _recentColors = const [];
+  List<Color> _savedColors = const [];
+  bool _eyedropperMode = false;
+
   @override
   void initState() {
     super.initState();
-    _palette = [..._baseColors.sublist(0, 5), widget.folder.color];
+    _palette = buildPenPalette(widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -119,6 +123,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _recentWidths = widths;
         if (widths.isNotEmpty) _strokeW = widths.first;
       });
+    });
+    ColorPalettePrefs.load().then((colors) {
+      if (!mounted) return;
+      setState(() {
+        _recentColors = colors;
+        if (colors.isNotEmpty) _color = colors.first;
+      });
+    });
+    SavedColorsPrefs.load().then((colors) {
+      if (!mounted) return;
+      setState(() => _savedColors = colors);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadPages();
@@ -246,7 +261,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // ─── Width picker ──────────────────────────────────────────────────────
 
   void _toggleWidthPicker() {
-    setState(() => _widthPickerOpen = !_widthPickerOpen);
+    setState(() {
+      _widthPickerOpen = !_widthPickerOpen;
+      if (_widthPickerOpen) _colorPickerOpen = false;
+    });
+  }
+
+  void _toggleColorPicker() {
+    setState(() {
+      _colorPickerOpen = !_colorPickerOpen;
+      if (_colorPickerOpen) _widthPickerOpen = false;
+    });
   }
 
   void _commitWidth(double value) {
@@ -255,6 +280,64 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
     });
     StrokeWidthPrefs.save(_recentWidths);
+  }
+
+  void _commitColor(Color value) {
+    setState(() {
+      _color = value;
+      _recentColors = ColorPalettePrefs.push(_recentColors, value);
+    });
+    ColorPalettePrefs.save(_recentColors);
+  }
+
+  void _starColor(Color value) {
+    final isStarred =
+        _savedColors.any((c) => c.toARGB32() == value.toARGB32());
+    setState(() {
+      _savedColors = isStarred
+          ? SavedColorsPrefs.remove(_savedColors, value)
+          : SavedColorsPrefs.push(_savedColors, value);
+    });
+    SavedColorsPrefs.save(_savedColors);
+    HapticFeedback.selectionClick();
+  }
+
+  void _enterEyedropper() {
+    setState(() {
+      _eyedropperMode = true;
+      _colorPickerOpen = false;
+      _widthPickerOpen = false;
+      _tool = DrawTool.pen;
+      _lassoCtrl.deselect();
+    });
+    HapticFeedback.lightImpact();
+  }
+
+  void _exitEyedropper() {
+    setState(() => _eyedropperMode = false);
+  }
+
+  bool _sampleAt(int pageIndex, Offset localOnPage) {
+    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) {
+      _exitEyedropper();
+      return false;
+    }
+    final blockId = _pageBlockIds[pageIndex];
+    final data = _pageData[blockId];
+    if (data == null) {
+      _exitEyedropper();
+      return false;
+    }
+    final c = sampleStrokeColorAt(data.strokes, localOnPage);
+    if (c == null) {
+      _exitEyedropper();
+      HapticFeedback.lightImpact();
+      return false;
+    }
+    _exitEyedropper();
+    _commitColor(c);
+    HapticFeedback.mediumImpact();
+    return true;
   }
 
   // ─── Page drawer ───────────────────────────────────────────────────────
@@ -458,6 +541,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _onDown(PointerDownEvent e) {
+    if (_eyedropperMode) {
+      final world = _screenToWorld(e.localPosition);
+      final pageIdx = _pageIndexFromWorldY(world.dy);
+      if (pageIdx < 0) {
+        _exitEyedropper();
+        return;
+      }
+      _sampleAt(pageIdx, _worldToPageLocal(world, pageIdx));
+      return;
+    }
     final tbRect = _lassoToolbarScreenRect();
     if (tbRect != null && tbRect.contains(e.localPosition)) return;
     if (_showPasteAt != null) {
@@ -1359,6 +1452,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 ),
               ),
             ),
+          if (_eyedropperMode)
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 12,
+              child: Center(
+                child: _EyedropperHint(onCancel: _exitEyedropper),
+              ),
+            ),
           if (_widthPickerOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -1379,6 +1481,32 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   onPreview: (v) => setState(() => _strokeW = v),
                   onCommit: _commitWidth,
                   onClose: _toggleWidthPicker,
+                ),
+              ),
+            ),
+          ],
+          if (_colorPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleColorPicker,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ColorPickerPopup(
+                  currentColor: _color,
+                  recentColors: _recentColors,
+                  savedColors: _savedColors,
+                  onPreview: (c) => setState(() => _color = c),
+                  onCommit: _commitColor,
+                  onStar: _starColor,
+                  onEyedropper: _enterEyedropper,
+                  onClose: _toggleColorPicker,
                 ),
               ),
             ),
@@ -1438,10 +1566,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 onTap: () => setState(() => _tool = DrawTool.lasso),
               ),
               _divider(),
-              for (final c in _palette) ...[
-                _colorBtn(c),
-                const SizedBox(width: 10),
+              ColorButton(
+                currentColor: _color,
+                isOpen: _colorPickerOpen,
+                onTap: _toggleColorPicker,
+              ),
+              if (_savedColors.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                SavedColorsStrip(
+                  savedColors: _savedColors,
+                  currentColor: _color,
+                  onPick: (c) {
+                    setState(() => _color = c);
+                    _commitColor(c);
+                  },
+                ),
               ],
+              const SizedBox(width: 10),
               _divider(),
               StrokeWidthButton(
                 currentWidth: _strokeW,
@@ -1665,24 +1806,60 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
-  Widget _colorBtn(Color c) {
-    final sel = _color.toARGB32() == c.toARGB32();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() {
-        _color = c;
-      }),
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: c,
-          border: Border.all(color: sel ? yCream : yInk, width: sel ? 3 : yLineThin),
-        ),
+}
+
+class _EyedropperHint extends StatelessWidget {
+  final VoidCallback onCancel;
+  const _EyedropperHint({required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineMid),
+        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.colorize, size: 14, color: yInk),
+          const SizedBox(width: 8),
+          Text(
+            'TOCA UN TRAZO PARA COPIAR EL COLOR',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yInk,
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onCancel,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: yInk,
+                border: Border.all(color: yInk, width: 1.5),
+              ),
+              child: Text(
+                'CANCELAR',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: yCream,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-
 }
 
 class _CollapsedNotebookHeader extends StatelessWidget {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../widgets/yuli_design.dart';
+import 'color_picker.dart';
 import 'fountain_pen_engine.dart';
 import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
@@ -11,15 +12,6 @@ import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
 import 'stroke_width_picker.dart';
-
-const _baseColors = <Color>[
-  yInk,
-  yFight,
-  yFlight,
-  yLab,
-  yAmber,
-  yAmber2,
-];
 
 class DrawingCell extends StatefulWidget {
   final DrawingData data;
@@ -67,6 +59,11 @@ class _DrawingCellState extends State<DrawingCell>
   bool _widthPickerOpen = false;
   List<double> _recentWidths = const [3.0, 6.0, 10.0];
 
+  bool _colorPickerOpen = false;
+  List<Color> _recentColors = const [];
+  List<Color> _savedColors = const [];
+  bool _eyedropperMode = false;
+
   // Multi-finger tap tracking
   final Set<int> _activePointers = {};
   int _maxSimultaneous = 0;
@@ -91,10 +88,31 @@ class _DrawingCellState extends State<DrawingCell>
         if (widths.isNotEmpty) _strokeW = widths.first;
       });
     });
+    ColorPalettePrefs.load().then((colors) {
+      if (!mounted) return;
+      setState(() {
+        _recentColors = colors;
+        if (colors.isNotEmpty) _color = colors.first;
+      });
+    });
+    SavedColorsPrefs.load().then((colors) {
+      if (!mounted) return;
+      setState(() => _savedColors = colors);
+    });
   }
 
   void _toggleWidthPicker() {
-    setState(() => _widthPickerOpen = !_widthPickerOpen);
+    setState(() {
+      _widthPickerOpen = !_widthPickerOpen;
+      if (_widthPickerOpen) _colorPickerOpen = false;
+    });
+  }
+
+  void _toggleColorPicker() {
+    setState(() {
+      _colorPickerOpen = !_colorPickerOpen;
+      if (_colorPickerOpen) _widthPickerOpen = false;
+    });
   }
 
   void _commitWidth(double value) {
@@ -103,6 +121,63 @@ class _DrawingCellState extends State<DrawingCell>
       _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
     });
     StrokeWidthPrefs.save(_recentWidths);
+  }
+
+  void _commitColor(Color value) {
+    setState(() {
+      _color = value;
+      _recentColors = ColorPalettePrefs.push(_recentColors, value);
+    });
+    ColorPalettePrefs.save(_recentColors);
+  }
+
+  void _starColor(Color value) {
+    final isStarred =
+        _savedColors.any((c) => c.toARGB32() == value.toARGB32());
+    setState(() {
+      _savedColors = isStarred
+          ? SavedColorsPrefs.remove(_savedColors, value)
+          : SavedColorsPrefs.push(_savedColors, value);
+    });
+    SavedColorsPrefs.save(_savedColors);
+    HapticFeedback.selectionClick();
+  }
+
+  bool _lockBeforeEyedropper = false;
+
+  void _enterEyedropper() {
+    _lockBeforeEyedropper = _locked;
+    setState(() {
+      _eyedropperMode = true;
+      _colorPickerOpen = false;
+      _widthPickerOpen = false;
+      _tool = DrawTool.pen;
+      _lassoCtrl.deselect();
+      _locked = true;
+    });
+    widget.onScrollLockChanged(true);
+    HapticFeedback.lightImpact();
+  }
+
+  void _exitEyedropper() {
+    setState(() {
+      _eyedropperMode = false;
+      _locked = _lockBeforeEyedropper;
+    });
+    widget.onScrollLockChanged(_lockBeforeEyedropper);
+  }
+
+  bool _sampleAt(Offset pos) {
+    final c = sampleStrokeColorAt(_data.strokes, pos);
+    if (c == null) {
+      _exitEyedropper();
+      HapticFeedback.lightImpact();
+      return false;
+    }
+    _exitEyedropper();
+    _commitColor(c);
+    HapticFeedback.mediumImpact();
+    return true;
   }
 
   @override
@@ -123,8 +198,7 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   List<Color> _buildPalette() {
-    if (widget.accent == null) return _baseColors;
-    return [..._baseColors.sublist(0, 5), widget.accent!];
+    return buildPenPalette(widget.accent);
   }
 
   bool _shouldAcceptPointer(PointerDeviceKind kind) {
@@ -372,6 +446,15 @@ class _DrawingCellState extends State<DrawingCell>
               _buildResizeStrip(),
             ],
           ),
+          if (_eyedropperMode)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: (widget.header != null ? 48 : 0) + 50,
+              child: Center(
+                child: _EyedropperHint(onCancel: _exitEyedropper),
+              ),
+            ),
           if (_widthPickerOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -392,6 +475,32 @@ class _DrawingCellState extends State<DrawingCell>
                   onPreview: (v) => setState(() => _strokeW = v),
                   onCommit: _commitWidth,
                   onClose: _toggleWidthPicker,
+                ),
+              ),
+            ),
+          ],
+          if (_colorPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleColorPicker,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              top: (widget.header != null ? 48 : 0) + 50,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ColorPickerPopup(
+                  currentColor: _color,
+                  recentColors: _recentColors,
+                  savedColors: _savedColors,
+                  onPreview: (c) => setState(() => _color = c),
+                  onCommit: _commitColor,
+                  onStar: _starColor,
+                  onEyedropper: _enterEyedropper,
+                  onClose: _toggleColorPicker,
                 ),
               ),
             ),
@@ -449,10 +558,23 @@ class _DrawingCellState extends State<DrawingCell>
               onTap: () => setState(() => _tool = DrawTool.lasso),
             ),
             _divider(),
-            for (final c in _palette) ...[
-              _colorBtn(c),
+            ColorButton(
+              currentColor: _color,
+              isOpen: _colorPickerOpen,
+              onTap: _toggleColorPicker,
+            ),
+            if (_savedColors.isNotEmpty) ...[
               const SizedBox(width: 4),
+              SavedColorsStrip(
+                savedColors: _savedColors,
+                currentColor: _color,
+                onPick: (c) {
+                  setState(() => _color = c);
+                  _commitColor(c);
+                },
+              ),
             ],
+            const SizedBox(width: 4),
             _divider(),
             StrokeWidthButton(
               currentWidth: _strokeW,
@@ -581,6 +703,12 @@ class _DrawingCellState extends State<DrawingCell>
         Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (e) {
+        if (_eyedropperMode) {
+          _activePointers.add(e.pointer);
+          _pointerDownPos[e.pointer] = e.localPosition;
+          _sampleAt(e.localPosition);
+          return;
+        }
         _activePointers.add(e.pointer);
         _pointerDownPos[e.pointer] = e.localPosition;
         if (_activePointers.length > _maxSimultaneous) {
@@ -990,27 +1118,60 @@ class _DrawingCellState extends State<DrawingCell>
     );
   }
 
-  Widget _colorBtn(Color c) {
-    final sel = _color.toARGB32() == c.toARGB32();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() {
-        _color = c;
-      }),
-      child: Container(
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(
-          color: c,
-          border: Border.all(
-            color: sel ? yCream : yInk,
-            width: sel ? 3 : yLineThin,
+}
+
+class _EyedropperHint extends StatelessWidget {
+  final VoidCallback onCancel;
+  const _EyedropperHint({required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineMid),
+        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.colorize, size: 14, color: yInk),
+          const SizedBox(width: 8),
+          Text(
+            'TOCA UN TRAZO PARA COPIAR EL COLOR',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yInk,
+            ),
           ),
-        ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onCancel,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: yInk,
+                border: Border.all(color: yInk, width: 1.5),
+              ),
+              child: Text(
+                'CANCELAR',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: yCream,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-
 }
 
 // ─── Painters ─────────────────────────────────────────────────────────────

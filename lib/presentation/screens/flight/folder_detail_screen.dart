@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -384,12 +386,35 @@ class _NoteCard extends ConsumerWidget {
     return 'hace ${(diff.inDays / 7).floor()} sem';
   }
 
-  String _previewOf(String md) {
-    final clean = md
+  String _previewOf(Note n) {
+    if (n.kind == NoteKind.notebook) return _notebookPreview(n);
+    if (n.kind == NoteKind.whiteboard) return 'Pizarra infinita · pan + zoom';
+    final clean = n.rawMarkdown
         .replaceAll(RegExp(r'#{1,6}\s+'), '')
         .replaceAll(RegExp(r'[*_`~]'), '')
         .replaceAll(RegExp(r'\n+'), ' ');
     return clean.length > 220 ? '${clean.substring(0, 220)}…' : clean;
+  }
+
+  String _notebookPreview(Note n) {
+    final bg = _readNotebookBackground(n.rawMarkdown);
+    return switch (bg) {
+      'lined' => 'Cuaderno A4 · líneas',
+      'grid' => 'Cuaderno A4 · cuadrícula',
+      'dotted' => 'Cuaderno A4 · puntos',
+      _ => 'Cuaderno A4 · blanco',
+    };
+  }
+
+  String _readNotebookBackground(String raw) {
+    if (raw.isEmpty) return 'blank';
+    try {
+      final meta = jsonDecode(raw);
+      if (meta is Map && meta['pageBackground'] is String) {
+        return meta['pageBackground'] as String;
+      }
+    } catch (_) {}
+    return 'blank';
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
@@ -438,7 +463,7 @@ class _NoteCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pinned = ref.watch(pinnedNotesProvider).contains(note.id);
     final bg = note.color ?? folder.color;
-    final preview = _previewOf(note.rawMarkdown);
+    final preview = _previewOf(note);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.push(
@@ -464,6 +489,8 @@ class _NoteCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _NoteKindBadge(kind: note.kind),
+                const SizedBox(height: 6),
                 Text(
                   note.displayTitle,
                   maxLines: 1,
@@ -577,6 +604,8 @@ class _NoteRow extends ConsumerWidget {
         ),
         child: Row(
           children: [
+            _NoteKindGlyph(kind: note.kind, color: yCream),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(note.displayTitle,
                   maxLines: 1,
@@ -593,6 +622,67 @@ class _NoteRow extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Note kind indicators ────────────────────────────────────────────────────
+
+({IconData icon, String label}) _kindMeta(NoteKind k) => switch (k) {
+      NoteKind.notebook => (icon: Icons.menu_book_outlined, label: 'CUADERNO'),
+      NoteKind.whiteboard => (icon: Icons.gesture, label: 'PIZARRA'),
+      NoteKind.block => (icon: Icons.notes_outlined, label: 'NOTA'),
+    };
+
+class _NoteKindBadge extends StatelessWidget {
+  final NoteKind kind;
+  const _NoteKindBadge({required this.kind});
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = _kindMeta(kind);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 2, 8, 3),
+      decoration: BoxDecoration(
+        color: yCream.withValues(alpha: 0.18),
+        border: Border.all(color: yCream, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(meta.icon, size: 11, color: yCream),
+          const SizedBox(width: 5),
+          Text(
+            meta.label,
+            style: yMono(
+              size: 9,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yCream,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteKindGlyph extends StatelessWidget {
+  final NoteKind kind;
+  final Color color;
+  const _NoteKindGlyph({required this.kind, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final meta = _kindMeta(kind);
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1.5),
+      ),
+      child: Icon(meta.icon, size: 14, color: color),
     );
   }
 }
