@@ -17,13 +17,10 @@ import '../../../domain/models/task.dart';
 import 'note_block_actions.dart';
 import 'note_cell_model.dart';
 
-/// Base layout width of a task block before [CanvasTaskBlock.w] scaling. The
-/// block content is laid out at this width and uniformly scaled to fill the
-/// box, so resizing the box scales the whole block (crisp, since it's a live
-/// widget — never a bitmap).
-const double kCanvasTaskBlockBaseW = 320.0;
-
-/// Default box width for a freshly inserted block (scale 1.0).
+/// Default box width for a freshly inserted block (scale 1.0). The card content
+/// is laid out at `w / scale` and uniformly scaled by [CanvasTaskBlock.scale]
+/// via a `FittedBox`, so corner-resize grows the whole block (text included)
+/// while side-resize reflows the text at the same font size.
 const double kCanvasTaskBlockDefaultW = 320.0;
 
 final _kanbanByTaskProvider =
@@ -89,10 +86,6 @@ class _CanvasTaskBlockOverlayState
   final _contentKey = GlobalKey();
   bool _showInput = false;
   OverlayEntry? _inputEntry;
-  // When the user resizes via a corner (uniform scale) we lock the height so
-  // [_reportHeight] doesn't overwrite it. Side-resize (width-only) keeps the
-  // lock so the user controls both axes explicitly.
-  bool _heightLocked = false;
 
   NoteBlockActions get _actions => NoteBlockActions(
         ref: ref,
@@ -111,22 +104,19 @@ class _CanvasTaskBlockOverlayState
   @override
   void didUpdateWidget(covariant CanvasTaskBlockOverlay old) {
     super.didUpdateWidget(old);
-    final wChanged = (old.block.w - widget.block.w).abs() > 0.5;
-    final hChanged = (old.block.h - widget.block.h).abs() > 0.5;
-    if (wChanged && hChanged) {
-      _heightLocked = true;
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _reportHeight());
   }
 
+  /// Reports the block's rendered footprint height: the content's natural
+  /// height at the current layout width, times [CanvasTaskBlock.scale].
   void _reportHeight() {
-    if (_heightLocked) return;
     final ctx = _contentKey.currentContext;
     if (ctx == null || !mounted) return;
     final hb = ctx.size?.height;
     if (hb == null || hb <= 0) return;
-    if ((hb - widget.block.h).abs() > 0.5) {
-      widget.onHeightMeasured(hb);
+    final target = hb * widget.block.scale;
+    if ((target - widget.block.h).abs() > 0.5) {
+      widget.onHeightMeasured(target);
     }
   }
 
@@ -355,29 +345,24 @@ class _CanvasTaskBlockOverlayState
     // Keep the block's stored height in sync with its content after each build.
     WidgetsBinding.instance.addPostFrameCallback((_) => _reportHeight());
 
-    final Widget box;
-    if (_heightLocked) {
-      // User resized via corner (or after corner) – respect the explicit h.
-      // FittedBox forces uniform scale so the widget visually matches the box.
-      box = SizedBox(
-        width: widget.block.w,
-        height: widget.block.h,
-        child: FittedBox(
-          fit: BoxFit.fill,
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: kCanvasTaskBlockBaseW,
-            child: KeyedSubtree(key: _contentKey, child: _buildCard()),
-          ),
+    final scale = widget.block.scale;
+    // Content lays out (text reflow) at this width; FittedBox.fitWidth then
+    // scales it uniformly up to the rendered footprint width [block.w]. The
+    // scale factor it applies is block.w / contentWidth == scale.
+    final contentWidth =
+        scale > 0 ? widget.block.w / scale : widget.block.w;
+
+    final Widget box = SizedBox(
+      width: widget.block.w,
+      child: FittedBox(
+        fit: BoxFit.fitWidth,
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: contentWidth,
+          child: KeyedSubtree(key: _contentKey, child: _buildCard()),
         ),
-      );
-    } else {
-      // Fresh block or side-resize: width drives layout; height is natural.
-      box = SizedBox(
-        width: widget.block.w,
-        child: KeyedSubtree(key: _contentKey, child: _buildCard()),
-      );
-    }
+      ),
+    );
 
     final angle = widget.block.rotation;
     if (angle == 0.0) return box;

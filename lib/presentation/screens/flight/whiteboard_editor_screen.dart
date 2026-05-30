@@ -28,6 +28,7 @@ import 'eraser_mode_popup.dart';
 import 'fountain_pen_engine.dart';
 import 'note_cell_model.dart';
 import 'shape_recognizer.dart';
+import 'shape_picker_popup.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
@@ -86,6 +87,8 @@ class _WhiteboardEditorScreenState
   bool _bgColorPickerOpen = false;
   EraserMode _eraserMode = EraserMode.stroke;
   bool _eraserPopupOpen = false;
+  bool _shapePopupOpen = false;
+  bool _morePopupOpen = false;
   Offset? _eraserCursor; // screen pos for the eraser indicator
   // Raw (un-stabilized) pen points — used for scribble-erase detection so the
   // stabilizer's smoothing doesn't hide the zigzags.
@@ -104,6 +107,10 @@ class _WhiteboardEditorScreenState
       _gestureBefore;
   bool _gestureChanged = false;
   DrawingStroke? _active;
+  // Ticked on every live point added to [_active]. Repaints only the active
+  // stroke layer (its own RepaintBoundary) without a full-canvas setState, so
+  // the wet stroke keeps up with the stylus instead of trailing it.
+  final ValueNotifier<int> _activeTick = ValueNotifier(0);
   Timer? _holdTimer;
   Offset? _holdAnchor;
   static const _holdTolerance2 = 400.0; // 20px squared
@@ -128,6 +135,10 @@ class _WhiteboardEditorScreenState
   bool _colorPickerOpen = false;
   List<Color> _recentColors = const [];
   List<Color> _savedColors = const [];
+  // Favorite that was selected (== current color) when the color picker opened.
+  // Lets starring a refined color replace that favorite in place instead of
+  // evicting the oldest. Null when no favorite was selected.
+  Color? _pickerFavoriteAnchor;
   List<Color> _bgSavedColors = const [];
   bool _eyedropperMode = false;
   bool _lockBeforeEyedropper = false;
@@ -217,7 +228,15 @@ class _WhiteboardEditorScreenState
   void _toggleColorPicker() {
     setState(() {
       _colorPickerOpen = !_colorPickerOpen;
-      if (_colorPickerOpen) _widthPickerOpen = false;
+      if (_colorPickerOpen) {
+        _widthPickerOpen = false;
+        final v = _color.toARGB32();
+        _pickerFavoriteAnchor = _savedColors
+            .cast<Color?>()
+            .firstWhere((c) => c!.toARGB32() == v, orElse: () => null);
+      } else {
+        _pickerFavoriteAnchor = null;
+      }
     });
   }
 
@@ -246,12 +265,26 @@ class _WhiteboardEditorScreenState
   }
 
   void _starColor(Color value) {
-    final isStarred =
-        _savedColors.any((c) => c.toARGB32() == value.toARGB32());
+    final v = value.toARGB32();
+    final isStarred = _savedColors.any((c) => c.toARGB32() == v);
     setState(() {
-      _savedColors = isStarred
-          ? SavedColorsPrefs.remove(_savedColors, value)
-          : SavedColorsPrefs.push(_savedColors, value);
+      if (isStarred) {
+        _savedColors = SavedColorsPrefs.remove(_savedColors, value);
+      } else {
+        final anchor = _pickerFavoriteAnchor;
+        final anchorIdx = anchor == null
+            ? -1
+            : _savedColors.indexWhere((c) => c.toARGB32() == anchor.toARGB32());
+        if (anchorIdx >= 0) {
+          // A favorite was selected: replace it in place with the new shade.
+          final list = List<Color>.from(_savedColors);
+          list[anchorIdx] = value;
+          _savedColors = list;
+        } else {
+          _savedColors = SavedColorsPrefs.push(_savedColors, value);
+        }
+      }
+      _pickerFavoriteAnchor = isStarred ? _pickerFavoriteAnchor : null;
     });
     SavedColorsPrefs.save(_savedColors);
     HapticFeedback.selectionClick();
@@ -310,6 +343,7 @@ class _WhiteboardEditorScreenState
     _lassoAnimCtrl.dispose();
     _imgCache?.dispose();
     _viewCtrl.dispose();
+    _activeTick.dispose();
     super.dispose();
   }
 
@@ -587,6 +621,64 @@ class _WhiteboardEditorScreenState
     HapticFeedback.lightImpact();
   }
 
+  void _toggleShapePopup() {
+    setState(() {
+      _shapePopupOpen = !_shapePopupOpen;
+      if (_shapePopupOpen) {
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _imagePanelOpen = false;
+        _bgPopupOpen = false;
+        _eraserPopupOpen = false;
+        _morePopupOpen = false;
+      }
+    });
+  }
+
+  void _toggleMorePopup() {
+    setState(() {
+      _morePopupOpen = !_morePopupOpen;
+      if (_morePopupOpen) {
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _imagePanelOpen = false;
+        _bgPopupOpen = false;
+        _eraserPopupOpen = false;
+        _shapePopupOpen = false;
+      }
+    });
+  }
+
+  /// Drop a clean shape at the viewport centre, already lasso-selected so it can
+  /// be moved/resized immediately. Undoable (snapshot/commit) and persisted.
+  void _insertShape(ShapeKind kind) {
+    final screen = MediaQuery.of(context).size;
+    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+    // ~constant footprint on screen regardless of zoom.
+    final size = 160 / _viewScale;
+    final closed = shapeKindIsClosed(kind);
+    final stroke = DrawingStroke(
+      colorValue: _color.toARGB32(),
+      strokeWidth: _strokeW,
+      isShape: true,
+      filled: closed && _fillShapes,
+      points: buildShape(kind, center.dx, center.dy, size, size),
+    );
+    final before = _snapshot();
+    setState(() {
+      _data.strokes.add(stroke);
+      _tool = DrawTool.lasso;
+      _shapePopupOpen = false;
+      _toolbarVisible = false;
+    });
+    final idx = _data.strokes.length - 1;
+    _lassoCtrl.hitScale = _viewScale;
+    _lassoCtrl.selectRange(_data.strokes, idx, idx + 1);
+    _commit(before);
+    _persist();
+    HapticFeedback.lightImpact();
+  }
+
   double get _viewScale => _viewCtrl.value.getMaxScaleOnAxis();
 
   Offset _screenToWorld(Offset screen) {
@@ -856,12 +948,13 @@ class _WhiteboardEditorScreenState
     final sp = _stabilize(p);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      setState(() => _active!.points.add([
+      _active!.points.add([
         sp.dx,
         sp.dy,
         pressure,
         DateTime.now().millisecondsSinceEpoch.toDouble(),
-      ]));
+      ]);
+      _activeTick.value++;
       return;
     }
     final pts = _active!.points;
@@ -871,7 +964,8 @@ class _WhiteboardEditorScreenState
       final dy = sp.dy - pts.last[1];
       if (dx * dx + dy * dy < _minDist2) return;
     }
-    setState(() => pts.add([sp.dx, sp.dy]));
+    pts.add([sp.dx, sp.dy]);
+    _activeTick.value++;
     if (_holdAnchor != null) {
       final dx = sp.dx - _holdAnchor!.dx;
       final dy = sp.dy - _holdAnchor!.dy;
@@ -1194,11 +1288,13 @@ class _WhiteboardEditorScreenState
           _data.strokes, _data.images, _data.taskBlocks, 0);
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
-      final moved = _lassoCtrl.isSideResize
+      final side = _lassoCtrl.isSideResize;
+      final cornerScale = _lassoCtrl.resizeScale;
+      final moved = side
           ? (_lassoCtrl.resizeScaleX - 1).abs() > 0.02 ||
               (_lassoCtrl.resizeScaleY - 1).abs() > 0.02
-          : (_lassoCtrl.resizeScale - 1).abs() > 0.02;
-      _lassoCtrl.isSideResize
+          : (cornerScale - 1).abs() > 0.02;
+      side
           ? _lassoCtrl.finishSideResize(
               _data.strokes, _data.images, _data.taskBlocks)
           : _lassoCtrl.finishResize(
@@ -1206,6 +1302,9 @@ class _WhiteboardEditorScreenState
       for (final i in _lassoCtrl.selectedBlockIndices) {
         if (i >= _data.taskBlocks.length) continue;
         final b = _data.taskBlocks[i];
+        // Corner = uniform scale: grow the block content (text) with the box.
+        // Side = width reflow only (scale unchanged).
+        if (!side) b.scale = (b.scale * cornerScale).clamp(0.3, 8.0);
         if (b.w < 220) b.w = 220;
         if (b.h < 90) b.h = 90;
       }
@@ -1758,28 +1857,38 @@ class _WhiteboardEditorScreenState
                                 height: _kCanvasH,
                                 child: Stack(
                                   children: [
-                                    CustomPaint(
-                                      painter: _CanvasPainter(
-                                        strokes: _data.strokes,
-                                        images: _data.images,
-                                        imageCache: _imgCache,
-                                        background: _data.background,
-                                        paper: bgPaper(_data.bgColorValue, yCream),
-                                        active: _active,
-                                        locked: _locked,
-                                        visibleRect: visibleRect,
-                                        hiddenIndices: (_lassoCtrl.phase == LassoPhase.moving ||
-                                                _lassoCtrl.phase == LassoPhase.resizing ||
-                                                _lassoCtrl.phase == LassoPhase.rotating)
-                                            ? _lassoCtrl.selectedIndices
-                                            : null,
-                                        hiddenImageIndices: (_lassoCtrl.phase == LassoPhase.moving ||
-                                                _lassoCtrl.phase == LassoPhase.resizing ||
-                                                _lassoCtrl.phase == LassoPhase.rotating)
-                                            ? _lassoCtrl.selectedImageIndices
-                                            : null,
+                                    RepaintBoundary(
+                                      child: CustomPaint(
+                                        painter: _CanvasPainter(
+                                          strokes: _data.strokes,
+                                          images: _data.images,
+                                          imageCache: _imgCache,
+                                          background: _data.background,
+                                          paper: bgPaper(_data.bgColorValue, yCream),
+                                          visibleRect: visibleRect,
+                                          hiddenIndices: (_lassoCtrl.phase == LassoPhase.moving ||
+                                                  _lassoCtrl.phase == LassoPhase.resizing ||
+                                                  _lassoCtrl.phase == LassoPhase.rotating)
+                                              ? _lassoCtrl.selectedIndices
+                                              : null,
+                                          hiddenImageIndices: (_lassoCtrl.phase == LassoPhase.moving ||
+                                                  _lassoCtrl.phase == LassoPhase.resizing ||
+                                                  _lassoCtrl.phase == LassoPhase.rotating)
+                                              ? _lassoCtrl.selectedImageIndices
+                                              : null,
+                                        ),
+                                        size: const Size(_kCanvasW, _kCanvasH),
                                       ),
-                                      size: const Size(_kCanvasW, _kCanvasH),
+                                    ),
+                                    RepaintBoundary(
+                                      child: AnimatedBuilder(
+                                        animation: _activeTick,
+                                        builder: (_, _) => CustomPaint(
+                                          painter: _ActiveStrokePainter(
+                                              active: _active),
+                                          size: const Size(_kCanvasW, _kCanvasH),
+                                        ),
+                                      ),
                                     ),
                                     ..._buildTaskBlockOverlays(),
                                     if (_lassoCtrl.phase != LassoPhase.idle)
@@ -1937,6 +2046,40 @@ class _WhiteboardEditorScreenState
               ),
             ),
           ],
+          if (_shapePopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _shapePopupOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
+              ),
+            ),
+          ],
+          if (_morePopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _morePopupOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _buildMorePopup(),
+              ),
+            ),
+          ],
           if (_widthPickerOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -1993,170 +2136,133 @@ class _WhiteboardEditorScreenState
   }
 
   Widget _toolbar() {
-    final paddingH = MediaQuery.of(context).size.width * 0.08;
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
         border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: paddingH.clamp(16.0, 120.0), vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-          children: [
-            _toolBtn(
-              icon: _locked ? Icons.lock : Icons.lock_open,
-              active: _locked,
-              label: _locked ? 'ZOOM OFF' : 'ZOOM ON',
-              onTap: () => setState(() => _locked = !_locked),
-            ),
-            const SizedBox(width: 16),
-            _toolBtn(
-              icon: Icons.edit_outlined,
-              active: _tool == DrawTool.pen,
-              onTap: () => _selectTool(DrawTool.pen),
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.gesture,
-              active: _tool == DrawTool.fountainPen,
-              onTap: () => _selectTool(DrawTool.fountainPen),
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.highlight,
-              active: _tool == DrawTool.highlighter,
-              onTap: () => _selectTool(DrawTool.highlighter),
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: _eraserMode == EraserMode.partial
-                  ? Icons.cleaning_services_outlined
-                  : Icons.auto_fix_high,
-              active: _tool == DrawTool.eraser,
-              onTap: () {
-                if (_tool == DrawTool.eraser) {
-                  setState(() => _eraserPopupOpen = !_eraserPopupOpen);
-                } else {
-                  _selectTool(DrawTool.eraser);
-                }
-              },
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.highlight_alt,
-              active: _tool == DrawTool.lasso,
-              label: 'LAZO',
-              onTap: () => _selectTool(DrawTool.lasso),
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.image_outlined,
-              active: _imagePanelOpen,
-              onTap: _toggleImagePanel,
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.checklist,
-              active: false,
-              label: 'TAREAS',
-              onTap: _insertTaskBlock,
-            ),
-            _divider(),
-            ColorButton(
-              currentColor: _color,
-              isOpen: _colorPickerOpen,
-              onTap: _toggleColorPicker,
-            ),
-            if (_savedColors.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              SavedColorsStrip(
-                savedColors: _savedColors,
-                currentColor: _color,
-                onPick: (c) {
-                  setState(() => _color = c);
-                  _commitColor(c);
+            children: [
+              _toolBtn(
+                icon: Icons.edit_outlined,
+                active: _tool == DrawTool.pen,
+                tooltip: 'Lápiz',
+                onTap: () => _selectTool(DrawTool.pen),
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.gesture,
+                active: _tool == DrawTool.fountainPen,
+                tooltip: 'Pluma fuente',
+                onTap: () => _selectTool(DrawTool.fountainPen),
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.highlight,
+                active: _tool == DrawTool.highlighter,
+                tooltip: 'Resaltador',
+                onTap: () => _selectTool(DrawTool.highlighter),
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: _eraserMode == EraserMode.partial
+                    ? Icons.cleaning_services_outlined
+                    : Icons.auto_fix_high,
+                active: _tool == DrawTool.eraser,
+                tooltip: 'Borrador',
+                onTap: () {
+                  if (_tool == DrawTool.eraser) {
+                    setState(() => _eraserPopupOpen = !_eraserPopupOpen);
+                  } else {
+                    _selectTool(DrawTool.eraser);
+                  }
                 },
               ),
-            ],
-            const SizedBox(width: 10),
-            _divider(),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.highlight_alt,
+                active: _tool == DrawTool.lasso,
+                tooltip: 'Lazo',
+                onTap: () => _selectTool(DrawTool.lasso),
+              ),
+              _divider(),
+              _toolBtn(
+                icon: Icons.image_outlined,
+                active: _imagePanelOpen,
+                tooltip: 'Imagen',
+                onTap: _toggleImagePanel,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.checklist,
+                active: false,
+                tooltip: 'Tareas',
+                onTap: _insertTaskBlock,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.category_outlined,
+                active: _shapePopupOpen,
+                tooltip: 'Figuras',
+                onTap: _toggleShapePopup,
+              ),
+              _divider(),
+              ColorButton(
+                currentColor: _color,
+                isOpen: _colorPickerOpen,
+                onTap: _toggleColorPicker,
+              ),
+              if (_savedColors.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                SavedColorsStrip(
+                  savedColors: _savedColors,
+                  currentColor: _color,
+                  onPick: (c) {
+                    setState(() => _color = c);
+                    _commitColor(c);
+                  },
+                ),
+              ],
+              const SizedBox(width: 10),
+              _divider(),
               StrokeWidthButton(
                 currentWidth: _strokeW,
                 isOpen: _widthPickerOpen,
                 accentColor: _accent,
                 onTap: _toggleWidthPicker,
               ),
-            const SizedBox(width: 10),
-            _divider(),
-            _toolBtn(
-              icon: Icons.undo,
-              active: false,
-              enabled: _undoStack.isNotEmpty,
-              onTap: _undo,
-            ),
-            const SizedBox(width: 10),
-            _toolBtn(
-              icon: Icons.redo,
-              active: false,
-              enabled: _redoStack.isNotEmpty,
-              onTap: _redo,
-            ),
-            _divider(),
-            _toolBtn(
-              icon: Icons.auto_graph,
-              active: _stabilizer.isOn,
-              label: _stabilizer.label,
-              onTap: () {
-                setState(() => _stabilizer = _stabilizer.next);
-                DrawingPrefs.saveStabilizer(_stabilizer);
-              },
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.format_color_fill,
-              active: _fillShapes,
-              label: 'RELLENO',
-              onTap: () {
-                setState(() => _fillShapes = !_fillShapes);
-                DrawingPrefs.saveFill(_fillShapes);
-              },
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.grid_on,
-              active: _bgPopupOpen,
-              label: 'FONDO',
-              onTap: _toggleBgPopup,
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.fit_screen,
-              active: false,
-              label: 'ENCUADRAR',
-              onTap: _zoomToFit,
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.back_hand_outlined,
-              active: _palmRejection,
-              label: 'PALMA',
-              onTap: () {
-                setState(() => _palmRejection = !_palmRejection);
-                DrawingPrefs.savePalm(_palmRejection);
-              },
-            ),
-            const SizedBox(width: 16),
-            _toolBtn(
-              icon: Icons.delete_outline,
-              active: false,
-              onTap: _confirmClear,
-            ),
-          ],
+              _divider(),
+              _toolBtn(
+                icon: Icons.undo,
+                active: false,
+                enabled: _undoStack.isNotEmpty,
+                tooltip: 'Deshacer',
+                onTap: _undo,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.redo,
+                active: false,
+                enabled: _redoStack.isNotEmpty,
+                tooltip: 'Rehacer',
+                onTap: _redo,
+              ),
+              _divider(),
+              _toolBtn(
+                icon: Icons.more_horiz,
+                active: _morePopupOpen,
+                tooltip: 'Más',
+                onTap: _toggleMorePopup,
+              ),
+            ],
+          ),
         ),
       ),
-    ));
+    );
   }
 
   Widget _divider() => Container(
@@ -2171,9 +2277,10 @@ class _WhiteboardEditorScreenState
     required bool active,
     bool enabled = true,
     String? label,
+    String? tooltip,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    Widget btn = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
       child: Container(
@@ -2211,6 +2318,93 @@ class _WhiteboardEditorScreenState
             ],
           ],
         ),
+      ),
+    );
+    if (tooltip != null && label == null) {
+      btn = Tooltip(
+        message: tooltip,
+        triggerMode: TooltipTriggerMode.longPress,
+        child: btn,
+      );
+    }
+    return btn;
+  }
+
+  /// Secondary / occasional controls, tucked behind the toolbar's "more" (⋯)
+  /// button so the main row stays uncluttered and edge-to-edge.
+  Widget _buildMorePopup() {
+    return Container(
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineMid),
+        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _toolBtn(
+            icon: _locked ? Icons.lock : Icons.lock_open,
+            active: _locked,
+            label: _locked ? 'ZOOM OFF' : 'ZOOM ON',
+            onTap: () => setState(() => _locked = !_locked),
+          ),
+          _toolBtn(
+            icon: Icons.auto_graph,
+            active: _stabilizer.isOn,
+            label: 'ESTAB · ${_stabilizer.label}',
+            onTap: () {
+              setState(() => _stabilizer = _stabilizer.next);
+              DrawingPrefs.saveStabilizer(_stabilizer);
+            },
+          ),
+          _toolBtn(
+            icon: Icons.format_color_fill,
+            active: _fillShapes,
+            label: 'RELLENO',
+            onTap: () {
+              setState(() => _fillShapes = !_fillShapes);
+              DrawingPrefs.saveFill(_fillShapes);
+            },
+          ),
+          _toolBtn(
+            icon: Icons.back_hand_outlined,
+            active: _palmRejection,
+            label: 'PALMA',
+            onTap: () {
+              setState(() => _palmRejection = !_palmRejection);
+              DrawingPrefs.savePalm(_palmRejection);
+            },
+          ),
+          _toolBtn(
+            icon: Icons.grid_on,
+            active: _bgPopupOpen,
+            label: 'FONDO',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _toggleBgPopup();
+            },
+          ),
+          _toolBtn(
+            icon: Icons.fit_screen,
+            active: false,
+            label: 'ENCUADRAR',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _zoomToFit();
+            },
+          ),
+          _toolBtn(
+            icon: Icons.delete_outline,
+            active: false,
+            label: 'BORRAR',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _confirmClear();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -2382,8 +2576,6 @@ class _CanvasPainter extends CustomPainter {
   final CanvasImageCache? imageCache;
   final PageBackground background;
   final Color paper;
-  final DrawingStroke? active;
-  final bool locked;
   final Rect visibleRect;
   final Set<int>? hiddenIndices;
   final Set<int>? hiddenImageIndices;
@@ -2394,8 +2586,6 @@ class _CanvasPainter extends CustomPainter {
     required this.imageCache,
     required this.background,
     required this.paper,
-    required this.active,
-    required this.locked,
     required this.visibleRect,
     this.hiddenIndices,
     this.hiddenImageIndices,
@@ -2421,27 +2611,6 @@ class _CanvasPainter extends CustomPainter {
       if (hiddenIndices != null && hiddenIndices!.contains(i)) continue;
       if (_strokeInRect(strokes[i], vr)) _draw(canvas, strokes[i]);
     }
-    if (active != null && _strokeInRect(active!, vr)) _draw(canvas, active!);
-    // Hint.
-    if (!locked) {
-      const center = Offset(_kCanvasW / 2, _kCanvasH / 2 - 8);
-      if (vr.contains(center)) {
-        final tp = TextPainter(
-          text: TextSpan(
-            text: 'BLOQUEAR PARA DIBUJAR · PINCH PARA ZOOM',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-              color: yMuted.withValues(alpha: 0.45),
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
-      }
-    }
   }
 
   bool _strokeInRect(DrawingStroke s, Rect r) {
@@ -2451,19 +2620,31 @@ class _CanvasPainter extends CustomPainter {
     return false;
   }
 
+  // Always repaint when reconstructed. The parent only rebuilds this layer on
+  // discrete events (commit, pan/zoom, tool change) — never on live stroke
+  // points, which tick the separate [_ActiveStrokePainter] layer instead.
   @override
-  bool shouldRepaint(_CanvasPainter old) =>
-      old.visibleRect != visibleRect ||
-      old.locked != locked ||
-      old.strokes != strokes ||
-      old.images != images ||
-      old.background != background ||
-      old.paper != paper ||
-      old.active != active ||
-      old.hiddenImageIndices != hiddenImageIndices;
+  bool shouldRepaint(_CanvasPainter old) => true;
 }
 
 void _draw(Canvas canvas, DrawingStroke stroke) => drawStroke(canvas, stroke);
+
+/// Paints only the in-progress stroke (world coords), in its own
+/// RepaintBoundary, so live point additions don't repaint the whole canvas.
+class _ActiveStrokePainter extends CustomPainter {
+  final DrawingStroke? active;
+
+  _ActiveStrokePainter({required this.active});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (active == null) return;
+    drawStroke(canvas, active!);
+  }
+
+  @override
+  bool shouldRepaint(_ActiveStrokePainter old) => true;
+}
 
 // ─── Linked-spaces bar (under header) ─────────────────────────────────────
 

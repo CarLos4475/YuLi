@@ -38,6 +38,8 @@ Do NOT install, reinitialize, or reconfigure codegraph unless explicitly asked.
 | `ARCHITECTURE.md` | High-level system architecture, stack, folder structure |
 | `DECISIONS.md` | Important technical decisions with reasoning |
 | `KNOWN_ISSUES.md` | Persistent bugs, framework pitfalls, edge cases |
+| `PENDIENTES.md` | Cambios implementados que faltan verificar en dispositivo (borrar lo confirmado) |
+| `ONLINE_FEATURES.md` | Roadmap/discusión de features online opcionales (no incluye Supabase sync) |
 | `MEMORY.md` | Índice de todos los archivos de contexto |
 | `user_profile.md` | Perfil del usuario (idioma, expertise, preferencias) |
 | `feedback_workflow.md` | Regla "explica antes de codear" en bugs complejos |

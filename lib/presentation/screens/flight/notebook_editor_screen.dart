@@ -34,6 +34,7 @@ import 'note_cell_model.dart';
 import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
+import 'shape_picker_popup.dart';
 import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
 
@@ -64,6 +65,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _palmRejection = true;
   DrawingStroke? _active;
   int? _activePageIndex;
+  // Ticked on every live point added to [_active]. Repaints only the active
+  // stroke layer (its own RepaintBoundary) without a full-canvas setState, so
+  // the wet stroke keeps up with the stylus instead of trailing it.
+  final ValueNotifier<int> _activeTick = ValueNotifier(0);
   StabilizerLevel _stabilizer = StabilizerLevel.off;
   LiveStabilizer? _stab;
   bool _fillShapes = false;
@@ -72,6 +77,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   CanvasImageCache? _imgCache;
   String? _imageDirPath;
   bool _imagePanelOpen = false;
+  bool _shapePopupOpen = false;
+  bool _morePopupOpen = false;
   // Post-snap live adjust state.
   ShapeKind? _snapKind;
   List<List<double>>? _snapBasePoints;
@@ -136,6 +143,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _colorPickerOpen = false;
   List<Color> _recentColors = const [];
   List<Color> _savedColors = const [];
+  // Favorite selected (== current color) when the color picker opened, so
+  // starring a refined color replaces it in place instead of evicting oldest.
+  Color? _pickerFavoriteAnchor;
   List<Color> _bgSavedColors = const [];
   bool _eyedropperMode = false;
   EraserMode _eraserMode = EraserMode.stroke;
@@ -226,6 +236,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _drawerAnimCtrl.dispose();
     _imgCache?.dispose();
     _viewCtrl.dispose();
+    _activeTick.dispose();
     super.dispose();
   }
 
@@ -436,7 +447,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _toggleColorPicker() {
     setState(() {
       _colorPickerOpen = !_colorPickerOpen;
-      if (_colorPickerOpen) _widthPickerOpen = false;
+      if (_colorPickerOpen) {
+        _widthPickerOpen = false;
+        final v = _color.toARGB32();
+        _pickerFavoriteAnchor = _savedColors
+            .cast<Color?>()
+            .firstWhere((c) => c!.toARGB32() == v, orElse: () => null);
+      } else {
+        _pickerFavoriteAnchor = null;
+      }
     });
   }
 
@@ -480,12 +499,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _starColor(Color value) {
-    final isStarred =
-        _savedColors.any((c) => c.toARGB32() == value.toARGB32());
+    final v = value.toARGB32();
+    final isStarred = _savedColors.any((c) => c.toARGB32() == v);
     setState(() {
-      _savedColors = isStarred
-          ? SavedColorsPrefs.remove(_savedColors, value)
-          : SavedColorsPrefs.push(_savedColors, value);
+      if (isStarred) {
+        _savedColors = SavedColorsPrefs.remove(_savedColors, value);
+      } else {
+        final anchor = _pickerFavoriteAnchor;
+        final anchorIdx = anchor == null
+            ? -1
+            : _savedColors.indexWhere((c) => c.toARGB32() == anchor.toARGB32());
+        if (anchorIdx >= 0) {
+          // A favorite was selected: replace it in place with the new shade.
+          final list = List<Color>.from(_savedColors);
+          list[anchorIdx] = value;
+          _savedColors = list;
+        } else {
+          _savedColors = SavedColorsPrefs.push(_savedColors, value);
+        }
+      }
+      _pickerFavoriteAnchor = isStarred ? _pickerFavoriteAnchor : null;
     });
     SavedColorsPrefs.save(_savedColors);
     HapticFeedback.selectionClick();
@@ -1055,12 +1088,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final sp = _stabilize(local);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      setState(() => _active!.points.add([
+      _active!.points.add([
         sp.dx,
         sp.dy,
         pressure,
         DateTime.now().millisecondsSinceEpoch.toDouble(),
-      ]));
+      ]);
+      _activeTick.value++;
       return;
     }
     final pts = _active!.points;
@@ -1069,7 +1103,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final dy = sp.dy - pts.last[1];
       if (dx * dx + dy * dy < _minDist2) return;
     }
-    setState(() => pts.add([sp.dx, sp.dy]));
+    pts.add([sp.dx, sp.dy]);
+    _activeTick.value++;
     if (_holdAnchor != null) {
       final dx = world.dx - _holdAnchor!.dx;
       final dy = world.dy - _holdAnchor!.dy;
@@ -1455,16 +1490,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _lassoCtrl.finishMove(strokes, images, blocks);
       _finishTransformOrTap(moved, strokes, images, blocks);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
-      final moved = _lassoCtrl.isSideResize
+      final side = _lassoCtrl.isSideResize;
+      final cornerScale = _lassoCtrl.resizeScale;
+      final moved = side
           ? (_lassoCtrl.resizeScaleX - 1).abs() > 0.02 ||
               (_lassoCtrl.resizeScaleY - 1).abs() > 0.02
-          : (_lassoCtrl.resizeScale - 1).abs() > 0.02;
-      _lassoCtrl.isSideResize
+          : (cornerScale - 1).abs() > 0.02;
+      side
           ? _lassoCtrl.finishSideResize(strokes, images, blocks)
           : _lassoCtrl.finishResize(strokes, images, blocks);
       for (final i in _lassoCtrl.selectedBlockIndices) {
         if (i >= blocks.length) continue;
         final b = blocks[i];
+        // Corner = uniform scale: grow the block content (text) with the box.
+        // Side = width reflow only (scale unchanged).
+        if (!side) b.scale = (b.scale * cornerScale).clamp(0.3, 8.0);
         if (b.w < 220) b.w = 220;
         if (b.h < 90) b.h = 90;
       }
@@ -1589,6 +1629,70 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _pageData[_pageBlockIds[pageIdx]]?.taskBlocks.add(block);
       if (_tool != DrawTool.lasso) _tool = DrawTool.lasso;
     });
+    _commit(before);
+    _persistPage(pageIdx);
+    HapticFeedback.lightImpact();
+  }
+
+  void _toggleShapePopup() {
+    setState(() {
+      _shapePopupOpen = !_shapePopupOpen;
+      if (_shapePopupOpen) {
+        _imagePanelOpen = false;
+        _morePopupOpen = false;
+      }
+    });
+  }
+
+  void _toggleMorePopup() {
+    setState(() {
+      _morePopupOpen = !_morePopupOpen;
+      if (_morePopupOpen) {
+        _imagePanelOpen = false;
+        _shapePopupOpen = false;
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _bgPopupOpen = false;
+      }
+    });
+  }
+
+  /// Drop a clean shape at the viewport centre (into the page under it), already
+  /// lasso-selected so it can be moved/resized immediately. Undoable + persisted.
+  void _insertShape(ShapeKind kind) {
+    if (_pageBlockIds.isEmpty) return;
+    final screen = MediaQuery.of(context).size;
+    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+    final pageIdx =
+        _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
+    final data = _pageData[_pageBlockIds[pageIdx]];
+    if (data == null) return;
+    final local = _worldToPageLocal(center, pageIdx);
+    final size = 160 / _viewScale;
+    final closed = shapeKindIsClosed(kind);
+    final stroke = DrawingStroke(
+      colorValue: _color.toARGB32(),
+      strokeWidth: _strokeW,
+      isShape: true,
+      filled: closed && _fillShapes,
+      points: buildShape(kind, local.dx, local.dy, size, size),
+    );
+    final before = _snapshot();
+    setState(() {
+      data.strokes.add(stroke);
+      _tool = DrawTool.lasso;
+      _shapePopupOpen = false;
+      _toolbarVisible = false;
+    });
+    // Flat index in world-space _allVisibleStrokes (new stroke is last in its
+    // page; pages concatenate in order).
+    int flat = 0;
+    for (int i = 0; i < pageIdx; i++) {
+      flat += _pageData[_pageBlockIds[i]]?.strokes.length ?? 0;
+    }
+    flat += data.strokes.length - 1;
+    _lassoCtrl.hitScale = _viewScale;
+    _lassoCtrl.selectRange(_allVisibleStrokes, flat, flat + 1);
     _commit(before);
     _persistPage(pageIdx);
     HapticFeedback.lightImpact();
@@ -2120,22 +2224,39 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                     height: _totalCanvasHeight,
                                     child: Stack(
                                       children: [
-                                        CustomPaint(
-                                          painter: _NotebookCanvasPainter(
-                                            pageBlockIds: _pageBlockIds,
-                                            pageData: _pageData,
-                                            active: _active,
-                                            activePageIndex:
-                                                _activePageIndex,
-                                            visibleRect: visibleRect,
-                                            accentColor: _accent,
-                                            hiddenStrokes:
-                                                _hiddenStrokes(),
-                                            hiddenImages: _hiddenImages(),
-                                            imageCache: _imgCache,
+                                        RepaintBoundary(
+                                          child: CustomPaint(
+                                            painter: _NotebookCanvasPainter(
+                                              pageBlockIds: _pageBlockIds,
+                                              pageData: _pageData,
+                                              visibleRect: visibleRect,
+                                              accentColor: _accent,
+                                              hiddenStrokes:
+                                                  _hiddenStrokes(),
+                                              hiddenImages: _hiddenImages(),
+                                              imageCache: _imgCache,
+                                            ),
+                                            size: Size(kNotebookPageWidth,
+                                                _totalCanvasHeight),
                                           ),
-                                          size: Size(kNotebookPageWidth,
-                                              _totalCanvasHeight),
+                                        ),
+                                        RepaintBoundary(
+                                          child: AnimatedBuilder(
+                                            animation: _activeTick,
+                                            builder: (_, _) => CustomPaint(
+                                              painter: _ActiveStrokePainter(
+                                                active: _active,
+                                                pageTop: _activePageIndex !=
+                                                        null
+                                                    ? _activePageIndex! *
+                                                        (kNotebookPageHeight +
+                                                            kNotebookPageGap)
+                                                    : 0.0,
+                                              ),
+                                              size: Size(kNotebookPageWidth,
+                                                  _totalCanvasHeight),
+                                            ),
+                                          ),
                                         ),
                                         ..._buildTaskBlockOverlays(),
                                         if (_lassoCtrl.phase !=
@@ -2275,6 +2396,40 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 child: _EyedropperHint(onCancel: _exitEyedropper),
               ),
             ),
+          if (_shapePopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _shapePopupOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
+              ),
+            ),
+          ],
+          if (_morePopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _morePopupOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _buildMorePopup(),
+              ),
+            ),
+          ],
           if (_imagePanelOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -2436,15 +2591,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // ─── Toolbar ───────────────────────────────────────────────────────────
 
   Widget _toolbar() {
-    final paddingH = MediaQuery.of(context).size.width * 0.04;
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
         border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(
-            horizontal: paddingH.clamp(8.0, 60.0), vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -2452,26 +2605,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               _toolBtn(
                 icon: Icons.edit_outlined,
                 active: _tool == DrawTool.pen,
+                tooltip: 'Lápiz',
                 onTap: () => _selectTool(DrawTool.pen),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _toolBtn(
                 icon: Icons.gesture,
                 active: _tool == DrawTool.fountainPen,
+                tooltip: 'Pluma fuente',
                 onTap: () => _selectTool(DrawTool.fountainPen),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _toolBtn(
                 icon: Icons.highlight,
                 active: _tool == DrawTool.highlighter,
+                tooltip: 'Resaltador',
                 onTap: () => _selectTool(DrawTool.highlighter),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _toolBtn(
                 icon: _eraserMode == EraserMode.partial
                     ? Icons.cleaning_services_outlined
                     : Icons.auto_fix_high,
                 active: _tool == DrawTool.eraser,
+                tooltip: 'Borrador',
                 onTap: () {
                   if (_tool == DrawTool.eraser) {
                     setState(() => _eraserPopupOpen = !_eraserPopupOpen);
@@ -2480,25 +2637,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   }
                 },
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _toolBtn(
                 icon: Icons.highlight_alt,
                 active: _tool == DrawTool.lasso,
-                label: 'LAZO',
+                tooltip: 'Lazo',
                 onTap: () => _selectTool(DrawTool.lasso),
               ),
-              const SizedBox(width: 12),
+              _divider(),
               _toolBtn(
                 icon: Icons.image_outlined,
                 active: _imagePanelOpen,
+                tooltip: 'Imagen',
                 onTap: _toggleImagePanel,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _toolBtn(
                 icon: Icons.checklist,
                 active: false,
-                label: 'TAREAS',
+                tooltip: 'Tareas',
                 onTap: _insertTaskBlock,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.category_outlined,
+                active: _shapePopupOpen,
+                tooltip: 'Figuras',
+                onTap: _toggleShapePopup,
               ),
               _divider(),
               ColorButton(
@@ -2525,12 +2690,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 accentColor: _accent,
                 onTap: _toggleWidthPicker,
               ),
-              const SizedBox(width: 10),
               _divider(),
               _toolBtn(
                 icon: Icons.undo,
                 active: false,
                 enabled: _undoStack.isNotEmpty,
+                tooltip: 'Deshacer',
                 onTap: _undo,
               ),
               const SizedBox(width: 10),
@@ -2538,40 +2703,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 icon: Icons.redo,
                 active: false,
                 enabled: _redoStack.isNotEmpty,
+                tooltip: 'Rehacer',
                 onTap: _redo,
               ),
-              _divider(),
-              _toolBtn(
-                icon: Icons.auto_graph,
-                active: _stabilizer.isOn,
-                label: _stabilizer.label,
-                onTap: () {
-                  setState(() => _stabilizer = _stabilizer.next);
-                  DrawingPrefs.saveStabilizer(_stabilizer);
-                },
-              ),
-              const SizedBox(width: 10),
-              _toolBtn(
-                icon: Icons.format_color_fill,
-                active: _fillShapes,
-                label: 'RELLENO',
-                onTap: () {
-                  setState(() => _fillShapes = !_fillShapes);
-                  DrawingPrefs.saveFill(_fillShapes);
-                },
-              ),
-              const SizedBox(width: 10),
-              _toolBtn(
-                icon: Icons.back_hand_outlined,
-                active: _palmRejection,
-                label: 'PALMA',
-                onTap: () {
-                  setState(() => _palmRejection = !_palmRejection);
-                  DrawingPrefs.savePalm(_palmRejection);
-                },
-              ),
-              _divider(),
-              _bgBtn(),
               _divider(),
               Container(
                 height: 32,
@@ -2591,6 +2725,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   ),
                 ),
               ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.more_horiz,
+                active: _morePopupOpen,
+                tooltip: 'Más',
+                onTap: _toggleMorePopup,
+              ),
             ],
           ),
         ),
@@ -2598,33 +2739,57 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
-  Widget _bgBtn() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _toggleBgPopup,
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: _bgPopupOpen ? _accent : yCream,
-          border: Border.all(color: yInk, width: yLineThin),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.grid_on,
-                size: 14, color: _bgPopupOpen ? yCream : yInk),
-            const SizedBox(width: 5),
-            Text('FONDO',
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: _bgPopupOpen ? yCream : yInk,
-                )),
-          ],
-        ),
+  /// Secondary / occasional controls behind the toolbar's "more" (⋯) button so
+  /// the main row stays uncluttered and edge-to-edge.
+  Widget _buildMorePopup() {
+    return Container(
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yInk, width: yLineMid),
+        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _toolBtn(
+            icon: Icons.auto_graph,
+            active: _stabilizer.isOn,
+            label: 'ESTAB · ${_stabilizer.label}',
+            onTap: () {
+              setState(() => _stabilizer = _stabilizer.next);
+              DrawingPrefs.saveStabilizer(_stabilizer);
+            },
+          ),
+          _toolBtn(
+            icon: Icons.format_color_fill,
+            active: _fillShapes,
+            label: 'RELLENO',
+            onTap: () {
+              setState(() => _fillShapes = !_fillShapes);
+              DrawingPrefs.saveFill(_fillShapes);
+            },
+          ),
+          _toolBtn(
+            icon: Icons.back_hand_outlined,
+            active: _palmRejection,
+            label: 'PALMA',
+            onTap: () {
+              setState(() => _palmRejection = !_palmRejection);
+              DrawingPrefs.savePalm(_palmRejection);
+            },
+          ),
+          _toolBtn(
+            icon: Icons.grid_on,
+            active: _bgPopupOpen,
+            label: 'FONDO',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _toggleBgPopup();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -2641,9 +2806,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     required bool active,
     bool enabled = true,
     String? label,
+    String? tooltip,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
+    Widget btn = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
       child: Container(
@@ -2683,6 +2849,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         ),
       ),
     );
+    if (tooltip != null && label == null) {
+      btn = Tooltip(
+        message: tooltip,
+        triggerMode: TooltipTriggerMode.longPress,
+        child: btn,
+      );
+    }
+    return btn;
   }
 
 }
@@ -2834,8 +3008,6 @@ class _CollapsedNotebookHeader extends StatelessWidget {
 class _NotebookCanvasPainter extends CustomPainter {
   final List<int> pageBlockIds;
   final Map<int, DrawingData> pageData;
-  final DrawingStroke? active;
-  final int? activePageIndex;
   final Rect visibleRect;
   final Color accentColor;
   final Map<int, Set<int>> hiddenStrokes;
@@ -2845,8 +3017,6 @@ class _NotebookCanvasPainter extends CustomPainter {
   _NotebookCanvasPainter({
     required this.pageBlockIds,
     required this.pageData,
-    required this.active,
-    required this.activePageIndex,
     required this.visibleRect,
     required this.accentColor,
     this.hiddenStrokes = const {},
@@ -2947,10 +3117,6 @@ class _NotebookCanvasPainter extends CustomPainter {
         }
       }
 
-      if (active != null && activePageIndex == i) {
-        drawStroke(canvas, active!);
-      }
-
       canvas.restore();
     }
   }
@@ -2964,4 +3130,26 @@ class _NotebookCanvasPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_NotebookCanvasPainter old) => true;
+}
+
+/// Paints only the in-progress stroke, in its own RepaintBoundary, so live
+/// point additions don't repaint the whole notebook canvas. [pageTop] offsets
+/// the page-local stroke coords into canvas space.
+class _ActiveStrokePainter extends CustomPainter {
+  final DrawingStroke? active;
+  final double pageTop;
+
+  _ActiveStrokePainter({required this.active, required this.pageTop});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (active == null) return;
+    canvas.save();
+    canvas.translate(0, pageTop);
+    drawStroke(canvas, active!);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ActiveStrokePainter old) => true;
 }

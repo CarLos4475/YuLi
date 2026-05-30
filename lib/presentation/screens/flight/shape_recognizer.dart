@@ -70,6 +70,60 @@ List<List<double>> buildLineShape(double ax, double ay, double bx, double by) =>
       [bx, by],
     ];
 
+/// Axis-aligned rectangle centred at [cx],[cy] with footprint [w]x[h].
+/// Closed polyline (last point repeats the first).
+List<List<double>> buildRectShape(double cx, double cy, double w, double h) {
+  final hw = w / 2, hh = h / 2;
+  return [
+    [cx - hw, cy - hh],
+    [cx + hw, cy - hh],
+    [cx + hw, cy + hh],
+    [cx - hw, cy + hh],
+    [cx - hw, cy - hh],
+  ];
+}
+
+/// Ellipse centred at [cx],[cy] with radii [w]/2 x [h]/2 (a circle when equal).
+List<List<double>> buildEllipseShape(double cx, double cy, double w, double h) =>
+    _ellipsePoints(cx, cy, w / 2, h / 2, 64);
+
+/// Upright isosceles triangle centred at [cx],[cy] with footprint [w]x[h].
+List<List<double>> buildTriangleShape(double cx, double cy, double w, double h) {
+  final hw = w / 2, hh = h / 2;
+  return [
+    [cx, cy - hh],
+    [cx + hw, cy + hh],
+    [cx - hw, cy + hh],
+    [cx, cy - hh],
+  ];
+}
+
+/// Clean geometry for a shape inserted at [cx],[cy] with footprint [w]x[h].
+/// Used by the editors' "insert shape" tool (no recognition involved).
+List<List<double>> buildShape(
+    ShapeKind kind, double cx, double cy, double w, double h) {
+  switch (kind) {
+    case ShapeKind.rectangle:
+      return buildRectShape(cx, cy, w, h);
+    case ShapeKind.circle:
+    case ShapeKind.ellipse:
+      return buildEllipseShape(cx, cy, w, h);
+    case ShapeKind.triangle:
+      return buildTriangleShape(cx, cy, w, h);
+    case ShapeKind.line:
+      return buildLineShape(cx - w / 2, cy, cx + w / 2, cy);
+    case ShapeKind.arrow:
+      return buildArrowShape(cx - w / 2, cy, cx + w / 2, cy);
+  }
+}
+
+/// Closed shapes can carry a translucent fill; open shapes (line/arrow) can't.
+bool shapeKindIsClosed(ShapeKind kind) =>
+    kind == ShapeKind.rectangle ||
+    kind == ShapeKind.triangle ||
+    kind == ShapeKind.circle ||
+    kind == ShapeKind.ellipse;
+
 List<List<double>> buildArrowShape(
     double ax, double ay, double bx, double by) {
   final dir = _norm(bx - ax, by - ay);

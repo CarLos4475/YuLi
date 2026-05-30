@@ -168,6 +168,13 @@ class CanvasTaskBlock implements CanvasGeo {
   double rotation;
   List<int> taskIds;
 
+  /// Uniform visual scale applied on top of the content layout. The card is
+  /// laid out at width `w / scale` (text reflow) and then scaled by [scale], so
+  /// corner-resize (which multiplies [scale]) grows the whole block including
+  /// its text, while side-resize (which only changes [w]) reflows the text at
+  /// the same font size.
+  double scale;
+
   CanvasTaskBlock({
     String? id,
     required this.x,
@@ -175,6 +182,7 @@ class CanvasTaskBlock implements CanvasGeo {
     required this.w,
     required this.h,
     this.rotation = 0,
+    this.scale = 1.0,
     List<int>? taskIds,
   })  : id = id ?? const Uuid().v4(),
         taskIds = taskIds ?? [];
@@ -186,6 +194,7 @@ class CanvasTaskBlock implements CanvasGeo {
         w: w,
         h: h,
         rotation: rotation,
+        scale: scale,
         taskIds: List<int>.from(taskIds),
       );
 
@@ -196,6 +205,7 @@ class CanvasTaskBlock implements CanvasGeo {
         'w': w,
         'h': h,
         if (rotation != 0) 'r': rotation,
+        if (scale != 1.0) 'sc': scale,
         'ids': taskIds,
       };
 
@@ -207,6 +217,7 @@ class CanvasTaskBlock implements CanvasGeo {
         w: (json['w'] as num).toDouble(),
         h: (json['h'] as num).toDouble(),
         rotation: (json['r'] as num?)?.toDouble() ?? 0,
+        scale: (json['sc'] as num?)?.toDouble() ?? 1.0,
         taskIds: ((json['ids'] as List?) ?? const [])
             .map((e) => (e as num).toInt())
             .toList(),

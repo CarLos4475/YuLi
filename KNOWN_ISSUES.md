@@ -1,5 +1,16 @@
 # KNOWN_ISSUES — YuLi
 
+## Resolved: Fountain pen "drags" behind the stylus on notebook/whiteboard (2026-05-30)
+
+**Symptom:** With the fountain pen, the wet stroke trailed a few frames behind the tip in notebook + whiteboard (clean in the drawing cell). Not a geometric offset — `downsample`/`chaikinSmooth` keep the last point on the tip — it was render latency.
+
+**Root cause:** the active stroke was painted inside the full-canvas painter (`_NotebookCanvasPainter`/`_CanvasPainter`, `shouldRepaint => true`). Every pointer-move did a `setState`, repainting the whole visible canvas (paper pattern + all baked strokes), and the fountain engine reprocesses its growing raw stroke each frame (downsample→widths→chaikin→tessellate). On the big canvases the render thread couldn't keep up. The small drawing cell never lagged with identical code.
+
+**Fix:** the live stroke now lives in its own `_ActiveStrokePainter` (separate `CustomPaint` in a `RepaintBoundary`, painted above the main canvas, below task overlays). Pointer-move handlers append points and bump a `ValueNotifier<int> _activeTick` (driving an `AnimatedBuilder`) **instead of `setState`** — so the heavy main canvas is NOT reconstructed/repainted during a stroke; only the tiny active layer repaints. `setState` is still used on down/commit (one repaint each). The main painters were left `shouldRepaint => true` (correct because the parent only rebuilds them on discrete events now). `active` was removed from both main painters.
+
+**Do not** route live stroke points back through `setState` on these editors.
+
+
 ## Resolved: Scribble erase only worked once (sampling-rate bias in `isScribble`)
 
 **Symptoms:** Borrado por garabato funcionaba solo la primera vez que se entraba a la app. Después nunca más — el mismo trazo que antes borraba, ahora se dibujaba como stroke normal.
