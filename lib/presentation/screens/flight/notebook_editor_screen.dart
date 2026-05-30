@@ -22,6 +22,7 @@ import 'canvas_image_cache.dart';
 import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
+import 'eraser_mode_popup.dart';
 import 'fountain_pen_engine.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
@@ -125,6 +126,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   List<Color> _savedColors = const [];
   List<Color> _bgSavedColors = const [];
   bool _eyedropperMode = false;
+  EraserMode _eraserMode = EraserMode.stroke;
+  bool _eraserPopupOpen = false;
+  Offset? _eraserCursor;
 
   @override
   void initState() {
@@ -172,6 +176,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _stabilizer = prefs.stabilizer;
         _palmRejection = prefs.palmRejection;
         _fillShapes = prefs.fillShapes;
+        _eraserMode = prefs.eraserMode;
         _toolColors.addAll(prefs.toolColors);
         _toolWidths.addAll(prefs.toolWidths);
         _color = _toolColors[_tool] ?? _color;
@@ -895,6 +900,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_tool == DrawTool.eraser) {
       _gestureBefore = _snapshot();
       _gestureChanged = false;
+      setState(() => _eraserCursor = e.localPosition);
       _eraseNear(local, pageIdx);
       return;
     }
@@ -991,6 +997,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_tool == DrawTool.eraser) {
+      setState(() => _eraserCursor = e.localPosition);
       _eraseNear(local, _activePageIndex!);
       return;
     }
@@ -1076,6 +1083,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     if (_tool == DrawTool.eraser) {
       _commitEraseGesture();
+      setState(() => _eraserCursor = null);
       return;
     }
     if (_tool == DrawTool.fountainPen) {
@@ -1103,6 +1111,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     if (_tool == DrawTool.eraser) {
       _commitEraseGesture();
+      setState(() => _eraserCursor = null);
       return;
     }
     if (_tool == DrawTool.fountainPen) {
@@ -1189,14 +1198,42 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final radius = _eraserScreenRadius / _viewScale;
     final data = _pageData[_pageBlockIds[pageIndex]];
     if (data == null) return;
-    final before = data.strokes.length;
-    data.strokes.removeWhere((s) => strokeHitByEraser(s, local, radius));
-    if (data.strokes.length != before) {
+    bool changed = false;
+    if (_eraserMode == EraserMode.partial) {
+      final out = <DrawingStroke>[];
+      for (final s in data.strokes) {
+        final pieces = splitStrokeByEraser(s, local, radius);
+        if (pieces.length == 1 && identical(pieces.first, s)) {
+          out.add(s);
+        } else {
+          out.addAll(pieces);
+          changed = true;
+        }
+      }
+      if (changed) data.strokes = out;
+    } else {
+      final before = data.strokes.length;
+      data.strokes.removeWhere((s) => strokeHitByEraser(s, local, radius));
+      changed = data.strokes.length != before;
+    }
+    if (changed) {
       _gestureChanged = true;
       setState(() {});
       _persistPage(pageIndex);
     }
   }
+
+  Widget _eraserModePopup() => EraserModePopup(
+    mode: _eraserMode,
+    accent: _accent,
+    onPick: (m) {
+      setState(() {
+        _eraserMode = m;
+        _eraserPopupOpen = false;
+      });
+      DrawingPrefs.saveEraserMode(m);
+    },
+  );
 
   // ─── Lasso ─────────────────────────────────────────────────────────────
 
@@ -1918,6 +1955,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                             if (_lassoCtrl.phase == LassoPhase.selected)
                               _buildLassoMiniToolbar(),
                             if (_showPasteAt != null) _buildPasteButton(),
+                            if (_tool == DrawTool.eraser && _eraserCursor != null)
+                              Positioned(
+                                left: _eraserCursor!.dx - _eraserScreenRadius,
+                                top: _eraserCursor!.dy - _eraserScreenRadius,
+                                child: const EraserCursor(radius: _eraserScreenRadius),
+                              ),
                           ],
                         );
                       },
@@ -2110,6 +2153,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
             ),
           ],
+          if (_eraserPopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _eraserPopupOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _eraserModePopup(),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2150,9 +2210,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 12),
               _toolBtn(
-                icon: Icons.auto_fix_high,
+                icon: _eraserMode == EraserMode.partial
+                    ? Icons.cleaning_services_outlined
+                    : Icons.auto_fix_high,
                 active: _tool == DrawTool.eraser,
-                onTap: () => _selectTool(DrawTool.eraser),
+                onTap: () {
+                  if (_tool == DrawTool.eraser) {
+                    setState(() => _eraserPopupOpen = !_eraserPopupOpen);
+                  } else {
+                    _selectTool(DrawTool.eraser);
+                  }
+                },
               ),
               const SizedBox(width: 12),
               _toolBtn(
