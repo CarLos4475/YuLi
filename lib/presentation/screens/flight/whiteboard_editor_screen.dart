@@ -85,7 +85,6 @@ class _WhiteboardEditorScreenState
   bool _bgColorPickerOpen = false;
   EraserMode _eraserMode = EraserMode.stroke;
   bool _eraserPopupOpen = false;
-  bool _snapToGrid = false;
   Offset? _eraserCursor; // screen pos for the eraser indicator
   // Raw (un-stabilized) pen points — used for scribble-erase detection so the
   // stabilizer's smoothing doesn't hide the zigzags.
@@ -160,7 +159,6 @@ class _WhiteboardEditorScreenState
         _palmRejection = p.palmRejection;
         _fillShapes = p.fillShapes;
         _eraserMode = p.eraserMode;
-        _snapToGrid = p.snapToGrid;
         _toolColors.addAll(p.toolColors);
         _toolWidths.addAll(p.toolWidths);
         _color = _toolColors[_tool] ?? _color;
@@ -1081,7 +1079,7 @@ class _WhiteboardEditorScreenState
       _lassoCtrl.finishTracing(_data.strokes, _data.images);
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       _lassoCtrl.finishMove(
-          _data.strokes, _data.images, _snapToGrid ? kLassoSnapStep : 0);
+          _data.strokes, _data.images, 0);
       _commitGesture();
       _persist();
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
@@ -1201,7 +1199,7 @@ class _WhiteboardEditorScreenState
         behavior: HitTestBehavior.opaque,
         onTap: () {
           _lassoMutate(() => _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes,
-              _data.images, _snapToGrid ? kLassoSnapStep : 0));
+              _data.images, 0));
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -1884,16 +1882,6 @@ class _WhiteboardEditorScreenState
               active: _bgPopupOpen,
               label: 'FONDO',
               onTap: _toggleBgPopup,
-            ),
-            const SizedBox(width: 12),
-            _toolBtn(
-              icon: Icons.grid_4x4,
-              active: _snapToGrid,
-              label: 'SNAP',
-              onTap: () {
-                setState(() => _snapToGrid = !_snapToGrid);
-                DrawingPrefs.saveSnapToGrid(_snapToGrid);
-              },
             ),
             const SizedBox(width: 12),
             _toolBtn(
