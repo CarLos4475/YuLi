@@ -252,6 +252,11 @@ class LassoController {
 
   static const _handleHitScreenRadius = 18.0;
 
+  /// Minimum world-space size for a selection that contains task blocks.
+  /// Prevents the block from shrinking so much that its text overflows.
+  static const _kMinBoxW = 220.0;
+  static const _kMinBoxH = 90.0;
+
   /// Hit radius for the rotation handle (constant ~18px on screen).
   double get _handleHitRadius => _handleHitScreenRadius / hitScale;
 
@@ -298,7 +303,13 @@ class LassoController {
     final pivotToDragStart = (_dragStart - resizePivot!).distance;
     if (pivotToDragStart < 1) return;
     final pivotToCurrent = (worldPos - resizePivot!).distance;
-    resizeScale = (pivotToCurrent / pivotToDragStart).clamp(0.1, 5.0);
+    var minScale = 0.1;
+    if (selectedBlockIndices.isNotEmpty) {
+      final minScaleW = _kMinBoxW / _resizeOriginalBox!.width;
+      final minScaleH = _kMinBoxH / _resizeOriginalBox!.height;
+      minScale = math.max(minScale, math.max(minScaleW, minScaleH));
+    }
+    resizeScale = (pivotToCurrent / pivotToDragStart).clamp(minScale, 5.0);
     _notify();
   }
 
@@ -377,19 +388,27 @@ class LassoController {
   }
 
   void updateSideResize(Offset worldPos) {
-    if (phase != LassoPhase.resizing || resizePivot == null) return;
+    if (phase != LassoPhase.resizing || resizePivot == null || _resizeOriginalBox == null) return;
     if (_sideAxis == 1) {
       final startDist = (_dragStart.dx - resizePivot!.dx).abs();
       if (startDist < 1) return;
       final curDist = (worldPos.dx - resizePivot!.dx).abs();
-      resizeScaleX = (curDist / startDist).clamp(0.1, 5.0);
+      var minScale = 0.1;
+      if (selectedBlockIndices.isNotEmpty) {
+        minScale = math.max(minScale, _kMinBoxW / _resizeOriginalBox!.width);
+      }
+      resizeScaleX = (curDist / startDist).clamp(minScale, 5.0);
       resizeScaleY = 1.0;
     } else {
       final startDist = (_dragStart.dy - resizePivot!.dy).abs();
       if (startDist < 1) return;
       final curDist = (worldPos.dy - resizePivot!.dy).abs();
+      var minScale = 0.1;
+      if (selectedBlockIndices.isNotEmpty) {
+        minScale = math.max(minScale, _kMinBoxH / _resizeOriginalBox!.height);
+      }
       resizeScaleX = 1.0;
-      resizeScaleY = (curDist / startDist).clamp(0.1, 5.0);
+      resizeScaleY = (curDist / startDist).clamp(minScale, 5.0);
     }
     _notify();
   }
@@ -943,5 +962,20 @@ class LassoController {
     }
     if (minX == double.infinity) return Rect.zero;
     return Rect.fromLTRB(minX - 8, minY - 8, maxX + 8, maxY + 8);
+  }
+
+  /// Recompute the bounding box from the current selection. Used by the editor
+  /// when a selected task block's natural height changes after a width resize.
+  void refreshBoundingBox(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
+    if (phase != LassoPhase.selected) return;
+    final bb = _computeBoundingBox(strokes, images, blocks);
+    if (bb == Rect.zero) {
+      deselect();
+      return;
+    }
+    boundingBox = bb;
+    _notify();
   }
 }

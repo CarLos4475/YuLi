@@ -1462,6 +1462,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _lassoCtrl.isSideResize
           ? _lassoCtrl.finishSideResize(strokes, images, blocks)
           : _lassoCtrl.finishResize(strokes, images, blocks);
+      for (final i in _lassoCtrl.selectedBlockIndices) {
+        if (i >= blocks.length) continue;
+        final b = blocks[i];
+        if (b.w < 220) b.w = 220;
+        if (b.h < 90) b.h = 90;
+      }
       _finishTransformOrTap(moved, strokes, images, blocks);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
@@ -1569,8 +1575,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
     final pageIdx = _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
-    final w = kCanvasTaskBlockDefaultW / _viewScale;
-    final h = 120 / _viewScale;
+    final w = kCanvasTaskBlockDefaultW;
+    final h = 120.0;
     final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
     final block = CanvasTaskBlock(
       x: center.dx - w / 2,
@@ -1626,11 +1632,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             onHeightMeasured: (h) {
               if (!mounted) return;
               setState(() => b.h = h);
+              _lassoCtrl.refreshBoundingBox(
+                  data.strokes, data.images, data.taskBlocks);
               _persistPage(pageIndex);
             },
           ),
         );
-        if (gesture && selected) {
+        // Live transform for move/rotate/corner-resize. During side resize
+        // (non-uniform scale) the widget stays at original size so text doesn't
+        // distort, snapping to the new geometry on release.
+        final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+            _lassoCtrl.phase == LassoPhase.rotating ||
+            (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
+        if (isLiveTransform && selected) {
           final off = Offset(b.x, offset + b.y);
           final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
               _lassoCtrl.liveGestureMatrix() *

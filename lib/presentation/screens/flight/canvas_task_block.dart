@@ -89,6 +89,10 @@ class _CanvasTaskBlockOverlayState
   final _contentKey = GlobalKey();
   bool _showInput = false;
   OverlayEntry? _inputEntry;
+  // When the user resizes via a corner (uniform scale) we lock the height so
+  // [_reportHeight] doesn't overwrite it. Side-resize (width-only) keeps the
+  // lock so the user controls both axes explicitly.
+  bool _heightLocked = false;
 
   NoteBlockActions get _actions => NoteBlockActions(
         ref: ref,
@@ -107,18 +111,22 @@ class _CanvasTaskBlockOverlayState
   @override
   void didUpdateWidget(covariant CanvasTaskBlockOverlay old) {
     super.didUpdateWidget(old);
+    final wChanged = (old.block.w - widget.block.w).abs() > 0.5;
+    final hChanged = (old.block.h - widget.block.h).abs() > 0.5;
+    if (wChanged && hChanged) {
+      _heightLocked = true;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _reportHeight());
   }
 
   void _reportHeight() {
+    if (_heightLocked) return;
     final ctx = _contentKey.currentContext;
     if (ctx == null || !mounted) return;
     final hb = ctx.size?.height;
     if (hb == null || hb <= 0) return;
-    final scale = widget.block.w / kCanvasTaskBlockBaseW;
-    final desired = hb * scale;
-    if ((desired - widget.block.h).abs() > 0.5) {
-      widget.onHeightMeasured(desired);
+    if ((hb - widget.block.h).abs() > 0.5) {
+      widget.onHeightMeasured(hb);
     }
   }
 
@@ -347,22 +355,29 @@ class _CanvasTaskBlockOverlayState
     // Keep the block's stored height in sync with its content after each build.
     WidgetsBinding.instance.addPostFrameCallback((_) => _reportHeight());
 
-    // Content is laid out at a fixed base width and uniformly scaled (BoxFit.fill
-    // with a matching aspect) to fill the box. The same unrotated box drives the
-    // lasso bounding box. Text entry happens in a keyboard-docked bar (not in
-    // place), so the block never needs to un-rotate to be edited.
-    final box = SizedBox(
-      width: widget.block.w,
-      height: widget.block.h,
-      child: FittedBox(
-        fit: BoxFit.fill,
-        alignment: Alignment.topLeft,
-        child: SizedBox(
-          width: kCanvasTaskBlockBaseW,
-          child: KeyedSubtree(key: _contentKey, child: _buildCard()),
+    final Widget box;
+    if (_heightLocked) {
+      // User resized via corner (or after corner) – respect the explicit h.
+      // FittedBox forces uniform scale so the widget visually matches the box.
+      box = SizedBox(
+        width: widget.block.w,
+        height: widget.block.h,
+        child: FittedBox(
+          fit: BoxFit.fill,
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: kCanvasTaskBlockBaseW,
+            child: KeyedSubtree(key: _contentKey, child: _buildCard()),
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // Fresh block or side-resize: width drives layout; height is natural.
+      box = SizedBox(
+        width: widget.block.w,
+        child: KeyedSubtree(key: _contentKey, child: _buildCard()),
+      );
+    }
 
     final angle = widget.block.rotation;
     if (angle == 0.0) return box;

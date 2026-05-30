@@ -570,12 +570,12 @@ class _WhiteboardEditorScreenState
   void _insertTaskBlock() {
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    final w = kCanvasTaskBlockDefaultW / _viewScale;
+    final w = kCanvasTaskBlockDefaultW;
     final block = CanvasTaskBlock(
       x: center.dx - w / 2,
-      y: center.dy - 60 / _viewScale,
+      y: center.dy - 60,
       w: w,
-      h: 120 / _viewScale,
+      h: 120,
     );
     final before = _snapshot();
     setState(() {
@@ -1203,6 +1203,12 @@ class _WhiteboardEditorScreenState
               _data.strokes, _data.images, _data.taskBlocks)
           : _lassoCtrl.finishResize(
               _data.strokes, _data.images, _data.taskBlocks);
+      for (final i in _lassoCtrl.selectedBlockIndices) {
+        if (i >= _data.taskBlocks.length) continue;
+        final b = _data.taskBlocks[i];
+        if (b.w < 220) b.w = 220;
+        if (b.h < 90) b.h = 90;
+      }
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
@@ -1304,13 +1310,20 @@ class _WhiteboardEditorScreenState
           onHeightMeasured: (h) {
             if (!mounted) return;
             setState(() => b.h = h);
+            _lassoCtrl.refreshBoundingBox(
+                _data.strokes, _data.images, _data.taskBlocks);
             _persist();
           },
         ),
       );
-      // Selected + mid-gesture: follow the live lasso transform so the block
-      // stays visible while moving/resizing/rotating (no painted ghost).
-      if (gesture && selected) {
+      // Selected + mid-gesture: follow the live lasso transform for move/rotate.
+      // During corner resize (uniform scale) the transform is fine; during side
+      // resize (non-uniform) the widget stays at original size so text doesn't
+      // distort, snapping to the new geometry on release.
+      final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+          _lassoCtrl.phase == LassoPhase.rotating ||
+          (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
+      if (isLiveTransform && selected) {
         final off = Offset(b.x, b.y);
         final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
             _lassoCtrl.liveGestureMatrix() *
