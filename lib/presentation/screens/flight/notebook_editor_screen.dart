@@ -780,7 +780,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_lassoCtrl.phase != LassoPhase.selected ||
         _lassoCtrl.boundingBox == null) return null;
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final topCenter = Offset(bb.center.dx, bb.top - 50);
     final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
     return Rect.fromLTWH(screenPos.dx - 100, screenPos.dy - 10, 200, 80);
   }
@@ -1357,33 +1357,59 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   void _syncLassoToPages(
       List<DrawingStroke> worldStrokes, List<CanvasImage> worldImages) {
+    final pages = <int, List<DrawingStroke>>{};
+    final imagesByPage = <int, List<CanvasImage>>{};
     for (int i = 0; i < _pageBlockIds.length; i++) {
-      final pageTop = _pageOffsetY(i);
-      final pageBottom = pageTop + kNotebookPageHeight;
-      final pageStrokes = <DrawingStroke>[];
-      for (final s in worldStrokes) {
-        final inPage =
-            s.points.any((p) => p[1] >= pageTop && p[1] < pageBottom);
-        if (inPage) {
-          final c = s.clone();
-          for (final pt in c.points) {
-            pt[1] -= pageTop;
-          }
-          pageStrokes.add(c);
+      final bid = _pageBlockIds[i];
+      pages[bid] = [];
+      imagesByPage[bid] = [];
+    }
+    for (final s in worldStrokes) {
+      if (s.points.isEmpty) continue;
+      double sumY = 0;
+      for (final pt in s.points) sumY += pt[1];
+      final midY = sumY / s.points.length;
+      var bestIdx = -1;
+      double bestDist = double.infinity;
+      for (int i = 0; i < _pageBlockIds.length; i++) {
+        final pt = _pageOffsetY(i);
+        final pb = pt + kNotebookPageHeight;
+        if (midY >= pt && midY < pb) {
+          bestIdx = i;
+          break;
+        }
+        final d = midY < pt ? (pt - midY) : (midY - pb);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
         }
       }
-      final pageImages = <CanvasImage>[];
-      for (final im in worldImages) {
-        final cy = im.y + im.h / 2;
-        if (cy >= pageTop && cy < pageBottom) {
-          pageImages.add(im.clone()..y -= pageTop);
+      if (bestIdx < 0) continue;
+      final c = s.clone();
+      final pageTop = _pageOffsetY(bestIdx);
+      for (final pt in c.points) {
+        pt[1] -= pageTop;
+      }
+      pages[_pageBlockIds[bestIdx]]!.add(c);
+    }
+    for (final im in worldImages) {
+      final cy = im.y + im.h / 2;
+      for (int i = 0; i < _pageBlockIds.length; i++) {
+        final pt = _pageOffsetY(i);
+        final pb = pt + kNotebookPageHeight;
+        if (cy >= pt && cy < pb) {
+          imagesByPage[_pageBlockIds[i]]!.add(im.clone()..y -= pt);
+          break;
         }
       }
-      final prev = _pageData[_pageBlockIds[i]];
-      _pageData[_pageBlockIds[i]] = DrawingData(
+    }
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final bid = _pageBlockIds[i];
+      final prev = _pageData[bid];
+      _pageData[bid] = DrawingData(
         height: kNotebookPageHeight,
-        strokes: pageStrokes,
-        images: pageImages,
+        strokes: pages[bid]!,
+        images: imagesByPage[bid]!,
         background: prev?.background ?? PageBackground.blank,
         bgColorValue: prev?.bgColorValue,
       );
@@ -1663,7 +1689,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final topCenter = Offset(bb.center.dx, bb.top - 50);
     final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
     return Positioned(
       left: screenPos.dx - 80,

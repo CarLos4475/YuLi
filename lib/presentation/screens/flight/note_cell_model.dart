@@ -346,17 +346,40 @@ double _distToSegment2(
 List<DrawingStroke> splitStrokeByEraser(
     DrawingStroke s, Offset pos, double radius) {
   final pts = s.points;
-  final r2 = radius * radius;
+  final r = radius + s.strokeWidth / 2;
+  final r2 = r * r;
   if (pts.isEmpty) return const [];
   if (pts.length == 1) {
     final dx = pts[0][0] - pos.dx;
     final dy = pts[0][1] - pos.dy;
     return dx * dx + dy * dy < r2 ? const [] : [s];
   }
+  // Subdivide segments that the eraser crosses so sparse strokes
+  // (shape-snap rectangles / triangles with only 4-5 vertices) and
+  // wide strokes (highlighter) are cut correctly at the hit point.
+  final sub = <List<double>>[];
+  for (int i = 0; i < pts.length; i++) {
+    sub.add(List<double>.from(pts[i]));
+    if (i < pts.length - 1) {
+      final a = pts[i];
+      final b = pts[i + 1];
+      final d2 = _distToSegment2(pos.dx, pos.dy, a[0], a[1], b[0], b[1]);
+      if (d2 < r2) {
+        final dxSeg = b[0] - a[0];
+        final dySeg = b[1] - a[1];
+        final len2 = dxSeg * dxSeg + dySeg * dySeg;
+        if (len2 >= 1e-9) {
+          var t = ((pos.dx - a[0]) * dxSeg + (pos.dy - a[1]) * dySeg) / len2;
+          t = t.clamp(0.0, 1.0);
+          sub.add([a[0] + t * dxSeg, a[1] + t * dySeg]);
+        }
+      }
+    }
+  }
   final runs = <List<List<double>>>[];
   var cur = <List<double>>[];
   var anyErased = false;
-  for (final p in pts) {
+  for (final p in sub) {
     final dx = p[0] - pos.dx;
     final dy = p[1] - pos.dy;
     if (dx * dx + dy * dy < r2) {

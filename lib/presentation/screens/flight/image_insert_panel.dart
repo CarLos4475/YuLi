@@ -48,15 +48,20 @@ class _ImageInsertPanelState extends State<ImageInsertPanel> {
       if (mounted) setState(() => _loading = false);
       return;
     }
-    final albums = await PhotoManager.getAssetPathList(
-      type: RequestType.image,
-      onlyAll: true,
+    final filter = FilterOptionGroup(
+      orders: [
+        const OrderOption(
+          type: OrderOptionType.createDate,
+          asc: false,
+        ),
+      ],
     );
-    if (albums.isEmpty) {
-      if (mounted) setState(() => _loading = false);
-      return;
-    }
-    final assets = await albums.first.getAssetListPaged(page: 0, size: 40);
+    final assets = await PhotoManager.getAssetListPaged(
+      page: 0,
+      pageCount: 40,
+      filterOption: filter,
+      type: RequestType.image,
+    );
     if (mounted) {
       setState(() {
         _recent = assets;

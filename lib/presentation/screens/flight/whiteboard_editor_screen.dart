@@ -577,7 +577,7 @@ class _WhiteboardEditorScreenState
   Rect? _lassoToolbarScreenRect() {
     if (_lassoCtrl.phase != LassoPhase.selected || _lassoCtrl.boundingBox == null) return null;
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final topCenter = Offset(bb.center.dx, bb.top - 50);
     final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
     return Rect.fromLTWH(screenPos.dx - 100, screenPos.dy - 10, 200, 80);
   }
@@ -1148,7 +1148,7 @@ class _WhiteboardEditorScreenState
 
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 64);
+    final topCenter = Offset(bb.center.dx, bb.top - 50);
     final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
     return Positioned(
       left: screenPos.dx - 80,

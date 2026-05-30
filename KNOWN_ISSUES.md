@@ -1,8 +1,29 @@
 # KNOWN_ISSUES — YuLi
 
-## Resolved: Notebook page jumping to the left on first pan (boundaryMargin + centering conflict)
+## Resolved: Scribble erase only worked once (sampling-rate bias in `isScribble`)
 
-**Fix:** Change `boundaryMargin` from `horizontal: kNotebookPageWidth * 0.3` to `horizontal: c.maxWidth`.
+**Symptoms:** Borrado por garabato funcionaba solo la primera vez que se entraba a la app. Después nunca más — el mismo trazo que antes borraba, ahora se dibujaba como stroke normal.
+
+**Root cause:** `_rawPen` captura todos los eventos de puntero sin filtrar. Con la app "fría" (recién abierta), Flutter entrega ~40 eventos por garabato → `angVar ≈ 0.42`. Con la app "caliente" (event loop a pleno), entrega ~150-200 eventos para el mismo trazo → los segmentos consecutivos miden 2-3px, son casi colineales → `angVar ≈ 0.13`. Como el threshold era `> 0.25`, `isScribble()` retornaba `false` para todos los garabatos excepto el primero.
+
+**Fix (2026-05-29):** Agregado `_resampleTo()` en `note_cell_model.dart` — resampleo por arc-length a 40 puntos fijos antes de calcular varianza angular y densidad de cruces. Esto normaliza la densidad de puntos sin importar cuántos eventos entregue Flutter. La función `isScribble()` es compartida por pizarra, cuaderno y drawing cell.
+
+**Also:** Creado `_doScribbleErase()` en `whiteboard_editor_screen.dart` (el método estaba declarado como llamado pero nunca implementado). Agregado guard `isScribble` en `_tryShapeSnap()` de ambos editores. Limpieza de `_rawPen = []` al final de cada erase.
+
+**Files:**
+- `note_cell_model.dart` — `_resampleTo()`, `isScribble()` usa puntos resampleados (40) para angVar/crossings
+- `whiteboard_editor_screen.dart` — `_doScribbleErase()`, guard en `_tryShapeSnap`, prioridad en `_onUp`
+- `notebook_editor_screen.dart` — guard en `_tryShapeSnap`
+
+**Do not** reintroducir código que use `_rawPen` sin resamplear en `isScribble`.
+
+## Resolved: Notebook lasso — mover selección entre páginas la duplicaba/agrandaba
+
+**Fix (2026-05-29):** `_syncLassoToPages` usaba `s.points.any(p => p[1] >= pageTop && p[1] < pageBottom)` — si un trazo cruzaba dos páginas, se clonaba en ambas. Reescribí la función para asignar cada trazo a UNA sola página según el centroide en Y. Si el centroide cae en un gap, se asigna a la página más cercana.
+
+**File:** `notebook_editor_screen.dart` — `_syncLassoToPages`.
+
+## Resolved: Notebook page jumping to the left on first pan (boundaryMargin + centering conflict)
 
 **Why:** `_applyInitialScroll` centers the page with `dx = (viewportW - 595) / 2`. On wide screens (tablet, landscape), this dx exceeds the horizontal boundary margin (178.5px). On first pan, `InteractiveViewer` clamps the position, snapping the page to the left. Zoom "fixed" it only because scaling changes the effective boundary calculation.
 

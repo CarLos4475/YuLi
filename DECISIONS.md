@@ -66,5 +66,28 @@ After a shape snaps (hold-to-recognize), the editor enters a live-adjust state i
 
 Recognized shapes carry `DrawingStroke.isShape` and render as **crisp straight polylines** (`buildStrokePath`), not the freehand quadratic smoothing that turns polygons into a teardrop blob. Both the main painters and `lasso_painter.dart` (highlight/move/resize/rotate previews) honor `isShape`. `filled`/`isShape` are serialized (`fl`/`sh`) and preserved by `clone()`/`copyWith()`.
 
+## 2026-05-29 — Scribble erase resampling fix
+`isScribble()` now resamples input points to 40 evenly-spaced arc-length points before computing angular variance and crossing density. This normalises point density regardless of how many raw pointer events Flutter delivers (the event rate varies significantly between "cold" app start and "warm" steady-state). Without this, the same scribble would have `angVar ≈ 0.42` on first use and `angVar ≈ 0.13` afterwards, making detection inconsistent. The resample target (40) was chosen because the first successful scribble had ~40 points.
+
+Also: `_rawPen` is still populated for scribble detection but the density-normalised analysis uses resampled points. Added `_doScribbleErase()` in whiteboard (was missing), scribble guard in `_tryShapeSnap` (both editors), and `_onUp` priority check in whiteboard.
+
+## 2026-05-29 — Background color favorites separated from pen favorites
+Background color picker now uses its own `SavedBgColorsPrefs` (key `saved_bg_colors_v1`) instead of sharing `SavedColorsPrefs` (key `saved_pen_colors_v1`). The background picker's star button was a no-op before; now it saves/removes independently. Added `_starBgColor()` in both editors.
+
+## 2026-05-29 — SNAP (lasso grid) removed
+The SNAP toggle button (`_snapToGrid`) and its 25px grid snap for lasso move/paste was removed from the whiteboard toolbar. It added UI clutter for a feature that 95%+ of users never use. Hardcoded snap step to 0 in lasso move/paste calls.
+
+## 2026-05-29 — Eraser partial mode + cursor in notebook
+Ported partial eraser mode (`EraserMode.partial`) and eraser cursor indicator from whiteboard to notebook. Eraser button now toggles a popup (TRAZO / PRECISO) when already active, icon changes with mode. Cursor widget (`EraserCursor`) positioned outside InteractiveViewer in screen space to avoid transform scaling issues.
+
+## 2026-05-29 — Lasso toolbar position
+Adjusted lasso mini-toolbar vertical offset from `bb.top - 64` to `bb.top - 50` in both whiteboard and notebook editors.
+
+## 2026-05-29 — Image panel sort order
+Image insert panel now uses `FilterOptionGroup` with `OrderOption(type: createDate, asc: false)` to sort by creation date descending via `PhotoManager.getAssetListPaged`. Previously it fetched the first page unsorted, showing oldest photos first.
+
+## 2026-05-29 — Partial erase: segment subdivision
+`splitStrokeByEraser` now subdivides segments that intersect the eraser tip before running the point-erase logic. This fixes partial erasing of shape-snap strokes (rectangles/triangles with only 4-5 vertices) and wide strokes (highlighter). Also changed radius from `radius` alone to `radius + strokeWidth / 2` to match `strokeHitByEraser`.
+
 ## 2026-05-29 — Screen-constant lasso/eraser hit areas
 Lasso handle hit radius and eraser radius are constant in *screen* pixels: divided by the view scale (`LassoController.hitScale`, set from `_viewScale`) so they don't balloon when zoomed. Eraser uses `strokeHitByEraser` (distance to segment + stroke half-width) for tip-accurate erasing instead of any-vertex-in-radius. Lasso preserves `isFountainPen` and full point components (3rd = baked width) across all transforms.
