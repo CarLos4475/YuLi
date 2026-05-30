@@ -627,10 +627,11 @@ class _PageThumbnailPainter extends CustomPainter {
             ..strokeWidth = 0.8,
         );
       case PageBackground.grid:
+      case PageBackground.gridSmall:
         final paint = Paint()
           ..color = const Color(0xFFDAD6CE)
           ..strokeWidth = 0.4;
-        const step = 28.0;
+        final step = background == PageBackground.gridSmall ? 14.0 : 28.0;
         for (double y = page.top + step; y < page.bottom; y += step) {
           canvas.drawLine(
               Offset(page.left, y), Offset(page.right, y), paint);

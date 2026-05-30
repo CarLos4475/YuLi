@@ -1,45 +1,114 @@
-// Shape recognition for the whiteboard. Apple-Notes-style: when the user
-// stops moving but keeps their stylus down, we run [detect] on the live
-// stroke. If it matches a primitive (line / circle / ellipse / rectangle
-// / triangle / arrow) we replace the freehand points with clean geometry.
+// Shape recognition for the whiteboard / notebook. Apple-Notes-style: when the
+// user stops moving but keeps their stylus down, we run [detect] on the live
+// stroke. If it matches a primitive (line / arrow / circle / ellipse /
+// rectangle / triangle) we replace the freehand points with clean geometry and
+// then let the ongoing drag resize/redirect it until the pen lifts.
 
 import 'dart:math' as math;
 
-import 'note_cell_model.dart';
+enum ShapeKind { line, arrow, circle, ellipse, rectangle, triangle }
+
+class RecognizedShape {
+  final ShapeKind kind;
+  final List<List<double>> points;
+  const RecognizedShape(this.kind, this.points);
+
+  /// Open shapes (line/arrow) are adjusted by moving their end point;
+  /// closed shapes are scaled around their centre.
+  bool get isOpen => kind == ShapeKind.line || kind == ShapeKind.arrow;
+}
 
 class ShapeRecognizer {
-  /// Detect a shape in `points`. Returns a clean stroke geometry or null if
-  /// no high-confidence match. Output keeps caller's color/width.
-  static List<List<double>>? detect(List<List<double>> points) {
+  /// Detect a shape in [points]. Returns the recognized geometry + kind, or
+  /// null if no confident match. Output keeps the caller's color/width.
+  static RecognizedShape? detect(List<List<double>> points) {
     if (points.length < 12) return null;
     final bb = _bbox(points);
-    final diag = math.sqrt(
-        (bb.maxX - bb.minX) * (bb.maxX - bb.minX) +
-            (bb.maxY - bb.minY) * (bb.maxY - bb.minY));
+    final diag = math.sqrt(bb.width * bb.width + bb.height * bb.height);
     if (diag < 30) return null;
 
     final closed = _isClosed(points, diag);
+    final resampled = _resample(points, 64);
 
-    if (!closed) {
-      final lineFit = _tryLine(points, diag);
-      if (lineFit != null) {
-        final arrow = _tryArrow(points, lineFit, diag);
-        if (arrow != null) return arrow;
-        return lineFit;
+    // Straight line / arrow take priority for clearly-open strokes.
+    final line = _tryLine(points, diag);
+    if (line != null && !closed) {
+      if (_hasArrowhead(points, line, diag)) {
+        return RecognizedShape(
+            ShapeKind.arrow, buildArrowShape(line[0][0], line[0][1], line[1][0], line[1][1]));
       }
+      return RecognizedShape(ShapeKind.line, [
+        [line[0][0], line[0][1]],
+        [line[1][0], line[1][1]],
+      ]);
     }
 
-    if (closed) {
-      final poly = _tryPolygon(points, bb, diag);
-      if (poly != null) return poly;
+    // Closed shapes — tried even if not perfectly closed, since people rarely
+    // close a circle/rectangle exactly.
+    final poly = _tryPolygon(resampled, bb, diag);
+    if (poly != null) return poly;
 
-      final circle = _tryCircle(points, bb, diag);
-      if (circle != null) return circle;
+    final circle = _tryCircle(resampled, bb);
+    if (circle != null) return circle;
+
+    // Closed-ish but actually a line (thin loop) — accept the line.
+    if (line != null) {
+      return RecognizedShape(ShapeKind.line, [
+        [line[0][0], line[0][1]],
+        [line[1][0], line[1][1]],
+      ]);
     }
-
     return null;
   }
 }
+
+// ─── Live-adjust builders (shared with the editors) ────────────────────────
+
+List<List<double>> buildLineShape(double ax, double ay, double bx, double by) =>
+    [
+      [ax, ay],
+      [bx, by],
+    ];
+
+List<List<double>> buildArrowShape(
+    double ax, double ay, double bx, double by) {
+  final dir = _norm(bx - ax, by - ay);
+  final len = math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+  final headLen = (len * 0.22).clamp(8.0, 44.0);
+  final left = _rot(dir, math.pi * 5 / 6);
+  final right = _rot(dir, -math.pi * 5 / 6);
+  return [
+    [ax, ay],
+    [bx, by],
+    [bx + left[0] * headLen, by + left[1] * headLen],
+    [bx, by],
+    [bx + right[0] * headLen, by + right[1] * headLen],
+  ];
+}
+
+/// Centroid of a closed shape's vertices. Ignores the duplicated closing
+/// vertex so the scale centre isn't biased toward the start point.
+List<double> shapeCentroid(List<List<double>> pts) {
+  var n = pts.length;
+  if (n > 1 &&
+      pts.first[0] == pts.last[0] &&
+      pts.first[1] == pts.last[1]) {
+    n--;
+  }
+  double sx = 0, sy = 0;
+  for (int i = 0; i < n; i++) {
+    sx += pts[i][0];
+    sy += pts[i][1];
+  }
+  return [sx / n, sy / n];
+}
+
+/// Scale [pts] around [cx],[cy] by factor [k].
+List<List<double>> scaleShape(
+        List<List<double>> pts, double cx, double cy, double k) =>
+    pts
+        .map((p) => [cx + (p[0] - cx) * k, cy + (p[1] - cy) * k])
+        .toList();
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────
 
@@ -62,12 +131,12 @@ _BBox _bbox(List<List<double>> pts) {
   return _BBox(minX, minY, maxX, maxY);
 }
 
+double _dist(List<double> a, List<double> b) =>
+    math.sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]));
+
 bool _isClosed(List<List<double>> pts, double diag) {
-  final a = pts.first;
-  final b = pts.last;
-  final d = math.sqrt(
-      (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]));
-  return d < diag * 0.20;
+  final d = _dist(pts.first, pts.last);
+  return d < diag * 0.22;
 }
 
 double _perpDist(List<double> p, List<double> a, List<double> b) {
@@ -80,6 +149,43 @@ double _perpDist(List<double> p, List<double> a, List<double> b) {
   }
   final num = (dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]).abs();
   return num / mag;
+}
+
+/// Uniform arc-length resampling to [n] points. Removes the speed-bias that
+/// destabilizes corner/curvature analysis.
+List<List<double>> _resample(List<List<double>> pts, int n) {
+  if (pts.length < 2) return pts;
+  double total = 0;
+  for (int i = 1; i < pts.length; i++) {
+    total += _dist(pts[i - 1], pts[i]);
+  }
+  if (total < 1e-6) return [pts.first, pts.last];
+  final interval = total / (n - 1);
+  final out = <List<double>>[
+    [pts.first[0], pts.first[1]]
+  ];
+  double accum = 0;
+  var prev = pts.first;
+  int i = 1;
+  while (i < pts.length) {
+    final curr = pts[i];
+    final d = _dist(prev, curr);
+    if (d > 0 && accum + d >= interval) {
+      final t = (interval - accum) / d;
+      final np = [prev[0] + t * (curr[0] - prev[0]), prev[1] + t * (curr[1] - prev[1])];
+      out.add(np);
+      prev = np;
+      accum = 0;
+    } else {
+      accum += d;
+      prev = curr;
+      i++;
+    }
+  }
+  while (out.length < n) {
+    out.add([pts.last[0], pts.last[1]]);
+  }
+  return out;
 }
 
 List<List<double>> _douglasPeucker(List<List<double>> pts, double eps) {
@@ -112,11 +218,9 @@ List<List<double>>? _tryLine(List<List<double>> pts, double diag) {
     final d = _perpDist(p, a, b);
     if (d > dmax) dmax = d;
   }
-  // Endpoints must be far apart enough.
-  final len = math.sqrt(
-      (b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]));
+  final len = _dist(a, b);
   if (len < diag * 0.6) return null;
-  if (dmax > diag * 0.06) return null;
+  if (dmax > diag * 0.08) return null;
   return [
     [a[0], a[1]],
     [b[0], b[1]],
@@ -125,33 +229,31 @@ List<List<double>>? _tryLine(List<List<double>> pts, double diag) {
 
 // ─── Arrow detection ──────────────────────────────────────────────────────
 //
-// Heuristic: a line+arrow stroke has a long mostly-straight segment then a
-// sudden V-shaped kink at the end (the arrowhead). Detect by simplifying
-// and checking for a corner near the tail with two short edges.
+// A line+arrow stroke ends in a V-shaped barb: drawn continuously, the tail
+// contains at least one sharp (>~115°) reversal. A plain line has none.
 
-List<List<double>>? _tryArrow(
+bool _hasArrowhead(
     List<List<double>> pts, List<List<double>> line, double diag) {
-  if (pts.length < 16) return null;
-  // Use simplified version of last 30% of points to find arrowhead.
-  final tailStart = (pts.length * 0.7).floor();
+  if (pts.length < 16) return false;
+  final tailStart = (pts.length * 0.65).floor();
   final tail = pts.sublist(tailStart);
-  if (tail.length < 6) return null;
-  final simp = _douglasPeucker(tail, diag * 0.04);
-  if (simp.length < 3) return null;
-  // Arrowhead detected if there's a sharp turn within the tail.
-  final head = simp.last;
-  final headLen = diag * 0.18;
-  final dir = _norm(line[1][0] - line[0][0], line[1][1] - line[0][1]);
-  // Two arrowhead edges at ±150° from line direction.
-  final left = _rot(dir, math.pi * 5 / 6);
-  final right = _rot(dir, -math.pi * 5 / 6);
-  return [
-    [line[0][0], line[0][1]],
-    [head[0], head[1]],
-    [head[0] + left[0] * headLen, head[1] + left[1] * headLen],
-    [head[0], head[1]],
-    [head[0] + right[0] * headLen, head[1] + right[1] * headLen],
-  ];
+  if (tail.length < 4) return false;
+  final simp = _douglasPeucker(tail, diag * 0.05);
+  if (simp.length < 3) return false;
+  int sharp = 0;
+  for (int i = 1; i < simp.length - 1; i++) {
+    final ax = simp[i][0] - simp[i - 1][0];
+    final ay = simp[i][1] - simp[i - 1][1];
+    final bx = simp[i + 1][0] - simp[i][0];
+    final by = simp[i + 1][1] - simp[i][1];
+    final ma = math.sqrt(ax * ax + ay * ay);
+    final mb = math.sqrt(bx * bx + by * by);
+    if (ma < 1e-3 || mb < 1e-3) continue;
+    final cos = (ax * bx + ay * by) / (ma * mb);
+    final turn = math.acos(cos.clamp(-1.0, 1.0));
+    if (turn > 2.0) sharp++; // > ~115°
+  }
+  return sharp >= 1;
 }
 
 List<double> _norm(double x, double y) {
@@ -168,52 +270,45 @@ List<double> _rot(List<double> v, double a) {
 
 // ─── Circle / ellipse detection ───────────────────────────────────────────
 
-List<List<double>>? _tryCircle(
-    List<List<double>> pts, _BBox bb, double diag) {
-  final cx = (bb.minX + bb.maxX) / 2;
-  final cy = (bb.minY + bb.maxY) / 2;
-  // Mean radius + std dev relative to mean.
+RecognizedShape? _tryCircle(List<List<double>> pts, _BBox bb) {
+  final c = shapeCentroid(pts);
+  final cx = c[0], cy = c[1];
   double sumD = 0;
   for (final p in pts) {
-    sumD += math.sqrt(
-        (p[0] - cx) * (p[0] - cx) + (p[1] - cy) * (p[1] - cy));
+    sumD += _dist(p, [cx, cy]);
   }
   final meanD = sumD / pts.length;
   if (meanD < 10) return null;
   double sumSq = 0;
   for (final p in pts) {
-    final d = math.sqrt(
-        (p[0] - cx) * (p[0] - cx) + (p[1] - cy) * (p[1] - cy));
+    final d = _dist(p, [cx, cy]);
     sumSq += (d - meanD) * (d - meanD);
   }
-  final std = math.sqrt(sumSq / pts.length);
-  final spread = std / meanD;
-
+  final spread = math.sqrt(sumSq / pts.length) / meanD;
   final aspect = bb.width / (bb.height < 1e-6 ? 1 : bb.height);
 
-  if (spread < 0.12 && aspect > 0.7 && aspect < 1.4) {
-    // Circle.
-    final rx = bb.width / 2;
-    final ry = bb.height / 2;
-    return _ellipsePoints(cx, cy, rx, ry, 48);
+  if (spread < 0.18 && aspect > 0.75 && aspect < 1.34) {
+    return RecognizedShape(
+        ShapeKind.circle, _ellipsePoints(cx, cy, meanD, meanD, 48));
   }
-  // Maybe ellipse: spread is large because radii differ. Re-evaluate via
-  // bbox semi-axes — accept if the points lie close to that ellipse.
-  if (aspect > 1.3 || aspect < 0.77) {
-    final rx = bb.width / 2;
-    final ry = bb.height / 2;
-    if (rx < 8 || ry < 8) return null;
-    double maxErr = 0;
-    for (final p in pts) {
-      final nx = (p[0] - cx) / rx;
-      final ny = (p[1] - cy) / ry;
-      final r = math.sqrt(nx * nx + ny * ny);
-      final err = (r - 1).abs();
-      if (err > maxErr) maxErr = err;
-    }
-    if (maxErr < 0.22) {
-      return _ellipsePoints(cx, cy, rx, ry, 64);
-    }
+
+  // Ellipse: radii differ. Validate points lie near the bbox ellipse.
+  final ecx = (bb.minX + bb.maxX) / 2;
+  final ecy = (bb.minY + bb.maxY) / 2;
+  final rx = bb.width / 2;
+  final ry = bb.height / 2;
+  if (rx < 8 || ry < 8) return null;
+  double maxErr = 0;
+  for (final p in pts) {
+    final nx = (p[0] - ecx) / rx;
+    final ny = (p[1] - ecy) / ry;
+    final r = math.sqrt(nx * nx + ny * ny);
+    final err = (r - 1).abs();
+    if (err > maxErr) maxErr = err;
+  }
+  if (maxErr < 0.25) {
+    return RecognizedShape(
+        ShapeKind.ellipse, _ellipsePoints(ecx, ecy, rx, ry, 64));
   }
   return null;
 }
@@ -230,94 +325,152 @@ List<List<double>> _ellipsePoints(
 
 // ─── Polygon detection (rectangle / triangle) ─────────────────────────────
 
-List<List<double>>? _tryPolygon(
-    List<List<double>> pts, _BBox bb, double diag) {
-  final loop = [...pts];
-  if (loop.last != loop.first) {
-    loop.add([loop.first[0], loop.first[1]]);
+class _Corner {
+  final List<double> p;
+  final double turn;
+  _Corner(this.p, this.turn);
+}
+
+/// Find dominant corners on a (near-)closed resampled contour via local
+/// turning-angle maxima with non-maximum suppression.
+List<_Corner> _dominantCorners(List<List<double>> pts) {
+  final n = pts.length;
+  if (n < 8) return [];
+  final k = math.max(2, n ~/ 12);
+  final turns = List<double>.filled(n, 0);
+  for (int i = 0; i < n; i++) {
+    final a = pts[(i - k + n) % n];
+    final c = pts[(i + k) % n];
+    final v1x = pts[i][0] - a[0], v1y = pts[i][1] - a[1];
+    final v2x = c[0] - pts[i][0], v2y = c[1] - pts[i][1];
+    final m1 = math.sqrt(v1x * v1x + v1y * v1y);
+    final m2 = math.sqrt(v2x * v2x + v2y * v2y);
+    if (m1 < 1e-6 || m2 < 1e-6) continue;
+    final cos = (v1x * v2x + v1y * v2y) / (m1 * m2);
+    turns[i] = math.acos(cos.clamp(-1.0, 1.0)); // turning angle (0=straight)
   }
-
-  // Try multiple epsilon values — hand-drawn corners are imprecise.
-  for (final epsFactor in [0.10, 0.08, 0.06]) {
-    final simp = _douglasPeucker(loop, diag * epsFactor);
-    if (simp.length < 4) continue;
-    var verts = simp.sublist(0, simp.length - 1);
-
-    // Merge vertices that are too close (imprecise corner = 2 points).
-    verts = _mergeClose(verts, diag * 0.08);
-
-    if (verts.length == 4) {
-      if (_areAnglesNear(verts, math.pi / 2, math.pi / 6)) {
-        return [
-          [bb.minX, bb.minY],
-          [bb.maxX, bb.minY],
-          [bb.maxX, bb.maxY],
-          [bb.minX, bb.maxY],
-          [bb.minX, bb.minY],
-        ];
+  const thresh = 0.7; // ~40°
+  final corners = <_Corner>[];
+  for (int i = 0; i < n; i++) {
+    if (turns[i] < thresh) continue;
+    bool isMax = true;
+    for (int j = -k; j <= k; j++) {
+      final m = (i + j + n) % n;
+      if (turns[m] > turns[i]) {
+        isMax = false;
+        break;
       }
     }
+    if (isMax) corners.add(_Corner([pts[i][0], pts[i][1]], turns[i]));
+  }
+  return corners;
+}
 
-    if (verts.length == 3) {
-      return [
-        [verts[0][0], verts[0][1]],
-        [verts[1][0], verts[1][1]],
-        [verts[2][0], verts[2][1]],
-        [verts[0][0], verts[0][1]],
-      ];
+List<List<double>> _bboxRect(_BBox bb) => [
+      [bb.minX, bb.minY],
+      [bb.maxX, bb.minY],
+      [bb.maxX, bb.maxY],
+      [bb.minX, bb.maxY],
+      [bb.minX, bb.minY],
+    ];
+
+/// Fraction of points lying within [tol] of any bbox side. ~1.0 for an
+/// axis-aligned rectangle, low for triangles (diagonal edges) and circles
+/// (arcs bow inward away from the corners).
+double _hugFraction(List<List<double>> pts, _BBox bb, double tol) {
+  int near = 0;
+  for (final p in pts) {
+    final dEdge = math.min(
+      math.min((p[0] - bb.minX).abs(), (p[0] - bb.maxX).abs()),
+      math.min((p[1] - bb.minY).abs(), (p[1] - bb.maxY).abs()),
+    );
+    if (dEdge < tol) near++;
+  }
+  return near / pts.length;
+}
+
+/// True when all four bbox sides carry a meaningful share of points. A
+/// rectangle covers every side; a triangle leaves one side touched only by a
+/// single vertex.
+bool _allSidesCovered(List<List<double>> pts, _BBox bb, double tol) {
+  int top = 0, bottom = 0, left = 0, right = 0;
+  for (final p in pts) {
+    if ((p[1] - bb.minY).abs() < tol) top++;
+    if ((p[1] - bb.maxY).abs() < tol) bottom++;
+    if ((p[0] - bb.minX).abs() < tol) left++;
+    if ((p[0] - bb.maxX).abs() < tol) right++;
+  }
+  final minCov = pts.length * 0.05;
+  return top > minCov && bottom > minCov && left > minCov && right > minCov;
+}
+
+RecognizedShape? _tryPolygon(List<List<double>> pts, _BBox bb, double diag) {
+  // Axis-aligned rectangle: the contour hugs its bounding box AND every side
+  // is covered. Robust to corner-count quirks (e.g. wide/short rectangles
+  // whose short sides have too few samples to yield 4 corners) while rejecting
+  // triangles (one side touched only by a vertex) and circles (arcs bow in).
+  if (bb.width > 20 && bb.height > 20) {
+    final tol = diag * 0.05;
+    if (_hugFraction(pts, bb, tol) > 0.80 &&
+        _allSidesCovered(pts, bb, tol)) {
+      return RecognizedShape(ShapeKind.rectangle, _bboxRect(bb));
     }
   }
 
-  // Fallback: if bbox aspect is rectangular-ish and points hug the bbox,
-  // it's likely a rectangle even if DP couldn't simplify cleanly.
-  final aspect = bb.width / (bb.height < 1e-6 ? 1 : bb.height);
-  if (aspect > 0.4 && aspect < 2.5 && bb.width > 30 && bb.height > 30) {
-    final maxDist = _maxDistToBbox(pts, bb);
-    if (maxDist < diag * 0.15) {
-      return [
-        [bb.minX, bb.minY],
-        [bb.maxX, bb.minY],
-        [bb.maxX, bb.maxY],
-        [bb.minX, bb.maxY],
-        [bb.minX, bb.minY],
-      ];
+  var corners = _dominantCorners(pts);
+  // A spurious extra corner at the start/end seam → drop the weakest.
+  if (corners.length == 5) {
+    double minTurn = double.infinity;
+    int minIdx = 0;
+    for (int i = 0; i < corners.length; i++) {
+      if (corners[i].turn < minTurn) {
+        minTurn = corners[i].turn;
+        minIdx = i;
+      }
     }
+    corners.removeAt(minIdx);
+  }
+  if (corners.length < 3 || corners.length > 4) return null;
+
+  final verts = corners.map((c) => c.p).toList();
+
+  // 4 corners with right-ish angles — rectangle (axis-aligned bbox if upright,
+  // otherwise keep the detected quad to support rotated rectangles).
+  if (verts.length == 4 && _areAnglesNear(verts, math.pi / 2, math.pi / 5)) {
+    if (_isAxisAligned(verts)) {
+      return RecognizedShape(ShapeKind.rectangle, _bboxRect(bb));
+    }
+    return RecognizedShape(ShapeKind.rectangle, [
+      ...verts.map((v) => [v[0], v[1]]),
+      [verts[0][0], verts[0][1]],
+    ]);
   }
 
+  if (verts.length == 3) {
+    return RecognizedShape(ShapeKind.triangle, [
+      [verts[0][0], verts[0][1]],
+      [verts[1][0], verts[1][1]],
+      [verts[2][0], verts[2][1]],
+      [verts[0][0], verts[0][1]],
+    ]);
+  }
   return null;
 }
 
-List<List<double>> _mergeClose(List<List<double>> verts, double minDist) {
-  if (verts.length <= 3) return verts;
-  final out = <List<double>>[verts.first];
-  for (int i = 1; i < verts.length; i++) {
-    final prev = out.last;
-    final dx = verts[i][0] - prev[0];
-    final dy = verts[i][1] - prev[1];
-    if (dx * dx + dy * dy < minDist * minDist) {
-      out.last = [(prev[0] + verts[i][0]) / 2, (prev[1] + verts[i][1]) / 2];
-    } else {
-      out.add(verts[i]);
-    }
+bool _isAxisAligned(List<List<double>> verts) {
+  final n = verts.length;
+  for (int i = 0; i < n; i++) {
+    final a = verts[i];
+    final b = verts[(i + 1) % n];
+    final dx = (b[0] - a[0]).abs();
+    final dy = (b[1] - a[1]).abs();
+    // Each edge should be mostly horizontal or mostly vertical.
+    final minor = math.min(dx, dy);
+    final major = math.max(dx, dy);
+    if (major < 1e-6) continue;
+    if (minor / major > 0.25) return false;
   }
-  return out;
-}
-
-double _maxDistToBbox(List<List<double>> pts, _BBox bb) {
-  double maxD = 0;
-  for (final p in pts) {
-    final dx = [
-      (p[0] - bb.minX).abs(),
-      (p[0] - bb.maxX).abs(),
-    ].reduce(math.min);
-    final dy = [
-      (p[1] - bb.minY).abs(),
-      (p[1] - bb.maxY).abs(),
-    ].reduce(math.min);
-    final d = math.min(dx, dy);
-    if (d > maxD) maxD = d;
-  }
-  return maxD;
+  return true;
 }
 
 bool _areAnglesNear(
@@ -339,14 +492,4 @@ bool _areAnglesNear(
     if ((angle - target).abs() > tolerance) return false;
   }
   return true;
-}
-
-/// Convert clean point list to a DrawingStroke with given style.
-DrawingStroke shapeToStroke(
-    List<List<double>> points, int colorValue, double strokeW) {
-  return DrawingStroke(
-    colorValue: colorValue,
-    strokeWidth: strokeW,
-    points: points.map((p) => [p[0], p[1]]).toList(),
-  );
 }

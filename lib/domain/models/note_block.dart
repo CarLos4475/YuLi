@@ -95,6 +95,9 @@ sealed class NoteBlock {
           position: position,
           height: ((json['h'] as num?) ?? 300).toDouble(),
           strokesJson: jsonEncode(json['s'] ?? const []),
+          imagesJson: jsonEncode(json['i'] ?? const []),
+          background: json['bg'] as String?,
+          bgColor: (json['bgc'] as num?)?.toInt(),
         );
     }
   }
@@ -184,25 +187,44 @@ class TareasBlock extends NoteBlock {
 class DrawingBlock extends NoteBlock {
   final double height;
   final String strokesJson;
+  final String imagesJson;
+  final String? background;
+  final int? bgColor;
   const DrawingBlock({
     required super.id,
     required super.noteId,
     required super.position,
     required this.height,
     required this.strokesJson,
+    this.imagesJson = '[]',
+    this.background,
+    this.bgColor,
   }) : super(type: NoteBlockType.drawing);
 
-  DrawingBlock copyWith({double? height, String? strokesJson}) => DrawingBlock(
+  DrawingBlock copyWith({
+    double? height,
+    String? strokesJson,
+    String? imagesJson,
+    String? background,
+    int? bgColor,
+  }) =>
+      DrawingBlock(
         id: id,
         noteId: noteId,
         position: position,
         height: height ?? this.height,
         strokesJson: strokesJson ?? this.strokesJson,
+        imagesJson: imagesJson ?? this.imagesJson,
+        background: background ?? this.background,
+        bgColor: bgColor ?? this.bgColor,
       );
 
   @override
   Map<String, dynamic> payloadJson() => {
         'h': height,
         's': jsonDecode(strokesJson),
+        'i': jsonDecode(imagesJson),
+        if (background != null) 'bg': background,
+        if (bgColor != null) 'bgc': bgColor,
       };
 }

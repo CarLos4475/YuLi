@@ -10,6 +10,7 @@ class LassoMiniToolbar extends StatefulWidget {
   final VoidCallback onFlipV;
   final VoidCallback onCopy;
   final VoidCallback onCut;
+  final VoidCallback? onCrop; // only when a single image is selected
   final List<Color> palette;
   final List<double> widths;
 
@@ -23,6 +24,7 @@ class LassoMiniToolbar extends StatefulWidget {
     required this.onFlipV,
     required this.onCopy,
     required this.onCut,
+    this.onCrop,
     required this.palette,
     this.widths = const [3.0, 6.0, 10.0],
   });
@@ -122,6 +124,10 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (widget.onCrop != null) ...[
+                _Btn(icon: Icons.crop, label: 'RECORTAR', onTap: widget.onCrop!),
+                _sep(),
+              ],
               _Btn(icon: Icons.delete_outline, label: 'BORRAR', onTap: widget.onDelete),
               _sep(),
               _Btn(icon: Icons.copy_outlined, label: 'DUPLICAR', onTap: widget.onDuplicate),

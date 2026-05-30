@@ -1,7 +1,8 @@
 enum PageBackground {
   blank,
   lined,
-  grid,
+  grid, // large grid
+  gridSmall,
   dotted;
 
   String toDbString() => name;
@@ -11,4 +12,12 @@ enum PageBackground {
         (e) => e.name == s,
         orElse: () => PageBackground.blank,
       );
+
+  String get label => switch (this) {
+        PageBackground.blank => 'BLANCO',
+        PageBackground.lined => 'LÍNEAS',
+        PageBackground.grid => 'CUADRÍCULA',
+        PageBackground.gridSmall => 'CUADRÍCULA CHICA',
+        PageBackground.dotted => 'PUNTOS',
+      };
 }

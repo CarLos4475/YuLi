@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:io';
+import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -14,14 +18,23 @@ import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
+import '../../../domain/models/page_background.dart';
+import 'background_paint.dart';
+import 'background_popup.dart';
 import 'color_picker.dart';
+import 'drawing_engine.dart';
+import 'drawing_prefs.dart';
+import 'eraser_mode_popup.dart';
 import 'fountain_pen_engine.dart';
-import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
 import 'shape_recognizer.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
+import 'canvas_image_cache.dart';
+import 'image_crop_screen.dart';
+import 'image_insert_panel.dart';
+import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
 import '../lab/lab_space_detail_screen.dart';
 
@@ -60,7 +73,33 @@ class _WhiteboardEditorScreenState
   bool _isDrawing = false;
   bool _stylusActive = false;
   bool _headerCollapsed = true;
-  final List<DrawingStroke> _undoStack = [];
+  StabilizerLevel _stabilizer = StabilizerLevel.off;
+  LiveStabilizer? _stab;
+  bool _fillShapes = false;
+  final Map<DrawTool, Color> _toolColors = {...DrawingPrefs.defaultColors};
+  final Map<DrawTool, double> _toolWidths = {...DrawingPrefs.defaultWidths};
+  CanvasImageCache? _imgCache;
+  String? _imageDirPath;
+  bool _imagePanelOpen = false;
+  bool _bgPopupOpen = false;
+  bool _bgColorPickerOpen = false;
+  EraserMode _eraserMode = EraserMode.stroke;
+  bool _eraserPopupOpen = false;
+  bool _snapToGrid = false;
+  Offset? _eraserCursor; // screen pos for the eraser indicator
+  // Raw (un-stabilized) pen points — used for scribble-erase detection so the
+  // stabilizer's smoothing doesn't hide the zigzags.
+  List<List<double>> _rawPen = [];
+  // Post-snap live adjust state.
+  ShapeKind? _snapKind;
+  List<List<double>>? _snapBasePoints;
+  Offset? _snapCenter;
+  Offset? _snapAnchor;
+  double _snapRefDist = 1;
+  final List<(List<DrawingStroke>, List<CanvasImage>)> _undoStack = [];
+  final List<(List<DrawingStroke>, List<CanvasImage>)> _redoStack = [];
+  (List<DrawingStroke>, List<CanvasImage>)? _gestureBefore;
+  bool _gestureChanged = false;
   DrawingStroke? _active;
   Timer? _holdTimer;
   Offset? _holdAnchor;
@@ -79,6 +118,7 @@ class _WhiteboardEditorScreenState
   bool _colorPickerOpen = false;
   List<Color> _recentColors = const [];
   List<Color> _savedColors = const [];
+  List<Color> _bgSavedColors = const [];
   bool _eyedropperMode = false;
   bool _lockBeforeEyedropper = false;
 
@@ -99,23 +139,63 @@ class _WhiteboardEditorScreenState
     _lassoCtrl.onChanged = () => setState(() {});
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
-      setState(() {
-        _recentWidths = widths;
-        if (widths.isNotEmpty) _strokeW = widths.first;
-      });
+      setState(() => _recentWidths = widths);
     });
     ColorPalettePrefs.load().then((colors) {
       if (!mounted) return;
-      setState(() {
-        _recentColors = colors;
-        if (colors.isNotEmpty) _color = colors.first;
-      });
+      setState(() => _recentColors = colors);
     });
     SavedColorsPrefs.load().then((colors) {
       if (!mounted) return;
       setState(() => _savedColors = colors);
     });
+    SavedBgColorsPrefs.load().then((colors) {
+      if (!mounted) return;
+      setState(() => _bgSavedColors = colors);
+    });
+    DrawingPrefs.load().then((p) {
+      if (!mounted) return;
+      setState(() {
+        _stabilizer = p.stabilizer;
+        _palmRejection = p.palmRejection;
+        _fillShapes = p.fillShapes;
+        _eraserMode = p.eraserMode;
+        _snapToGrid = p.snapToGrid;
+        _toolColors.addAll(p.toolColors);
+        _toolWidths.addAll(p.toolWidths);
+        _color = _toolColors[_tool] ?? _color;
+        _strokeW = _toolWidths[_tool] ?? _strokeW;
+      });
+    });
+    getApplicationDocumentsDirectory().then((dir) {
+      if (!mounted) return;
+      final path = p.join(dir.path, 'note_images', '${widget.note.id}');
+      setState(() {
+        _imageDirPath = path;
+        _imgCache = CanvasImageCache(
+          dirPath: path,
+          onLoaded: () {
+            if (mounted) setState(() {});
+          },
+        );
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCanvasBlock());
+  }
+
+  void _selectTool(DrawTool t) {
+    setState(() {
+      if (DrawingPrefs.isColoredTool(_tool)) {
+        _toolColors[_tool] = _color;
+        _toolWidths[_tool] = _strokeW;
+      }
+      _tool = t;
+      if (DrawingPrefs.isColoredTool(t)) {
+        _color = _toolColors[t] ?? _color;
+        _strokeW = _toolWidths[t] ?? _strokeW;
+      }
+      _lassoCtrl.deselect();
+    });
   }
 
   void _toggleWidthPicker() {
@@ -136,16 +216,24 @@ class _WhiteboardEditorScreenState
     setState(() {
       _strokeW = value;
       _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
+      if (DrawingPrefs.isColoredTool(_tool)) _toolWidths[_tool] = value;
     });
     StrokeWidthPrefs.save(_recentWidths);
+    if (DrawingPrefs.isColoredTool(_tool)) {
+      DrawingPrefs.saveToolWidth(_tool, value);
+    }
   }
 
   void _commitColor(Color value) {
     setState(() {
       _color = value;
       _recentColors = ColorPalettePrefs.push(_recentColors, value);
+      if (DrawingPrefs.isColoredTool(_tool)) _toolColors[_tool] = value;
     });
     ColorPalettePrefs.save(_recentColors);
+    if (DrawingPrefs.isColoredTool(_tool)) {
+      DrawingPrefs.saveToolColor(_tool, value);
+    }
   }
 
   void _starColor(Color value) {
@@ -157,6 +245,18 @@ class _WhiteboardEditorScreenState
           : SavedColorsPrefs.push(_savedColors, value);
     });
     SavedColorsPrefs.save(_savedColors);
+    HapticFeedback.selectionClick();
+  }
+
+  void _starBgColor(Color value) {
+    final isStarred =
+        _bgSavedColors.any((c) => c.toARGB32() == value.toARGB32());
+    setState(() {
+      _bgSavedColors = isStarred
+          ? SavedBgColorsPrefs.remove(_bgSavedColors, value)
+          : SavedBgColorsPrefs.push(_bgSavedColors, value);
+    });
+    SavedBgColorsPrefs.save(_bgSavedColors);
     HapticFeedback.selectionClick();
   }
 
@@ -195,26 +295,125 @@ class _WhiteboardEditorScreenState
 
   @override
   void dispose() {
+    _reconcileImageFiles();
     _holdTimer?.cancel();
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
+    _imgCache?.dispose();
     _viewCtrl.dispose();
     super.dispose();
   }
 
+  /// On leaving the canvas, delete image files no longer referenced by the
+  /// canvas data (orphans from inserts that were later removed). Canvas images
+  /// are tracked only in the block payload, so that's the source of truth.
+  /// Safe here because the undo history is discarded on exit.
+  void _reconcileImageFiles() {
+    final dirPath = _imageDirPath;
+    if (dirPath == null) return;
+    final referenced = _data.images.map((im) => im.filename).toSet();
+    // Fire-and-forget; widget is disposing.
+    () async {
+      try {
+        final dir = Directory(dirPath);
+        if (!await dir.exists()) return;
+        await for (final entity in dir.list()) {
+          if (entity is File &&
+              !referenced.contains(p.basename(entity.path))) {
+            try {
+              await entity.delete();
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }();
+  }
+
   bool _tryShapeSnap() {
     if (_active == null) return false;
-    final cleaned = ShapeRecognizer.detect(_active!.points);
-    if (cleaned == null) return false;
-    final clean = shapeToStroke(cleaned, _active!.colorValue, _active!.strokeWidth);
-    setState(() {
-      _data.strokes.add(clean);
-      _active = null;
-      _undoStack.clear();
-    });
-    _persist();
+    // A scribble densely fills a box and would be mis-snapped to a rectangle —
+    // leave it for the scribble-erase on pen-up.
+    if (isScribble(_rawPen.isNotEmpty ? _rawPen : _active!.points)) return false;
+    final shape = ShapeRecognizer.detect(_active!.points);
+    if (shape == null) return false;
+    _enterShapeAdjust(shape, _active!);
     HapticFeedback.lightImpact();
     return true;
+  }
+
+  /// Replace the freehand stroke with clean geometry and enter live-adjust:
+  /// the ongoing drag resizes closed shapes (around their centre) or moves the
+  /// end point of lines/arrows, until the pen lifts.
+  void _enterShapeAdjust(RecognizedShape shape, DrawingStroke src) {
+    _holdTimer?.cancel();
+    _holdAnchor = null;
+    final pts = shape.points.map((p) => [p[0], p[1]]).toList();
+    _snapKind = shape.kind;
+    if (shape.isOpen) {
+      _snapAnchor = Offset(pts.first[0], pts.first[1]);
+      _snapBasePoints = null;
+      _snapCenter = null;
+    } else {
+      final c = shapeCentroid(pts);
+      _snapCenter = Offset(c[0], c[1]);
+      _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
+      final end = src.points.last;
+      _snapRefDist =
+          (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(1.0, 1e9);
+    }
+    setState(() {
+      _active = DrawingStroke(
+        colorValue: src.colorValue,
+        strokeWidth: src.strokeWidth,
+        filled: _fillShapes && !shape.isOpen,
+        isShape: true,
+        points: pts,
+      );
+    });
+  }
+
+  void _updateShapeAdjust(Offset p) {
+    if (_active == null || _snapKind == null) return;
+    List<List<double>> pts;
+    if (_snapKind == ShapeKind.line) {
+      pts = buildLineShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
+    } else if (_snapKind == ShapeKind.arrow) {
+      pts = buildArrowShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
+    } else {
+      final ratio =
+          ((p - _snapCenter!).distance / _snapRefDist).clamp(0.05, 20.0);
+      pts = scaleShape(
+          _snapBasePoints!, _snapCenter!.dx, _snapCenter!.dy, ratio);
+    }
+    setState(() {
+      _active = DrawingStroke(
+        colorValue: _active!.colorValue,
+        strokeWidth: _active!.strokeWidth,
+        filled: _active!.filled,
+        isShape: true,
+        points: pts,
+      );
+    });
+  }
+
+  void _commitShapeAdjust() {
+    final shape = _active;
+    _clearSnap();
+    if (shape == null) return;
+    final before = _snapshot();
+    setState(() {
+      _data.strokes.add(shape);
+      _active = null;
+    });
+    _commit(before);
+    _persist();
+  }
+
+  void _clearSnap() {
+    _snapKind = null;
+    _snapBasePoints = null;
+    _snapCenter = null;
+    _snapAnchor = null;
   }
 
   Future<void> _ensureCanvasBlock() async {
@@ -237,11 +436,23 @@ class _WhiteboardEditorScreenState
 
   DrawingData _decodeData(DrawingBlock b) {
     List<dynamic> strokes = const [];
+    List<dynamic> images = const [];
+    final payload = b.payloadJson();
     try {
       final decoded = jsonDecode(b.strokesJson);
       if (decoded is List) strokes = decoded;
     } catch (_) {}
-    return DrawingData.fromJson({'h': _kCanvasH, 's': strokes});
+    try {
+      final decoded = jsonDecode(b.imagesJson);
+      if (decoded is List) images = decoded;
+    } catch (_) {}
+    return DrawingData.fromJson({
+      'h': _kCanvasH,
+      's': strokes,
+      'i': images,
+      'bg': payload['bg'],
+      'bgc': payload['bgc'],
+    });
   }
 
   Future<void> _persist() async {
@@ -249,9 +460,97 @@ class _WhiteboardEditorScreenState
     await ref.read(noteBlockRepositoryProvider).updatePayload(_blockId!, {
       'h': _kCanvasH,
       's': _data.strokes.map((s) => s.toJson()).toList(),
+      'i': _data.images.map((im) => im.toJson()).toList(),
+      'bg': _data.background.toDbString(),
+      if (_data.bgColorValue != null) 'bgc': _data.bgColorValue,
       'whiteboard': true,
     });
   }
+
+  void _toggleImagePanel() {
+    setState(() {
+      _imagePanelOpen = !_imagePanelOpen;
+      if (_imagePanelOpen) {
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+      }
+    });
+  }
+
+  void _toggleBgPopup() {
+    setState(() {
+      _bgPopupOpen = !_bgPopupOpen;
+      _bgColorPickerOpen = false;
+      if (_bgPopupOpen) {
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _imagePanelOpen = false;
+      }
+    });
+  }
+
+  void _setBgPattern(PageBackground pb) {
+    setState(() => _data.background = pb);
+    _persist();
+  }
+
+  void _setBgColor(Color c) {
+    setState(() => _data.bgColorValue = c.toARGB32());
+    _persist();
+  }
+
+  Widget _eraserModePopup() => EraserModePopup(
+        mode: _eraserMode,
+        accent: _accent,
+        onPick: (m) {
+          setState(() {
+            _eraserMode = m;
+            _eraserPopupOpen = false;
+          });
+          DrawingPrefs.saveEraserMode(m);
+        },
+      );
+
+  /// Copy a ready (compressed) file into this note's image folder, place it at
+  /// the centre of the current viewport, and record it as an undoable step.
+  Future<void> _insertImageFile(File f) async {
+    final dirPath = _imageDirPath;
+    if (dirPath == null) return;
+    final screen = MediaQuery.of(context).size;
+    try {
+      final bytes = await f.readAsBytes();
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final iw = frame.image.width.toDouble();
+      final ih = frame.image.height.toDouble();
+      frame.image.dispose();
+      if (iw <= 0 || ih <= 0) return;
+
+      final filename = '${const Uuid().v4()}.jpg';
+      await Directory(dirPath).create(recursive: true);
+      await f.copy(p.join(dirPath, filename));
+
+      final worldW = (screen.width * 0.5) / _viewScale;
+      final worldH = worldW * ih / iw;
+      final center =
+          _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+      final img = CanvasImage(
+        filename: filename,
+        x: center.dx - worldW / 2,
+        y: center.dy - worldH / 2,
+        w: worldW,
+        h: worldH,
+      );
+      final before = _snapshot();
+      setState(() => _data.images.add(img));
+      _commit(before);
+      _persist();
+      _imgCache?.get(filename);
+      HapticFeedback.lightImpact();
+    } catch (_) {}
+  }
+
+  double get _viewScale => _viewCtrl.value.getMaxScaleOnAxis();
 
   Offset _screenToWorld(Offset screen) {
     final inv = Matrix4.copy(_viewCtrl.value)..invert();
@@ -350,8 +649,9 @@ class _WhiteboardEditorScreenState
 
     // Lasso + palm rejection + finger: interact with selection or pan/zoom
     if (_tool == DrawTool.lasso && isFinger && _palmRejection) {
+      final p = _screenToWorld(e.localPosition);
+      _lassoCtrl.hitScale = _viewScale;
       if (_lassoCtrl.phase == LassoPhase.selected) {
-        final p = _screenToWorld(e.localPosition);
         if (_lassoCtrl.hitTestRotationHandle(p) ||
             _lassoCtrl.hitTestCornerHandle(p) != null ||
             _lassoCtrl.hitTestSideHandle(p) != null ||
@@ -360,8 +660,9 @@ class _WhiteboardEditorScreenState
           _handleLassoDown(p);
           return;
         }
-        _lassoCtrl.deselect();
       }
+      // A clean finger tap to (re)select is handled by the overlay
+      // GestureDetector's onTapUp; a finger drag pans via InteractiveViewer.
       return;
     }
 
@@ -375,9 +676,14 @@ class _WhiteboardEditorScreenState
       return;
     }
     if (_tool == DrawTool.eraser) {
+      _gestureBefore = _snapshot();
+      _gestureChanged = false;
+      setState(() => _eraserCursor = e.localPosition);
       _eraseNear(p);
       return;
     }
+    _stab = _newStabilizer();
+    final sp = _stabilize(p);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
       setState(() {
@@ -387,8 +693,8 @@ class _WhiteboardEditorScreenState
           isFountainPen: true,
           points: [
             [
-              p.dx,
-              p.dy,
+              sp.dx,
+              sp.dy,
               pressure,
               DateTime.now().millisecondsSinceEpoch.toDouble(),
             ],
@@ -397,16 +703,45 @@ class _WhiteboardEditorScreenState
       });
       return;
     }
+    _rawPen = [
+      [p.dx, p.dy]
+    ];
     setState(() {
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
+        isHighlighter: _tool == DrawTool.highlighter,
         points: [
-          [p.dx, p.dy]
+          [sp.dx, sp.dy]
         ],
       );
     });
-    _startHoldTimer(p);
+    if (_tool == DrawTool.pen) _startHoldTimer(sp);
+  }
+
+  LiveStabilizer? _newStabilizer() =>
+      _stabilizer.isOn ? LiveStabilizer(_stabilizer.alpha) : null;
+
+  Offset _stabilize(Offset p) => _stab?.process(p.dx, p.dy) ?? p;
+
+  /// Finger tap (touch only) in lasso mode selects the stroke/image under it.
+  /// Handled by a dedicated tap recognizer so it resolves cleanly against the
+  /// InteractiveViewer pan in the gesture arena.
+  void _onLassoTap(TapUpDetails d) {
+    if (d.kind != PointerDeviceKind.touch) return;
+    if (_tool != DrawTool.lasso || !_palmRejection) return;
+    if (_lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating) {
+      return;
+    }
+    final p = _screenToWorld(d.localPosition);
+    _lassoCtrl.hitScale = _viewScale;
+    setState(() {
+      if (!_lassoCtrl.tapSelect(p, _data.strokes, _data.images)) {
+        _lassoCtrl.deselect();
+      }
+    });
   }
 
   static const _minDist2 = 9.0; // 3px squared
@@ -428,37 +763,44 @@ class _WhiteboardEditorScreenState
     }
     if (!_isDrawing) return;
     final p = _screenToWorld(e.localPosition);
+    if (_snapKind != null) {
+      _updateShapeAdjust(p);
+      return;
+    }
     if (_tool == DrawTool.lasso) {
       _handleLassoMove(p);
       return;
     }
     if (_tool == DrawTool.eraser) {
+      setState(() => _eraserCursor = e.localPosition);
       _eraseNear(p);
       return;
     }
     if (_active == null) return;
+    final sp = _stabilize(p);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
       setState(() => _active!.points.add([
-        p.dx,
-        p.dy,
+        sp.dx,
+        sp.dy,
         pressure,
         DateTime.now().millisecondsSinceEpoch.toDouble(),
       ]));
       return;
     }
     final pts = _active!.points;
-    if (pts.isNotEmpty) {
-      final dx = p.dx - pts.last[0];
-      final dy = p.dy - pts.last[1];
+    _rawPen.add([p.dx, p.dy]);
+    if (pts.isNotEmpty && !_stabilizer.isOn) {
+      final dx = sp.dx - pts.last[0];
+      final dy = sp.dy - pts.last[1];
       if (dx * dx + dy * dy < _minDist2) return;
     }
-    setState(() => pts.add([p.dx, p.dy]));
+    setState(() => pts.add([sp.dx, sp.dy]));
     if (_holdAnchor != null) {
-      final dx = p.dx - _holdAnchor!.dx;
-      final dy = p.dy - _holdAnchor!.dy;
+      final dx = sp.dx - _holdAnchor!.dx;
+      final dy = sp.dy - _holdAnchor!.dy;
       if (dx * dx + dy * dy > _holdTolerance2) {
-        _startHoldTimer(p);
+        _startHoldTimer(sp);
       }
     }
   }
@@ -500,16 +842,36 @@ class _WhiteboardEditorScreenState
       return;
     }
 
+    // Scribble-erase has priority over any shape that the hold-timer may have
+    // wrongly snapped (a dense scribble can match the rectangle detector).
+    if (_tool == DrawTool.pen && _rawPen.isNotEmpty && isScribble(_rawPen)) {
+      _doScribbleErase();
+      _stab = null;
+      return;
+    }
+
+    if (_snapKind != null) {
+      _commitShapeAdjust();
+      _stab = null;
+      return;
+    }
     if (_tool == DrawTool.lasso) {
       _handleLassoUp();
       return;
     }
+    if (_tool == DrawTool.eraser) {
+      _commitEraseGesture();
+      setState(() => _eraserCursor = null);
+      return;
+    }
     if (_tool == DrawTool.fountainPen) {
       _finishFountainStroke();
+      _stab = null;
       return;
     }
     if (_active == null) return;
     _finishStroke();
+    _stab = null;
   }
 
   void _onCancel(PointerCancelEvent e) {
@@ -519,14 +881,49 @@ class _WhiteboardEditorScreenState
     _holdAnchor = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    if (_snapKind != null) {
+      setState(() => _active = null);
+      _clearSnap();
+      _stab = null;
+      return;
+    }
+    if (_tool == DrawTool.eraser) {
+      _commitEraseGesture();
+      setState(() => _eraserCursor = null);
+      return;
+    }
     if (_tool == DrawTool.fountainPen) {
       _active = null;
+      _stab = null;
       return;
     }
     _finishStroke();
+    _stab = null;
+  }
+
+  void _doScribbleErase() {
+    final scribblePts = _rawPen;
+    if (!isScribble(scribblePts)) return;
+    final bounds = scribbleBounds(scribblePts);
+    final before = _snapshot();
+    final lenBefore = _data.strokes.length;
+    _data.strokes.removeWhere((s) {
+      for (final p in s.points) {
+        if (bounds.contains(Offset(p[0], p[1]))) return true;
+      }
+      return false;
+    });
+    setState(() => _active = null);
+    if (_data.strokes.length != lenBefore) {
+      _commit(before);
+      HapticFeedback.lightImpact();
+      _persist();
+    }
+    _rawPen = [];
   }
 
   void _finishStroke() {
+    if (_snapKind != null) return;
     if (_active == null) return;
     _active!.points.removeWhere(
         (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite);
@@ -535,9 +932,13 @@ class _WhiteboardEditorScreenState
       return;
     }
 
-    if (_tool == DrawTool.pen && isScribble(_active!.points)) {
-      final bounds = scribbleBounds(_active!.points);
-      final before = _data.strokes.length;
+    final scribblePts = _rawPen.length >= _active!.points.length
+        ? _rawPen
+        : _active!.points;
+    if (_tool == DrawTool.pen && isScribble(scribblePts)) {
+      final bounds = scribbleBounds(scribblePts);
+      final before = _snapshot();
+      final lenBefore = _data.strokes.length;
       _data.strokes.removeWhere((s) {
         for (final p in s.points) {
           if (bounds.contains(Offset(p[0], p[1]))) return true;
@@ -545,23 +946,21 @@ class _WhiteboardEditorScreenState
         return false;
       });
       setState(() => _active = null);
-      if (_data.strokes.length != before) {
+      if (_data.strokes.length != lenBefore) {
+        _commit(before);
         HapticFeedback.lightImpact();
         _persist();
       }
+      _rawPen = [];
       return;
     }
 
-    _active = DrawingStroke(
-      colorValue: _active!.colorValue,
-      strokeWidth: _active!.strokeWidth,
-      points: _smooth(_active!.points),
-    );
+    final before = _snapshot();
     setState(() {
       _data.strokes.add(_active!);
       _active = null;
-      _undoStack.clear();
     });
+    _commit(before);
     _persist();
   }
 
@@ -575,39 +974,39 @@ class _WhiteboardEditorScreenState
     }
 
     final baked = FountainPenEngine.finishStroke(_active!);
+    final before = _snapshot();
     setState(() {
       _data.strokes.add(baked);
       _active = null;
-      _undoStack.clear();
     });
+    _commit(before);
     _persist();
   }
 
-  static List<List<double>> _smooth(List<List<double>> pts) {
-    if (pts.length < 3) return pts;
-    final out = <List<double>>[pts.first];
-    for (int i = 1; i < pts.length - 1; i++) {
-      out.add([
-        (pts[i - 1][0] + pts[i][0] * 2 + pts[i + 1][0]) / 4,
-        (pts[i - 1][1] + pts[i][1] * 2 + pts[i + 1][1]) / 4,
-      ]);
-    }
-    out.add(pts.last);
-    return out;
-  }
+  static const _eraserScreenRadius = 7.0;
 
   void _eraseNear(Offset pos) {
-    const r2 = 24.0 * 24.0;
-    final before = _data.strokes.length;
-    _data.strokes.removeWhere((s) {
-      for (final p in s.points) {
-        final dx = p[0] - pos.dx;
-        final dy = p[1] - pos.dy;
-        if (dx * dx + dy * dy < r2) return true;
+    final radius = _eraserScreenRadius / _viewScale;
+    bool changed = false;
+    if (_eraserMode == EraserMode.partial) {
+      final out = <DrawingStroke>[];
+      for (final s in _data.strokes) {
+        final pieces = splitStrokeByEraser(s, pos, radius);
+        if (pieces.length == 1 && identical(pieces.first, s)) {
+          out.add(s);
+        } else {
+          out.addAll(pieces);
+          changed = true;
+        }
       }
-      return false;
-    });
-    if (_data.strokes.length != before) {
+      if (changed) _data.strokes = out;
+    } else {
+      final before = _data.strokes.length;
+      _data.strokes.removeWhere((s) => strokeHitByEraser(s, pos, radius));
+      changed = _data.strokes.length != before;
+    }
+    if (changed) {
+      _gestureChanged = true;
       setState(() {});
       _persist();
     }
@@ -617,27 +1016,32 @@ class _WhiteboardEditorScreenState
 
   void _handleLassoDown(Offset worldPos) {
     _pasteTimer?.cancel();
+    _lassoCtrl.hitScale = _viewScale;
     if (_showPasteAt != null) {
       setState(() => _showPasteAt = null);
       return;
     }
     if (_lassoCtrl.phase == LassoPhase.selected) {
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
-        _lassoCtrl.startRotation(worldPos, _data.strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startRotation(worldPos, _data.strokes, _data.images);
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
-        _lassoCtrl.startResize(corner, worldPos, _data.strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startResize(corner, worldPos, _data.strokes, _data.images);
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
-        _lassoCtrl.startSideResize(side, worldPos, _data.strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startSideResize(side, worldPos, _data.strokes, _data.images);
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
-        _lassoCtrl.startMove(worldPos, _data.strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startMove(worldPos, _data.strokes, _data.images);
         return;
       }
       _lassoCtrl.deselect();
@@ -674,31 +1078,74 @@ class _WhiteboardEditorScreenState
       return;
     }
     if (_lassoCtrl.phase == LassoPhase.tracing) {
-      _lassoCtrl.finishTracing(_data.strokes);
+      _lassoCtrl.finishTracing(_data.strokes, _data.images);
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
-      _lassoCtrl.finishMove(_data.strokes);
+      _lassoCtrl.finishMove(
+          _data.strokes, _data.images, _snapToGrid ? kLassoSnapStep : 0);
+      _commitGesture();
       _persist();
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       _lassoCtrl.isSideResize
-          ? _lassoCtrl.finishSideResize(_data.strokes)
-          : _lassoCtrl.finishResize(_data.strokes);
+          ? _lassoCtrl.finishSideResize(_data.strokes, _data.images)
+          : _lassoCtrl.finishResize(_data.strokes, _data.images);
+      _commitGesture();
       _persist();
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
-      _lassoCtrl.finishRotation(_data.strokes);
+      _lassoCtrl.finishRotation(_data.strokes, _data.images);
+      _commitGesture();
       _persist();
     }
   }
 
   void _lassoDelete() {
-    _lassoCtrl.deleteSelected(_data.strokes);
-    _persist();
+    _lassoMutate(() => _lassoCtrl.deleteSelected(_data.strokes, _data.images));
     HapticFeedback.lightImpact();
   }
 
   void _lassoDuplicate() {
-    _lassoCtrl.duplicateSelected(_data.strokes);
-    _persist();
+    _lassoMutate(
+        () => _lassoCtrl.duplicateSelected(_data.strokes, _data.images));
     HapticFeedback.lightImpact();
+  }
+
+  bool get _singleImageSelected =>
+      _lassoCtrl.selectedImageIndices.length == 1 &&
+      _lassoCtrl.selectedIndices.isEmpty;
+
+  Future<void> _cropSelectedImage() async {
+    final dirPath = _imageDirPath;
+    if (dirPath == null || !_singleImageSelected) return;
+    final idx = _lassoCtrl.selectedImageIndices.first;
+    if (idx >= _data.images.length) return;
+    final img = _data.images[idx];
+    final result = await Navigator.of(context).push<CropResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageCropScreen(
+          sourcePath: p.join(dirPath, img.filename),
+          accent: _accent,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final ext = p.extension(result.file.path);
+    final newName = '${const Uuid().v4()}$ext';
+    await result.file.copy(p.join(dirPath, newName));
+    final before = _snapshot();
+    setState(() {
+      _data.images[idx] = CanvasImage(
+        filename: newName,
+        x: img.x + img.w * result.fracLeft,
+        y: img.y + img.h * result.fracTop,
+        w: img.w * result.fracW,
+        h: img.h * result.fracH,
+        rotation: img.rotation,
+      );
+      _lassoCtrl.deselect();
+    });
+    _commit(before);
+    _persist();
+    _imgCache?.get(newName);
   }
 
   Widget _buildLassoMiniToolbar() {
@@ -711,25 +1158,18 @@ class _WhiteboardEditorScreenState
       child: LassoMiniToolbar(
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
+        onCrop: _singleImageSelected ? _cropSelectedImage : null,
         palette: _palette,
-        onColorChange: (c) {
-          _lassoCtrl.changeColor(_data.strokes, c.toARGB32());
-          _persist();
-        },
-        onWidthChange: (w) {
-          _lassoCtrl.changeWidth(_data.strokes, w);
-          _persist();
-        },
-        onFlipH: () {
-          _lassoCtrl.flipHorizontal(_data.strokes);
-          _persist();
-        },
-        onFlipV: () {
-          _lassoCtrl.flipVertical(_data.strokes);
-          _persist();
-        },
+        onColorChange: (c) => _lassoMutate(
+            () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32())),
+        onWidthChange: (w) =>
+            _lassoMutate(() => _lassoCtrl.changeWidth(_data.strokes, w)),
+        onFlipH: () =>
+            _lassoMutate(() => _lassoCtrl.flipHorizontal(_data.strokes)),
+        onFlipV: () =>
+            _lassoMutate(() => _lassoCtrl.flipVertical(_data.strokes)),
         onCopy: () {
-          _lassoCtrl.copySelected(_data.strokes);
+          _lassoCtrl.copySelected(_data.strokes, _data.images);
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -739,8 +1179,7 @@ class _WhiteboardEditorScreenState
           );
         },
         onCut: () {
-          _lassoCtrl.cutSelected(_data.strokes);
-          _persist();
+          _lassoMutate(() => _lassoCtrl.cutSelected(_data.strokes, _data.images));
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -761,8 +1200,8 @@ class _WhiteboardEditorScreenState
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes);
-          _persist();
+          _lassoMutate(() => _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes,
+              _data.images, _snapToGrid ? kLassoSnapStep : 0));
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -782,15 +1221,65 @@ class _WhiteboardEditorScreenState
     );
   }
 
+  // ─── Undo / redo (snapshot history) ─────────────────────────────────────
+
+  (List<DrawingStroke>, List<CanvasImage>) _snapshot() => (
+        _data.strokes.map((s) => s.clone()).toList(),
+        _data.images.map((im) => im.clone()).toList(),
+      );
+
+  void _commit((List<DrawingStroke>, List<CanvasImage>) before) {
+    _undoStack.add(before);
+    if (_undoStack.length > 60) _undoStack.removeAt(0);
+    _redoStack.clear();
+  }
+
+  void _restore((List<DrawingStroke>, List<CanvasImage>) snap) {
+    _data.strokes = snap.$1;
+    _data.images = snap.$2;
+  }
+
+  void _commitGesture() {
+    if (_gestureBefore != null) {
+      _commit(_gestureBefore!);
+      _gestureBefore = null;
+    }
+  }
+
+  void _commitEraseGesture() {
+    if (_gestureBefore != null && _gestureChanged) {
+      _commit(_gestureBefore!);
+    }
+    _gestureBefore = null;
+    _gestureChanged = false;
+  }
+
+  void _lassoMutate(VoidCallback op) {
+    final before = _snapshot();
+    op();
+    _commit(before);
+    _persist();
+  }
+
   void _undo() {
-    if (_data.strokes.isEmpty) return;
-    setState(() => _undoStack.add(_data.strokes.removeLast()));
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(_snapshot());
+    setState(() {
+      _restore(_undoStack.removeLast());
+      _lassoCtrl.deselect();
+      _active = null;
+    });
     _persist();
   }
 
   void _redo() {
-    if (_undoStack.isEmpty) return;
-    setState(() => _data.strokes.add(_undoStack.removeLast()));
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(_snapshot());
+    setState(() {
+      _restore(_redoStack.removeLast());
+      _lassoCtrl.deselect();
+      _active = null;
+    });
     _persist();
   }
 
@@ -815,16 +1304,59 @@ class _WhiteboardEditorScreenState
       ),
     );
     if (ok == true) {
-      setState(() {
-        _undoStack.addAll(_data.strokes);
-        _data.strokes.clear();
-      });
+      final before = _snapshot();
+      setState(() => _data.strokes = []);
+      _commit(before);
       _persist();
     }
   }
 
   void _resetView() {
     setState(() => _viewCtrl.value = Matrix4.identity());
+  }
+
+  Size _viewport = Size.zero;
+
+  Rect? _contentBounds() {
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (final s in _data.strokes) {
+      for (final p in s.points) {
+        if (p[0] < minX) minX = p[0];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[1] > maxY) maxY = p[1];
+      }
+    }
+    for (final im in _data.images) {
+      if (im.x < minX) minX = im.x;
+      if (im.y < minY) minY = im.y;
+      if (im.x + im.w > maxX) maxX = im.x + im.w;
+      if (im.y + im.h > maxY) maxY = im.y + im.h;
+    }
+    if (minX == double.infinity) return null;
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  void _zoomToFit() {
+    final box = (_lassoCtrl.phase == LassoPhase.selected &&
+            _lassoCtrl.boundingBox != null)
+        ? _lassoCtrl.boundingBox!
+        : _contentBounds();
+    if (box == null || box.width < 1 || box.height < 1) return;
+    final vw = _viewport.width, vh = _viewport.height;
+    if (vw < 1 || vh < 1) return;
+    const pad = 60.0;
+    final sx = (vw - pad) / box.width;
+    final sy = (vh - pad) / box.height;
+    final scale = sx < sy ? sx : sy;
+    final s = scale.clamp(0.3, 4.0);
+    final c = box.center;
+    setState(() {
+      _viewCtrl.value = Matrix4.translationValues(vw / 2, vh / 2, 0)
+        ..multiply(Matrix4.diagonal3Values(s, s, 1))
+        ..multiply(Matrix4.translationValues(-c.dx, -c.dy, 0));
+    });
   }
 
   Future<void> _linkToLab(List<LabSpace> spaces) async {
@@ -950,6 +1482,7 @@ class _WhiteboardEditorScreenState
           ],
           Expanded(
               child: LayoutBuilder(builder: (ctx, c) {
+                _viewport = Size(c.maxWidth, c.maxHeight);
                 return AnimatedBuilder(
                   animation: _viewCtrl,
                   builder: (_, _) {
@@ -962,7 +1495,9 @@ class _WhiteboardEditorScreenState
                       clipBehavior: Clip.none,
                       children: [
                         ClipRect(
-                          child: Listener(
+                          child: GestureDetector(
+                            onTapUp: _onLassoTap,
+                            child: Listener(
                             behavior: HitTestBehavior.opaque,
                             onPointerDown: _onDown,
                             onPointerMove: _onMove,
@@ -990,6 +1525,10 @@ class _WhiteboardEditorScreenState
                                     CustomPaint(
                                       painter: _CanvasPainter(
                                         strokes: _data.strokes,
+                                        images: _data.images,
+                                        imageCache: _imgCache,
+                                        background: _data.background,
+                                        paper: bgPaper(_data.bgColorValue, yCream),
                                         active: _active,
                                         locked: _locked,
                                         visibleRect: visibleRect,
@@ -997,6 +1536,11 @@ class _WhiteboardEditorScreenState
                                                 _lassoCtrl.phase == LassoPhase.resizing ||
                                                 _lassoCtrl.phase == LassoPhase.rotating)
                                             ? _lassoCtrl.selectedIndices
+                                            : null,
+                                        hiddenImageIndices: (_lassoCtrl.phase == LassoPhase.moving ||
+                                                _lassoCtrl.phase == LassoPhase.resizing ||
+                                                _lassoCtrl.phase == LassoPhase.rotating)
+                                            ? _lassoCtrl.selectedImageIndices
                                             : null,
                                       ),
                                       size: const Size(_kCanvasW, _kCanvasH),
@@ -1009,6 +1553,8 @@ class _WhiteboardEditorScreenState
                                             ctrl: _lassoCtrl,
                                             animValue: _lassoAnimCtrl.value,
                                             strokes: _data.strokes,
+                                            images: _data.images,
+                                            imageCache: _imgCache,
                                             visibleRect: visibleRect,
                                           ),
                                           size: const Size(_kCanvasW, _kCanvasH),
@@ -1019,11 +1565,18 @@ class _WhiteboardEditorScreenState
                               ),
                             ),
                           ),
+                          ),
                         ),
                         if (_lassoCtrl.phase == LassoPhase.selected)
                           _buildLassoMiniToolbar(),
                         if (_showPasteAt != null)
                           _buildPasteButton(),
+                        if (_tool == DrawTool.eraser && _eraserCursor != null)
+                          Positioned(
+                            left: _eraserCursor!.dx - _eraserScreenRadius,
+                            top: _eraserCursor!.dy - _eraserScreenRadius,
+                            child: const EraserCursor(radius: _eraserScreenRadius),
+                          ),
                       ],
                     );
                   },
@@ -1042,6 +1595,110 @@ class _WhiteboardEditorScreenState
                 child: _EyedropperHint(onCancel: _exitEyedropper),
               ),
             ),
+          if (_imagePanelOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleImagePanel,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ImageInsertPanel(
+                  accent: _accent,
+                  onPick: (file) {
+                    _toggleImagePanel();
+                    _insertImageFile(file);
+                  },
+                  onClose: _toggleImagePanel,
+                ),
+              ),
+            ),
+          ],
+          if (_bgPopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleBgPopup,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: BackgroundPopup(
+                  pattern: _data.background,
+                  color: bgPaper(_data.bgColorValue, yCream),
+                  showScope: false,
+                  allPages: false,
+                  accent: _accent,
+                  onPattern: _setBgPattern,
+                  onColor: _setBgColor,
+                  onMoreColors: () => setState(() {
+                    _bgColorPickerOpen = true;
+                    _bgPopupOpen = false;
+                  }),
+                  onScope: (_) {},
+                  onClose: _toggleBgPopup,
+                ),
+              ),
+            ),
+          ],
+          if (_bgColorPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _bgColorPickerOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ColorPickerPopup(
+                  currentColor: bgPaper(_data.bgColorValue, yCream),
+                  recentColors: const [],
+                  savedColors: _bgSavedColors,
+                  quickColors: _bgSavedColors,
+                  quickLabel: 'FAVORITOS',
+                  onPreview: (c) =>
+                      setState(() => _data.bgColorValue = c.toARGB32()),
+                  onCommit: _setBgColor,
+                  onStar: _starBgColor,
+                  onEyedropper: () {},
+                  onClose: () => setState(() {
+                    _bgColorPickerOpen = false;
+                    _bgPopupOpen = true;
+                  }),
+                ),
+              ),
+            ),
+          ],
+          if (_eraserPopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _eraserPopupOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _eraserModePopup(),
+              ),
+            ),
+          ],
           if (_widthPickerOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -1120,32 +1777,46 @@ class _WhiteboardEditorScreenState
             _toolBtn(
               icon: Icons.edit_outlined,
               active: _tool == DrawTool.pen,
-              onTap: () => setState(() {
-                _tool = DrawTool.pen;
-                _lassoCtrl.deselect();
-              }),
+              onTap: () => _selectTool(DrawTool.pen),
             ),
             const SizedBox(width: 12),
             _toolBtn(
               icon: Icons.gesture,
               active: _tool == DrawTool.fountainPen,
-              onTap: () => setState(() {
-                _tool = DrawTool.fountainPen;
-                _lassoCtrl.deselect();
-              }),
+              onTap: () => _selectTool(DrawTool.fountainPen),
             ),
             const SizedBox(width: 12),
             _toolBtn(
-              icon: Icons.auto_fix_high,
+              icon: Icons.highlight,
+              active: _tool == DrawTool.highlighter,
+              onTap: () => _selectTool(DrawTool.highlighter),
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: _eraserMode == EraserMode.partial
+                  ? Icons.cleaning_services_outlined
+                  : Icons.auto_fix_high,
               active: _tool == DrawTool.eraser,
-              onTap: () => setState(() { _tool = DrawTool.eraser; _lassoCtrl.deselect(); }),
+              onTap: () {
+                if (_tool == DrawTool.eraser) {
+                  setState(() => _eraserPopupOpen = !_eraserPopupOpen);
+                } else {
+                  _selectTool(DrawTool.eraser);
+                }
+              },
             ),
             const SizedBox(width: 12),
             _toolBtn(
               icon: Icons.highlight_alt,
               active: _tool == DrawTool.lasso,
               label: 'LAZO',
-              onTap: () => setState(() => _tool = DrawTool.lasso),
+              onTap: () => _selectTool(DrawTool.lasso),
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: Icons.image_outlined,
+              active: _imagePanelOpen,
+              onTap: _toggleImagePanel,
             ),
             _divider(),
             ColorButton(
@@ -1177,22 +1848,69 @@ class _WhiteboardEditorScreenState
             _toolBtn(
               icon: Icons.undo,
               active: false,
-              enabled: _data.strokes.isNotEmpty,
+              enabled: _undoStack.isNotEmpty,
               onTap: _undo,
             ),
             const SizedBox(width: 10),
             _toolBtn(
               icon: Icons.redo,
               active: false,
-              enabled: _undoStack.isNotEmpty,
+              enabled: _redoStack.isNotEmpty,
               onTap: _redo,
             ),
             _divider(),
             _toolBtn(
+              icon: Icons.auto_graph,
+              active: _stabilizer.isOn,
+              label: _stabilizer.label,
+              onTap: () {
+                setState(() => _stabilizer = _stabilizer.next);
+                DrawingPrefs.saveStabilizer(_stabilizer);
+              },
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: Icons.format_color_fill,
+              active: _fillShapes,
+              label: 'RELLENO',
+              onTap: () {
+                setState(() => _fillShapes = !_fillShapes);
+                DrawingPrefs.saveFill(_fillShapes);
+              },
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: Icons.grid_on,
+              active: _bgPopupOpen,
+              label: 'FONDO',
+              onTap: _toggleBgPopup,
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: Icons.grid_4x4,
+              active: _snapToGrid,
+              label: 'SNAP',
+              onTap: () {
+                setState(() => _snapToGrid = !_snapToGrid);
+                DrawingPrefs.saveSnapToGrid(_snapToGrid);
+              },
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: Icons.fit_screen,
+              active: false,
+              label: 'ENCUADRAR',
+              onTap: _zoomToFit,
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
               icon: Icons.back_hand_outlined,
               active: _palmRejection,
               label: 'PALMA',
-              onTap: () => setState(() => _palmRejection = !_palmRejection),
+              onTap: () {
+                setState(() => _palmRejection = !_palmRejection);
+                DrawingPrefs.savePalm(_palmRejection);
+              },
             ),
             const SizedBox(width: 16),
             _toolBtn(
@@ -1425,33 +2143,43 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
 
 class _CanvasPainter extends CustomPainter {
   final List<DrawingStroke> strokes;
+  final List<CanvasImage> images;
+  final CanvasImageCache? imageCache;
+  final PageBackground background;
+  final Color paper;
   final DrawingStroke? active;
   final bool locked;
   final Rect visibleRect;
   final Set<int>? hiddenIndices;
+  final Set<int>? hiddenImageIndices;
 
   _CanvasPainter({
     required this.strokes,
+    required this.images,
+    required this.imageCache,
+    required this.background,
+    required this.paper,
     required this.active,
     required this.locked,
     required this.visibleRect,
     this.hiddenIndices,
+    this.hiddenImageIndices,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final vr = visibleRect;
-    // Background — only the visible portion.
-    canvas.drawRect(vr, Paint()..color = yCream);
-    // Grid dots — only within visible rect (with 48px margin on each side).
-    final dot = Paint()..color = yMuted.withValues(alpha: 0.16);
-    const step = 48.0;
-    final startX = (vr.left / step).floor() * step;
-    final startY = (vr.top / step).floor() * step;
-    for (double x = startX; x < vr.right + step; x += step) {
-      for (double y = startY; y < vr.bottom + step; y += step) {
-        canvas.drawCircle(Offset(x, y), 1.2, dot);
+    // Paper + pattern — only the visible portion.
+    canvas.drawRect(vr, Paint()..color = paper);
+    paintBgPattern(canvas, vr, background, bgMark(paper));
+    // Images — behind strokes; skip those outside the visible rect.
+    for (int i = 0; i < images.length; i++) {
+      if (hiddenImageIndices != null && hiddenImageIndices!.contains(i)) {
+        continue;
       }
+      final im = images[i];
+      if (!Rect.fromLTWH(im.x, im.y, im.w, im.h).overlaps(vr)) continue;
+      drawCanvasImage(canvas, imageCache?.get(im.filename), im);
     }
     // Strokes — skip those that don't intersect the visible rect.
     for (int i = 0; i < strokes.length; i++) {
@@ -1493,42 +2221,14 @@ class _CanvasPainter extends CustomPainter {
       old.visibleRect != visibleRect ||
       old.locked != locked ||
       old.strokes != strokes ||
-      old.active != active;
+      old.images != images ||
+      old.background != background ||
+      old.paper != paper ||
+      old.active != active ||
+      old.hiddenImageIndices != hiddenImageIndices;
 }
 
-void _draw(Canvas canvas, DrawingStroke stroke) {
-  if (stroke.points.isEmpty) return;
-  if (stroke.isFountainPen) {
-    drawFountainPenStroke(canvas, stroke);
-    return;
-  }
-  final paint = Paint()
-    ..color = Color(stroke.colorValue)
-    ..strokeWidth = stroke.strokeWidth
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round
-    ..style = PaintingStyle.stroke;
-  if (stroke.points.length == 1) {
-    canvas.drawCircle(
-      Offset(stroke.points[0][0], stroke.points[0][1]),
-      stroke.strokeWidth / 2,
-      paint..style = PaintingStyle.fill,
-    );
-    return;
-  }
-  final path = Path();
-  path.moveTo(stroke.points[0][0], stroke.points[0][1]);
-  for (int i = 1; i < stroke.points.length - 1; i++) {
-    final x0 = stroke.points[i][0];
-    final y0 = stroke.points[i][1];
-    final x1 = stroke.points[i + 1][0];
-    final y1 = stroke.points[i + 1][1];
-    path.quadraticBezierTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
-  }
-  final last = stroke.points.last;
-  path.lineTo(last[0], last[1]);
-  canvas.drawPath(path, paint);
-}
+void _draw(Canvas canvas, DrawingStroke stroke) => drawStroke(canvas, stroke);
 
 // ─── Linked-spaces bar (under header) ─────────────────────────────────────
 

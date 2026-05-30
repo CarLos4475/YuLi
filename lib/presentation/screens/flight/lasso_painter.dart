@@ -1,5 +1,8 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'canvas_image_cache.dart';
+import 'drawing_engine.dart';
 import 'note_cell_model.dart';
 import 'lasso_controller.dart';
 
@@ -11,14 +14,20 @@ class LassoPainter extends CustomPainter {
   final LassoController ctrl;
   final double animValue;
   final List<DrawingStroke> strokes;
+  final List<CanvasImage> images;
+  final CanvasImageCache? imageCache;
   final Rect? visibleRect;
 
   LassoPainter({
     required this.ctrl,
     required this.animValue,
     required this.strokes,
+    this.images = const [],
+    this.imageCache,
     this.visibleRect,
   });
+
+  ui.Image? _img(CanvasImage im) => imageCache?.get(im.filename);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -36,6 +45,13 @@ class LassoPainter extends CustomPainter {
       case LassoPhase.rotating:
         _paintRotating(canvas);
     }
+  }
+
+  void _applyHighlighter(Paint paint, DrawingStroke stroke) {
+    if (!stroke.isHighlighter) return;
+    paint
+      ..blendMode = BlendMode.multiply
+      ..color = Color(stroke.colorValue).withValues(alpha: 0.5);
   }
 
   // ─── Tracing ───────────────────────────────────────────────────────────
@@ -59,6 +75,21 @@ class LassoPainter extends CustomPainter {
   // ─── Selection ─────────────────────────────────────────────────────────
 
   void _paintSelection(Canvas canvas, Offset offset) {
+    for (final i in ctrl.selectedImageIndices) {
+      if (i >= images.length) continue;
+      final im = images[i];
+      if (ctrl.phase == LassoPhase.moving) {
+        final ghost = im.clone()
+          ..x += offset.dx
+          ..y += offset.dy;
+        drawCanvasImage(canvas, _img(im), ghost);
+      }
+      canvas.drawRect(
+        Rect.fromLTWH(im.x + offset.dx, im.y + offset.dy, im.w, im.h),
+        Paint()..color = const Color(0x332D4B8E),
+      );
+    }
+
     for (final i in ctrl.selectedIndices) {
       if (i >= strokes.length) continue;
       final s = strokes[i];
@@ -82,6 +113,21 @@ class LassoPainter extends CustomPainter {
     if (pivot == null) return;
     final scX = ctrl.isSideResize ? ctrl.resizeScaleX : ctrl.resizeScale;
     final scY = ctrl.isSideResize ? ctrl.resizeScaleY : ctrl.resizeScale;
+
+    for (final i in ctrl.selectedImageIndices) {
+      if (i >= images.length) continue;
+      final im = images[i];
+      final ghost = im.clone()
+        ..x = pivot.dx + (im.x - pivot.dx) * scX
+        ..y = pivot.dy + (im.y - pivot.dy) * scY
+        ..w = im.w * scX
+        ..h = im.h * scY;
+      drawCanvasImage(canvas, _img(im), ghost);
+      canvas.drawRect(
+        Rect.fromLTWH(ghost.x, ghost.y, ghost.w, ghost.h),
+        Paint()..color = const Color(0x332D4B8E),
+      );
+    }
 
     for (final i in ctrl.selectedIndices) {
       if (i >= strokes.length) continue;
@@ -112,6 +158,7 @@ class LassoPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
+    if (!highlight) _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
       final p = stroke.points[0];
@@ -132,6 +179,12 @@ class LassoPainter extends CustomPainter {
     double ty(double y) => pivot.dy + (y - pivot.dy) * scY;
 
     final path = Path()..moveTo(tx(pts[0][0]), ty(pts[0][1]));
+    if (stroke.isShape) {
+      for (int i = 1; i < pts.length; i++) {
+        path.lineTo(tx(pts[i][0]), ty(pts[i][1]));
+      }
+      return path;
+    }
     for (int i = 1; i < pts.length - 1; i++) {
       final x0 = tx(pts[i][0]);
       final y0 = ty(pts[i][1]);
@@ -175,6 +228,7 @@ class LassoPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
+    _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
       final p = stroke.points[0];
@@ -194,6 +248,12 @@ class LassoPainter extends CustomPainter {
     final pts = stroke.points;
     final path = Path()
       ..moveTo(pts[0][0] + offset.dx, pts[0][1] + offset.dy);
+    if (stroke.isShape) {
+      for (int i = 1; i < pts.length; i++) {
+        path.lineTo(pts[i][0] + offset.dx, pts[i][1] + offset.dy);
+      }
+      return path;
+    }
     for (int i = 1; i < pts.length - 1; i++) {
       final x0 = pts[i][0] + offset.dx;
       final y0 = pts[i][1] + offset.dy;
@@ -214,6 +274,19 @@ class LassoPainter extends CustomPainter {
     final angle = ctrl.rotationAngle;
     final cos = math.cos(angle);
     final sin = math.sin(angle);
+
+    for (final i in ctrl.selectedImageIndices) {
+      if (i >= images.length) continue;
+      final im = images[i];
+      final icx = im.x + im.w / 2;
+      final icy = im.y + im.h / 2;
+      final r = _rotatePoint(Offset(icx, icy), center, cos, sin);
+      final ghost = im.clone()
+        ..x = r.dx - im.w / 2
+        ..y = r.dy - im.h / 2
+        ..rotation = im.rotation + angle;
+      drawCanvasImage(canvas, _img(im), ghost);
+    }
 
     for (final i in ctrl.selectedIndices) {
       if (i >= strokes.length) continue;
@@ -247,6 +320,7 @@ class LassoPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
+    if (!highlight) _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
       final p = stroke.points[0];
@@ -265,6 +339,13 @@ class LassoPainter extends CustomPainter {
     Offset r(int i) => _rotatePoint(Offset(pts[i][0], pts[i][1]), center, cos, sin);
     final first = r(0);
     final path = Path()..moveTo(first.dx, first.dy);
+    if (stroke.isShape) {
+      for (int i = 1; i < pts.length; i++) {
+        final p = r(i);
+        path.lineTo(p.dx, p.dy);
+      }
+      return path;
+    }
     for (int i = 1; i < pts.length - 1; i++) {
       final p0 = r(i);
       final p1 = r(i + 1);

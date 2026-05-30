@@ -26,6 +26,8 @@ dependencies:
 
   # Image handling
   image_picker: ^1.1.2
+  photo_manager: ^3.6.1
+  flutter_image_compress: ^2.3.0
 
   # Utilities
   shared_preferences: ^2.3.2

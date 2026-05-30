@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Photo gallery access for inserting images on the drawing canvas
+         (photo_manager). Android 13+ uses READ_MEDIA_IMAGES; older uses
+         READ_EXTERNAL_STORAGE (capped at SDK 32). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
     <application
         android:label="yuli"
         android:name="${applicationName}"

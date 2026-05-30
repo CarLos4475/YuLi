@@ -11,6 +11,7 @@ const int kRecentColorsCount = 5;
 const int kSavedColorsCount = 5;
 const String _kRecentsKey = 'recent_pen_colors_v1';
 const String _kSavedKey = 'saved_pen_colors_v1';
+const String _kBgSavedKey = 'saved_bg_colors_v1';
 
 /// Base palette shared across pen tools. Adding a folder/space accent is the
 /// caller's job (see `buildPenPalette`).
@@ -147,6 +148,24 @@ class SavedColorsPrefs {
   }
 }
 
+/// Same as [SavedColorsPrefs] but for background/fondo colors — independent
+/// from the pen-tool favorites.
+class SavedBgColorsPrefs {
+  static Future<List<Color>> load() =>
+      _ColorListPrefs._load(_kBgSavedKey, kSavedColorsCount);
+
+  static Future<void> save(List<Color> colors) =>
+      _ColorListPrefs._save(_kBgSavedKey, colors);
+
+  static List<Color> push(List<Color> current, Color color) =>
+      _ColorListPrefs._push(current, color, kSavedColorsCount);
+
+  static List<Color> remove(List<Color> current, Color color) {
+    final v = color.toARGB32();
+    return current.where((c) => c.toARGB32() != v).toList();
+  }
+}
+
 // ─── Toolbar pieces ──────────────────────────────────────────────────────────
 
 class ColorButton extends StatelessWidget {
@@ -250,6 +269,11 @@ class ColorPickerPopup extends StatefulWidget {
   final Color currentColor;
   final List<Color> recentColors;
   final List<Color> savedColors;
+
+  /// Optional override for the quick-pick row (and its label). Used by the
+  /// background picker to show favorites instead of (pen) recents.
+  final List<Color>? quickColors;
+  final String quickLabel;
   final void Function(Color) onPreview;
   final void Function(Color) onCommit;
   final void Function(Color) onStar;
@@ -261,6 +285,8 @@ class ColorPickerPopup extends StatefulWidget {
     required this.currentColor,
     required this.recentColors,
     required this.savedColors,
+    this.quickColors,
+    this.quickLabel = 'RECIENTES',
     required this.onPreview,
     required this.onCommit,
     required this.onStar,
@@ -340,7 +366,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
         ),
         const SizedBox(height: 10),
         Text(
-          'RECIENTES',
+          widget.quickLabel,
           style: yMono(
             size: 9,
             weight: FontWeight.w700,
@@ -349,26 +375,28 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            for (int i = 0; i < kRecentColorsCount; i++) ...[
-              Expanded(
-                child: i < widget.recentColors.length
-                    ? _SwatchTile(
-                        color: widget.recentColors[i],
-                        selected: widget.recentColors[i].toARGB32() ==
-                            selectedArgb,
-                        onTap: () {
-                          widget.onPreview(widget.recentColors[i]);
-                          widget.onCommit(widget.recentColors[i]);
-                        },
-                      )
-                    : const _EmptySwatch(),
-              ),
-              if (i < kRecentColorsCount - 1) const SizedBox(width: 6),
+        Builder(builder: (_) {
+          final quick = widget.quickColors ?? widget.recentColors;
+          return Row(
+            children: [
+              for (int i = 0; i < kRecentColorsCount; i++) ...[
+                Expanded(
+                  child: i < quick.length
+                      ? _SwatchTile(
+                          color: quick[i],
+                          selected: quick[i].toARGB32() == selectedArgb,
+                          onTap: () {
+                            widget.onPreview(quick[i]);
+                            widget.onCommit(quick[i]);
+                          },
+                        )
+                      : const _EmptySwatch(),
+                ),
+                if (i < kRecentColorsCount - 1) const SizedBox(width: 6),
+              ],
             ],
-          ],
-        ),
+          );
+        }),
         const SizedBox(height: 10),
         Row(
           children: [

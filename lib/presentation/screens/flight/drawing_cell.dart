@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 import '../../widgets/yuli_design.dart';
 import 'color_picker.dart';
 import 'fountain_pen_engine.dart';
-import 'fountain_pen_painter.dart';
+import 'drawing_engine.dart';
+import 'drawing_prefs.dart';
 import 'note_cell_model.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
+import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
 
 class DrawingCell extends StatefulWidget {
@@ -48,7 +50,14 @@ class _DrawingCellState extends State<DrawingCell>
   DrawTool _tool = DrawTool.pen;
   bool _locked = false;
   bool _palmRejection = true;
-  final List<DrawingStroke> _undoStack = [];
+  StabilizerLevel _stabilizer = StabilizerLevel.off;
+  LiveStabilizer? _stab;
+  final Map<DrawTool, Color> _toolColors = {...DrawingPrefs.defaultColors};
+  final Map<DrawTool, double> _toolWidths = {...DrawingPrefs.defaultWidths};
+  final List<List<DrawingStroke>> _undoStack = [];
+  final List<List<DrawingStroke>> _redoStack = [];
+  List<DrawingStroke>? _gestureBefore;
+  bool _gestureChanged = false;
   DrawingStroke? _active;
   final LassoController _lassoCtrl = LassoController();
   late final AnimationController _lassoAnimCtrl;
@@ -83,21 +92,41 @@ class _DrawingCellState extends State<DrawingCell>
     _lassoCtrl.onChanged = () => setState(() {});
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
-      setState(() {
-        _recentWidths = widths;
-        if (widths.isNotEmpty) _strokeW = widths.first;
-      });
+      setState(() => _recentWidths = widths);
     });
     ColorPalettePrefs.load().then((colors) {
       if (!mounted) return;
-      setState(() {
-        _recentColors = colors;
-        if (colors.isNotEmpty) _color = colors.first;
-      });
+      setState(() => _recentColors = colors);
     });
     SavedColorsPrefs.load().then((colors) {
       if (!mounted) return;
       setState(() => _savedColors = colors);
+    });
+    DrawingPrefs.load().then((p) {
+      if (!mounted) return;
+      setState(() {
+        _stabilizer = p.stabilizer;
+        _palmRejection = p.palmRejection;
+        _toolColors.addAll(p.toolColors);
+        _toolWidths.addAll(p.toolWidths);
+        _color = _toolColors[_tool] ?? _color;
+        _strokeW = _toolWidths[_tool] ?? _strokeW;
+      });
+    });
+  }
+
+  void _selectTool(DrawTool t) {
+    setState(() {
+      if (DrawingPrefs.isColoredTool(_tool)) {
+        _toolColors[_tool] = _color;
+        _toolWidths[_tool] = _strokeW;
+      }
+      _tool = t;
+      if (DrawingPrefs.isColoredTool(t)) {
+        _color = _toolColors[t] ?? _color;
+        _strokeW = _toolWidths[t] ?? _strokeW;
+      }
+      _lassoCtrl.deselect();
     });
   }
 
@@ -119,16 +148,24 @@ class _DrawingCellState extends State<DrawingCell>
     setState(() {
       _strokeW = value;
       _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
+      if (DrawingPrefs.isColoredTool(_tool)) _toolWidths[_tool] = value;
     });
     StrokeWidthPrefs.save(_recentWidths);
+    if (DrawingPrefs.isColoredTool(_tool)) {
+      DrawingPrefs.saveToolWidth(_tool, value);
+    }
   }
 
   void _commitColor(Color value) {
     setState(() {
       _color = value;
       _recentColors = ColorPalettePrefs.push(_recentColors, value);
+      if (DrawingPrefs.isColoredTool(_tool)) _toolColors[_tool] = value;
     });
     ColorPalettePrefs.save(_recentColors);
+    if (DrawingPrefs.isColoredTool(_tool)) {
+      DrawingPrefs.saveToolColor(_tool, value);
+    }
   }
 
   void _starColor(Color value) {
@@ -207,6 +244,11 @@ class _DrawingCellState extends State<DrawingCell>
         kind == PointerDeviceKind.invertedStylus;
   }
 
+  LiveStabilizer? _newStabilizer() =>
+      _stabilizer.isOn ? LiveStabilizer(_stabilizer.alpha) : null;
+
+  Offset _stabilize(Offset p) => _stab?.process(p.dx, p.dy) ?? p;
+
   void _start(Offset pos) {
     widget.onDrawStart();
     if (_tool == DrawTool.lasso) {
@@ -214,15 +256,20 @@ class _DrawingCellState extends State<DrawingCell>
       return;
     }
     if (_tool == DrawTool.eraser) {
+      _gestureBefore = _snapshot();
+      _gestureChanged = false;
       _eraseNear(pos);
       return;
     }
+    _stab = _newStabilizer();
+    final p = _stabilize(pos);
     setState(() {
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
+        isHighlighter: _tool == DrawTool.highlighter,
         points: [
-          [pos.dx, pos.dy]
+          [p.dx, p.dy]
         ],
       );
     });
@@ -238,8 +285,9 @@ class _DrawingCellState extends State<DrawingCell>
       return;
     }
     if (_active == null) return;
+    final p = _stabilize(pos);
     setState(() {
-      _active!.points.add([pos.dx, pos.dy]);
+      _active!.points.add([p.dx, p.dy]);
     });
   }
 
@@ -255,7 +303,8 @@ class _DrawingCellState extends State<DrawingCell>
 
     if (_tool == DrawTool.pen && isScribble(_active!.points)) {
       final bounds = scribbleBounds(_active!.points);
-      final before = _data.strokes.length;
+      final before = _snapshot();
+      final lenBefore = _data.strokes.length;
       _data.strokes.removeWhere((s) {
         for (final p in s.points) {
           if (bounds.contains(Offset(p[0], p[1]))) return true;
@@ -263,15 +312,19 @@ class _DrawingCellState extends State<DrawingCell>
         return false;
       });
       setState(() => _active = null);
-      if (_data.strokes.length != before) widget.onChanged(_data);
+      if (_data.strokes.length != lenBefore) {
+        _commit(before);
+        widget.onChanged(_data);
+      }
       return;
     }
 
+    final before = _snapshot();
     setState(() {
       _data.strokes.add(_active!);
       _active = null;
-      _undoStack.clear();
     });
+    _commit(before);
     widget.onChanged(_data);
   }
 
@@ -286,26 +339,22 @@ class _DrawingCellState extends State<DrawingCell>
     }
 
     final baked = FountainPenEngine.finishStroke(_active!);
+    final before = _snapshot();
     setState(() {
       _data.strokes.add(baked);
       _active = null;
-      _undoStack.clear();
     });
+    _commit(before);
     widget.onChanged(_data);
   }
 
+  static const _eraserRadius = 7.0;
+
   void _eraseNear(Offset pos) {
-    const r2 = 20.0 * 20.0;
     final before = _data.strokes.length;
-    _data.strokes.removeWhere((s) {
-      for (final p in s.points) {
-        final dx = p[0] - pos.dx;
-        final dy = p[1] - pos.dy;
-        if (dx * dx + dy * dy < r2) return true;
-      }
-      return false;
-    });
+    _data.strokes.removeWhere((s) => strokeHitByEraser(s, pos, _eraserRadius));
     if (_data.strokes.length != before) {
+      _gestureChanged = true;
       setState(() {});
       widget.onChanged(_data);
     }
@@ -321,20 +370,24 @@ class _DrawingCellState extends State<DrawingCell>
     }
     if (_lassoCtrl.phase == LassoPhase.selected) {
       if (_lassoCtrl.hitTestRotationHandle(pos)) {
+        _gestureBefore = _snapshot();
         _lassoCtrl.startRotation(pos, _data.strokes);
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(pos);
       if (corner != null) {
+        _gestureBefore = _snapshot();
         _lassoCtrl.startResize(corner, pos, _data.strokes);
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(pos);
       if (side != null) {
+        _gestureBefore = _snapshot();
         _lassoCtrl.startSideResize(side, pos, _data.strokes);
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(pos)) {
+        _gestureBefore = _snapshot();
         _lassoCtrl.startMove(pos, _data.strokes);
         return;
       }
@@ -375,46 +428,86 @@ class _DrawingCellState extends State<DrawingCell>
       _lassoCtrl.finishTracing(_data.strokes);
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       _lassoCtrl.finishMove(_data.strokes);
+      _commitGesture();
       widget.onChanged(_data);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       _lassoCtrl.isSideResize
           ? _lassoCtrl.finishSideResize(_data.strokes)
           : _lassoCtrl.finishResize(_data.strokes);
+      _commitGesture();
       widget.onChanged(_data);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       _lassoCtrl.finishRotation(_data.strokes);
+      _commitGesture();
       widget.onChanged(_data);
     }
   }
 
-  void _lassoDelete() {
-    _lassoCtrl.deleteSelected(_data.strokes);
+  void _commitGesture() {
+    if (_gestureBefore != null) {
+      _commit(_gestureBefore!);
+      _gestureBefore = null;
+    }
+  }
+
+  void _commitEraseGesture() {
+    if (_gestureBefore != null && _gestureChanged) {
+      _commit(_gestureBefore!);
+    }
+    _gestureBefore = null;
+    _gestureChanged = false;
+  }
+
+  void _lassoMutate(VoidCallback op) {
+    final before = _snapshot();
+    op();
+    _commit(before);
     widget.onChanged(_data);
   }
 
-  void _lassoDuplicate() {
-    _lassoCtrl.duplicateSelected(_data.strokes);
-    widget.onChanged(_data);
+  void _lassoDelete() => _lassoMutate(() => _lassoCtrl.deleteSelected(_data.strokes));
+
+  void _lassoDuplicate() =>
+      _lassoMutate(() => _lassoCtrl.duplicateSelected(_data.strokes));
+
+  // ─── Undo / redo (snapshot history) ─────────────────────────────────────
+
+  List<DrawingStroke> _snapshot() =>
+      _data.strokes.map((s) => s.clone()).toList();
+
+  void _commit(List<DrawingStroke> before) {
+    _undoStack.add(before);
+    if (_undoStack.length > 60) _undoStack.removeAt(0);
+    _redoStack.clear();
   }
 
   void _undo() {
-    if (_data.strokes.isEmpty) return;
-    setState(() => _undoStack.add(_data.strokes.removeLast()));
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(_snapshot());
+    setState(() {
+      _data.strokes = _undoStack.removeLast();
+      _lassoCtrl.deselect();
+      _active = null;
+    });
     widget.onChanged(_data);
   }
 
   void _redo() {
-    if (_undoStack.isEmpty) return;
-    setState(() => _data.strokes.add(_undoStack.removeLast()));
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(_snapshot());
+    setState(() {
+      _data.strokes = _redoStack.removeLast();
+      _lassoCtrl.deselect();
+      _active = null;
+    });
     widget.onChanged(_data);
   }
 
   void _clearAll() {
-    if (_data.strokes.isEmpty && _undoStack.isEmpty) return;
-    setState(() {
-      _undoStack.addAll(_data.strokes);
-      _data.strokes.clear();
-    });
+    if (_data.strokes.isEmpty) return;
+    final before = _snapshot();
+    setState(() => _data.strokes = []);
+    _commit(before);
     widget.onChanged(_data);
   }
 
@@ -425,6 +518,7 @@ class _DrawingCellState extends State<DrawingCell>
 
   void _togglePalmRejection() {
     setState(() => _palmRejection = !_palmRejection);
+    DrawingPrefs.savePalm(_palmRejection);
   }
 
   @override
@@ -530,32 +624,32 @@ class _DrawingCellState extends State<DrawingCell>
             _toolBtn(
               icon: Icons.edit_outlined,
               active: _tool == DrawTool.pen,
-              onTap: () => setState(() {
-                _tool = DrawTool.pen;
-                _lassoCtrl.deselect();
-              }),
+              onTap: () => _selectTool(DrawTool.pen),
             ),
             const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.gesture,
               active: _tool == DrawTool.fountainPen,
-              onTap: () => setState(() {
-                _tool = DrawTool.fountainPen;
-                _lassoCtrl.deselect();
-              }),
+              onTap: () => _selectTool(DrawTool.fountainPen),
+            ),
+            const SizedBox(width: 4),
+            _toolBtn(
+              icon: Icons.highlight,
+              active: _tool == DrawTool.highlighter,
+              onTap: () => _selectTool(DrawTool.highlighter),
             ),
             const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.auto_fix_high,
               active: _tool == DrawTool.eraser,
-              onTap: () => setState(() { _tool = DrawTool.eraser; _lassoCtrl.deselect(); }),
+              onTap: () => _selectTool(DrawTool.eraser),
             ),
             const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.highlight_alt,
               active: _tool == DrawTool.lasso,
               label: 'LAZO',
-              onTap: () => setState(() => _tool = DrawTool.lasso),
+              onTap: () => _selectTool(DrawTool.lasso),
             ),
             _divider(),
             ColorButton(
@@ -587,17 +681,27 @@ class _DrawingCellState extends State<DrawingCell>
             _toolBtn(
               icon: Icons.undo,
               active: false,
-              enabled: _data.strokes.isNotEmpty,
+              enabled: _undoStack.isNotEmpty,
               onTap: _undo,
             ),
             const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.redo,
               active: false,
-              enabled: _undoStack.isNotEmpty,
+              enabled: _redoStack.isNotEmpty,
               onTap: _redo,
             ),
             _divider(),
+            _toolBtn(
+              icon: Icons.auto_graph,
+              active: _stabilizer.isOn,
+              label: _stabilizer.label,
+              onTap: () {
+                setState(() => _stabilizer = _stabilizer.next);
+                DrawingPrefs.saveStabilizer(_stabilizer);
+              },
+            ),
+            const SizedBox(width: 4),
             _toolBtn(
               icon: Icons.back_hand_outlined,
               active: _palmRejection,
@@ -766,7 +870,8 @@ class _DrawingCellState extends State<DrawingCell>
         if (!_shouldAcceptPointer(e.kind)) return;
 
         if (_tool == DrawTool.fountainPen) {
-          final p = e.localPosition;
+          _stab = _newStabilizer();
+          final p = _stabilize(e.localPosition);
           final pressure = e.pressure.isFinite ? e.pressure : 0.5;
           setState(() {
             _active = DrawingStroke(
@@ -806,7 +911,8 @@ class _DrawingCellState extends State<DrawingCell>
         if (_activePointers.length >= 2) return;
         if (!_shouldAcceptPointer(e.kind)) return;
         if (_tool == DrawTool.fountainPen) {
-          final p = e.localPosition;
+          if (_active == null) return;
+          final p = _stabilize(e.localPosition);
           final pressure = e.pressure.isFinite ? e.pressure : 0.5;
           setState(() => _active!.points.add([
             p.dx,
@@ -846,23 +952,37 @@ class _DrawingCellState extends State<DrawingCell>
           widget.onDrawEnd();
           return;
         }
+        if (_tool == DrawTool.eraser) {
+          _commitEraseGesture();
+          widget.onDrawEnd();
+          return;
+        }
         if (_tool == DrawTool.fountainPen) {
           _finishFountainStroke();
+          _stab = null;
           return;
         }
         _end();
+        _stab = null;
       },
       onPointerCancel: (e) {
         _activePointers.remove(e.pointer);
         _pointerDownPos.remove(e.pointer);
         if (_activePointers.isEmpty) _maxSimultaneous = 0;
         if (!_shouldAcceptPointer(e.kind)) return;
+        if (_tool == DrawTool.eraser) {
+          _commitEraseGesture();
+          widget.onDrawEnd();
+          return;
+        }
         if (_tool == DrawTool.fountainPen) {
           widget.onDrawEnd();
           _active = null;
+          _stab = null;
           return;
         }
         _end();
+        _stab = null;
       },
         child: canvas,
         ),
@@ -875,22 +995,14 @@ class _DrawingCellState extends State<DrawingCell>
               onDelete: _lassoDelete,
               onDuplicate: _lassoDuplicate,
               palette: _palette,
-              onColorChange: (c) {
-                _lassoCtrl.changeColor(_data.strokes, c.toARGB32());
-                widget.onChanged(_data);
-              },
-              onWidthChange: (w) {
-                _lassoCtrl.changeWidth(_data.strokes, w);
-                widget.onChanged(_data);
-              },
-              onFlipH: () {
-                _lassoCtrl.flipHorizontal(_data.strokes);
-                widget.onChanged(_data);
-              },
-              onFlipV: () {
-                _lassoCtrl.flipVertical(_data.strokes);
-                widget.onChanged(_data);
-              },
+              onColorChange: (c) => _lassoMutate(
+                  () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32())),
+              onWidthChange: (w) =>
+                  _lassoMutate(() => _lassoCtrl.changeWidth(_data.strokes, w)),
+              onFlipH: () =>
+                  _lassoMutate(() => _lassoCtrl.flipHorizontal(_data.strokes)),
+              onFlipV: () =>
+                  _lassoMutate(() => _lassoCtrl.flipVertical(_data.strokes)),
               onCopy: () {
                 _lassoCtrl.copySelected(_data.strokes);
                 HapticFeedback.lightImpact();
@@ -902,8 +1014,7 @@ class _DrawingCellState extends State<DrawingCell>
                 );
               },
               onCut: () {
-                _lassoCtrl.cutSelected(_data.strokes);
-                widget.onChanged(_data);
+                _lassoMutate(() => _lassoCtrl.cutSelected(_data.strokes));
                 HapticFeedback.lightImpact();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -921,8 +1032,7 @@ class _DrawingCellState extends State<DrawingCell>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
-                _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes);
-                widget.onChanged(_data);
+                _lassoMutate(() => _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes));
                 HapticFeedback.mediumImpact();
                 setState(() => _showPasteAt = null);
               },
@@ -1211,41 +1321,4 @@ class DrawingPreviewPainter extends CustomPainter {
   bool shouldRepaint(DrawingPreviewPainter old) => true;
 }
 
-void _draw(Canvas canvas, DrawingStroke stroke) {
-  if (stroke.points.isEmpty) return;
-  if (stroke.isFountainPen) {
-    drawFountainPenStroke(canvas, stroke);
-    return;
-  }
-
-  final paint = Paint()
-    ..color = Color(stroke.colorValue)
-    ..strokeWidth = stroke.strokeWidth
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round
-    ..style = PaintingStyle.stroke;
-
-  if (stroke.points.length == 1) {
-    canvas.drawCircle(
-      Offset(stroke.points[0][0], stroke.points[0][1]),
-      stroke.strokeWidth / 2,
-      paint..style = PaintingStyle.fill,
-    );
-    return;
-  }
-
-  final path = Path();
-  path.moveTo(stroke.points[0][0], stroke.points[0][1]);
-
-  for (int i = 1; i < stroke.points.length - 1; i++) {
-    final x0 = stroke.points[i][0];
-    final y0 = stroke.points[i][1];
-    final x1 = stroke.points[i + 1][0];
-    final y1 = stroke.points[i + 1][1];
-    path.quadraticBezierTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
-  }
-
-  final last = stroke.points.last;
-  path.lineTo(last[0], last[1]);
-  canvas.drawPath(path, paint);
-}
+void _draw(Canvas canvas, DrawingStroke stroke) => drawStroke(canvas, stroke);

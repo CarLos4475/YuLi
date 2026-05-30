@@ -3,18 +3,78 @@ import 'dart:ui';
 import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
 
+/// Draw a canvas image (behind strokes) honoring its position/size/rotation.
+/// While the bitmap is still decoding, [image] is null and a light placeholder
+/// box is drawn instead.
+void drawCanvasImage(Canvas canvas, Image? image, CanvasImage ci) {
+  final rect = Rect.fromLTWH(ci.x, ci.y, ci.w, ci.h);
+  canvas.save();
+  if (ci.rotation != 0) {
+    final c = rect.center;
+    canvas
+      ..translate(c.dx, c.dy)
+      ..rotate(ci.rotation)
+      ..translate(-c.dx, -c.dy);
+  }
+  if (image != null) {
+    final src = Rect.fromLTWH(
+        0, 0, image.width.toDouble(), image.height.toDouble());
+    canvas.drawImageRect(
+        image, src, rect, Paint()..filterQuality = FilterQuality.medium);
+  } else {
+    canvas.drawRect(rect, Paint()..color = const Color(0x14000000));
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = const Color(0x33000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+  }
+  canvas.restore();
+}
+
+/// Translucent fill for recognized closed shapes (GoodNotes-style). Builds a
+/// straight-edge polygon from the stroke points and fills it with the stroke
+/// color at low opacity. No-op for open / fountain / tiny strokes.
+void fillStrokeShape(Canvas canvas, DrawingStroke stroke) {
+  if (!stroke.filled || stroke.isFountainPen || stroke.points.length < 3) {
+    return;
+  }
+  final pts = stroke.points;
+  final path = Path()..moveTo(pts[0][0], pts[0][1]);
+  for (int i = 1; i < pts.length; i++) {
+    path.lineTo(pts[i][0], pts[i][1]);
+  }
+  path.close();
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = Color(stroke.colorValue).withValues(alpha: 0.22)
+      ..style = PaintingStyle.fill,
+  );
+}
+
 void drawStroke(Canvas canvas, DrawingStroke stroke) {
   if (stroke.points.isEmpty) return;
   if (stroke.isFountainPen) {
     drawFountainPenStroke(canvas, stroke);
     return;
   }
+  fillStrokeShape(canvas, stroke);
   final paint = Paint()
     ..color = Color(stroke.colorValue)
     ..strokeWidth = stroke.strokeWidth
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round
     ..style = PaintingStyle.stroke;
+  if (stroke.isHighlighter) {
+    // Multiply blend keeps the ink underneath dark/legible while tinting the
+    // paper — reads like a real marker without reordering render passes.
+    paint
+      ..blendMode = BlendMode.multiply
+      ..color = Color(stroke.colorValue).withValues(alpha: 0.5);
+  }
   if (stroke.points.length == 1) {
     canvas.drawCircle(
       Offset(stroke.points[0][0], stroke.points[0][1]),
@@ -23,18 +83,30 @@ void drawStroke(Canvas canvas, DrawingStroke stroke) {
     );
     return;
   }
-  final path = Path();
-  path.moveTo(stroke.points[0][0], stroke.points[0][1]);
-  for (int i = 1; i < stroke.points.length - 1; i++) {
-    final x0 = stroke.points[i][0];
-    final y0 = stroke.points[i][1];
-    final x1 = stroke.points[i + 1][0];
-    final y1 = stroke.points[i + 1][1];
+  canvas.drawPath(buildStrokePath(stroke), paint);
+}
+
+/// Build the outline path for a non-fountain stroke. Recognized shapes
+/// ([DrawingStroke.isShape]) use crisp straight segments; freehand strokes use
+/// quadratic midpoint smoothing.
+Path buildStrokePath(DrawingStroke stroke) {
+  final pts = stroke.points;
+  final path = Path()..moveTo(pts[0][0], pts[0][1]);
+  if (stroke.isShape) {
+    for (int i = 1; i < pts.length; i++) {
+      path.lineTo(pts[i][0], pts[i][1]);
+    }
+    return path;
+  }
+  for (int i = 1; i < pts.length - 1; i++) {
+    final x0 = pts[i][0];
+    final y0 = pts[i][1];
+    final x1 = pts[i + 1][0];
+    final y1 = pts[i + 1][1];
     path.quadraticBezierTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
   }
-  final last = stroke.points.last;
-  path.lineTo(last[0], last[1]);
-  canvas.drawPath(path, paint);
+  path.lineTo(pts.last[0], pts.last[1]);
+  return path;
 }
 
 List<List<double>> smoothPoints(List<List<double>> pts) {

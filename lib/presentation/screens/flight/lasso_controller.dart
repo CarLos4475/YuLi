@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect, VoidCallback;
 import 'note_cell_model.dart';
 
+const double kLassoSnapStep = 25.0;
+
 enum LassoPhase { idle, tracing, selected, moving, resizing, rotating }
 
 class LassoDeleteResult {
@@ -22,13 +24,20 @@ class LassoMoveResult {
 class LassoController {
   LassoPhase phase = LassoPhase.idle;
 
+  /// Current view scale (1.0 when there's no zoom). Handle hit-areas are kept
+  /// constant in *screen* pixels by dividing the base radius by this — so they
+  /// don't balloon when the canvas is zoomed in.
+  double hitScale = 1.0;
+
   List<Offset> lassoPath = [];
   Set<int> selectedIndices = {};
+  Set<int> selectedImageIndices = {};
   Rect? boundingBox;
 
   Offset _dragStart = Offset.zero;
   Offset dragOffset = Offset.zero;
   Map<int, List<List<double>>>? _snapshotBeforeMove;
+  Map<int, CanvasImage>? _imageSnapshot;
 
   Offset? resizePivot;
   double resizeScale = 1.0;
@@ -42,6 +51,7 @@ class LassoController {
   Offset? _rotationCenter;
 
   List<DrawingStroke>? _clipboard;
+  List<CanvasImage>? _imageClipboard;
 
   VoidCallback? onChanged;
 
@@ -66,9 +76,12 @@ class LassoController {
     _notify();
   }
 
-  void finishTracing(List<DrawingStroke> strokes) {
+  void finishTracing(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     if (phase != LassoPhase.tracing) return;
     if (lassoPath.length < 3) {
+      // Stylus tap fallback selects strokes only — image tap-select is a
+      // finger-only gesture handled by the editor.
       if (lassoPath.isNotEmpty && !tapSelect(lassoPath.first, strokes)) {
         deselect();
       }
@@ -81,13 +94,17 @@ class LassoController {
         selectedIndices.add(i);
       }
     }
+    selectedImageIndices = {};
+    for (int i = 0; i < images.length; i++) {
+      if (_imageCenterInPolygon(images[i])) selectedImageIndices.add(i);
+    }
 
-    if (selectedIndices.isEmpty) {
+    if (!hasSelection) {
       deselect();
       return;
     }
 
-    boundingBox = _computeBoundingBox(strokes);
+    boundingBox = _computeBoundingBox(strokes, images);
     lassoPath = [];
     phase = LassoPhase.selected;
     _notify();
@@ -97,10 +114,11 @@ class LassoController {
 
   bool isTapInsideBoundingBox(Offset worldPos) {
     if (boundingBox == null) return false;
-    return boundingBox!.inflate(12).contains(worldPos);
+    return boundingBox!.inflate(6 / hitScale).contains(worldPos);
   }
 
-  void startMove(Offset worldPos, List<DrawingStroke> strokes) {
+  void startMove(Offset worldPos, List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     if (phase != LassoPhase.selected) return;
     _dragStart = worldPos;
     dragOffset = Offset.zero;
@@ -111,6 +129,7 @@ class LassoController {
             strokes[i].points.map((p) => List<double>.from(p)).toList();
       }
     }
+    _snapshotImages(images);
     phase = LassoPhase.moving;
     _notify();
   }
@@ -121,8 +140,17 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishMove(List<DrawingStroke> strokes) {
+  LassoMoveResult finishMove(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const [], double snapStep = 0]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
+
+    // Snap the moved selection so its top-left lands on the grid.
+    if (snapStep > 0 && boundingBox != null) {
+      final tl = boundingBox!.topLeft;
+      final nx = ((tl.dx + dragOffset.dx) / snapStep).round() * snapStep;
+      final ny = ((tl.dy + dragOffset.dy) / snapStep).round() * snapStep;
+      dragOffset = Offset(nx - tl.dx, ny - tl.dy);
+    }
 
     for (final i in selectedIndices) {
       if (i < strokes.length) {
@@ -132,18 +160,33 @@ class LassoController {
         }
       }
     }
+    for (final i in selectedImageIndices) {
+      if (i < images.length) {
+        images[i].x += dragOffset.dx;
+        images[i].y += dragOffset.dy;
+      }
+    }
 
-    boundingBox = _computeBoundingBox(strokes);
+    boundingBox = _computeBoundingBox(strokes, images);
     dragOffset = Offset.zero;
     _snapshotBeforeMove = null;
+    _imageSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
   }
 
+  void _snapshotImages(List<CanvasImage> images) {
+    _imageSnapshot = {};
+    for (final i in selectedImageIndices) {
+      if (i < images.length) _imageSnapshot![i] = images[i].clone();
+    }
+  }
+
   // ─── Resize (proportional from corners) ─────────────────────────────
 
-  static const _handleHitRadius = 24.0;
+  static const _handleHitScreenRadius = 18.0;
+  double get _handleHitRadius => _handleHitScreenRadius / hitScale;
 
   int? hitTestCornerHandle(Offset worldPos) {
     if (boundingBox == null) return null;
@@ -155,7 +198,8 @@ class LassoController {
     return null;
   }
 
-  void startResize(int cornerIndex, Offset worldPos, List<DrawingStroke> strokes) {
+  void startResize(int cornerIndex, Offset worldPos, List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     if (phase != LassoPhase.selected || boundingBox == null) return;
     final bb = boundingBox!;
     final corners = [bb.topLeft, bb.topRight, bb.bottomRight, bb.bottomLeft];
@@ -170,6 +214,7 @@ class LassoController {
             strokes[i].points.map((p) => List<double>.from(p)).toList();
       }
     }
+    _snapshotImages(images);
     phase = LassoPhase.resizing;
     _notify();
   }
@@ -183,25 +228,38 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishResize(List<DrawingStroke> strokes) {
+  LassoMoveResult finishResize(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final pivot = resizePivot!;
     final s = resizeScale;
 
     for (final i in selectedIndices) {
       if (i < strokes.length) {
+        final fountain = strokes[i].isFountainPen;
         for (final p in strokes[i].points) {
           p[0] = pivot.dx + (p[0] - pivot.dx) * s;
           p[1] = pivot.dy + (p[1] - pivot.dy) * s;
+          if (fountain && p.length >= 3) p[2] *= s;
         }
       }
     }
+    for (final i in selectedImageIndices) {
+      if (i < images.length) {
+        final im = images[i];
+        im.x = pivot.dx + (im.x - pivot.dx) * s;
+        im.y = pivot.dy + (im.y - pivot.dy) * s;
+        im.w *= s;
+        im.h *= s;
+      }
+    }
 
-    boundingBox = _computeBoundingBox(strokes);
+    boundingBox = _computeBoundingBox(strokes, images);
     resizePivot = null;
     resizeScale = 1.0;
     _resizeOriginalBox = null;
     _snapshotBeforeMove = null;
+    _imageSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -224,7 +282,8 @@ class LassoController {
     return null;
   }
 
-  void startSideResize(int sideIndex, Offset worldPos, List<DrawingStroke> strokes) {
+  void startSideResize(int sideIndex, Offset worldPos, List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     if (phase != LassoPhase.selected || boundingBox == null) return;
     final bb = boundingBox!;
     final sides = [
@@ -247,6 +306,7 @@ class LassoController {
             strokes[i].points.map((p) => List<double>.from(p)).toList();
       }
     }
+    _snapshotImages(images);
     phase = LassoPhase.resizing;
     _notify();
   }
@@ -269,23 +329,37 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishSideResize(List<DrawingStroke> strokes) {
+  LassoMoveResult finishSideResize(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final pivot = resizePivot!;
     final sx = resizeScaleX;
     final sy = resizeScaleY;
 
+    final avg = (sx + sy) / 2;
     for (final i in selectedIndices) {
       if (i < strokes.length) {
+        final fountain = strokes[i].isFountainPen;
         for (final p in strokes[i].points) {
           p[0] = pivot.dx + (p[0] - pivot.dx) * sx;
           p[1] = pivot.dy + (p[1] - pivot.dy) * sy;
+          if (fountain && p.length >= 3) p[2] *= avg;
         }
       }
     }
+    for (final i in selectedImageIndices) {
+      if (i < images.length) {
+        final im = images[i];
+        im.x = pivot.dx + (im.x - pivot.dx) * sx;
+        im.y = pivot.dy + (im.y - pivot.dy) * sy;
+        im.w *= sx;
+        im.h *= sy;
+      }
+    }
 
-    boundingBox = _computeBoundingBox(strokes);
+    boundingBox = _computeBoundingBox(strokes, images);
     _resetResizeState();
+    _imageSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -304,7 +378,8 @@ class LassoController {
     return (worldPos - handle).distance < _handleHitRadius;
   }
 
-  void startRotation(Offset worldPos, List<DrawingStroke> strokes) {
+  void startRotation(Offset worldPos, List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     if (phase != LassoPhase.selected || boundingBox == null) return;
     _rotationCenter = boundingBox!.center;
     _dragStart = worldPos;
@@ -316,6 +391,7 @@ class LassoController {
             strokes[i].points.map((p) => List<double>.from(p)).toList();
       }
     }
+    _snapshotImages(images);
     phase = LassoPhase.rotating;
     _notify();
   }
@@ -330,7 +406,8 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishRotation(List<DrawingStroke> strokes) {
+  LassoMoveResult finishRotation(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final cx = _rotationCenter!.dx;
     final cy = _rotationCenter!.dy;
@@ -347,11 +424,26 @@ class LassoController {
         }
       }
     }
+    for (final i in selectedImageIndices) {
+      if (i < images.length) {
+        final im = images[i];
+        final icx = im.x + im.w / 2;
+        final icy = im.y + im.h / 2;
+        final dx = icx - cx;
+        final dy = icy - cy;
+        final ncx = cx + dx * cos - dy * sin;
+        final ncy = cy + dx * sin + dy * cos;
+        im.x = ncx - im.w / 2;
+        im.y = ncy - im.h / 2;
+        im.rotation += rotationAngle;
+      }
+    }
 
-    boundingBox = _computeBoundingBox(strokes);
+    boundingBox = _computeBoundingBox(strokes, images);
     rotationAngle = 0.0;
     _rotationCenter = null;
     _snapshotBeforeMove = null;
+    _imageSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -387,61 +479,107 @@ class LassoController {
 
   // ─── Clipboard ─────────────────────────────────────────────────────────
 
-  bool get hasClipboard => _clipboard != null && _clipboard!.isNotEmpty;
+  bool get hasClipboard =>
+      (_clipboard != null && _clipboard!.isNotEmpty) ||
+      (_imageClipboard != null && _imageClipboard!.isNotEmpty);
 
-  void copySelected(List<DrawingStroke> strokes) {
-    _clipboard = [];
-    final cx = boundingBox?.center.dx ?? 0;
-    final cy = boundingBox?.center.dy ?? 0;
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        final s = strokes[i];
-        _clipboard!.add(DrawingStroke(
-          colorValue: s.colorValue,
-          strokeWidth: s.strokeWidth,
-          points: s.points.map((p) => [p[0] - cx, p[1] - cy]).toList(),
-        ));
-      }
-    }
+  void copySelected(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
+    _clipboard = _snapshotRelativeToCenter(strokes);
+    _imageClipboard = _snapshotImagesRelativeToCenter(images);
     deselect();
   }
 
-  void cutSelected(List<DrawingStroke> strokes) {
-    _clipboard = [];
-    final cx = boundingBox?.center.dx ?? 0;
-    final cy = boundingBox?.center.dy ?? 0;
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        final s = strokes[i];
-        _clipboard!.add(DrawingStroke(
-          colorValue: s.colorValue,
-          strokeWidth: s.strokeWidth,
-          points: s.points.map((p) => [p[0] - cx, p[1] - cy]).toList(),
-        ));
-      }
-    }
-    deleteSelected(strokes);
+  void cutSelected(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
+    _clipboard = _snapshotRelativeToCenter(strokes);
+    _imageClipboard = _snapshotImagesRelativeToCenter(images);
+    deleteSelected(strokes, images);
   }
 
-  LassoDuplicateResult pasteAt(Offset worldPos, List<DrawingStroke> strokes) {
-    if (_clipboard == null || _clipboard!.isEmpty) {
-      return LassoDuplicateResult(0);
+  List<DrawingStroke> _snapshotRelativeToCenter(List<DrawingStroke> strokes) {
+    final cx = boundingBox?.center.dx ?? 0;
+    final cy = boundingBox?.center.dy ?? 0;
+    final out = <DrawingStroke>[];
+    for (final i in selectedIndices) {
+      if (i >= strokes.length) continue;
+      final s = strokes[i];
+      out.add(DrawingStroke(
+        colorValue: s.colorValue,
+        strokeWidth: s.strokeWidth,
+        isFountainPen: s.isFountainPen,
+        filled: s.filled,
+        isShape: s.isShape,
+        isHighlighter: s.isHighlighter,
+        points: s.points.map((p) {
+          final q = List<double>.from(p);
+          q[0] -= cx;
+          q[1] -= cy;
+          return q;
+        }).toList(),
+      ));
     }
+    return out;
+  }
+
+  List<CanvasImage> _snapshotImagesRelativeToCenter(
+      List<CanvasImage> images) {
+    final cx = boundingBox?.center.dx ?? 0;
+    final cy = boundingBox?.center.dy ?? 0;
+    final out = <CanvasImage>[];
+    for (final i in selectedImageIndices) {
+      if (i >= images.length) continue;
+      out.add(images[i].clone()
+        ..x -= cx
+        ..y -= cy);
+    }
+    return out;
+  }
+
+  LassoDuplicateResult pasteAt(Offset worldPos, List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const [], double snapStep = 0]) {
+    final clip = _clipboard ?? const [];
+    final imgClip = _imageClipboard ?? const [];
+    if (clip.isEmpty && imgClip.isEmpty) return LassoDuplicateResult(0);
+    if (snapStep > 0) {
+      worldPos = Offset(
+        (worldPos.dx / snapStep).round() * snapStep,
+        (worldPos.dy / snapStep).round() * snapStep,
+      );
+    }
+
     final startIdx = strokes.length;
-    for (final s in _clipboard!) {
+    for (final s in clip) {
       strokes.add(DrawingStroke(
         colorValue: s.colorValue,
         strokeWidth: s.strokeWidth,
-        points: s.points.map((p) => [p[0] + worldPos.dx, p[1] + worldPos.dy]).toList(),
+        isFountainPen: s.isFountainPen,
+        filled: s.filled,
+        isShape: s.isShape,
+        isHighlighter: s.isHighlighter,
+        points: s.points.map((p) {
+          final q = List<double>.from(p);
+          q[0] += worldPos.dx;
+          q[1] += worldPos.dy;
+          return q;
+        }).toList(),
       ));
     }
-    selectedIndices = Set.from(
-      List.generate(_clipboard!.length, (i) => startIdx + i),
-    );
-    boundingBox = _computeBoundingBox(strokes);
+    final imgStart = images.length;
+    for (final im in imgClip) {
+      images.add(im.clone()
+        ..x += worldPos.dx
+        ..y += worldPos.dy);
+    }
+
+    selectedIndices =
+        Set.from(List.generate(clip.length, (i) => startIdx + i));
+    selectedImageIndices =
+        Set.from(List.generate(imgClip.length, (i) => imgStart + i));
+    boundingBox = _computeBoundingBox(strokes, images);
     phase = LassoPhase.selected;
     _notify();
-    return LassoDuplicateResult(_clipboard!.length);
+    return LassoDuplicateResult(clip.length + imgClip.length);
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────
@@ -463,12 +601,7 @@ class LassoController {
   void changeColor(List<DrawingStroke> strokes, int colorValue) {
     for (final i in selectedIndices) {
       if (i < strokes.length) {
-        final s = strokes[i];
-        strokes[i] = DrawingStroke(
-          colorValue: colorValue,
-          strokeWidth: s.strokeWidth,
-          points: s.points,
-        );
+        strokes[i] = strokes[i].copyWith(colorValue: colorValue);
       }
     }
     _notify();
@@ -476,13 +609,26 @@ class LassoController {
 
   void changeWidth(List<DrawingStroke> strokes, double width) {
     for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        final s = strokes[i];
+      if (i >= strokes.length) continue;
+      final s = strokes[i];
+      if (s.isFountainPen) {
+        // Fountain strokes carry per-point baked widths; rescale them so the
+        // whole stroke thickens/thins proportionally instead of becoming a
+        // flat pen line.
+        final ratio = s.strokeWidth > 0 ? width / s.strokeWidth : 1.0;
+        final pts = s.points.map((p) {
+          final q = List<double>.from(p);
+          if (q.length >= 3) q[2] = p[2] * ratio;
+          return q;
+        }).toList();
         strokes[i] = DrawingStroke(
           colorValue: s.colorValue,
           strokeWidth: width,
-          points: s.points,
+          isFountainPen: true,
+          points: pts,
         );
+      } else {
+        strokes[i] = s.copyWith(strokeWidth: width);
       }
     }
     _notify();
@@ -490,7 +636,8 @@ class LassoController {
 
   // ─── Delete ────────────────────────────────────────────────────────────
 
-  LassoDeleteResult deleteSelected(List<DrawingStroke> strokes) {
+  LassoDeleteResult deleteSelected(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     final sorted = selectedIndices.toList()..sort((a, b) => b.compareTo(a));
     final removed = <(int, DrawingStroke)>[];
     for (final i in sorted) {
@@ -498,13 +645,19 @@ class LassoController {
         removed.add((i, strokes.removeAt(i)));
       }
     }
+    final sortedImgs = selectedImageIndices.toList()
+      ..sort((a, b) => b.compareTo(a));
+    for (final i in sortedImgs) {
+      if (i < images.length) images.removeAt(i);
+    }
     deselect();
     return LassoDeleteResult(removed.reversed.toList());
   }
 
   // ─── Duplicate ─────────────────────────────────────────────────────────
 
-  LassoDuplicateResult duplicateSelected(List<DrawingStroke> strokes) {
+  LassoDuplicateResult duplicateSelected(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     final copies = <DrawingStroke>[];
     for (final i in selectedIndices) {
       if (i < strokes.length) {
@@ -512,19 +665,41 @@ class LassoController {
         copies.add(DrawingStroke(
           colorValue: s.colorValue,
           strokeWidth: s.strokeWidth,
-          points: s.points.map((p) => [p[0] + 15, p[1] + 15]).toList(),
+          isFountainPen: s.isFountainPen,
+          filled: s.filled,
+          isShape: s.isShape,
+          isHighlighter: s.isHighlighter,
+          points: s.points.map((p) {
+            final q = List<double>.from(p);
+            q[0] += 15;
+            q[1] += 15;
+            return q;
+          }).toList(),
         ));
+      }
+    }
+    final imgCopies = <CanvasImage>[];
+    for (final i in selectedImageIndices) {
+      if (i < images.length) {
+        imgCopies.add(images[i].clone()
+          ..x += 15
+          ..y += 15);
       }
     }
     final startIdx = strokes.length;
     strokes.addAll(copies);
+    final imgStart = images.length;
+    images.addAll(imgCopies);
 
     selectedIndices = Set.from(
       List.generate(copies.length, (i) => startIdx + i),
     );
-    boundingBox = _computeBoundingBox(strokes);
+    selectedImageIndices = Set.from(
+      List.generate(imgCopies.length, (i) => imgStart + i),
+    );
+    boundingBox = _computeBoundingBox(strokes, images);
     _notify();
-    return LassoDuplicateResult(copies.length);
+    return LassoDuplicateResult(copies.length + imgCopies.length);
   }
 
   // ─── Select range (after duplicate) ────────────────────────────────────
@@ -538,8 +713,9 @@ class LassoController {
 
   // ─── Tap to select single stroke ─────────────────────────────────────
 
-  bool tapSelect(Offset worldPos, List<DrawingStroke> strokes) {
-    const hitRadius2 = 20.0 * 20.0;
+  bool tapSelect(Offset worldPos, List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
+    final hitRadius2 = (20.0 / hitScale) * (20.0 / hitScale);
     int? closestIdx;
     double closestDist = double.infinity;
 
@@ -557,11 +733,25 @@ class LassoController {
 
     if (closestIdx != null) {
       selectedIndices = {closestIdx};
-      boundingBox = _computeBoundingBox(strokes);
+      selectedImageIndices = {};
+      boundingBox = _computeBoundingBox(strokes, images);
       lassoPath = [];
       phase = LassoPhase.selected;
       _notify();
       return true;
+    }
+
+    // No stroke hit — try images (topmost first, since they're drawn behind).
+    for (int i = images.length - 1; i >= 0; i--) {
+      if (_imageRect(images[i]).contains(worldPos)) {
+        selectedIndices = {};
+        selectedImageIndices = {i};
+        boundingBox = _computeBoundingBox(strokes, images);
+        lassoPath = [];
+        phase = LassoPhase.selected;
+        _notify();
+        return true;
+      }
     }
     return false;
   }
@@ -572,13 +762,23 @@ class LassoController {
     phase = LassoPhase.idle;
     lassoPath = [];
     selectedIndices = {};
+    selectedImageIndices = {};
     boundingBox = null;
     dragOffset = Offset.zero;
     _resetResizeState();
     rotationAngle = 0.0;
     _rotationCenter = null;
+    _imageSnapshot = null;
     _notify();
   }
+
+  bool get hasSelection =>
+      selectedIndices.isNotEmpty || selectedImageIndices.isNotEmpty;
+
+  bool _imageCenterInPolygon(CanvasImage im) =>
+      _pointInPolygon(Offset(im.x + im.w / 2, im.y + im.h / 2), lassoPath);
+
+  Rect _imageRect(CanvasImage im) => Rect.fromLTWH(im.x, im.y, im.w, im.h);
 
   // ─── Geometry ──────────────────────────────────────────────────────────
 
@@ -605,7 +805,8 @@ class LassoController {
     return inside;
   }
 
-  Rect _computeBoundingBox(List<DrawingStroke> strokes) {
+  Rect _computeBoundingBox(List<DrawingStroke> strokes,
+      [List<CanvasImage> images = const []]) {
     double minX = double.infinity, maxX = double.negativeInfinity;
     double minY = double.infinity, maxY = double.negativeInfinity;
     for (final i in selectedIndices) {
@@ -616,6 +817,14 @@ class LassoController {
         if (p[1] < minY) minY = p[1];
         if (p[1] > maxY) maxY = p[1];
       }
+    }
+    for (final i in selectedImageIndices) {
+      if (i >= images.length) continue;
+      final im = images[i];
+      if (im.x < minX) minX = im.x;
+      if (im.x + im.w > maxX) maxX = im.x + im.w;
+      if (im.y < minY) minY = im.y;
+      if (im.y + im.h > maxY) maxY = im.y + im.h;
     }
     if (minX == double.infinity) return Rect.zero;
     return Rect.fromLTRB(minX - 8, minY - 8, maxX + 8, maxY + 8);

@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:io';
+import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -12,9 +16,15 @@ import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
+import 'background_paint.dart';
+import 'background_popup.dart';
+import 'canvas_image_cache.dart';
 import 'color_picker.dart';
 import 'drawing_engine.dart';
+import 'drawing_prefs.dart';
 import 'fountain_pen_engine.dart';
+import 'image_crop_screen.dart';
+import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
 import 'lasso_mini_toolbar.dart';
 import 'lasso_painter.dart';
@@ -22,6 +32,7 @@ import 'note_cell_model.dart';
 import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
+import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
 
 class NotebookEditorScreen extends ConsumerStatefulWidget {
@@ -51,8 +62,24 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _palmRejection = true;
   DrawingStroke? _active;
   int? _activePageIndex;
-  final List<DrawingStroke> _undoStack = [];
-  int? _undoPageIndex;
+  StabilizerLevel _stabilizer = StabilizerLevel.off;
+  LiveStabilizer? _stab;
+  bool _fillShapes = false;
+  final Map<DrawTool, Color> _toolColors = {...DrawingPrefs.defaultColors};
+  final Map<DrawTool, double> _toolWidths = {...DrawingPrefs.defaultWidths};
+  CanvasImageCache? _imgCache;
+  String? _imageDirPath;
+  bool _imagePanelOpen = false;
+  // Post-snap live adjust state.
+  ShapeKind? _snapKind;
+  List<List<double>>? _snapBasePoints;
+  Offset? _snapCenter;
+  Offset? _snapAnchor;
+  double _snapRefDist = 1;
+  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>)>> _undoStack = [];
+  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>)>> _redoStack = [];
+  Map<int, (List<DrawingStroke>, List<CanvasImage>)>? _gestureBefore;
+  bool _gestureChanged = false;
   bool _isDrawing = false;
   bool _stylusActive = false;
   bool _headerCollapsed = true;
@@ -67,7 +94,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _pendingPageAdd = false;
   bool _scrollApplied = false;
   bool _reachedPullThreshold = false;
-  PageBackground _pageBackground = PageBackground.blank;
+  // Last-applied background, inherited by new pages.
+  PageBackground _lastBg = PageBackground.blank;
+  int? _lastBgColor;
+  bool _bgPopupOpen = false;
+  bool _bgColorPickerOpen = false;
+  bool _bgAllPages = false;
   Matrix4? _transformBeforeStylus;
 
   int _maxSimultaneous = 0;
@@ -91,6 +123,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _colorPickerOpen = false;
   List<Color> _recentColors = const [];
   List<Color> _savedColors = const [];
+  List<Color> _bgSavedColors = const [];
   bool _eyedropperMode = false;
 
   @override
@@ -119,21 +152,44 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _lassoCtrl.onChanged = () => setState(() {});
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
-      setState(() {
-        _recentWidths = widths;
-        if (widths.isNotEmpty) _strokeW = widths.first;
-      });
+      setState(() => _recentWidths = widths);
     });
     ColorPalettePrefs.load().then((colors) {
       if (!mounted) return;
-      setState(() {
-        _recentColors = colors;
-        if (colors.isNotEmpty) _color = colors.first;
-      });
+      setState(() => _recentColors = colors);
     });
     SavedColorsPrefs.load().then((colors) {
       if (!mounted) return;
       setState(() => _savedColors = colors);
+    });
+    SavedBgColorsPrefs.load().then((colors) {
+      if (!mounted) return;
+      setState(() => _bgSavedColors = colors);
+    });
+    DrawingPrefs.load().then((prefs) {
+      if (!mounted) return;
+      setState(() {
+        _stabilizer = prefs.stabilizer;
+        _palmRejection = prefs.palmRejection;
+        _fillShapes = prefs.fillShapes;
+        _toolColors.addAll(prefs.toolColors);
+        _toolWidths.addAll(prefs.toolWidths);
+        _color = _toolColors[_tool] ?? _color;
+        _strokeW = _toolWidths[_tool] ?? _strokeW;
+      });
+    });
+    getApplicationDocumentsDirectory().then((dir) {
+      if (!mounted) return;
+      final path = p.join(dir.path, 'note_images', '${widget.note.id}');
+      setState(() {
+        _imageDirPath = path;
+        _imgCache = CanvasImageCache(
+          dirPath: path,
+          onLoaded: () {
+            if (mounted) setState(() {});
+          },
+        );
+      });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadPages();
@@ -145,13 +201,42 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   @override
   void dispose() {
+    _reconcileImageFiles();
     _holdTimer?.cancel();
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
     _pullAnimCtrl.dispose();
     _drawerAnimCtrl.dispose();
+    _imgCache?.dispose();
     _viewCtrl.dispose();
     super.dispose();
+  }
+
+  /// On leaving the notebook, delete image files no longer referenced by any
+  /// page. Canvas images are tracked only in the page payloads.
+  void _reconcileImageFiles() {
+    final dirPath = _imageDirPath;
+    if (dirPath == null) return;
+    final referenced = <String>{};
+    for (final data in _pageData.values) {
+      for (final im in data.images) {
+        referenced.add(im.filename);
+      }
+    }
+    () async {
+      try {
+        final dir = Directory(dirPath);
+        if (!await dir.exists()) return;
+        await for (final entity in dir.list()) {
+          if (entity is File &&
+              !referenced.contains(p.basename(entity.path))) {
+            try {
+              await entity.delete();
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }();
   }
 
   // ─── Page management ───────────────────────────────────────────────────
@@ -174,17 +259,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           }
         } catch (_) {}
       }
-      _readBackground(drawingBlocks.first);
-    }
-
-    // Read notebook-level background preference
-    if (widget.note.rawMarkdown.isNotEmpty) {
-      try {
-        final meta = jsonDecode(widget.note.rawMarkdown);
-        if (meta is Map && meta['pageBackground'] != null) {
-          _pageBackground = PageBackground.fromString(meta['pageBackground']);
-        }
-      } catch (_) {}
+      // Inherit new-page background from the last page.
+      final last = _pageData[_pageBlockIds.last];
+      if (last != null) {
+        _lastBg = last.background;
+        _lastBgColor = last.bgColorValue;
+      }
     }
 
     setState(() {});
@@ -201,23 +281,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _viewCtrl.value = Matrix4.translationValues(dx, dy, 0);
   }
 
-  void _readBackground(DrawingBlock b) {
-    try {
-      final payload = b.payloadJson();
-      final bg = payload['bg'];
-      if (bg is String) {
-        _pageBackground = PageBackground.fromString(bg);
-      }
-    } catch (_) {}
-  }
-
   DrawingData _decodeData(DrawingBlock b) {
     List<dynamic> strokes = const [];
+    List<dynamic> images = const [];
+    final payload = b.payloadJson();
     try {
       final decoded = jsonDecode(b.strokesJson);
       if (decoded is List) strokes = decoded;
     } catch (_) {}
-    return DrawingData.fromJson({'h': kNotebookPageHeight, 's': strokes});
+    try {
+      final decoded = jsonDecode(b.imagesJson);
+      if (decoded is List) images = decoded;
+    } catch (_) {}
+    return DrawingData.fromJson({
+      'h': kNotebookPageHeight,
+      's': strokes,
+      'i': images,
+      'bg': payload['bg'],
+      'bgc': payload['bgc'],
+    });
   }
 
   Future<void> _ensurePageAt(int pageIndex) async {
@@ -229,11 +311,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         payload: {
           'h': kNotebookPageHeight,
           's': [],
-          'bg': _pageBackground.toDbString(),
+          'bg': _lastBg.toDbString(),
+          if (_lastBgColor != null) 'bgc': _lastBgColor,
         },
       ) as DrawingBlock;
       _pageBlockIds.add(block.id);
-      _pageData[block.id] = DrawingData(height: kNotebookPageHeight);
+      _pageData[block.id] = DrawingData(
+        height: kNotebookPageHeight,
+        background: _lastBg,
+        bgColorValue: _lastBgColor,
+      );
     }
     setState(() {});
   }
@@ -253,7 +340,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     await ref.read(noteBlockRepositoryProvider).updatePayload(blockId, {
       'h': kNotebookPageHeight,
       's': data.strokes.map((s) => s.toJson()).toList(),
-      'bg': _pageBackground.toDbString(),
+      'i': data.images.map((im) => im.toJson()).toList(),
+      'bg': data.background.toDbString(),
+      if (data.bgColorValue != null) 'bgc': data.bgColorValue,
       'starred': _starredBlockIds.contains(blockId),
     });
   }
@@ -267,6 +356,59 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
   }
 
+  void _toggleImagePanel() {
+    setState(() {
+      _imagePanelOpen = !_imagePanelOpen;
+      if (_imagePanelOpen) {
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+      }
+    });
+  }
+
+  /// Copy a ready (compressed) file into the note's image folder and place it
+  /// centred on the currently visible page, as an undoable step.
+  Future<void> _insertImageFile(File f) async {
+    final dirPath = _imageDirPath;
+    if (dirPath == null || _pageBlockIds.isEmpty) return;
+    final screen = MediaQuery.of(context).size;
+    try {
+      final bytes = await f.readAsBytes();
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final iw = frame.image.width.toDouble();
+      final ih = frame.image.height.toDouble();
+      frame.image.dispose();
+      if (iw <= 0 || ih <= 0) return;
+
+      final filename = '${const Uuid().v4()}.jpg';
+      await Directory(dirPath).create(recursive: true);
+      await f.copy(p.join(dirPath, filename));
+
+      final pageIdx = _currentVisiblePage;
+      final data = _pageData[_pageBlockIds[pageIdx]];
+      if (data == null) return;
+      final local = _worldToPageLocal(
+          _screenToWorld(Offset(screen.width / 2, screen.height / 2)),
+          pageIdx);
+      final w = kNotebookPageWidth * 0.5;
+      final h = w * ih / iw;
+      final img = CanvasImage(
+        filename: filename,
+        x: local.dx - w / 2,
+        y: local.dy - h / 2,
+        w: w,
+        h: h,
+      );
+      final before = _snapshot();
+      setState(() => data.images.add(img));
+      _commit(before);
+      _persistPage(pageIdx);
+      _imgCache?.get(filename);
+      HapticFeedback.lightImpact();
+    } catch (_) {}
+  }
+
   void _toggleColorPicker() {
     setState(() {
       _colorPickerOpen = !_colorPickerOpen;
@@ -274,20 +416,43 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
   }
 
+  void _selectTool(DrawTool t) {
+    setState(() {
+      if (DrawingPrefs.isColoredTool(_tool)) {
+        _toolColors[_tool] = _color;
+        _toolWidths[_tool] = _strokeW;
+      }
+      _tool = t;
+      if (DrawingPrefs.isColoredTool(t)) {
+        _color = _toolColors[t] ?? _color;
+        _strokeW = _toolWidths[t] ?? _strokeW;
+      }
+      _lassoCtrl.deselect();
+    });
+  }
+
   void _commitWidth(double value) {
     setState(() {
       _strokeW = value;
       _recentWidths = StrokeWidthPrefs.push(_recentWidths, value);
+      if (DrawingPrefs.isColoredTool(_tool)) _toolWidths[_tool] = value;
     });
     StrokeWidthPrefs.save(_recentWidths);
+    if (DrawingPrefs.isColoredTool(_tool)) {
+      DrawingPrefs.saveToolWidth(_tool, value);
+    }
   }
 
   void _commitColor(Color value) {
     setState(() {
       _color = value;
       _recentColors = ColorPalettePrefs.push(_recentColors, value);
+      if (DrawingPrefs.isColoredTool(_tool)) _toolColors[_tool] = value;
     });
     ColorPalettePrefs.save(_recentColors);
+    if (DrawingPrefs.isColoredTool(_tool)) {
+      DrawingPrefs.saveToolColor(_tool, value);
+    }
   }
 
   void _starColor(Color value) {
@@ -299,6 +464,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           : SavedColorsPrefs.push(_savedColors, value);
     });
     SavedColorsPrefs.save(_savedColors);
+    HapticFeedback.selectionClick();
+  }
+
+  void _starBgColor(Color value) {
+    final isStarred =
+        _bgSavedColors.any((c) => c.toARGB32() == value.toARGB32());
+    setState(() {
+      _bgSavedColors = isStarred
+          ? SavedBgColorsPrefs.remove(_bgSavedColors, value)
+          : SavedBgColorsPrefs.push(_bgSavedColors, value);
+    });
+    SavedBgColorsPrefs.save(_bgSavedColors);
     HapticFeedback.selectionClick();
   }
 
@@ -389,10 +566,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _pageData.remove(blockId);
       _starredBlockIds.remove(blockId);
       if (_activePageIndex == pageIndex) _activePageIndex = null;
-      if (_undoPageIndex == pageIndex) {
-        _undoPageIndex = null;
-        _undoStack.clear();
-      }
+      _undoStack.clear();
+      _redoStack.clear();
       if (_drawerSnapshotPage >= _pageBlockIds.length) {
         _drawerSnapshotPage = _pageBlockIds.length - 1;
       }
@@ -431,8 +606,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         ..clear()
         ..addAll(newOrder);
       _activePageIndex = null;
-      _undoPageIndex = null;
       _undoStack.clear();
+      _redoStack.clear();
     });
 
     await ref
@@ -441,23 +616,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     HapticFeedback.lightImpact();
   }
 
-  Future<void> _saveBackgroundPreference() async {
-    await ref.read(noteRepositoryProvider).update(
-          widget.note.copyWith(
-            rawMarkdown: jsonEncode({'pageBackground': _pageBackground.toDbString()}),
-          ),
-        );
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      await _persistPage(i);
-    }
-  }
-
   double get _totalCanvasHeight {
     final pages = _pageBlockIds.length.clamp(1, 9999);
     return pages * kNotebookPageHeight + (pages - 1) * kNotebookPageGap + 300;
   }
 
   // ─── Coordinate transforms ────────────────────────────────────────────
+
+  double get _viewScale => _viewCtrl.value.getMaxScaleOnAxis();
 
   Offset _screenToWorld(Offset screen) {
     final inv = Matrix4.copy(_viewCtrl.value)..invert();
@@ -507,20 +673,94 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   bool _tryShapeSnap() {
     if (_active == null || _activePageIndex == null) return false;
-    final cleaned = ShapeRecognizer.detect(_active!.points);
-    if (cleaned == null) return false;
-    final clean =
-        shapeToStroke(cleaned, _active!.colorValue, _active!.strokeWidth);
-    final data = _activePageData();
-    if (data == null) return false;
-    setState(() {
-      data.strokes.add(clean);
-      _active = null;
-      _undoStack.clear();
-    });
-    _persistPage(_activePageIndex!);
+    // A scribble densely fills a box and would be mis-snapped to a rectangle —
+    // leave it for the scribble-erase on pen-up.
+    if (isScribble(_active!.points)) return false;
+    final shape = ShapeRecognizer.detect(_active!.points);
+    if (shape == null) return false;
+    _enterShapeAdjust(shape, _active!);
     HapticFeedback.lightImpact();
     return true;
+  }
+
+  /// Replace the freehand stroke with clean geometry and enter live-adjust
+  /// (resize closed shapes around their centre / move the end of lines/arrows).
+  void _enterShapeAdjust(RecognizedShape shape, DrawingStroke src) {
+    _holdTimer?.cancel();
+    _holdAnchor = null;
+    final pts = shape.points.map((p) => [p[0], p[1]]).toList();
+    _snapKind = shape.kind;
+    if (shape.isOpen) {
+      _snapAnchor = Offset(pts.first[0], pts.first[1]);
+      _snapBasePoints = null;
+      _snapCenter = null;
+    } else {
+      final c = shapeCentroid(pts);
+      _snapCenter = Offset(c[0], c[1]);
+      _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
+      final end = src.points.last;
+      _snapRefDist =
+          (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(1.0, 1e9);
+    }
+    setState(() {
+      _active = DrawingStroke(
+        colorValue: src.colorValue,
+        strokeWidth: src.strokeWidth,
+        filled: _fillShapes && !shape.isOpen,
+        isShape: true,
+        points: pts,
+      );
+    });
+  }
+
+  void _updateShapeAdjust(Offset p) {
+    if (_active == null || _snapKind == null) return;
+    List<List<double>> pts;
+    if (_snapKind == ShapeKind.line) {
+      pts = buildLineShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
+    } else if (_snapKind == ShapeKind.arrow) {
+      pts = buildArrowShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
+    } else {
+      final ratio =
+          ((p - _snapCenter!).distance / _snapRefDist).clamp(0.05, 20.0);
+      pts = scaleShape(
+          _snapBasePoints!, _snapCenter!.dx, _snapCenter!.dy, ratio);
+    }
+    setState(() {
+      _active = DrawingStroke(
+        colorValue: _active!.colorValue,
+        strokeWidth: _active!.strokeWidth,
+        filled: _active!.filled,
+        isShape: true,
+        points: pts,
+      );
+    });
+  }
+
+  void _commitShapeAdjust() {
+    final shape = _active;
+    final pageIdx = _activePageIndex;
+    _clearSnap();
+    if (shape == null || pageIdx == null) return;
+    final data = _pageData[_pageBlockIds[pageIdx]];
+    if (data == null) {
+      setState(() => _active = null);
+      return;
+    }
+    final before = _snapshot();
+    setState(() {
+      data.strokes.add(shape);
+      _active = null;
+    });
+    _commit(before);
+    _persistPage(pageIdx);
+  }
+
+  void _clearSnap() {
+    _snapKind = null;
+    _snapBasePoints = null;
+    _snapCenter = null;
+    _snapAnchor = null;
   }
 
   void _startHoldTimer(Offset worldPos) {
@@ -615,8 +855,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
     // Lasso + palm rejection + finger
     if (_tool == DrawTool.lasso && isFinger && _palmRejection) {
+      final p = _screenToWorld(e.localPosition);
+      _lassoCtrl.hitScale = _viewScale;
       if (_lassoCtrl.phase == LassoPhase.selected) {
-        final p = _screenToWorld(e.localPosition);
         if (_lassoCtrl.hitTestRotationHandle(p) ||
             _lassoCtrl.hitTestCornerHandle(p) != null ||
             _lassoCtrl.hitTestSideHandle(p) != null ||
@@ -625,8 +866,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           _handleLassoDown(p);
           return;
         }
-        _lassoCtrl.deselect();
       }
+      // A clean finger tap to (re)select is handled by the overlay
+      // GestureDetector's onTapUp; a finger drag pans via InteractiveViewer.
       return;
     }
 
@@ -651,14 +893,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_tool == DrawTool.eraser) {
+      _gestureBefore = _snapshot();
+      _gestureChanged = false;
       _eraseNear(local, pageIdx);
       return;
     }
 
-    if (_undoPageIndex != pageIdx) {
-      _undoStack.clear();
-      _undoPageIndex = pageIdx;
-    }
+    _stab = _newStabilizer();
+    final sp = _stabilize(local);
 
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
@@ -669,8 +911,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           isFountainPen: true,
           points: [
             [
-              local.dx,
-              local.dy,
+              sp.dx,
+              sp.dy,
               pressure,
               DateTime.now().millisecondsSinceEpoch.toDouble(),
             ],
@@ -684,12 +926,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
+        isHighlighter: _tool == DrawTool.highlighter,
         points: [
-          [local.dx, local.dy]
+          [sp.dx, sp.dy]
         ],
       );
     });
-    _startHoldTimer(world);
+    if (_tool == DrawTool.pen) _startHoldTimer(world);
+  }
+
+  LiveStabilizer? _newStabilizer() =>
+      _stabilizer.isOn ? LiveStabilizer(_stabilizer.alpha) : null;
+
+  Offset _stabilize(Offset p) => _stab?.process(p.dx, p.dy) ?? p;
+
+  /// Finger tap (touch only) in lasso mode selects the stroke/image under it.
+  void _onLassoTap(TapUpDetails d) {
+    if (d.kind != PointerDeviceKind.touch) return;
+    if (_tool != DrawTool.lasso || !_palmRejection) return;
+    if (_lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating) {
+      return;
+    }
+    final p = _screenToWorld(d.localPosition);
+    _lassoCtrl.hitScale = _viewScale;
+    setState(() {
+      if (!_lassoCtrl.tapSelect(p, _allVisibleStrokes, _allVisibleImages)) {
+        _lassoCtrl.deselect();
+      }
+    });
   }
 
   static const _minDist2 = 9.0;
@@ -720,28 +986,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_activePageIndex == null) return;
     final local = _worldToPageLocal(world, _activePageIndex!);
 
+    if (_snapKind != null) {
+      _updateShapeAdjust(local);
+      return;
+    }
     if (_tool == DrawTool.eraser) {
       _eraseNear(local, _activePageIndex!);
       return;
     }
     if (_active == null) return;
+    final sp = _stabilize(local);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
       setState(() => _active!.points.add([
-        local.dx,
-        local.dy,
+        sp.dx,
+        sp.dy,
         pressure,
         DateTime.now().millisecondsSinceEpoch.toDouble(),
       ]));
       return;
     }
     final pts = _active!.points;
-    if (pts.isNotEmpty) {
-      final dx = local.dx - pts.last[0];
-      final dy = local.dy - pts.last[1];
+    if (pts.isNotEmpty && !_stabilizer.isOn) {
+      final dx = sp.dx - pts.last[0];
+      final dy = sp.dy - pts.last[1];
       if (dx * dx + dy * dy < _minDist2) return;
     }
-    setState(() => pts.add([local.dx, local.dy]));
+    setState(() => pts.add([sp.dx, sp.dy]));
     if (_holdAnchor != null) {
       final dx = world.dx - _holdAnchor!.dx;
       final dy = world.dy - _holdAnchor!.dy;
@@ -794,16 +1065,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
+    if (_snapKind != null) {
+      _commitShapeAdjust();
+      _stab = null;
+      return;
+    }
     if (_tool == DrawTool.lasso) {
       _handleLassoUp();
       return;
     }
+    if (_tool == DrawTool.eraser) {
+      _commitEraseGesture();
+      return;
+    }
     if (_tool == DrawTool.fountainPen) {
       _finishFountainStroke();
+      _stab = null;
       return;
     }
     if (_active == null) return;
     _finishStroke();
+    _stab = null;
   }
 
   void _onCancel(PointerCancelEvent e) {
@@ -813,14 +1095,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _holdAnchor = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    if (_snapKind != null) {
+      setState(() => _active = null);
+      _clearSnap();
+      _stab = null;
+      return;
+    }
+    if (_tool == DrawTool.eraser) {
+      _commitEraseGesture();
+      return;
+    }
     if (_tool == DrawTool.fountainPen) {
       _active = null;
+      _stab = null;
       return;
     }
     _finishStroke();
+    _stab = null;
   }
 
   void _finishStroke() {
+    if (_snapKind != null) return;
     if (_active == null || _activePageIndex == null) return;
     _active!.points.removeWhere(
         (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite);
@@ -837,7 +1132,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
     if (_tool == DrawTool.pen && isScribble(_active!.points)) {
       final bounds = scribbleBounds(_active!.points);
-      final before = data.strokes.length;
+      final before = _snapshot();
+      final lenBefore = data.strokes.length;
       data.strokes.removeWhere((s) {
         for (final p in s.points) {
           if (bounds.contains(Offset(p[0], p[1]))) return true;
@@ -845,23 +1141,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         return false;
       });
       setState(() => _active = null);
-      if (data.strokes.length != before) {
+      if (data.strokes.length != lenBefore) {
+        _commit(before);
         HapticFeedback.lightImpact();
         _persistPage(_activePageIndex!);
       }
       return;
     }
 
-    _active = DrawingStroke(
-      colorValue: _active!.colorValue,
-      strokeWidth: _active!.strokeWidth,
-      points: smoothPoints(_active!.points),
-    );
+    final before = _snapshot();
     setState(() {
       data.strokes.add(_active!);
       _active = null;
-      _undoStack.clear();
     });
+    _commit(before);
     _persistPage(_activePageIndex!);
   }
 
@@ -881,28 +1174,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
 
     final baked = FountainPenEngine.finishStroke(_active!);
+    final before = _snapshot();
     setState(() {
       data.strokes.add(baked);
       _active = null;
-      _undoStack.clear();
     });
+    _commit(before);
     _persistPage(_activePageIndex!);
   }
 
+  static const _eraserScreenRadius = 7.0;
+
   void _eraseNear(Offset local, int pageIndex) {
-    const r2 = 24.0 * 24.0;
+    final radius = _eraserScreenRadius / _viewScale;
     final data = _pageData[_pageBlockIds[pageIndex]];
     if (data == null) return;
     final before = data.strokes.length;
-    data.strokes.removeWhere((s) {
-      for (final p in s.points) {
-        final dx = p[0] - local.dx;
-        final dy = p[1] - local.dy;
-        if (dx * dx + dy * dy < r2) return true;
-      }
-      return false;
-    });
+    data.strokes.removeWhere((s) => strokeHitByEraser(s, local, radius));
     if (data.strokes.length != before) {
+      _gestureChanged = true;
       setState(() {});
       _persistPage(pageIndex);
     }
@@ -910,18 +1200,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Lasso ─────────────────────────────────────────────────────────────
 
+  double _pageOffsetY(int i) => i * (kNotebookPageHeight + kNotebookPageGap);
+
   List<DrawingStroke> get _allVisibleStrokes {
     final all = <DrawingStroke>[];
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final data = _pageData[_pageBlockIds[i]];
       if (data == null) continue;
-      final offset = i * (kNotebookPageHeight + kNotebookPageGap);
+      final offset = _pageOffsetY(i);
       for (final s in data.strokes) {
-        all.add(DrawingStroke(
-          colorValue: s.colorValue,
-          strokeWidth: s.strokeWidth,
-          points: s.points.map((p) => [p[0], p[1] + offset]).toList(),
-        ));
+        final c = s.clone();
+        for (final pt in c.points) {
+          pt[1] += offset;
+        }
+        all.add(c);
+      }
+    }
+    return all;
+  }
+
+  List<CanvasImage> get _allVisibleImages {
+    final all = <CanvasImage>[];
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      if (data == null) continue;
+      final offset = _pageOffsetY(i);
+      for (final im in data.images) {
+        all.add(im.clone()..y += offset);
       }
     }
     return all;
@@ -929,28 +1234,34 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   void _handleLassoDown(Offset worldPos) {
     _pasteTimer?.cancel();
+    _lassoCtrl.hitScale = _viewScale;
     if (_showPasteAt != null) {
       setState(() => _showPasteAt = null);
       return;
     }
     final strokes = _allVisibleStrokes;
+    final images = _allVisibleImages;
     if (_lassoCtrl.phase == LassoPhase.selected) {
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
-        _lassoCtrl.startRotation(worldPos, strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startRotation(worldPos, strokes, images);
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
-        _lassoCtrl.startResize(corner, worldPos, strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startResize(corner, worldPos, strokes, images);
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
-        _lassoCtrl.startSideResize(side, worldPos, strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startSideResize(side, worldPos, strokes, images);
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
-        _lassoCtrl.startMove(worldPos, strokes);
+        _gestureBefore = _snapshot();
+        _lassoCtrl.startMove(worldPos, strokes, images);
         return;
       }
       _lassoCtrl.deselect();
@@ -987,75 +1298,209 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     final strokes = _allVisibleStrokes;
+    final images = _allVisibleImages;
     if (_lassoCtrl.phase == LassoPhase.tracing) {
-      _lassoCtrl.finishTracing(strokes);
+      _lassoCtrl.finishTracing(strokes, images);
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
-      _lassoCtrl.finishMove(strokes);
-      _syncLassoStrokesToPages(strokes);
+      _lassoCtrl.finishMove(strokes, images);
+      _syncLassoToPages(strokes, images);
+      _commitGesture();
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       _lassoCtrl.isSideResize
-          ? _lassoCtrl.finishSideResize(strokes)
-          : _lassoCtrl.finishResize(strokes);
-      _syncLassoStrokesToPages(strokes);
+          ? _lassoCtrl.finishSideResize(strokes, images)
+          : _lassoCtrl.finishResize(strokes, images);
+      _syncLassoToPages(strokes, images);
+      _commitGesture();
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
-      _lassoCtrl.finishRotation(strokes);
-      _syncLassoStrokesToPages(strokes);
+      _lassoCtrl.finishRotation(strokes, images);
+      _syncLassoToPages(strokes, images);
+      _commitGesture();
     }
   }
 
-  void _syncLassoStrokesToPages(List<DrawingStroke> worldStrokes) {
+  void _syncLassoToPages(
+      List<DrawingStroke> worldStrokes, List<CanvasImage> worldImages) {
     for (int i = 0; i < _pageBlockIds.length; i++) {
-      final pageTop = i * (kNotebookPageHeight + kNotebookPageGap);
+      final pageTop = _pageOffsetY(i);
       final pageBottom = pageTop + kNotebookPageHeight;
       final pageStrokes = <DrawingStroke>[];
       for (final s in worldStrokes) {
-        final inPage = s.points.any(
-            (p) => p[1] >= pageTop && p[1] < pageBottom);
+        final inPage =
+            s.points.any((p) => p[1] >= pageTop && p[1] < pageBottom);
         if (inPage) {
-          pageStrokes.add(DrawingStroke(
-            colorValue: s.colorValue,
-            strokeWidth: s.strokeWidth,
-            points: s.points.map((p) => [p[0], p[1] - pageTop]).toList(),
-          ));
+          final c = s.clone();
+          for (final pt in c.points) {
+            pt[1] -= pageTop;
+          }
+          pageStrokes.add(c);
         }
       }
-      _pageData[_pageBlockIds[i]] =
-          DrawingData(height: kNotebookPageHeight, strokes: pageStrokes);
+      final pageImages = <CanvasImage>[];
+      for (final im in worldImages) {
+        final cy = im.y + im.h / 2;
+        if (cy >= pageTop && cy < pageBottom) {
+          pageImages.add(im.clone()..y -= pageTop);
+        }
+      }
+      final prev = _pageData[_pageBlockIds[i]];
+      _pageData[_pageBlockIds[i]] = DrawingData(
+        height: kNotebookPageHeight,
+        strokes: pageStrokes,
+        images: pageImages,
+        background: prev?.background ?? PageBackground.blank,
+        bgColorValue: prev?.bgColorValue,
+      );
       _persistPage(i);
     }
     setState(() {});
   }
 
-  void _lassoDelete() {
+  /// Run a lasso mutation over the flattened world strokes + images, sync back
+  /// to the pages, and record it as one undoable step.
+  void _lassoMutate(
+      void Function(List<DrawingStroke>, List<CanvasImage>) op) {
+    final before = _snapshot();
     final strokes = _allVisibleStrokes;
-    _lassoCtrl.deleteSelected(strokes);
-    _syncLassoStrokesToPages(strokes);
+    final images = _allVisibleImages;
+    op(strokes, images);
+    _syncLassoToPages(strokes, images);
+    _commit(before);
+  }
+
+  void _lassoDelete() {
+    _lassoMutate((s, im) => _lassoCtrl.deleteSelected(s, im));
     HapticFeedback.lightImpact();
   }
 
   void _lassoDuplicate() {
-    final strokes = _allVisibleStrokes;
-    _lassoCtrl.duplicateSelected(strokes);
-    _syncLassoStrokesToPages(strokes);
+    _lassoMutate((s, im) => _lassoCtrl.duplicateSelected(s, im));
     HapticFeedback.lightImpact();
   }
 
-  // ─── Undo / redo ───────────────────────────────────────────────────────
+  bool get _singleImageSelected =>
+      _lassoCtrl.selectedImageIndices.length == 1 &&
+      _lassoCtrl.selectedIndices.isEmpty;
+
+  /// Map a flattened selected-image index back to (pageIndex, localIndex).
+  (int, int)? _flatImageToPage(int flatIdx) {
+    int acc = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final cnt = _pageData[_pageBlockIds[i]]?.images.length ?? 0;
+      if (flatIdx < acc + cnt) return (i, flatIdx - acc);
+      acc += cnt;
+    }
+    return null;
+  }
+
+  Future<void> _cropSelectedImage() async {
+    final dirPath = _imageDirPath;
+    if (dirPath == null || !_singleImageSelected) return;
+    final loc = _flatImageToPage(_lassoCtrl.selectedImageIndices.first);
+    if (loc == null) return;
+    final (pageIdx, localIdx) = loc;
+    final data = _pageData[_pageBlockIds[pageIdx]];
+    if (data == null || localIdx >= data.images.length) return;
+    final img = data.images[localIdx];
+    final result = await Navigator.of(context).push<CropResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => ImageCropScreen(
+          sourcePath: p.join(dirPath, img.filename),
+          accent: _accent,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final ext = p.extension(result.file.path);
+    final newName = '${const Uuid().v4()}$ext';
+    await result.file.copy(p.join(dirPath, newName));
+    final before = _snapshot();
+    setState(() {
+      data.images[localIdx] = CanvasImage(
+        filename: newName,
+        x: img.x + img.w * result.fracLeft,
+        y: img.y + img.h * result.fracTop,
+        w: img.w * result.fracW,
+        h: img.h * result.fracH,
+        rotation: img.rotation,
+      );
+      _lassoCtrl.deselect();
+    });
+    _commit(before);
+    _persistPage(pageIdx);
+    _imgCache?.get(newName);
+  }
+
+  // ─── Undo / redo (snapshot history, all pages) ──────────────────────────
+
+  Map<int, (List<DrawingStroke>, List<CanvasImage>)> _snapshot() {
+    final m = <int, (List<DrawingStroke>, List<CanvasImage>)>{};
+    for (final entry in _pageData.entries) {
+      m[entry.key] = (
+        entry.value.strokes.map((s) => s.clone()).toList(),
+        entry.value.images.map((im) => im.clone()).toList(),
+      );
+    }
+    return m;
+  }
+
+  void _commit(Map<int, (List<DrawingStroke>, List<CanvasImage>)> before) {
+    _undoStack.add(before);
+    if (_undoStack.length > 60) _undoStack.removeAt(0);
+    _redoStack.clear();
+  }
+
+  void _commitGesture() {
+    if (_gestureBefore != null) {
+      _commit(_gestureBefore!);
+      _gestureBefore = null;
+    }
+  }
+
+  void _commitEraseGesture() {
+    if (_gestureBefore != null && _gestureChanged) {
+      _commit(_gestureBefore!);
+    }
+    _gestureBefore = null;
+    _gestureChanged = false;
+  }
+
+  void _restore(Map<int, (List<DrawingStroke>, List<CanvasImage>)> snap) {
+    for (final entry in snap.entries) {
+      final data = _pageData[entry.key];
+      if (data != null) {
+        data.strokes = entry.value.$1;
+        data.images = entry.value.$2;
+      }
+    }
+  }
 
   void _undo() {
-    if (_undoPageIndex == null) return;
-    final data = _pageData[_pageBlockIds[_undoPageIndex!]];
-    if (data == null || data.strokes.isEmpty) return;
-    setState(() => _undoStack.add(data.strokes.removeLast()));
-    _persistPage(_undoPageIndex!);
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(_snapshot());
+    final snap = _undoStack.removeLast();
+    setState(() {
+      _restore(snap);
+      _lassoCtrl.deselect();
+      _active = null;
+    });
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      _persistPage(i);
+    }
   }
 
   void _redo() {
-    if (_undoPageIndex == null || _undoStack.isEmpty) return;
-    final data = _pageData[_pageBlockIds[_undoPageIndex!]];
-    if (data == null) return;
-    setState(() => data.strokes.add(_undoStack.removeLast()));
-    _persistPage(_undoPageIndex!);
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(_snapshot());
+    final snap = _redoStack.removeLast();
+    setState(() {
+      _restore(snap);
+      _lassoCtrl.deselect();
+      _active = null;
+    });
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      _persistPage(i);
+    }
   }
 
   // ─── Current page ──────────────────────────────────────────────────────
@@ -1073,6 +1518,62 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         ));
     final idx = _pageIndexFromWorldY(center.dy);
     return idx.clamp(0, _pageBlockIds.length - 1);
+  }
+
+  // ─── Background ────────────────────────────────────────────────────────
+
+  static const Color _notebookPaper = Color(0xFFFFFDF8);
+
+  DrawingData? get _currentPageData => _pageBlockIds.isEmpty
+      ? null
+      : _pageData[_pageBlockIds[_currentVisiblePage]];
+
+  PageBackground get _currentBg => _currentPageData?.background ?? _lastBg;
+
+  Color get _currentBgColor =>
+      bgPaper(_currentPageData?.bgColorValue, _notebookPaper);
+
+  void _toggleBgPopup() {
+    setState(() {
+      _bgPopupOpen = !_bgPopupOpen;
+      _bgColorPickerOpen = false;
+      if (_bgPopupOpen) {
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _imagePanelOpen = false;
+      }
+    });
+  }
+
+  List<int> get _bgTargetPages => _bgAllPages
+      ? List.generate(_pageBlockIds.length, (i) => i)
+      : [_currentVisiblePage];
+
+  void _applyBgPattern(PageBackground pb) {
+    final targets = _bgTargetPages;
+    setState(() {
+      _lastBg = pb;
+      for (final i in targets) {
+        _pageData[_pageBlockIds[i]]?.background = pb;
+      }
+    });
+    for (final i in targets) {
+      _persistPage(i);
+    }
+  }
+
+  void _applyBgColor(Color c) {
+    final v = c.toARGB32();
+    final targets = _bgTargetPages;
+    setState(() {
+      _lastBgColor = v;
+      for (final i in targets) {
+        _pageData[_pageBlockIds[i]]?.bgColorValue = v;
+      }
+    });
+    for (final i in targets) {
+      _persistPage(i);
+    }
   }
 
   Map<int, Set<int>> _hiddenStrokes() {
@@ -1097,6 +1598,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return hidden;
   }
 
+  /// Per-page indices of images hidden while being moved/resized via the lasso
+  /// (the live preview draws them transformed).
+  Map<int, Set<int>> _hiddenImages() {
+    if (_lassoCtrl.phase != LassoPhase.moving &&
+        _lassoCtrl.phase != LassoPhase.resizing &&
+        _lassoCtrl.phase != LassoPhase.rotating) {
+      return {};
+    }
+    if (_lassoCtrl.selectedImageIndices.isEmpty) return {};
+    final hidden = <int, Set<int>>{};
+    int globalIdx = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      final count = data?.images.length ?? 0;
+      for (int j = 0; j < count; j++) {
+        if (_lassoCtrl.selectedImageIndices.contains(globalIdx + j)) {
+          hidden.putIfAbsent(i, () => {}).add(j);
+        }
+      }
+      globalIdx += count;
+    }
+    return hidden;
+  }
+
   // ─── Build ─────────────────────────────────────────────────────────────
 
   Widget _buildLassoMiniToolbar() {
@@ -1109,30 +1634,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       child: LassoMiniToolbar(
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
+        onCrop: _singleImageSelected ? _cropSelectedImage : null,
         palette: _palette,
-        onColorChange: (c) {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.changeColor(strokes, c.toARGB32());
-          _syncLassoStrokesToPages(strokes);
-        },
-        onWidthChange: (w) {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.changeWidth(strokes, w);
-          _syncLassoStrokesToPages(strokes);
-        },
-        onFlipH: () {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.flipHorizontal(strokes);
-          _syncLassoStrokesToPages(strokes);
-        },
-        onFlipV: () {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.flipVertical(strokes);
-          _syncLassoStrokesToPages(strokes);
-        },
+        onColorChange: (c) =>
+            _lassoMutate((s, im) => _lassoCtrl.changeColor(s, c.toARGB32())),
+        onWidthChange: (w) =>
+            _lassoMutate((s, im) => _lassoCtrl.changeWidth(s, w)),
+        onFlipH: () => _lassoMutate((s, im) => _lassoCtrl.flipHorizontal(s)),
+        onFlipV: () => _lassoMutate((s, im) => _lassoCtrl.flipVertical(s)),
         onCopy: () {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.copySelected(strokes);
+          _lassoCtrl.copySelected(_allVisibleStrokes, _allVisibleImages);
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1142,9 +1653,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           );
         },
         onCut: () {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.cutSelected(strokes);
-          _syncLassoStrokesToPages(strokes);
+          _lassoMutate((s, im) => _lassoCtrl.cutSelected(s, im));
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1166,9 +1675,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          final strokes = _allVisibleStrokes;
-          _lassoCtrl.pasteAt(_showPasteAt!, strokes);
-          _syncLassoStrokesToPages(strokes);
+          _lassoMutate((s, im) => _lassoCtrl.pasteAt(_showPasteAt!, s, im));
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -1206,7 +1713,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               child: _CollapsedNotebookHeader(
                 folder: widget.folder,
                 pageCount: _pageBlockIds.length,
-                background: _pageBackground,
+                background: _currentBg,
                 accent: _accent,
                 onExpand: () => setState(() => _headerCollapsed = false),
                 onOpenPages: _togglePageDrawer,
@@ -1217,7 +1724,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               child: ModeHeader(
                 mode: 'CUADERNO',
                 subtitle:
-                    'A4 · ${_pageBlockIds.length} PÁGINAS · ${_pageBackground.name.toUpperCase()}',
+                    'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
                 color: _accent,
                 onBack: () => Navigator.pop(context),
                 headerRight: [
@@ -1286,7 +1793,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                           clipBehavior: Clip.none,
                           children: [
                             ClipRect(
-                              child: Listener(
+                              child: GestureDetector(
+                                onTapUp: _onLassoTap,
+                                child: Listener(
                                 behavior: HitTestBehavior.opaque,
                                 onPointerDown: _onDown,
                                 onPointerMove: _onMove,
@@ -1326,10 +1835,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                             activePageIndex:
                                                 _activePageIndex,
                                             visibleRect: visibleRect,
-                                            background: _pageBackground,
                                             accentColor: _accent,
                                             hiddenStrokes:
                                                 _hiddenStrokes(),
+                                            hiddenImages: _hiddenImages(),
+                                            imageCache: _imgCache,
                                           ),
                                           size: Size(kNotebookPageWidth,
                                               _totalCanvasHeight),
@@ -1345,6 +1855,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                     _lassoAnimCtrl.value,
                                                 strokes:
                                                     _allVisibleStrokes,
+                                                images: _allVisibleImages,
+                                                imageCache: _imgCache,
                                                 visibleRect: visibleRect,
                                               ),
                                               size: Size(
@@ -1401,6 +1913,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                   ),
                                 ),
                               ),
+                              ),
                             ),
                             if (_lassoCtrl.phase == LassoPhase.selected)
                               _buildLassoMiniToolbar(),
@@ -1437,7 +1950,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   pageBlockIds: _pageBlockIds,
                   pageData: _pageData,
                   starredBlockIds: _starredBlockIds,
-                  background: _pageBackground,
+                  background: _currentBg,
                   accentColor: _accent,
                   currentPageIndex: _drawerSnapshotPage,
                   onNavigate: _navigateToPage,
@@ -1461,6 +1974,92 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 child: _EyedropperHint(onCancel: _exitEyedropper),
               ),
             ),
+          if (_imagePanelOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleImagePanel,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ImageInsertPanel(
+                  accent: _accent,
+                  onPick: (file) {
+                    _toggleImagePanel();
+                    _insertImageFile(file);
+                  },
+                  onClose: _toggleImagePanel,
+                ),
+              ),
+            ),
+          ],
+          if (_bgPopupOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleBgPopup,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: BackgroundPopup(
+                  pattern: _currentBg,
+                  color: _currentBgColor,
+                  showScope: true,
+                  allPages: _bgAllPages,
+                  accent: _accent,
+                  onPattern: _applyBgPattern,
+                  onColor: _applyBgColor,
+                  onMoreColors: () => setState(() {
+                    _bgColorPickerOpen = true;
+                    _bgPopupOpen = false;
+                  }),
+                  onScope: (all) => setState(() => _bgAllPages = all),
+                  onClose: _toggleBgPopup,
+                ),
+              ),
+            ),
+          ],
+          if (_bgColorPickerOpen) ...[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _bgColorPickerOpen = false),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 64,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ColorPickerPopup(
+                  currentColor: _currentBgColor,
+                  recentColors: const [],
+                  savedColors: _bgSavedColors,
+                  quickColors: _bgSavedColors,
+                  quickLabel: 'FAVORITOS',
+                  onPreview: _applyBgColor,
+                  onCommit: _applyBgColor,
+                  onStar: _starBgColor,
+                  onEyedropper: () {},
+                  onClose: () => setState(() {
+                    _bgColorPickerOpen = false;
+                    _bgPopupOpen = true;
+                  }),
+                ),
+              ),
+            ),
+          ],
           if (_widthPickerOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -1535,35 +2134,38 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               _toolBtn(
                 icon: Icons.edit_outlined,
                 active: _tool == DrawTool.pen,
-                onTap: () => setState(() {
-                  _tool = DrawTool.pen;
-                  _lassoCtrl.deselect();
-                }),
+                onTap: () => _selectTool(DrawTool.pen),
               ),
               const SizedBox(width: 12),
               _toolBtn(
                 icon: Icons.gesture,
                 active: _tool == DrawTool.fountainPen,
-                onTap: () => setState(() {
-                  _tool = DrawTool.fountainPen;
-                  _lassoCtrl.deselect();
-                }),
+                onTap: () => _selectTool(DrawTool.fountainPen),
+              ),
+              const SizedBox(width: 12),
+              _toolBtn(
+                icon: Icons.highlight,
+                active: _tool == DrawTool.highlighter,
+                onTap: () => _selectTool(DrawTool.highlighter),
               ),
               const SizedBox(width: 12),
               _toolBtn(
                 icon: Icons.auto_fix_high,
                 active: _tool == DrawTool.eraser,
-                onTap: () => setState(() {
-                  _tool = DrawTool.eraser;
-                  _lassoCtrl.deselect();
-                }),
+                onTap: () => _selectTool(DrawTool.eraser),
               ),
               const SizedBox(width: 12),
               _toolBtn(
                 icon: Icons.highlight_alt,
                 active: _tool == DrawTool.lasso,
                 label: 'LAZO',
-                onTap: () => setState(() => _tool = DrawTool.lasso),
+                onTap: () => _selectTool(DrawTool.lasso),
+              ),
+              const SizedBox(width: 12),
+              _toolBtn(
+                icon: Icons.image_outlined,
+                active: _imagePanelOpen,
+                onTap: _toggleImagePanel,
               ),
               _divider(),
               ColorButton(
@@ -1595,28 +2197,45 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               _toolBtn(
                 icon: Icons.undo,
                 active: false,
-                enabled: _undoPageIndex != null &&
-                    _undoPageIndex! < _pageBlockIds.length &&
-                    (_pageData[_pageBlockIds[_undoPageIndex!]]
-                                ?.strokes
-                                .isNotEmpty ??
-                            false),
+                enabled: _undoStack.isNotEmpty,
                 onTap: _undo,
               ),
               const SizedBox(width: 10),
               _toolBtn(
                 icon: Icons.redo,
                 active: false,
-                enabled: _undoStack.isNotEmpty,
+                enabled: _redoStack.isNotEmpty,
                 onTap: _redo,
               ),
               _divider(),
               _toolBtn(
+                icon: Icons.auto_graph,
+                active: _stabilizer.isOn,
+                label: _stabilizer.label,
+                onTap: () {
+                  setState(() => _stabilizer = _stabilizer.next);
+                  DrawingPrefs.saveStabilizer(_stabilizer);
+                },
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.format_color_fill,
+                active: _fillShapes,
+                label: 'RELLENO',
+                onTap: () {
+                  setState(() => _fillShapes = !_fillShapes);
+                  DrawingPrefs.saveFill(_fillShapes);
+                },
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
                 icon: Icons.back_hand_outlined,
                 active: _palmRejection,
                 label: 'PALMA',
-                onTap: () =>
-                    setState(() => _palmRejection = !_palmRejection),
+                onTap: () {
+                  setState(() => _palmRejection = !_palmRejection);
+                  DrawingPrefs.savePalm(_palmRejection);
+                },
               ),
               _divider(),
               _bgBtn(),
@@ -1647,103 +2266,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Widget _bgBtn() {
-    final label = switch (_pageBackground) {
-      PageBackground.blank => 'BLANCO',
-      PageBackground.lined => 'LÍNEAS',
-      PageBackground.grid => 'CUADRÍCULA',
-      PageBackground.dotted => 'PUNTOS',
-    };
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _showBackgroundPicker,
+      onTap: _toggleBgPopup,
       child: Container(
         height: 32,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: yCream,
+          color: _bgPopupOpen ? _accent : yCream,
           border: Border.all(color: yInk, width: yLineThin),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.grid_on, size: 14, color: yInk),
+            Icon(Icons.grid_on,
+                size: 14, color: _bgPopupOpen ? yCream : yInk),
             const SizedBox(width: 5),
-            Text(label,
+            Text('FONDO',
                 style: yMono(
                   size: 9,
                   weight: FontWeight.w700,
                   tracking: 1.2,
-                  color: yInk,
+                  color: _bgPopupOpen ? yCream : yInk,
                 )),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showBackgroundPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: yCream,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text('FONDO DE PÁGINA',
-                  style: yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yMuted)),
-            ),
-            for (final bg in PageBackground.values)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  setState(() => _pageBackground = bg);
-                  _saveBackgroundPreference();
-                  Navigator.pop(ctx);
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                        top: BorderSide(color: yInk, width: 0.5)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _pageBackground == bg
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_unchecked,
-                        size: 18,
-                        color: _pageBackground == bg ? _accent : yMuted,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        switch (bg) {
-                          PageBackground.blank => 'Blanco',
-                          PageBackground.lined => 'Líneas',
-                          PageBackground.grid => 'Cuadrícula',
-                          PageBackground.dotted => 'Puntos',
-                        },
-                        style: ySans(
-                          size: 15,
-                          weight: FontWeight.w600,
-                          color: yInk,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1958,9 +2504,10 @@ class _NotebookCanvasPainter extends CustomPainter {
   final DrawingStroke? active;
   final int? activePageIndex;
   final Rect visibleRect;
-  final PageBackground background;
   final Color accentColor;
   final Map<int, Set<int>> hiddenStrokes;
+  final Map<int, Set<int>> hiddenImages;
+  final CanvasImageCache? imageCache;
 
   _NotebookCanvasPainter({
     required this.pageBlockIds,
@@ -1968,9 +2515,10 @@ class _NotebookCanvasPainter extends CustomPainter {
     required this.active,
     required this.activePageIndex,
     required this.visibleRect,
-    required this.background,
     required this.accentColor,
     this.hiddenStrokes = const {},
+    this.hiddenImages = const {},
+    this.imageCache,
   });
 
   @override
@@ -1988,17 +2536,20 @@ class _NotebookCanvasPainter extends CustomPainter {
 
       if (!pageRect.overlaps(visibleRect)) continue;
 
+      final pageDataItem = pageData[pageBlockIds[i]];
+
       // Page shadow
       canvas.drawRect(
         pageRect.shift(const Offset(4, 4)),
         Paint()..color = yInk.withValues(alpha: 0.12),
       );
 
-      // White page
-      canvas.drawRect(pageRect, Paint()..color = const Color(0xFFFFFDF8));
-
-      // Page background pattern
-      _drawBackground(canvas, pageRect, background);
+      // Paper + pattern (per page).
+      final paper =
+          bgPaper(pageDataItem?.bgColorValue, const Color(0xFFFFFDF8));
+      canvas.drawRect(pageRect, Paint()..color = paper);
+      paintBgPattern(canvas, pageRect,
+          pageDataItem?.background ?? PageBackground.blank, bgMark(paper));
 
       // Page border
       canvas.drawRect(
@@ -2045,6 +2596,16 @@ class _NotebookCanvasPainter extends CustomPainter {
 
       final data = pageData[pageBlockIds[i]];
       if (data != null) {
+        // Images behind strokes.
+        final skipImg = hiddenImages[i];
+        for (int ii = 0; ii < data.images.length; ii++) {
+          if (skipImg != null && skipImg.contains(ii)) continue;
+          final im = data.images[ii];
+          if (!Rect.fromLTWH(im.x, im.y, im.w, im.h).overlaps(pageVisible)) {
+            continue;
+          }
+          drawCanvasImage(canvas, imageCache?.get(im.filename), im);
+        }
         final skip = hiddenStrokes[i];
         for (int si = 0; si < data.strokes.length; si++) {
           if (skip != null && skip.contains(si)) continue;
@@ -2068,71 +2629,6 @@ class _NotebookCanvasPainter extends CustomPainter {
     return false;
   }
 
-  void _drawBackground(Canvas canvas, Rect page, PageBackground bg) {
-    switch (bg) {
-      case PageBackground.blank:
-        break;
-      case PageBackground.lined:
-        _drawLines(canvas, page);
-      case PageBackground.grid:
-        _drawGrid(canvas, page);
-      case PageBackground.dotted:
-        _drawDots(canvas, page);
-    }
-  }
-
-  void _drawLines(Canvas canvas, Rect page) {
-    final paint = Paint()
-      ..color = const Color(0xFFD6D1C8)
-      ..strokeWidth = 0.5;
-    const step = 28.0;
-    final startY = page.top + 60;
-    for (double y = startY; y < page.bottom - 20; y += step) {
-      canvas.drawLine(
-        Offset(page.left + 40, y),
-        Offset(page.right - 20, y),
-        paint,
-      );
-    }
-    canvas.drawLine(
-      Offset(page.left + 36, page.top + 40),
-      Offset(page.left + 36, page.bottom - 20),
-      Paint()
-        ..color = accentColor.withValues(alpha: 0.45)
-        ..strokeWidth = 0.8,
-    );
-  }
-
-  void _drawGrid(Canvas canvas, Rect page) {
-    final paint = Paint()
-      ..color = const Color(0xFFDAD6CE)
-      ..strokeWidth = 0.4;
-    const step = 28.0;
-    for (double y = page.top + step; y < page.bottom; y += step) {
-      canvas.drawLine(
-          Offset(page.left, y), Offset(page.right, y), paint);
-    }
-    for (double x = page.left + step; x < page.right; x += step) {
-      canvas.drawLine(
-          Offset(x, page.top), Offset(x, page.bottom), paint);
-    }
-  }
-
-  void _drawDots(Canvas canvas, Rect page) {
-    final dot = Paint()..color = yMuted.withValues(alpha: 0.2);
-    const step = 28.0;
-    for (double x = page.left + step; x < page.right; x += step) {
-      for (double y = page.top + step; y < page.bottom; y += step) {
-        canvas.drawCircle(Offset(x, y), 1.0, dot);
-      }
-    }
-  }
-
   @override
-  bool shouldRepaint(_NotebookCanvasPainter old) =>
-      old.visibleRect != visibleRect ||
-      old.active != active ||
-      old.pageBlockIds.length != pageBlockIds.length ||
-      old.background != background ||
-      old.hiddenStrokes != hiddenStrokes;
+  bool shouldRepaint(_NotebookCanvasPainter old) => true;
 }
