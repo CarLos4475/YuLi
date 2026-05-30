@@ -305,7 +305,8 @@ class LassoPainter extends CustomPainter {
         ..lineTo(corners[2].dx, corners[2].dy)
         ..lineTo(corners[3].dx, corners[3].dy)
         ..close();
-      _drawDashedPath(canvas, path, const Color(0x802D4B8E), 1.5);
+      _drawDashedPath(canvas, path, const Color(0x802D4B8E),
+          1.5 / (ctrl.hitScale <= 0 ? 1.0 : ctrl.hitScale));
     }
   }
 
@@ -363,18 +364,21 @@ class LassoPainter extends CustomPainter {
   }
 
   void _drawBoundingBox(Canvas canvas, Rect box) {
+    // Everything below is drawn at a constant SIZE ON SCREEN (÷ scale) so the
+    // box, handles and rotation knob stay visible and aimable when zoomed out.
+    final s = ctrl.hitScale <= 0 ? 1.0 : ctrl.hitScale;
     final path = Path()
       ..moveTo(box.left, box.top)
       ..lineTo(box.right, box.top)
       ..lineTo(box.right, box.bottom)
       ..lineTo(box.left, box.bottom)
       ..close();
-    _drawDashedPath(canvas, path, const Color(0x802D4B8E), 1.5);
+    _drawDashedPath(canvas, path, const Color(0x802D4B8E), 1.5 / s);
 
     final handlePaint = Paint()
       ..color = const Color(0xFF2D4B8E)
       ..style = PaintingStyle.fill;
-    const hs = 6.0;
+    final hs = 7.0 / s;
     for (final corner in [
       box.topLeft, box.topRight, box.bottomLeft, box.bottomRight,
     ]) {
@@ -383,10 +387,7 @@ class LassoPainter extends CustomPainter {
         handlePaint,
       );
     }
-    final sidePaint = Paint()
-      ..color = const Color(0xFF2D4B8E)
-      ..style = PaintingStyle.fill;
-    const ss = 5.0;
+    final ss = 6.0 / s;
     for (final side in [
       Offset(box.center.dx, box.top),
       Offset(box.right, box.center.dy),
@@ -395,16 +396,18 @@ class LassoPainter extends CustomPainter {
     ]) {
       canvas.drawRect(
         Rect.fromCenter(center: side, width: ss, height: ss),
-        sidePaint,
+        handlePaint,
       );
     }
-    final rotHandle = Offset(box.center.dx, box.top - 14);
+    final rotHandle = Offset(box.center.dx, box.top - kLassoRotationGap / s);
     canvas.drawLine(
       Offset(box.center.dx, box.top),
       rotHandle,
-      Paint()..color = const Color(0x802D4B8E)..strokeWidth = 1,
+      Paint()
+        ..color = const Color(0x802D4B8E)
+        ..strokeWidth = 1 / s,
     );
-    canvas.drawCircle(rotHandle, 5, handlePaint);
+    canvas.drawCircle(rotHandle, 6 / s, handlePaint);
   }
 
   // ─── Dashed path utility ───────────────────────────────────────────────

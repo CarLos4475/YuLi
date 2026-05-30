@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/note_block.dart';
@@ -17,14 +19,47 @@ final noteLinkedTaskIdsProvider =
 });
 
 /// Live task entities linked to a note. Reflects done/trash globally.
+///
+/// `watchByIds` is an infinite watch stream, so a naive `await for (ids) {
+/// yield* watchByIds(ids); }` blocks on the first non-empty ids forever and
+/// never reacts to later link/unlink changes. We switch the inner subscription
+/// manually so adding/removing a linked task updates live.
 final noteLinkedTasksProvider =
-    StreamProvider.family<List<Task>, int>((ref, noteId) async* {
-  final repo = ref.watch(taskRepositoryProvider);
-  await for (final ids in ref.watch(noteRepositoryProvider).watchLinkedTaskIds(noteId)) {
-    if (ids.isEmpty) {
-      yield const [];
-      continue;
-    }
-    yield* repo.watchByIds(ids);
+    StreamProvider.family<List<Task>, int>((ref, noteId) {
+  final taskRepo = ref.watch(taskRepositoryProvider);
+  final noteRepo = ref.watch(noteRepositoryProvider);
+  final controller = StreamController<List<Task>>();
+  StreamSubscription<List<Task>>? inner;
+
+  void emit(List<Task> tasks) {
+    if (!controller.isClosed) controller.add(tasks);
   }
+
+  final outer = noteRepo.watchLinkedTaskIds(noteId).listen(
+    (ids) {
+      inner?.cancel();
+      inner = null;
+      if (ids.isEmpty) {
+        emit(const []);
+      } else {
+        inner = taskRepo.watchByIds(ids).listen(
+          emit,
+          onError: (Object e, StackTrace st) {
+            if (!controller.isClosed) controller.addError(e, st);
+          },
+        );
+      }
+    },
+    onError: (Object e, StackTrace st) {
+      if (!controller.isClosed) controller.addError(e, st);
+    },
+  );
+
+  ref.onDispose(() {
+    inner?.cancel();
+    outer.cancel();
+    controller.close();
+  });
+
+  return controller.stream;
 });

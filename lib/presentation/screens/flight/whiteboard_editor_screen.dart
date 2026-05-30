@@ -32,6 +32,7 @@ import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
 import 'canvas_image_cache.dart';
+import 'canvas_task_block.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
 import 'stroke_stabilizer.dart';
@@ -95,9 +96,12 @@ class _WhiteboardEditorScreenState
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<(List<DrawingStroke>, List<CanvasImage>)> _undoStack = [];
-  final List<(List<DrawingStroke>, List<CanvasImage>)> _redoStack = [];
-  (List<DrawingStroke>, List<CanvasImage>)? _gestureBefore;
+  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+      _undoStack = [];
+  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+      _redoStack = [];
+  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)?
+      _gestureBefore;
   bool _gestureChanged = false;
   DrawingStroke? _active;
   Timer? _holdTimer;
@@ -110,6 +114,13 @@ class _WhiteboardEditorScreenState
   Timer? _pasteTimer;
   Offset? _pastePos;
   Offset? _showPasteAt;
+
+  // Lasso action toolbar is summoned by tapping the selection, not shown on
+  // select. Tap outside hides it (selection kept); tap outside again deselects.
+  bool _toolbarVisible = false;
+  // Down outside an active selection: deferred until we know it's a tap
+  // (dismiss) or a drag (fresh lasso). Stylus-only (finger taps go via onTapUp).
+  Offset? _pendingLassoStart;
 
   bool _widthPickerOpen = false;
   List<double> _recentWidths = const [3.0, 6.0, 10.0];
@@ -435,6 +446,7 @@ class _WhiteboardEditorScreenState
   DrawingData _decodeData(DrawingBlock b) {
     List<dynamic> strokes = const [];
     List<dynamic> images = const [];
+    List<dynamic> taskBlocks = const [];
     final payload = b.payloadJson();
     try {
       final decoded = jsonDecode(b.strokesJson);
@@ -444,10 +456,15 @@ class _WhiteboardEditorScreenState
       final decoded = jsonDecode(b.imagesJson);
       if (decoded is List) images = decoded;
     } catch (_) {}
+    try {
+      final decoded = jsonDecode(b.taskBlocksJson);
+      if (decoded is List) taskBlocks = decoded;
+    } catch (_) {}
     return DrawingData.fromJson({
       'h': _kCanvasH,
       's': strokes,
       'i': images,
+      't': taskBlocks,
       'bg': payload['bg'],
       'bgc': payload['bgc'],
     });
@@ -459,6 +476,7 @@ class _WhiteboardEditorScreenState
       'h': _kCanvasH,
       's': _data.strokes.map((s) => s.toJson()).toList(),
       'i': _data.images.map((im) => im.toJson()).toList(),
+      't': _data.taskBlocks.map((b) => b.toJson()).toList(),
       'bg': _data.background.toDbString(),
       if (_data.bgColorValue != null) 'bgc': _data.bgColorValue,
       'whiteboard': true,
@@ -548,6 +566,27 @@ class _WhiteboardEditorScreenState
     } catch (_) {}
   }
 
+  /// Place a new empty task block at the centre of the current viewport.
+  void _insertTaskBlock() {
+    final screen = MediaQuery.of(context).size;
+    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+    final w = kCanvasTaskBlockDefaultW / _viewScale;
+    final block = CanvasTaskBlock(
+      x: center.dx - w / 2,
+      y: center.dy - 60 / _viewScale,
+      w: w,
+      h: 120 / _viewScale,
+    );
+    final before = _snapshot();
+    setState(() {
+      _data.taskBlocks.add(block);
+      if (_tool != DrawTool.lasso) _tool = DrawTool.lasso;
+    });
+    _commit(before);
+    _persist();
+    HapticFeedback.lightImpact();
+  }
+
   double get _viewScale => _viewCtrl.value.getMaxScaleOnAxis();
 
   Offset _screenToWorld(Offset screen) {
@@ -575,11 +614,19 @@ class _WhiteboardEditorScreenState
   }
 
   Rect? _lassoToolbarScreenRect() {
-    if (_lassoCtrl.phase != LassoPhase.selected || _lassoCtrl.boundingBox == null) return null;
+    // Only guard when the toolbar is actually on screen, and place the guard
+    // ABOVE the selection (matching the toolbar) so it never covers the top
+    // handles — a world-space offset shrank on screen when zoomed out and the
+    // guard then swallowed the rotation / top-resize handles.
+    if (!_toolbarVisible ||
+        _lassoCtrl.phase != LassoPhase.selected ||
+        _lassoCtrl.boundingBox == null) {
+      return null;
+    }
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 50);
-    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
-    return Rect.fromLTWH(screenPos.dx - 100, screenPos.dy - 10, 200, 80);
+    final screenTop =
+        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    return Rect.fromLTWH(screenTop.dx - 110, screenTop.dy - 148, 220, 100);
   }
 
   void _onDown(PointerDownEvent e) {
@@ -735,11 +782,42 @@ class _WhiteboardEditorScreenState
     }
     final p = _screenToWorld(d.localPosition);
     _lassoCtrl.hitScale = _viewScale;
+    if (_lassoCtrl.phase == LassoPhase.selected) {
+      // A tap inside the selection (toggle the toolbar) is driven by the
+      // pointer flow's no-op move (_finishTransformOrTap) — skip it here.
+      if (_lassoCtrl.isTapInsideBoundingBox(p)) return;
+      // Tap outside: hide the toolbar, or deselect if already hidden.
+      setState(() {
+        if (_toolbarVisible) {
+          _toolbarVisible = false;
+        } else {
+          _lassoCtrl.deselect();
+        }
+      });
+      return;
+    }
+    // Nothing selected. A tap on an interactive block belongs to its task UI.
+    if (_interactiveBlockAt(p)) return;
     setState(() {
-      if (!_lassoCtrl.tapSelect(p, _data.strokes, _data.images)) {
+      if (_lassoCtrl.tapSelect(
+          p, _data.strokes, _data.images, _data.taskBlocks)) {
+        _toolbarVisible = false;
+      } else {
         _lassoCtrl.deselect();
       }
     });
+  }
+
+  /// True when [worldPos] is over a task block that is currently interactive
+  /// (lasso tool active and the block isn't the lasso selection).
+  bool _interactiveBlockAt(Offset worldPos) {
+    if (_tool != DrawTool.lasso) return false;
+    for (int i = _data.taskBlocks.length - 1; i >= 0; i--) {
+      if (_lassoCtrl.selectedBlockIndices.contains(i)) continue;
+      final b = _data.taskBlocks[i];
+      if (Rect.fromLTWH(b.x, b.y, b.w, b.h).contains(worldPos)) return true;
+    }
+    return false;
   }
 
   static const _minDist2 = 9.0; // 3px squared
@@ -877,6 +955,7 @@ class _WhiteboardEditorScreenState
     _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
     _holdAnchor = null;
+    _pendingLassoStart = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
     if (_snapKind != null) {
@@ -1022,27 +1101,35 @@ class _WhiteboardEditorScreenState
     if (_lassoCtrl.phase == LassoPhase.selected) {
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startRotation(worldPos, _data.strokes, _data.images);
+        _lassoCtrl.startRotation(
+            worldPos, _data.strokes, _data.images, _data.taskBlocks);
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startResize(corner, worldPos, _data.strokes, _data.images);
+        _lassoCtrl.startResize(
+            corner, worldPos, _data.strokes, _data.images, _data.taskBlocks);
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startSideResize(side, worldPos, _data.strokes, _data.images);
+        _lassoCtrl.startSideResize(
+            side, worldPos, _data.strokes, _data.images, _data.taskBlocks);
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startMove(worldPos, _data.strokes, _data.images);
+        _lassoCtrl.startMove(
+            worldPos, _data.strokes, _data.images, _data.taskBlocks);
         return;
       }
-      _lassoCtrl.deselect();
+      // Outside the selection: defer. A tap (no drag) dismisses the toolbar /
+      // selection on up; a drag starts a fresh lasso on move. Keep the current
+      // selection meanwhile.
+      _pendingLassoStart = worldPos;
+      return;
     }
     _lassoCtrl.startTracing(worldPos);
   }
@@ -1053,6 +1140,16 @@ class _WhiteboardEditorScreenState
         _pasteTimer?.cancel();
         _pastePos = null;
         _lassoCtrl.startTracing(worldPos);
+      }
+      return;
+    }
+    if (_pendingLassoStart != null) {
+      if ((worldPos - _pendingLassoStart!).distance * _viewScale > 6) {
+        _lassoCtrl.deselect();
+        _toolbarVisible = false;
+        _lassoCtrl.startTracing(_pendingLassoStart!);
+        _lassoCtrl.addTracePoint(worldPos);
+        _pendingLassoStart = null;
       }
       return;
     }
@@ -1075,28 +1172,60 @@ class _WhiteboardEditorScreenState
       _pastePos = null;
       return;
     }
+    // Tap outside the selection (no drag): hide the toolbar, or deselect if it
+    // was already hidden.
+    if (_pendingLassoStart != null) {
+      _pendingLassoStart = null;
+      setState(() {
+        if (_toolbarVisible) {
+          _toolbarVisible = false;
+        } else {
+          _lassoCtrl.deselect();
+        }
+      });
+      return;
+    }
     if (_lassoCtrl.phase == LassoPhase.tracing) {
-      _lassoCtrl.finishTracing(_data.strokes, _data.images);
+      _lassoCtrl.finishTracing(_data.strokes, _data.images, _data.taskBlocks);
+      _toolbarVisible = false; // a fresh selection starts with the toolbar hidden
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
+      final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
       _lassoCtrl.finishMove(
-          _data.strokes, _data.images, 0);
-      _commitGesture();
-      _persist();
+          _data.strokes, _data.images, _data.taskBlocks, 0);
+      _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      final moved = _lassoCtrl.isSideResize
+          ? (_lassoCtrl.resizeScaleX - 1).abs() > 0.02 ||
+              (_lassoCtrl.resizeScaleY - 1).abs() > 0.02
+          : (_lassoCtrl.resizeScale - 1).abs() > 0.02;
       _lassoCtrl.isSideResize
-          ? _lassoCtrl.finishSideResize(_data.strokes, _data.images)
-          : _lassoCtrl.finishResize(_data.strokes, _data.images);
-      _commitGesture();
-      _persist();
+          ? _lassoCtrl.finishSideResize(
+              _data.strokes, _data.images, _data.taskBlocks)
+          : _lassoCtrl.finishResize(
+              _data.strokes, _data.images, _data.taskBlocks);
+      _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
-      _lassoCtrl.finishRotation(_data.strokes, _data.images);
+      final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
+      _lassoCtrl.finishRotation(_data.strokes, _data.images, _data.taskBlocks);
+      _finishTransformOrTap(moved);
+    }
+  }
+
+  /// A transform gesture that actually moved is committed; one that didn't is a
+  /// tap on the selection → toggle the action toolbar (no undo step).
+  void _finishTransformOrTap(bool moved) {
+    if (moved) {
       _commitGesture();
       _persist();
+    } else {
+      _gestureBefore = null;
+      setState(() => _toolbarVisible = !_toolbarVisible);
     }
   }
 
   void _lassoDelete() {
-    _lassoMutate(() => _lassoCtrl.deleteSelected(_data.strokes, _data.images));
+    _lassoMutate(() => _lassoCtrl.deleteSelected(
+        _data.strokes, _data.images, _data.taskBlocks));
     HapticFeedback.lightImpact();
   }
 
@@ -1146,13 +1275,64 @@ class _WhiteboardEditorScreenState
     _imgCache?.get(newName);
   }
 
+  List<Widget> _buildTaskBlockOverlays() {
+    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating;
+    final out = <Widget>[];
+    for (int i = 0; i < _data.taskBlocks.length; i++) {
+      final b = _data.taskBlocks[i];
+      final selected = _lassoCtrl.selectedBlockIndices.contains(i);
+      // Own compositing layer so dragging the card (live Transform below) is a
+      // cheap layer-offset instead of repainting its content every frame.
+      Widget overlay = RepaintBoundary(
+        child: CanvasTaskBlockOverlay(
+          key: ValueKey(b.id),
+          block: b,
+          noteId: widget.note.id,
+          folderId: widget.note.folderId,
+          folderName: widget.folder.name,
+          folderColor: widget.folder.color,
+          accent: _accent,
+          interactive: !selected &&
+              !gesture &&
+              (_tool == DrawTool.lasso || _palmRejection),
+          onPersist: _persist,
+          onTasksChanged: () {
+            if (mounted) setState(() {});
+          },
+          onHeightMeasured: (h) {
+            if (!mounted) return;
+            setState(() => b.h = h);
+            _persist();
+          },
+        ),
+      );
+      // Selected + mid-gesture: follow the live lasso transform so the block
+      // stays visible while moving/resizing/rotating (no painted ghost).
+      if (gesture && selected) {
+        final off = Offset(b.x, b.y);
+        final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+            _lassoCtrl.liveGestureMatrix() *
+            Matrix4.translationValues(off.dx, off.dy, 0);
+        overlay = Transform(transform: tm, child: overlay);
+      }
+      out.add(Positioned(left: b.x, top: b.y, child: overlay));
+    }
+    return out;
+  }
+
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 50);
-    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
+    final screenTop =
+        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    // Anchor the toolbar's BOTTOM a fixed screen gap above the selection top
+    // (clearing the rotation handle), growing upward. A world-space offset
+    // shrank on screen when zoomed out and the toolbar then covered the top
+    // handles / top of the object, making them dead.
     return Positioned(
-      left: screenPos.dx - 80,
-      top: screenPos.dy,
+      left: screenTop.dx - 80,
+      bottom: _viewport.height - screenTop.dy + 48,
       child: LassoMiniToolbar(
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
@@ -1177,7 +1357,8 @@ class _WhiteboardEditorScreenState
           );
         },
         onCut: () {
-          _lassoMutate(() => _lassoCtrl.cutSelected(_data.strokes, _data.images));
+          _lassoMutate(() => _lassoCtrl.cutSelected(
+              _data.strokes, _data.images, _data.taskBlocks));
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1221,20 +1402,25 @@ class _WhiteboardEditorScreenState
 
   // ─── Undo / redo (snapshot history) ─────────────────────────────────────
 
-  (List<DrawingStroke>, List<CanvasImage>) _snapshot() => (
-        _data.strokes.map((s) => s.clone()).toList(),
-        _data.images.map((im) => im.clone()).toList(),
-      );
+  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)
+      _snapshot() => (
+            _data.strokes.map((s) => s.clone()).toList(),
+            _data.images.map((im) => im.clone()).toList(),
+            _data.taskBlocks.map((b) => b.clone()).toList(),
+          );
 
-  void _commit((List<DrawingStroke>, List<CanvasImage>) before) {
+  void _commit(
+      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>) before) {
     _undoStack.add(before);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
-  void _restore((List<DrawingStroke>, List<CanvasImage>) snap) {
+  void _restore(
+      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>) snap) {
     _data.strokes = snap.$1;
     _data.images = snap.$2;
+    _data.taskBlocks = snap.$3;
   }
 
   void _commitGesture() {
@@ -1310,7 +1496,17 @@ class _WhiteboardEditorScreenState
   }
 
   void _resetView() {
-    setState(() => _viewCtrl.value = Matrix4.identity());
+    if (_viewport == Size.zero) {
+      setState(() => _viewCtrl.value = Matrix4.identity());
+      return;
+    }
+    final box = _contentBounds();
+    final cx = box?.center.dx ?? _kCanvasW / 2;
+    final cy = box?.center.dy ?? _kCanvasH / 2;
+    setState(() {
+      _viewCtrl.value = Matrix4.translationValues(
+          _viewport.width / 2 - cx, _viewport.height / 2 - cy, 0);
+    });
   }
 
   Size _viewport = Size.zero;
@@ -1332,8 +1528,33 @@ class _WhiteboardEditorScreenState
       if (im.x + im.w > maxX) maxX = im.x + im.w;
       if (im.y + im.h > maxY) maxY = im.y + im.h;
     }
+    for (final b in _data.taskBlocks) {
+      if (b.x < minX) minX = b.x;
+      if (b.y < minY) minY = b.y;
+      if (b.x + b.w > maxX) maxX = b.x + b.w;
+      if (b.y + b.h > maxY) maxY = b.y + b.h;
+    }
     if (minX == double.infinity) return null;
     return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  bool _viewInitialized = false;
+
+  /// Open centered: a new (empty) whiteboard lands on the canvas centre — far
+  /// from the real 10k×10k edges — instead of the top-left corner, so the user
+  /// never bumps into the boundary in normal use. An existing board centres on
+  /// its content. Runs once, after the data and viewport are both ready.
+  void _maybeInitView() {
+    if (_viewInitialized || _blockId == null || _viewport == Size.zero) return;
+    _viewInitialized = true;
+    final box = _contentBounds();
+    final cx = box?.center.dx ?? _kCanvasW / 2;
+    final cy = box?.center.dy ?? _kCanvasH / 2;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _viewCtrl.value = Matrix4.translationValues(
+          _viewport.width / 2 - cx, _viewport.height / 2 - cy, 0);
+    });
   }
 
   void _zoomToFit() {
@@ -1481,6 +1702,7 @@ class _WhiteboardEditorScreenState
           Expanded(
               child: LayoutBuilder(builder: (ctx, c) {
                 _viewport = Size(c.maxWidth, c.maxHeight);
+                _maybeInitView();
                 return AnimatedBuilder(
                   animation: _viewCtrl,
                   builder: (_, _) {
@@ -1489,6 +1711,9 @@ class _WhiteboardEditorScreenState
                     final br = MatrixUtils.transformPoint(
                         inv, Offset(c.maxWidth, c.maxHeight));
                     final visibleRect = Rect.fromPoints(tl, br);
+                    // Keep handle hit/draw sizes correct even if the user zooms
+                    // while a selection is active.
+                    _lassoCtrl.hitScale = _viewScale;
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -1543,6 +1768,7 @@ class _WhiteboardEditorScreenState
                                       ),
                                       size: const Size(_kCanvasW, _kCanvasH),
                                     ),
+                                    ..._buildTaskBlockOverlays(),
                                     if (_lassoCtrl.phase != LassoPhase.idle)
                                       AnimatedBuilder(
                                         animation: _lassoAnimCtrl,
@@ -1565,7 +1791,8 @@ class _WhiteboardEditorScreenState
                           ),
                           ),
                         ),
-                        if (_lassoCtrl.phase == LassoPhase.selected)
+                        if (_lassoCtrl.phase == LassoPhase.selected &&
+                            _toolbarVisible)
                           _buildLassoMiniToolbar(),
                         if (_showPasteAt != null)
                           _buildPasteButton(),
@@ -1815,6 +2042,13 @@ class _WhiteboardEditorScreenState
               icon: Icons.image_outlined,
               active: _imagePanelOpen,
               onTap: _toggleImagePanel,
+            ),
+            const SizedBox(width: 12),
+            _toolBtn(
+              icon: Icons.checklist,
+              active: false,
+              label: 'TAREAS',
+              onTap: _insertTaskBlock,
             ),
             _divider(),
             ColorButton(

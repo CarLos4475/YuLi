@@ -1,8 +1,12 @@
 import 'dart:math' as math;
-import 'dart:ui' show Offset, Rect, VoidCallback;
+import 'package:flutter/widgets.dart' show Offset, Rect, VoidCallback, Matrix4;
 import 'note_cell_model.dart';
 
 const double kLassoSnapStep = 25.0;
+
+/// Gap (in screen px) between the selection box top and the rotation handle.
+/// Divided by the view scale at use sites so it's constant on screen.
+const double kLassoRotationGap = 28.0;
 
 enum LassoPhase { idle, tracing, selected, moving, resizing, rotating }
 
@@ -32,12 +36,14 @@ class LassoController {
   List<Offset> lassoPath = [];
   Set<int> selectedIndices = {};
   Set<int> selectedImageIndices = {};
+  Set<int> selectedBlockIndices = {};
   Rect? boundingBox;
 
   Offset _dragStart = Offset.zero;
   Offset dragOffset = Offset.zero;
   Map<int, List<List<double>>>? _snapshotBeforeMove;
   Map<int, CanvasImage>? _imageSnapshot;
+  Map<int, CanvasTaskBlock>? _blockSnapshot;
 
   Offset? resizePivot;
   double resizeScale = 1.0;
@@ -63,6 +69,8 @@ class LassoController {
     phase = LassoPhase.tracing;
     lassoPath = [worldPos];
     selectedIndices = {};
+    selectedImageIndices = {};
+    selectedBlockIndices = {};
     boundingBox = null;
     dragOffset = Offset.zero;
     _notify();
@@ -77,10 +85,11 @@ class LassoController {
   }
 
   void finishTracing(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     if (phase != LassoPhase.tracing) return;
     if (lassoPath.length < 3) {
-      // Stylus tap fallback selects strokes only — image tap-select is a
+      // Stylus tap fallback selects strokes only — image/block tap-select is a
       // finger-only gesture handled by the editor.
       if (lassoPath.isNotEmpty && !tapSelect(lassoPath.first, strokes)) {
         deselect();
@@ -96,7 +105,11 @@ class LassoController {
     }
     selectedImageIndices = {};
     for (int i = 0; i < images.length; i++) {
-      if (_imageCenterInPolygon(images[i])) selectedImageIndices.add(i);
+      if (_boxCenterInPolygon(images[i])) selectedImageIndices.add(i);
+    }
+    selectedBlockIndices = {};
+    for (int i = 0; i < blocks.length; i++) {
+      if (_boxCenterInPolygon(blocks[i])) selectedBlockIndices.add(i);
     }
 
     if (!hasSelection) {
@@ -104,7 +117,7 @@ class LassoController {
       return;
     }
 
-    boundingBox = _computeBoundingBox(strokes, images);
+    boundingBox = _computeBoundingBox(strokes, images, blocks);
     lassoPath = [];
     phase = LassoPhase.selected;
     _notify();
@@ -118,18 +131,14 @@ class LassoController {
   }
 
   void startMove(Offset worldPos, List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     if (phase != LassoPhase.selected) return;
     _dragStart = worldPos;
     dragOffset = Offset.zero;
-    _snapshotBeforeMove = {};
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        _snapshotBeforeMove![i] =
-            strokes[i].points.map((p) => List<double>.from(p)).toList();
-      }
-    }
+    _snapshotStrokes(strokes);
     _snapshotImages(images);
+    _snapshotBlocks(blocks);
     phase = LassoPhase.moving;
     _notify();
   }
@@ -141,7 +150,9 @@ class LassoController {
   }
 
   LassoMoveResult finishMove(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const [], double snapStep = 0]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const [],
+      double snapStep = 0]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
 
     // Snap the moved selection so its top-left lands on the grid.
@@ -160,20 +171,27 @@ class LassoController {
         }
       }
     }
-    for (final i in selectedImageIndices) {
-      if (i < images.length) {
-        images[i].x += dragOffset.dx;
-        images[i].y += dragOffset.dy;
-      }
-    }
+    _moveBoxes(images, selectedImageIndices, dragOffset);
+    _moveBoxes(blocks, selectedBlockIndices, dragOffset);
 
-    boundingBox = _computeBoundingBox(strokes, images);
+    boundingBox = _computeBoundingBox(strokes, images, blocks);
     dragOffset = Offset.zero;
     _snapshotBeforeMove = null;
     _imageSnapshot = null;
+    _blockSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
+  }
+
+  void _snapshotStrokes(List<DrawingStroke> strokes) {
+    _snapshotBeforeMove = {};
+    for (final i in selectedIndices) {
+      if (i < strokes.length) {
+        _snapshotBeforeMove![i] =
+            strokes[i].points.map((p) => List<double>.from(p)).toList();
+      }
+    }
   }
 
   void _snapshotImages(List<CanvasImage> images) {
@@ -183,23 +201,84 @@ class LassoController {
     }
   }
 
+  void _snapshotBlocks(List<CanvasTaskBlock> blocks) {
+    _blockSnapshot = {};
+    for (final i in selectedBlockIndices) {
+      if (i < blocks.length) _blockSnapshot![i] = blocks[i].clone();
+    }
+  }
+
+  // ─── Shared box geometry (images + task blocks) ──────────────────────────
+
+  void _moveBoxes(List<CanvasGeo> objs, Set<int> sel, Offset d) {
+    for (final i in sel) {
+      if (i < objs.length) {
+        objs[i].x += d.dx;
+        objs[i].y += d.dy;
+      }
+    }
+  }
+
+  void _scaleBoxes(
+      List<CanvasGeo> objs, Set<int> sel, Offset pivot, double sx, double sy) {
+    for (final i in sel) {
+      if (i >= objs.length) continue;
+      final o = objs[i];
+      o.x = pivot.dx + (o.x - pivot.dx) * sx;
+      o.y = pivot.dy + (o.y - pivot.dy) * sy;
+      o.w *= sx;
+      o.h *= sy;
+    }
+  }
+
+  void _rotateBoxes(List<CanvasGeo> objs, Set<int> sel, Offset center,
+      double cos, double sin, double angle) {
+    for (final i in sel) {
+      if (i >= objs.length) continue;
+      final o = objs[i];
+      final ocx = o.x + o.w / 2;
+      final ocy = o.y + o.h / 2;
+      final dx = ocx - center.dx;
+      final dy = ocy - center.dy;
+      final ncx = center.dx + dx * cos - dy * sin;
+      final ncy = center.dy + dx * sin + dy * cos;
+      o.x = ncx - o.w / 2;
+      o.y = ncy - o.h / 2;
+      o.rotation += angle;
+    }
+  }
+
   // ─── Resize (proportional from corners) ─────────────────────────────
 
   static const _handleHitScreenRadius = 18.0;
+
+  /// Hit radius for the rotation handle (constant ~18px on screen).
   double get _handleHitRadius => _handleHitScreenRadius / hitScale;
+
+  /// Hit radius for the edge (corner/side) handles. Capped to a fraction of the
+  /// box so a small object (zoomed out) doesn't have its whole interior — the
+  /// move zone — swallowed by overlapping handle hit areas.
+  double get _edgeHandleHitRadius {
+    final base = _handleHitScreenRadius / hitScale;
+    final bb = boundingBox;
+    if (bb == null) return base;
+    final cap = bb.shortestSide * 0.3;
+    return base < cap ? base : cap;
+  }
 
   int? hitTestCornerHandle(Offset worldPos) {
     if (boundingBox == null) return null;
     final bb = boundingBox!;
     final corners = [bb.topLeft, bb.topRight, bb.bottomRight, bb.bottomLeft];
     for (int i = 0; i < corners.length; i++) {
-      if ((worldPos - corners[i]).distance < _handleHitRadius) return i;
+      if ((worldPos - corners[i]).distance < _edgeHandleHitRadius) return i;
     }
     return null;
   }
 
   void startResize(int cornerIndex, Offset worldPos, List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     if (phase != LassoPhase.selected || boundingBox == null) return;
     final bb = boundingBox!;
     final corners = [bb.topLeft, bb.topRight, bb.bottomRight, bb.bottomLeft];
@@ -207,14 +286,9 @@ class LassoController {
     _dragStart = worldPos;
     resizeScale = 1.0;
     _resizeOriginalBox = bb;
-    _snapshotBeforeMove = {};
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        _snapshotBeforeMove![i] =
-            strokes[i].points.map((p) => List<double>.from(p)).toList();
-      }
-    }
+    _snapshotStrokes(strokes);
     _snapshotImages(images);
+    _snapshotBlocks(blocks);
     phase = LassoPhase.resizing;
     _notify();
   }
@@ -229,7 +303,8 @@ class LassoController {
   }
 
   LassoMoveResult finishResize(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final pivot = resizePivot!;
     final s = resizeScale;
@@ -244,22 +319,16 @@ class LassoController {
         }
       }
     }
-    for (final i in selectedImageIndices) {
-      if (i < images.length) {
-        final im = images[i];
-        im.x = pivot.dx + (im.x - pivot.dx) * s;
-        im.y = pivot.dy + (im.y - pivot.dy) * s;
-        im.w *= s;
-        im.h *= s;
-      }
-    }
+    _scaleBoxes(images, selectedImageIndices, pivot, s, s);
+    _scaleBoxes(blocks, selectedBlockIndices, pivot, s, s);
 
-    boundingBox = _computeBoundingBox(strokes, images);
+    boundingBox = _computeBoundingBox(strokes, images, blocks);
     resizePivot = null;
     resizeScale = 1.0;
     _resizeOriginalBox = null;
     _snapshotBeforeMove = null;
     _imageSnapshot = null;
+    _blockSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -277,13 +346,14 @@ class LassoController {
       Offset(bb.left, bb.center.dy),
     ];
     for (int i = 0; i < sides.length; i++) {
-      if ((worldPos - sides[i]).distance < _handleHitRadius) return i;
+      if ((worldPos - sides[i]).distance < _edgeHandleHitRadius) return i;
     }
     return null;
   }
 
   void startSideResize(int sideIndex, Offset worldPos, List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     if (phase != LassoPhase.selected || boundingBox == null) return;
     final bb = boundingBox!;
     final sides = [
@@ -299,14 +369,9 @@ class LassoController {
     resizeScaleX = 1.0;
     resizeScaleY = 1.0;
     _resizeOriginalBox = bb;
-    _snapshotBeforeMove = {};
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        _snapshotBeforeMove![i] =
-            strokes[i].points.map((p) => List<double>.from(p)).toList();
-      }
-    }
+    _snapshotStrokes(strokes);
     _snapshotImages(images);
+    _snapshotBlocks(blocks);
     phase = LassoPhase.resizing;
     _notify();
   }
@@ -330,7 +395,8 @@ class LassoController {
   }
 
   LassoMoveResult finishSideResize(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final pivot = resizePivot!;
     final sx = resizeScaleX;
@@ -347,19 +413,13 @@ class LassoController {
         }
       }
     }
-    for (final i in selectedImageIndices) {
-      if (i < images.length) {
-        final im = images[i];
-        im.x = pivot.dx + (im.x - pivot.dx) * sx;
-        im.y = pivot.dy + (im.y - pivot.dy) * sy;
-        im.w *= sx;
-        im.h *= sy;
-      }
-    }
+    _scaleBoxes(images, selectedImageIndices, pivot, sx, sy);
+    _scaleBoxes(blocks, selectedBlockIndices, pivot, sx, sy);
 
-    boundingBox = _computeBoundingBox(strokes, images);
+    boundingBox = _computeBoundingBox(strokes, images, blocks);
     _resetResizeState();
     _imageSnapshot = null;
+    _blockSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -369,7 +429,10 @@ class LassoController {
 
   Offset? get rotationHandlePos {
     if (boundingBox == null) return null;
-    return Offset(boundingBox!.center.dx, boundingBox!.top - 14);
+    // Gap is constant on screen (÷ hitScale), so the handle stays clear of the
+    // box when zoomed out instead of collapsing onto its top edge.
+    return Offset(
+        boundingBox!.center.dx, boundingBox!.top - kLassoRotationGap / hitScale);
   }
 
   bool hitTestRotationHandle(Offset worldPos) {
@@ -379,19 +442,15 @@ class LassoController {
   }
 
   void startRotation(Offset worldPos, List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     if (phase != LassoPhase.selected || boundingBox == null) return;
     _rotationCenter = boundingBox!.center;
     _dragStart = worldPos;
     rotationAngle = 0.0;
-    _snapshotBeforeMove = {};
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        _snapshotBeforeMove![i] =
-            strokes[i].points.map((p) => List<double>.from(p)).toList();
-      }
-    }
+    _snapshotStrokes(strokes);
     _snapshotImages(images);
+    _snapshotBlocks(blocks);
     phase = LassoPhase.rotating;
     _notify();
   }
@@ -407,10 +466,12 @@ class LassoController {
   }
 
   LassoMoveResult finishRotation(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     final result = LassoMoveResult(_snapshotBeforeMove ?? {});
-    final cx = _rotationCenter!.dx;
-    final cy = _rotationCenter!.dy;
+    final center = _rotationCenter!;
+    final cx = center.dx;
+    final cy = center.dy;
     final cos = math.cos(rotationAngle);
     final sin = math.sin(rotationAngle);
 
@@ -424,26 +485,15 @@ class LassoController {
         }
       }
     }
-    for (final i in selectedImageIndices) {
-      if (i < images.length) {
-        final im = images[i];
-        final icx = im.x + im.w / 2;
-        final icy = im.y + im.h / 2;
-        final dx = icx - cx;
-        final dy = icy - cy;
-        final ncx = cx + dx * cos - dy * sin;
-        final ncy = cy + dx * sin + dy * cos;
-        im.x = ncx - im.w / 2;
-        im.y = ncy - im.h / 2;
-        im.rotation += rotationAngle;
-      }
-    }
+    _rotateBoxes(images, selectedImageIndices, center, cos, sin, rotationAngle);
+    _rotateBoxes(blocks, selectedBlockIndices, center, cos, sin, rotationAngle);
 
-    boundingBox = _computeBoundingBox(strokes, images);
+    boundingBox = _computeBoundingBox(strokes, images, blocks);
     rotationAngle = 0.0;
     _rotationCenter = null;
     _snapshotBeforeMove = null;
     _imageSnapshot = null;
+    _blockSnapshot = null;
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -491,10 +541,14 @@ class LassoController {
   }
 
   void cutSelected(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     _clipboard = _snapshotRelativeToCenter(strokes);
     _imageClipboard = _snapshotImagesRelativeToCenter(images);
-    deleteSelected(strokes, images);
+    // Task blocks are never cloned to the clipboard (their tasks are shared
+    // entities), so leave any selected block in place instead of losing it.
+    selectedBlockIndices = {};
+    deleteSelected(strokes, images, blocks);
   }
 
   List<DrawingStroke> _snapshotRelativeToCenter(List<DrawingStroke> strokes) {
@@ -576,6 +630,7 @@ class LassoController {
         Set.from(List.generate(clip.length, (i) => startIdx + i));
     selectedImageIndices =
         Set.from(List.generate(imgClip.length, (i) => imgStart + i));
+    selectedBlockIndices = {};
     boundingBox = _computeBoundingBox(strokes, images);
     phase = LassoPhase.selected;
     _notify();
@@ -637,7 +692,8 @@ class LassoController {
   // ─── Delete ────────────────────────────────────────────────────────────
 
   LassoDeleteResult deleteSelected(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     final sorted = selectedIndices.toList()..sort((a, b) => b.compareTo(a));
     final removed = <(int, DrawingStroke)>[];
     for (final i in sorted) {
@@ -649,6 +705,11 @@ class LassoController {
       ..sort((a, b) => b.compareTo(a));
     for (final i in sortedImgs) {
       if (i < images.length) images.removeAt(i);
+    }
+    final sortedBlocks = selectedBlockIndices.toList()
+      ..sort((a, b) => b.compareTo(a));
+    for (final i in sortedBlocks) {
+      if (i < blocks.length) blocks.removeAt(i);
     }
     deselect();
     return LassoDeleteResult(removed.reversed.toList());
@@ -697,6 +758,9 @@ class LassoController {
     selectedImageIndices = Set.from(
       List.generate(imgCopies.length, (i) => imgStart + i),
     );
+    // Task blocks are not duplicated (their tasks are shared entities); drop
+    // them from the post-duplicate selection.
+    selectedBlockIndices = {};
     boundingBox = _computeBoundingBox(strokes, images);
     _notify();
     return LassoDuplicateResult(copies.length + imgCopies.length);
@@ -714,7 +778,8 @@ class LassoController {
   // ─── Tap to select single stroke ─────────────────────────────────────
 
   bool tapSelect(Offset worldPos, List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     final hitRadius2 = (20.0 / hitScale) * (20.0 / hitScale);
     int? closestIdx;
     double closestDist = double.infinity;
@@ -734,19 +799,33 @@ class LassoController {
     if (closestIdx != null) {
       selectedIndices = {closestIdx};
       selectedImageIndices = {};
-      boundingBox = _computeBoundingBox(strokes, images);
+      selectedBlockIndices = {};
+      boundingBox = _computeBoundingBox(strokes, images, blocks);
       lassoPath = [];
       phase = LassoPhase.selected;
       _notify();
       return true;
     }
 
-    // No stroke hit — try images (topmost first, since they're drawn behind).
+    // No stroke hit — try task blocks (topmost layer), then images.
+    for (int i = blocks.length - 1; i >= 0; i--) {
+      if (_boxRect(blocks[i]).contains(worldPos)) {
+        selectedIndices = {};
+        selectedImageIndices = {};
+        selectedBlockIndices = {i};
+        boundingBox = _computeBoundingBox(strokes, images, blocks);
+        lassoPath = [];
+        phase = LassoPhase.selected;
+        _notify();
+        return true;
+      }
+    }
     for (int i = images.length - 1; i >= 0; i--) {
-      if (_imageRect(images[i]).contains(worldPos)) {
+      if (_boxRect(images[i]).contains(worldPos)) {
         selectedIndices = {};
         selectedImageIndices = {i};
-        boundingBox = _computeBoundingBox(strokes, images);
+        selectedBlockIndices = {};
+        boundingBox = _computeBoundingBox(strokes, images, blocks);
         lassoPath = [];
         phase = LassoPhase.selected;
         _notify();
@@ -763,22 +842,52 @@ class LassoController {
     lassoPath = [];
     selectedIndices = {};
     selectedImageIndices = {};
+    selectedBlockIndices = {};
     boundingBox = null;
     dragOffset = Offset.zero;
     _resetResizeState();
     rotationAngle = 0.0;
     _rotationCenter = null;
     _imageSnapshot = null;
+    _blockSnapshot = null;
     _notify();
   }
 
   bool get hasSelection =>
-      selectedIndices.isNotEmpty || selectedImageIndices.isNotEmpty;
+      selectedIndices.isNotEmpty ||
+      selectedImageIndices.isNotEmpty ||
+      selectedBlockIndices.isNotEmpty;
 
-  bool _imageCenterInPolygon(CanvasImage im) =>
-      _pointInPolygon(Offset(im.x + im.w / 2, im.y + im.h / 2), lassoPath);
+  /// World-space transform of the in-progress gesture (move/resize/rotate),
+  /// identity when idle. Lets widget overlays (task blocks) follow the gesture
+  /// live instead of being hidden behind a painted ghost.
+  Matrix4 liveGestureMatrix() {
+    switch (phase) {
+      case LassoPhase.moving:
+        return Matrix4.translationValues(dragOffset.dx, dragOffset.dy, 0);
+      case LassoPhase.resizing:
+        final p = resizePivot;
+        if (p == null) return Matrix4.identity();
+        final sx = isSideResize ? resizeScaleX : resizeScale;
+        final sy = isSideResize ? resizeScaleY : resizeScale;
+        return Matrix4.translationValues(p.dx, p.dy, 0) *
+            Matrix4.diagonal3Values(sx, sy, 1) *
+            Matrix4.translationValues(-p.dx, -p.dy, 0);
+      case LassoPhase.rotating:
+        final c = boundingBox?.center;
+        if (c == null) return Matrix4.identity();
+        return Matrix4.translationValues(c.dx, c.dy, 0) *
+            Matrix4.rotationZ(rotationAngle) *
+            Matrix4.translationValues(-c.dx, -c.dy, 0);
+      default:
+        return Matrix4.identity();
+    }
+  }
 
-  Rect _imageRect(CanvasImage im) => Rect.fromLTWH(im.x, im.y, im.w, im.h);
+  bool _boxCenterInPolygon(CanvasGeo o) =>
+      _pointInPolygon(Offset(o.x + o.w / 2, o.y + o.h / 2), lassoPath);
+
+  Rect _boxRect(CanvasGeo o) => Rect.fromLTWH(o.x, o.y, o.w, o.h);
 
   // ─── Geometry ──────────────────────────────────────────────────────────
 
@@ -806,7 +915,8 @@ class LassoController {
   }
 
   Rect _computeBoundingBox(List<DrawingStroke> strokes,
-      [List<CanvasImage> images = const []]) {
+      [List<CanvasImage> images = const [],
+      List<CanvasTaskBlock> blocks = const []]) {
     double minX = double.infinity, maxX = double.negativeInfinity;
     double minY = double.infinity, maxY = double.negativeInfinity;
     for (final i in selectedIndices) {
@@ -818,13 +928,18 @@ class LassoController {
         if (p[1] > maxY) maxY = p[1];
       }
     }
+    void includeBox(CanvasGeo o) {
+      if (o.x < minX) minX = o.x;
+      if (o.x + o.w > maxX) maxX = o.x + o.w;
+      if (o.y < minY) minY = o.y;
+      if (o.y + o.h > maxY) maxY = o.y + o.h;
+    }
+
     for (final i in selectedImageIndices) {
-      if (i >= images.length) continue;
-      final im = images[i];
-      if (im.x < minX) minX = im.x;
-      if (im.x + im.w > maxX) maxX = im.x + im.w;
-      if (im.y < minY) minY = im.y;
-      if (im.y + im.h > maxY) maxY = im.y + im.h;
+      if (i < images.length) includeBox(images[i]);
+    }
+    for (final i in selectedBlockIndices) {
+      if (i < blocks.length) includeBox(blocks[i]);
     }
     if (minX == double.infinity) return Rect.zero;
     return Rect.fromLTRB(minX - 8, minY - 8, maxX + 8, maxY + 8);

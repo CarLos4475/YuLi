@@ -31,6 +31,7 @@ class DrawingData {
   double height;
   List<DrawingStroke> strokes;
   List<CanvasImage> images;
+  List<CanvasTaskBlock> taskBlocks;
   PageBackground background;
 
   /// Paper color (ARGB). null → editor's default paper color.
@@ -40,15 +41,19 @@ class DrawingData {
     this.height = 300,
     List<DrawingStroke>? strokes,
     List<CanvasImage>? images,
+    List<CanvasTaskBlock>? taskBlocks,
     this.background = PageBackground.blank,
     this.bgColorValue,
   })  : strokes = strokes ?? [],
-        images = images ?? [];
+        images = images ?? [],
+        taskBlocks = taskBlocks ?? [];
 
   Map<String, dynamic> toJson() => {
         'h': height,
         's': strokes.map((s) => s.toJson()).toList(),
         if (images.isNotEmpty) 'i': images.map((im) => im.toJson()).toList(),
+        if (taskBlocks.isNotEmpty)
+          't': taskBlocks.map((b) => b.toJson()).toList(),
         'bg': background.toDbString(),
         if (bgColorValue != null) 'bgc': bgColorValue,
       };
@@ -64,20 +69,47 @@ class DrawingData {
                 ?.map((im) => CanvasImage.fromJson(im as Map<String, dynamic>))
                 .toList() ??
             [],
+        taskBlocks: (json['t'] as List?)
+                ?.map((b) =>
+                    CanvasTaskBlock.fromJson(b as Map<String, dynamic>))
+                .toList() ??
+            [],
         background: PageBackground.fromString((json['bg'] as String?) ?? ''),
         bgColorValue: (json['bgc'] as num?)?.toInt(),
       );
 }
 
+/// Shared mutable geometry for canvas objects driven by the lasso (images and
+/// task blocks alike): an axis-aligned box plus a rotation about its center.
+/// Lets the [LassoController] move/resize/rotate any box without caring whether
+/// it's a bitmap or an interactive widget.
+abstract class CanvasGeo {
+  double get x;
+  set x(double v);
+  double get y;
+  set y(double v);
+  double get w;
+  set w(double v);
+  double get h;
+  set h(double v);
+  double get rotation;
+  set rotation(double v);
+}
+
 /// An image placed on the drawing canvas. Stored by [filename] only — the
 /// absolute path is rebuilt from the note id at load time, so it survives app
 /// reinstalls / sandbox path changes. Geometry is an explicit transform.
-class CanvasImage {
+class CanvasImage implements CanvasGeo {
   final String filename;
+  @override
   double x;
+  @override
   double y;
+  @override
   double w;
+  @override
   double h;
+  @override
   double rotation;
 
   CanvasImage({
@@ -114,6 +146,70 @@ class CanvasImage {
         w: (json['w'] as num).toDouble(),
         h: (json['h'] as num).toDouble(),
         rotation: (json['r'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+/// An interactive task block placed on the drawing canvas. Geometry mirrors
+/// [CanvasImage] (so the lasso treats both identically); [taskIds] reference
+/// real Task entities linked to the host note (FIGHT/LAB live globally). The
+/// block content is rendered as a widget overlay, never painted to the canvas.
+class CanvasTaskBlock implements CanvasGeo {
+  /// Stable id for overlay widget keys (survives reorders of the list).
+  final String id;
+  @override
+  double x;
+  @override
+  double y;
+  @override
+  double w;
+  @override
+  double h;
+  @override
+  double rotation;
+  List<int> taskIds;
+
+  CanvasTaskBlock({
+    String? id,
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+    this.rotation = 0,
+    List<int>? taskIds,
+  })  : id = id ?? const Uuid().v4(),
+        taskIds = taskIds ?? [];
+
+  CanvasTaskBlock clone() => CanvasTaskBlock(
+        id: id,
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+        rotation: rotation,
+        taskIds: List<int>.from(taskIds),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'x': x,
+        'y': y,
+        'w': w,
+        'h': h,
+        if (rotation != 0) 'r': rotation,
+        'ids': taskIds,
+      };
+
+  factory CanvasTaskBlock.fromJson(Map<String, dynamic> json) =>
+      CanvasTaskBlock(
+        id: json['id'] as String?,
+        x: (json['x'] as num).toDouble(),
+        y: (json['y'] as num).toDouble(),
+        w: (json['w'] as num).toDouble(),
+        h: (json['h'] as num).toDouble(),
+        rotation: (json['r'] as num?)?.toDouble() ?? 0,
+        taskIds: ((json['ids'] as List?) ?? const [])
+            .map((e) => (e as num).toInt())
+            .toList(),
       );
 }
 

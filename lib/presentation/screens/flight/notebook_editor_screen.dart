@@ -19,6 +19,7 @@ import '../../widgets/yuli_design.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
 import 'canvas_image_cache.dart';
+import 'canvas_task_block.dart';
 import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
@@ -77,9 +78,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>)>> _undoStack = [];
-  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>)>> _redoStack = [];
-  Map<int, (List<DrawingStroke>, List<CanvasImage>)>? _gestureBefore;
+  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>,
+      List<CanvasTaskBlock>)>> _undoStack = [];
+  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>,
+      List<CanvasTaskBlock>)>> _redoStack = [];
+  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>?
+      _gestureBefore;
   bool _gestureChanged = false;
   bool _isDrawing = false;
   bool _stylusActive = false;
@@ -111,6 +115,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Timer? _pasteTimer;
   Offset? _pastePos;
   Offset? _showPasteAt;
+
+  // Lasso action toolbar is summoned by tapping the selection, not shown on
+  // select. Tap outside hides it (selection kept); tap outside again deselects.
+  bool _toolbarVisible = false;
+  // Down outside an active selection, deferred until tap (dismiss) vs drag
+  // (fresh lasso) is known. Stylus-only (finger taps go via onTapUp).
+  Offset? _pendingLassoStart;
+  Size _viewport = Size.zero;
 
   bool _pageDrawerOpen = false;
   late final AnimationController _drawerAnimCtrl;
@@ -289,6 +301,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   DrawingData _decodeData(DrawingBlock b) {
     List<dynamic> strokes = const [];
     List<dynamic> images = const [];
+    List<dynamic> taskBlocks = const [];
     final payload = b.payloadJson();
     try {
       final decoded = jsonDecode(b.strokesJson);
@@ -298,10 +311,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final decoded = jsonDecode(b.imagesJson);
       if (decoded is List) images = decoded;
     } catch (_) {}
+    try {
+      final decoded = jsonDecode(b.taskBlocksJson);
+      if (decoded is List) taskBlocks = decoded;
+    } catch (_) {}
     return DrawingData.fromJson({
       'h': kNotebookPageHeight,
       's': strokes,
       'i': images,
+      't': taskBlocks,
       'bg': payload['bg'],
       'bgc': payload['bgc'],
     });
@@ -346,6 +364,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       'h': kNotebookPageHeight,
       's': data.strokes.map((s) => s.toJson()).toList(),
       'i': data.images.map((im) => im.toJson()).toList(),
+      't': data.taskBlocks.map((b) => b.toJson()).toList(),
       'bg': data.background.toDbString(),
       if (data.bgColorValue != null) 'bgc': data.bgColorValue,
       'starred': _starredBlockIds.contains(blockId),
@@ -777,12 +796,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // ─── Pointer events ────────────────────────────────────────────────────
 
   Rect? _lassoToolbarScreenRect() {
-    if (_lassoCtrl.phase != LassoPhase.selected ||
-        _lassoCtrl.boundingBox == null) return null;
+    // Only guard when the toolbar is actually on screen, and place the guard
+    // ABOVE the selection (matching the toolbar) so it never covers the top
+    // handles — a world-space offset shrank on screen when zoomed out and the
+    // guard then swallowed the rotation / top-resize handles.
+    if (!_toolbarVisible ||
+        _lassoCtrl.phase != LassoPhase.selected ||
+        _lassoCtrl.boundingBox == null) {
+      return null;
+    }
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 50);
-    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
-    return Rect.fromLTWH(screenPos.dx - 100, screenPos.dy - 10, 200, 80);
+    final screenTop =
+        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    return Rect.fromLTWH(screenTop.dx - 110, screenTop.dy - 148, 220, 100);
   }
 
   void _onDown(PointerDownEvent e) {
@@ -956,9 +982,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     final p = _screenToWorld(d.localPosition);
+    final blocks = _allVisibleTaskBlocks;
     _lassoCtrl.hitScale = _viewScale;
+    if (_lassoCtrl.phase == LassoPhase.selected) {
+      // Tap inside the selection toggles the toolbar — handled by the pointer
+      // flow's no-op move (_finishTransformOrTap); skip it here.
+      if (_lassoCtrl.isTapInsideBoundingBox(p)) return;
+      // Tap outside: hide the toolbar, or deselect if already hidden.
+      setState(() {
+        if (_toolbarVisible) {
+          _toolbarVisible = false;
+        } else {
+          _lassoCtrl.deselect();
+        }
+      });
+      return;
+    }
+    // Nothing selected. A tap on an interactive block belongs to its task UI.
+    for (int i = 0; i < blocks.length; i++) {
+      if (_lassoCtrl.selectedBlockIndices.contains(i)) continue;
+      final b = blocks[i];
+      if (Rect.fromLTWH(b.x, b.y, b.w, b.h).contains(p)) return;
+    }
     setState(() {
-      if (!_lassoCtrl.tapSelect(p, _allVisibleStrokes, _allVisibleImages)) {
+      if (_lassoCtrl.tapSelect(
+          p, _allVisibleStrokes, _allVisibleImages, blocks)) {
+        _toolbarVisible = false;
+      } else {
         _lassoCtrl.deselect();
       }
     });
@@ -1101,6 +1151,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
     _holdAnchor = null;
+    _pendingLassoStart = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
     if (_snapKind != null) {
@@ -1269,6 +1320,38 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return all;
   }
 
+  List<CanvasTaskBlock> get _allVisibleTaskBlocks {
+    final all = <CanvasTaskBlock>[];
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      if (data == null) continue;
+      final offset = _pageOffsetY(i);
+      for (final b in data.taskBlocks) {
+        all.add(b.clone()..y += offset);
+      }
+    }
+    return all;
+  }
+
+  /// Page whose vertical band contains [worldY], else the nearest page. Shared
+  /// by strokes/images/task blocks so a selection dragged into a gap or past
+  /// the last page lands somewhere instead of being dropped.
+  int _nearestPageIndex(double worldY) {
+    var bestIdx = -1;
+    double bestDist = double.infinity;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final top = _pageOffsetY(i);
+      final bottom = top + kNotebookPageHeight;
+      if (worldY >= top && worldY < bottom) return i;
+      final d = worldY < top ? top - worldY : worldY - bottom;
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
   void _handleLassoDown(Offset worldPos) {
     _pasteTimer?.cancel();
     _lassoCtrl.hitScale = _viewScale;
@@ -1278,30 +1361,34 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     final strokes = _allVisibleStrokes;
     final images = _allVisibleImages;
+    final blocks = _allVisibleTaskBlocks;
     if (_lassoCtrl.phase == LassoPhase.selected) {
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startRotation(worldPos, strokes, images);
+        _lassoCtrl.startRotation(worldPos, strokes, images, blocks);
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startResize(corner, worldPos, strokes, images);
+        _lassoCtrl.startResize(corner, worldPos, strokes, images, blocks);
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startSideResize(side, worldPos, strokes, images);
+        _lassoCtrl.startSideResize(side, worldPos, strokes, images, blocks);
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
         _gestureBefore = _snapshot();
-        _lassoCtrl.startMove(worldPos, strokes, images);
+        _lassoCtrl.startMove(worldPos, strokes, images, blocks);
         return;
       }
-      _lassoCtrl.deselect();
+      // Outside the selection: defer (tap dismisses on up, drag starts a fresh
+      // lasso on move). Keep the current selection meanwhile.
+      _pendingLassoStart = worldPos;
+      return;
     }
     _lassoCtrl.startTracing(worldPos);
   }
@@ -1312,6 +1399,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _pasteTimer?.cancel();
         _pastePos = null;
         _lassoCtrl.startTracing(worldPos);
+      }
+      return;
+    }
+    if (_pendingLassoStart != null) {
+      if ((worldPos - _pendingLassoStart!).distance * _viewScale > 6) {
+        _lassoCtrl.deselect();
+        _toolbarVisible = false;
+        _lassoCtrl.startTracing(_pendingLassoStart!);
+        _lassoCtrl.addTracePoint(worldPos);
+        _pendingLassoStart = null;
       }
       return;
     }
@@ -1334,74 +1431,95 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _pastePos = null;
       return;
     }
+    // Tap outside the selection (no drag): hide the toolbar, or deselect if it
+    // was already hidden.
+    if (_pendingLassoStart != null) {
+      _pendingLassoStart = null;
+      setState(() {
+        if (_toolbarVisible) {
+          _toolbarVisible = false;
+        } else {
+          _lassoCtrl.deselect();
+        }
+      });
+      return;
+    }
     final strokes = _allVisibleStrokes;
     final images = _allVisibleImages;
+    final blocks = _allVisibleTaskBlocks;
     if (_lassoCtrl.phase == LassoPhase.tracing) {
-      _lassoCtrl.finishTracing(strokes, images);
+      _lassoCtrl.finishTracing(strokes, images, blocks);
+      _toolbarVisible = false;
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
-      _lassoCtrl.finishMove(strokes, images);
-      _syncLassoToPages(strokes, images);
-      _commitGesture();
+      final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
+      _lassoCtrl.finishMove(strokes, images, blocks);
+      _finishTransformOrTap(moved, strokes, images, blocks);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      final moved = _lassoCtrl.isSideResize
+          ? (_lassoCtrl.resizeScaleX - 1).abs() > 0.02 ||
+              (_lassoCtrl.resizeScaleY - 1).abs() > 0.02
+          : (_lassoCtrl.resizeScale - 1).abs() > 0.02;
       _lassoCtrl.isSideResize
-          ? _lassoCtrl.finishSideResize(strokes, images)
-          : _lassoCtrl.finishResize(strokes, images);
-      _syncLassoToPages(strokes, images);
-      _commitGesture();
+          ? _lassoCtrl.finishSideResize(strokes, images, blocks)
+          : _lassoCtrl.finishResize(strokes, images, blocks);
+      _finishTransformOrTap(moved, strokes, images, blocks);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
-      _lassoCtrl.finishRotation(strokes, images);
-      _syncLassoToPages(strokes, images);
-      _commitGesture();
+      final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
+      _lassoCtrl.finishRotation(strokes, images, blocks);
+      _finishTransformOrTap(moved, strokes, images, blocks);
     }
   }
 
-  void _syncLassoToPages(
-      List<DrawingStroke> worldStrokes, List<CanvasImage> worldImages) {
+  /// A transform that moved is synced to the pages and committed; one that
+  /// didn't is a tap on the selection → toggle the action toolbar.
+  void _finishTransformOrTap(bool moved, List<DrawingStroke> strokes,
+      List<CanvasImage> images, List<CanvasTaskBlock> blocks) {
+    if (moved) {
+      _syncLassoToPages(strokes, images, blocks);
+      _commitGesture();
+    } else {
+      _gestureBefore = null;
+      setState(() => _toolbarVisible = !_toolbarVisible);
+    }
+  }
+
+  void _syncLassoToPages(List<DrawingStroke> worldStrokes,
+      List<CanvasImage> worldImages, List<CanvasTaskBlock> worldBlocks) {
     final pages = <int, List<DrawingStroke>>{};
     final imagesByPage = <int, List<CanvasImage>>{};
+    final blocksByPage = <int, List<CanvasTaskBlock>>{};
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final bid = _pageBlockIds[i];
       pages[bid] = [];
       imagesByPage[bid] = [];
+      blocksByPage[bid] = [];
     }
     for (final s in worldStrokes) {
       if (s.points.isEmpty) continue;
       double sumY = 0;
-      for (final pt in s.points) sumY += pt[1];
-      final midY = sumY / s.points.length;
-      var bestIdx = -1;
-      double bestDist = double.infinity;
-      for (int i = 0; i < _pageBlockIds.length; i++) {
-        final pt = _pageOffsetY(i);
-        final pb = pt + kNotebookPageHeight;
-        if (midY >= pt && midY < pb) {
-          bestIdx = i;
-          break;
-        }
-        final d = midY < pt ? (pt - midY) : (midY - pb);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIdx = i;
-        }
+      for (final pt in s.points) {
+        sumY += pt[1];
       }
-      if (bestIdx < 0) continue;
+      final idx = _nearestPageIndex(sumY / s.points.length);
+      if (idx < 0) continue;
       final c = s.clone();
-      final pageTop = _pageOffsetY(bestIdx);
+      final pageTop = _pageOffsetY(idx);
       for (final pt in c.points) {
         pt[1] -= pageTop;
       }
-      pages[_pageBlockIds[bestIdx]]!.add(c);
+      pages[_pageBlockIds[idx]]!.add(c);
     }
     for (final im in worldImages) {
-      final cy = im.y + im.h / 2;
-      for (int i = 0; i < _pageBlockIds.length; i++) {
-        final pt = _pageOffsetY(i);
-        final pb = pt + kNotebookPageHeight;
-        if (cy >= pt && cy < pb) {
-          imagesByPage[_pageBlockIds[i]]!.add(im.clone()..y -= pt);
-          break;
-        }
-      }
+      final idx = _nearestPageIndex(im.y + im.h / 2);
+      if (idx < 0) continue;
+      imagesByPage[_pageBlockIds[idx]]!
+          .add(im.clone()..y -= _pageOffsetY(idx));
+    }
+    for (final b in worldBlocks) {
+      final idx = _nearestPageIndex(b.y + b.h / 2);
+      if (idx < 0) continue;
+      blocksByPage[_pageBlockIds[idx]]!
+          .add(b.clone()..y -= _pageOffsetY(idx));
     }
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final bid = _pageBlockIds[i];
@@ -1410,6 +1528,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         height: kNotebookPageHeight,
         strokes: pages[bid]!,
         images: imagesByPage[bid]!,
+        taskBlocks: blocksByPage[bid]!,
         background: prev?.background ?? PageBackground.blank,
         bgColorValue: prev?.bgColorValue,
       );
@@ -1418,26 +1537,110 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     setState(() {});
   }
 
-  /// Run a lasso mutation over the flattened world strokes + images, sync back
-  /// to the pages, and record it as one undoable step.
+  /// Run a lasso mutation over the flattened world strokes + images + blocks,
+  /// sync back to the pages, and record it as one undoable step.
   void _lassoMutate(
-      void Function(List<DrawingStroke>, List<CanvasImage>) op) {
+      void Function(List<DrawingStroke>, List<CanvasImage>,
+              List<CanvasTaskBlock>)
+          op) {
     final before = _snapshot();
     final strokes = _allVisibleStrokes;
     final images = _allVisibleImages;
-    op(strokes, images);
-    _syncLassoToPages(strokes, images);
+    final blocks = _allVisibleTaskBlocks;
+    op(strokes, images, blocks);
+    _syncLassoToPages(strokes, images, blocks);
     _commit(before);
   }
 
   void _lassoDelete() {
-    _lassoMutate((s, im) => _lassoCtrl.deleteSelected(s, im));
+    _lassoMutate((s, im, b) => _lassoCtrl.deleteSelected(s, im, b));
     HapticFeedback.lightImpact();
   }
 
   void _lassoDuplicate() {
-    _lassoMutate((s, im) => _lassoCtrl.duplicateSelected(s, im));
+    _lassoMutate((s, im, b) => _lassoCtrl.duplicateSelected(s, im));
     HapticFeedback.lightImpact();
+  }
+
+  /// Insert a new empty task block on the page currently in view, centred on
+  /// the viewport.
+  void _insertTaskBlock() {
+    if (_pageBlockIds.isEmpty) return;
+    final screen = MediaQuery.of(context).size;
+    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+    final pageIdx = _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
+    final w = kCanvasTaskBlockDefaultW / _viewScale;
+    final h = 120 / _viewScale;
+    final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
+    final block = CanvasTaskBlock(
+      x: center.dx - w / 2,
+      y: localY,
+      w: w,
+      h: h,
+    );
+    final before = _snapshot();
+    setState(() {
+      _pageData[_pageBlockIds[pageIdx]]?.taskBlocks.add(block);
+      if (_tool != DrawTool.lasso) _tool = DrawTool.lasso;
+    });
+    _commit(before);
+    _persistPage(pageIdx);
+    HapticFeedback.lightImpact();
+  }
+
+  /// Interactive task-block overlays, one per page block, positioned in world
+  /// coords. Bound to the real per-page block so task edits persist; the flat
+  /// index matches [_allVisibleTaskBlocks] so lasso selection lines up.
+  List<Widget> _buildTaskBlockOverlays() {
+    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating;
+    final out = <Widget>[];
+    int flat = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      if (data == null) continue;
+      final offset = _pageOffsetY(i);
+      final pageIndex = i;
+      for (final b in data.taskBlocks) {
+        final idx = flat++;
+        final selected = _lassoCtrl.selectedBlockIndices.contains(idx);
+        // Own compositing layer so dragging the card is a cheap layer-offset
+        // instead of repainting its content every frame.
+        Widget overlay = RepaintBoundary(
+          child: CanvasTaskBlockOverlay(
+            key: ValueKey(b.id),
+            block: b,
+            noteId: widget.note.id,
+            folderId: widget.note.folderId,
+            folderName: widget.folder.name,
+            folderColor: widget.folder.color,
+            accent: _accent,
+            interactive: !selected &&
+                !gesture &&
+                (_tool == DrawTool.lasso || _palmRejection),
+            onPersist: () => _persistPage(pageIndex),
+            onTasksChanged: () {
+              if (mounted) setState(() {});
+            },
+            onHeightMeasured: (h) {
+              if (!mounted) return;
+              setState(() => b.h = h);
+              _persistPage(pageIndex);
+            },
+          ),
+        );
+        if (gesture && selected) {
+          final off = Offset(b.x, offset + b.y);
+          final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+              _lassoCtrl.liveGestureMatrix() *
+              Matrix4.translationValues(off.dx, off.dy, 0);
+          overlay = Transform(transform: tm, child: overlay);
+        }
+        out.add(Positioned(left: b.x, top: offset + b.y, child: overlay));
+      }
+    }
+    return out;
   }
 
   bool get _singleImageSelected =>
@@ -1496,18 +1699,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Undo / redo (snapshot history, all pages) ──────────────────────────
 
-  Map<int, (List<DrawingStroke>, List<CanvasImage>)> _snapshot() {
-    final m = <int, (List<DrawingStroke>, List<CanvasImage>)>{};
+  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+      _snapshot() {
+    final m = <int,
+        (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>{};
     for (final entry in _pageData.entries) {
       m[entry.key] = (
         entry.value.strokes.map((s) => s.clone()).toList(),
         entry.value.images.map((im) => im.clone()).toList(),
+        entry.value.taskBlocks.map((b) => b.clone()).toList(),
       );
     }
     return m;
   }
 
-  void _commit(Map<int, (List<DrawingStroke>, List<CanvasImage>)> before) {
+  void _commit(
+      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+          before) {
     _undoStack.add(before);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
@@ -1528,12 +1736,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _gestureChanged = false;
   }
 
-  void _restore(Map<int, (List<DrawingStroke>, List<CanvasImage>)> snap) {
+  void _restore(
+      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+          snap) {
     for (final entry in snap.entries) {
       final data = _pageData[entry.key];
       if (data != null) {
         data.strokes = entry.value.$1;
         data.images = entry.value.$2;
+        data.taskBlocks = entry.value.$3;
       }
     }
   }
@@ -1689,22 +1900,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final topCenter = Offset(bb.center.dx, bb.top - 50);
-    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, topCenter);
+    final screenTop =
+        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    // Anchor the toolbar's bottom a fixed screen gap above the selection top
+    // (clearing the rotation handle), growing upward — never overlaps the top
+    // handles even when zoomed out.
     return Positioned(
-      left: screenPos.dx - 80,
-      top: screenPos.dy,
+      left: screenTop.dx - 80,
+      bottom: _viewport.height - screenTop.dy + 48,
       child: LassoMiniToolbar(
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         palette: _palette,
         onColorChange: (c) =>
-            _lassoMutate((s, im) => _lassoCtrl.changeColor(s, c.toARGB32())),
+            _lassoMutate((s, im, b) => _lassoCtrl.changeColor(s, c.toARGB32())),
         onWidthChange: (w) =>
-            _lassoMutate((s, im) => _lassoCtrl.changeWidth(s, w)),
-        onFlipH: () => _lassoMutate((s, im) => _lassoCtrl.flipHorizontal(s)),
-        onFlipV: () => _lassoMutate((s, im) => _lassoCtrl.flipVertical(s)),
+            _lassoMutate((s, im, b) => _lassoCtrl.changeWidth(s, w)),
+        onFlipH: () => _lassoMutate((s, im, b) => _lassoCtrl.flipHorizontal(s)),
+        onFlipV: () => _lassoMutate((s, im, b) => _lassoCtrl.flipVertical(s)),
         onCopy: () {
           _lassoCtrl.copySelected(_allVisibleStrokes, _allVisibleImages);
           HapticFeedback.lightImpact();
@@ -1716,7 +1930,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           );
         },
         onCut: () {
-          _lassoMutate((s, im) => _lassoCtrl.cutSelected(s, im));
+          _lassoMutate((s, im, b) => _lassoCtrl.cutSelected(s, im, b));
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1738,7 +1952,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          _lassoMutate((s, im) => _lassoCtrl.pasteAt(_showPasteAt!, s, im));
+          _lassoMutate((s, im, b) => _lassoCtrl.pasteAt(_showPasteAt!, s, im));
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -1832,6 +2046,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             child: _pageBlockIds.isEmpty
                 ? const Center(child: CircularProgressIndicator())
                 : LayoutBuilder(builder: (ctx, c) {
+                    _viewport = Size(c.maxWidth, c.maxHeight);
                     return AnimatedBuilder(
                       animation: _viewCtrl,
                       builder: (_, _) {
@@ -1841,6 +2056,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                         final br = MatrixUtils.transformPoint(
                             inv, Offset(c.maxWidth, c.maxHeight));
                         final visibleRect = Rect.fromPoints(tl, br);
+                        _lassoCtrl.hitScale = _viewScale;
 
                         final lastPageBottom = _pageBlockIds.isNotEmpty
                             ? (_pageBlockIds.length - 1) *
@@ -1907,6 +2123,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                           size: Size(kNotebookPageWidth,
                                               _totalCanvasHeight),
                                         ),
+                                        ..._buildTaskBlockOverlays(),
                                         if (_lassoCtrl.phase !=
                                             LassoPhase.idle)
                                           AnimatedBuilder(
@@ -1978,7 +2195,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                               ),
                               ),
                             ),
-                            if (_lassoCtrl.phase == LassoPhase.selected)
+                            if (_lassoCtrl.phase == LassoPhase.selected &&
+                                _toolbarVisible)
                               _buildLassoMiniToolbar(),
                             if (_showPasteAt != null) _buildPasteButton(),
                             if (_tool == DrawTool.eraser && _eraserCursor != null)
@@ -2260,6 +2478,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 icon: Icons.image_outlined,
                 active: _imagePanelOpen,
                 onTap: _toggleImagePanel,
+              ),
+              const SizedBox(width: 12),
+              _toolBtn(
+                icon: Icons.checklist,
+                active: false,
+                label: 'TAREAS',
+                onTap: _insertTaskBlock,
               ),
               _divider(),
               ColorButton(
