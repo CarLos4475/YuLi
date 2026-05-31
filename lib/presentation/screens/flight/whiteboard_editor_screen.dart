@@ -1777,6 +1777,7 @@ class _WhiteboardEditorScreenState
     final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
+    final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
 
@@ -1793,9 +1794,12 @@ class _WhiteboardEditorScreenState
                 folder: widget.folder,
                 spaces: spaces,
                 accent: _accent,
+                hasAiKey: hasAiKey,
                 onExpand: () => setState(() => _headerCollapsed = false),
                 onReset: _resetView,
                 onLink: () => _linkToLab(spaces),
+                onAi: () => showAiChat(context, ref,
+                    noteId: widget.note.id, accent: _accent),
               ),
             )
           else ...[
@@ -1821,6 +1825,24 @@ class _WhiteboardEditorScreenState
                         icon: Icons.all_inclusive,
                         color: yLab,
                         onTap: () => _linkToLab(spaces),
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: hasAiKey
+                            ? () => showAiChat(context, ref,
+                                noteId: widget.note.id, accent: _accent)
+                            : null,
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: hasAiKey ? _accent : yMuted,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: Icon(Icons.auto_awesome,
+                              color: hasAiKey ? yCream : yCream2, size: 18),
+                        ),
                       ),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -2242,14 +2264,6 @@ class _WhiteboardEditorScreenState
                 tooltip: 'Figuras',
                 onTap: _toggleShapePopup,
               ),
-              const SizedBox(width: 10),
-              _toolBtn(
-                icon: Icons.auto_awesome,
-                active: false,
-                tooltip: 'IA',
-                onTap: () => showAiChat(context, ref,
-                    noteId: widget.note.id, accent: _accent),
-              ),
               _divider(),
               ColorButton(
                 currentColor: _color,
@@ -2509,17 +2523,21 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
   final Folder folder;
   final List<LabSpace> spaces;
   final Color accent;
+  final bool hasAiKey;
   final VoidCallback onExpand;
   final VoidCallback onReset;
   final VoidCallback onLink;
+  final VoidCallback onAi;
 
   const _CollapsedWhiteboardHeader({
     required this.folder,
     required this.spaces,
     required this.accent,
+    required this.hasAiKey,
     required this.onExpand,
     required this.onReset,
     required this.onLink,
+    required this.onAi,
   });
 
   @override
@@ -2585,6 +2603,22 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 border: Border.all(color: yInk, width: yLineMid),
               ),
               child: const Icon(Icons.all_inclusive, color: yCream, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: hasAiKey ? onAi : null,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: hasAiKey ? accent : yMuted,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: Icon(Icons.auto_awesome,
+                  color: hasAiKey ? yCream : yCream2, size: 16),
             ),
           ),
           const SizedBox(width: 6),

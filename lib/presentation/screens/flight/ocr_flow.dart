@@ -69,6 +69,10 @@ Future<void> runOcrFlow(
         ? null
         : (t) => showAiChat(context, ref,
             noteId: noteId, newContext: t, accent: accent),
+    onAskAiInput: noteId == null
+        ? null
+        : (t) => showAiChat(context, ref,
+            noteId: noteId, prefillMessage: t, accent: accent),
   );
 }
 

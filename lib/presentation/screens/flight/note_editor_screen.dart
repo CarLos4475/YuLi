@@ -84,36 +84,65 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (mounted) setState(() => _dirty = false);
   }
 
-  /// Open the AI chat anchored on the note's text. Empty note → cold "¿De qué
-  /// es esto?" gate inside the chat.
-  void _openAiChat(List<NoteBlock> blocks) {
+  /// Open the AI chat for this note. The persisted anchor (if any) is loaded
+  /// automatically by [AiChatSession]; no new context is injected here.
+  void _openAiChat() {
     showAiChat(context, ref,
         noteId: widget.note.id,
-        newContext: _noteContext(blocks),
         accent: _accent);
   }
 
+  /// Explicitly push the current note content as the AI context anchor.
+  /// If the note text is already contained in the persisted anchor, the
+  /// chat simply opens without prompting. Otherwise it asks Añadir/Reemplazar.
+  void _pushNoteContextToAi(List<NoteBlock> blocks) {
+    String? ctx;
+    try {
+      ctx = _noteContext(blocks);
+    } catch (_) {
+      // If reading blocks fails (e.g. a locked drawing cell), fall back to
+      // opening the chat without injecting new context.
+    }
+    if (ctx != null && ctx.isNotEmpty) {
+      final session = ref.read(aiSessionProvider(widget.note.id));
+      final anchor = session.anchor;
+      // If the note content is already present in the anchor (with normalised
+      // whitespace), skip injecting it again to avoid duplication.
+      if (anchor != null &&
+          anchor.isNotEmpty &&
+          _normalise(anchor).contains(_normalise(ctx))) {
+        showAiChat(context, ref,
+            noteId: widget.note.id, accent: _accent);
+        return;
+      }
+    }
+    showAiChat(context, ref,
+        noteId: widget.note.id,
+        newContext: ctx,
+        accent: _accent);
+  }
+
+  String _normalise(String s) =>
+      s.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+
   /// Flatten the note's textual cells into a plain-text context for the AI.
-  /// Skips tasks (entities) and drawings (ink).
+  /// Skips tasks and drawings.
   String _noteContext(List<NoteBlock> blocks) {
     final buf = StringBuffer();
     final title = _titleCtrl.text.trim();
     if (title.isNotEmpty) buf.writeln('# $title\n');
     for (final b in blocks) {
-      switch (b) {
-        case TextBlock t:
-          if (t.markdown.trim().isNotEmpty) buf.writeln('${t.markdown}\n');
-        case BulletsBlock bl:
-          for (final it in bl.items) {
-            buf.writeln('- $it');
-          }
-          buf.writeln();
-        case MathBlock mb:
-          if (mb.latex.trim().isNotEmpty) buf.writeln('\$\$${mb.latex}\$\$\n');
-        case TareasBlock _:
-        case DrawingBlock _:
-          break;
+      if (b is TextBlock) {
+        if (b.markdown.trim().isNotEmpty) buf.writeln('${b.markdown}\n');
+      } else if (b is BulletsBlock) {
+        for (final it in b.items) {
+          if (it.trim().isNotEmpty) buf.writeln('- $it');
+        }
+        buf.writeln();
+      } else if (b is MathBlock) {
+        if (b.latex.trim().isNotEmpty) buf.writeln('\$\$${b.latex}\$\$\n');
       }
+      // TareasBlock and DrawingBlock are intentionally skipped.
     }
     return buf.toString().trim();
   }
@@ -266,6 +295,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final blocks = ref.watch(noteBlocksProvider(widget.note.id)).valueOrNull ?? [];
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
     final linkedCards = ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
+    final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
 
@@ -282,11 +312,13 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     titleCtrl: _titleCtrl,
                     dirty: _dirty,
                     isPreview: _isPreview,
+                    hasAiKey: hasAiKey,
                     onBack: () => Navigator.pop(context),
                     onSave: _saveTitle,
                     onTogglePreview: () => setState(() => _isPreview = !_isPreview),
                     onExpand: () => setState(() => _headerCollapsed = false),
-                    onAi: () => _openAiChat(blocks),
+                    onAi: () => _openAiChat(),
+                    onAiLongPress: () => _pushNoteContextToAi(blocks),
                   )
                 else ...[
                   ModeHeader(
@@ -299,6 +331,21 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         label: '@${widget.folder.name}',
                         bg: widget.folder.color,
                         fg: yCream,
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: hasAiKey ? _openAiChat : null,
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: hasAiKey ? _accent : yMuted,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: Icon(Icons.auto_awesome,
+                              color: hasAiKey ? yCream : yCream2, size: 18),
+                        ),
                       ),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -521,22 +568,26 @@ class _CollapsedHeader extends StatelessWidget {
   final TextEditingController titleCtrl;
   final bool dirty;
   final bool isPreview;
+  final bool hasAiKey;
   final VoidCallback onBack;
   final VoidCallback onSave;
   final VoidCallback onTogglePreview;
   final VoidCallback onExpand;
   final VoidCallback onAi;
+  final VoidCallback? onAiLongPress;
 
   const _CollapsedHeader({
     required this.folder,
     required this.titleCtrl,
     required this.dirty,
     required this.isPreview,
+    required this.hasAiKey,
     required this.onBack,
     required this.onSave,
     required this.onTogglePreview,
     required this.onExpand,
     required this.onAi,
+    this.onAiLongPress,
   });
 
   @override
@@ -583,9 +634,10 @@ class _CollapsedHeader extends StatelessWidget {
           const SizedBox(width: 8),
           _HeaderIcon(
             icon: Icons.auto_awesome,
-            fill: true,
-            color: folder.color,
-            onTap: onAi,
+            fill: hasAiKey,
+            color: hasAiKey ? folder.color : yMuted,
+            onTap: hasAiKey ? onAi : null,
+            onLongPress: hasAiKey ? onAiLongPress : null,
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
@@ -836,13 +888,15 @@ class _HeaderIcon extends StatelessWidget {
   final IconData icon;
   final bool fill;
   final Color color;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const _HeaderIcon({
     required this.icon,
     this.fill = false,
     this.color = yCream,
-    required this.onTap,
+    this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -850,6 +904,7 @@ class _HeaderIcon extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         width: 38,
         height: 38,

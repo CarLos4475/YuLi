@@ -14,6 +14,7 @@ Future<void> showOcrResultSheet(
   required Color accent,
   ValueChanged<String>? onSendToNote,
   ValueChanged<String>? onAskAi,
+  ValueChanged<String>? onAskAiInput,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -25,6 +26,7 @@ Future<void> showOcrResultSheet(
       accent: accent,
       onSendToNote: onSendToNote,
       onAskAi: onAskAi,
+      onAskAiInput: onAskAiInput,
     ),
   );
 }
@@ -38,9 +40,14 @@ class _OcrResultSheet extends StatefulWidget {
   /// Null hides the "Enviar a nota" action.
   final ValueChanged<String>? onSendToNote;
 
-  /// Called with the (possibly edited) text to open the AI chat anchored on it.
-  /// Null hides the "Preguntar a IA" action.
+  /// Called with the (possibly edited) text to set it as the AI context anchor.
+  /// Null hides the "Enviar a YuLi" action.
   final ValueChanged<String>? onAskAi;
+
+  /// Called with the (possibly edited) text to open the AI chat with the text
+  /// pre-filled in the input bar (does NOT touch the anchor).
+  /// Null hides the "Preguntar a YuLi" action.
+  final ValueChanged<String>? onAskAiInput;
 
   const _OcrResultSheet({
     required this.text,
@@ -48,6 +55,7 @@ class _OcrResultSheet extends StatefulWidget {
     required this.accent,
     this.onSendToNote,
     this.onAskAi,
+    this.onAskAiInput,
   });
 
   @override
@@ -189,7 +197,9 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                   ),
                 ),
               ),
-              if (widget.onSendToNote != null || widget.onAskAi != null) ...[
+              if (widget.onSendToNote != null ||
+                  widget.onAskAi != null ||
+                  widget.onAskAiInput != null) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -205,7 +215,7 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                       const SizedBox(width: 8),
                     if (widget.onAskAi != null)
                       Expanded(
-                        child: _secondaryBtn('PREGUNTAR A IA', () {
+                        child: _secondaryBtn('ENVIAR A YULI', () {
                           final t = _ctrl.text;
                           Navigator.of(context).pop();
                           widget.onAskAi!(t);
@@ -213,6 +223,14 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                       ),
                   ],
                 ),
+                if (widget.onAskAiInput != null) ...[
+                  const SizedBox(height: 8),
+                  _secondaryBtn('PREGUNTAR A YULI', () {
+                    final t = _ctrl.text;
+                    Navigator.of(context).pop();
+                    widget.onAskAiInput!(t);
+                  }),
+                ],
               ],
               const SizedBox(height: 4),
               Text(

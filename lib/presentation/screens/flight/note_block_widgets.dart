@@ -1264,7 +1264,7 @@ class _LatexBlockSyntax extends m.BlockSyntax {
 class _LatexSyntax extends m.InlineSyntax {
   _LatexSyntax()
       : super(
-            r'(\$\$(?!\s)([\s\S]+?)(?<!\s)\$\$)|(\$(?!\s)([^$\n]+?)(?<!\s)\$)');
+            r'(\$\$\s*([\s\S]+?)\s*\$\$)|(\$(?!\s)([^$\n]+?)(?<!\s)\$)');
 
   @override
   bool onMatch(m.InlineParser parser, Match match) {

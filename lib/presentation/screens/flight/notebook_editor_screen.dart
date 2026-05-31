@@ -2129,6 +2129,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   @override
   Widget build(BuildContext context) {
+    final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
     return Scaffold(
@@ -2145,8 +2146,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 pageCount: _pageBlockIds.length,
                 background: _currentBg,
                 accent: _accent,
+                hasAiKey: hasAiKey,
                 onExpand: () => setState(() => _headerCollapsed = false),
                 onOpenPages: _togglePageDrawer,
+                onAi: () => showAiChat(context, ref,
+                    noteId: widget.note.id, accent: _accent),
               ),
             )
           else ...[
@@ -2157,39 +2161,57 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
                 color: _accent,
                 onBack: () => Navigator.pop(context),
-                headerRight: [
-                  YBadge(
-                    label: '@${widget.folder.name}',
-                    bg: widget.folder.color,
-                    fg: yCream,
-                  ),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _togglePageDrawer,
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: yCream,
-                        border: Border.all(color: yInk, width: yLineMid),
+                    headerRight: [
+                      YBadge(
+                        label: '@${widget.folder.name}',
+                        bg: widget.folder.color,
+                        fg: yCream,
                       ),
-                      child: const Icon(Icons.auto_stories, color: yInk, size: 18),
-                    ),
-                  ),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _headerCollapsed = true),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: yCream,
-                        border: Border.all(color: yInk, width: yLineMid),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _togglePageDrawer,
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: yCream,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: const Icon(Icons.auto_stories, color: yInk, size: 18),
+                        ),
                       ),
-                      child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
-                    ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: hasAiKey
+                            ? () => showAiChat(context, ref,
+                                noteId: widget.note.id, accent: _accent)
+                            : null,
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: hasAiKey ? _accent : yMuted,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: Icon(Icons.auto_awesome,
+                              color: hasAiKey ? yCream : yCream2, size: 18),
+                        ),
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _headerCollapsed = true),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: yCream,
+                            border: Border.all(color: yInk, width: yLineMid),
+                          ),
+                          child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
+                        ),
                   ),
                 ],
               ),
@@ -2700,14 +2722,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 tooltip: 'Figuras',
                 onTap: _toggleShapePopup,
               ),
-              const SizedBox(width: 10),
-              _toolBtn(
-                icon: Icons.auto_awesome,
-                active: false,
-                tooltip: 'IA',
-                onTap: () => showAiChat(context, ref,
-                    noteId: widget.note.id, accent: _accent),
-              ),
               _divider(),
               ColorButton(
                 currentColor: _color,
@@ -2963,16 +2977,20 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final int pageCount;
   final PageBackground background;
   final Color accent;
+  final bool hasAiKey;
   final VoidCallback onExpand;
   final VoidCallback onOpenPages;
+  final VoidCallback onAi;
 
   const _CollapsedNotebookHeader({
     required this.folder,
     required this.pageCount,
     required this.background,
     required this.accent,
+    required this.hasAiKey,
     required this.onExpand,
     required this.onOpenPages,
+    required this.onAi,
   });
 
   @override
@@ -3023,6 +3041,22 @@ class _CollapsedNotebookHeader extends StatelessWidget {
                 border: Border.all(color: yInk, width: yLineMid),
               ),
               child: const Icon(Icons.auto_stories, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: hasAiKey ? onAi : null,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: hasAiKey ? accent : yMuted,
+                border: Border.all(color: yInk, width: yLineMid),
+              ),
+              child: Icon(Icons.auto_awesome,
+                  color: hasAiKey ? yCream : yCream2, size: 16),
             ),
           ),
           const SizedBox(width: 6),
