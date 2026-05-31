@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/ink_recognizer_provider.dart';
 import '../../widgets/app_section_divider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -95,6 +96,17 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'RECONOCIMIENTO (OCR)'),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _OcrModelBlock(),
             ),
 
             const SizedBox(height: 24),
@@ -339,6 +351,128 @@ class _DiagonalSplitPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _OcrModelBlock extends ConsumerStatefulWidget {
+  const _OcrModelBlock();
+
+  @override
+  ConsumerState<_OcrModelBlock> createState() => _OcrModelBlockState();
+}
+
+class _OcrModelBlockState extends ConsumerState<_OcrModelBlock> {
+  bool? _ready; // null = checking
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final r =
+        await ref.read(inkRecognizerProvider).isModelReady(kInkDefaultLang);
+    if (mounted) setState(() => _ready = r);
+  }
+
+  Future<void> _toggle() async {
+    if (_busy || _ready == null) return;
+    setState(() => _busy = true);
+    final rec = ref.read(inkRecognizerProvider);
+    try {
+      if (_ready == true) {
+        await rec.deleteModel(kInkDefaultLang);
+      } else {
+        await rec.downloadModel(kInkDefaultLang);
+      }
+    } catch (_) {}
+    await _check();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = _ready;
+    final status = ready == null
+        ? 'Comprobando…'
+        : (ready ? 'Descargado' : 'No descargado');
+    final actionLabel = ready == true ? 'BORRAR' : 'DESCARGAR';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border.all(color: inkColor(context), width: borderWidth),
+        boxShadow: const [
+          BoxShadow(
+            color: inkBlack,
+            offset: shadowOffset,
+            blurRadius: shadowBlurRadius,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MODELO · ESPAÑOL',
+                  style: labelBold.copyWith(
+                    color: inkColor(context),
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  status,
+                  style: bodyS.copyWith(color: inkColor(context).withAlpha(180)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Escritura → texto, sin conexión tras descargar.',
+                  style: bodyS.copyWith(
+                    color: inkColor(context).withAlpha(140),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: (ready == null || _busy) ? null : _toggle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: ready == true ? paperColor(context) : accentJournal,
+                border: Border.all(color: inkColor(context), width: borderWidth),
+              ),
+              child: _busy
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: inkColor(context)),
+                    )
+                  : Text(
+                      actionLabel,
+                      style: labelBold.copyWith(
+                        color: ready == true ? inkColor(context) : paperLight,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _InfoBlock extends StatelessWidget {

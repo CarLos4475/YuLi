@@ -25,6 +25,11 @@ class DrawingCell extends StatefulWidget {
   final Color? accent;
   final Widget? header;
 
+  /// Run OCR on the given handwriting strokes (cell-local coords). Supplied by
+  /// the host (a Consumer) which has the recognizer + note folder. Null hides
+  /// the lasso's "→ Texto" action.
+  final Future<void> Function(List<List<Offset>> strokes)? onRecognizeText;
+
   const DrawingCell({
     super.key,
     required this.data,
@@ -35,6 +40,7 @@ class DrawingCell extends StatefulWidget {
     required this.onScrollLockChanged,
     this.accent,
     this.header,
+    this.onRecognizeText,
   });
 
   @override
@@ -466,6 +472,32 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _lassoDelete() => _lassoMutate(() => _lassoCtrl.deleteSelected(_data.strokes));
+
+  /// True when the lasso selection contains handwriting (pen/fountain) — the
+  /// only thing OCR can read.
+  bool get _selectionHasWriting {
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i >= _data.strokes.length) continue;
+      final s = _data.strokes[i];
+      if (!s.isHighlighter && !s.isShape) return true;
+    }
+    return false;
+  }
+
+  /// Gather the selected handwriting and hand it to the host's OCR flow.
+  Future<void> _recognizeSelection() async {
+    final handler = widget.onRecognizeText;
+    if (handler == null) return;
+    final strokes = <List<Offset>>[];
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i >= _data.strokes.length) continue;
+      final s = _data.strokes[i];
+      if (s.isHighlighter || s.isShape) continue;
+      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+    }
+    if (strokes.isEmpty) return;
+    await handler(strokes);
+  }
 
   void _lassoDuplicate() =>
       _lassoMutate(() => _lassoCtrl.duplicateSelected(_data.strokes));
@@ -994,6 +1026,10 @@ class _DrawingCellState extends State<DrawingCell>
             child: LassoMiniToolbar(
               onDelete: _lassoDelete,
               onDuplicate: _lassoDuplicate,
+              onRecognizeText: (widget.onRecognizeText != null &&
+                      _selectionHasWriting)
+                  ? _recognizeSelection
+                  : null,
               palette: _palette,
               onColorChange: (c) => _lassoMutate(
                   () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32())),

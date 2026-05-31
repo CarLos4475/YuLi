@@ -22,6 +22,10 @@ class MlkitInkRecognizer implements InkRecognizer {
       _modelManager.downloadModel(langTag);
 
   @override
+  Future<bool> deleteModel(String langTag) =>
+      _modelManager.deleteModel(langTag);
+
+  @override
   Future<List<InkCandidate>> recognize(
     List<List<Offset>> strokes, {
     String langTag = 'es',

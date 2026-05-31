@@ -26,6 +26,9 @@ abstract class InkRecognizer {
   /// Download the model for [langTag] (needs network once). Returns success.
   Future<bool> downloadModel(String langTag);
 
+  /// Delete the downloaded model for [langTag] to free space. Returns success.
+  Future<bool> deleteModel(String langTag);
+
   /// Recognize [strokes] (each a polyline of points). Returns candidates
   /// best-first; empty when there's nothing to read.
   ///

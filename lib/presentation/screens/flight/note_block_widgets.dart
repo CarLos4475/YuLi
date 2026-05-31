@@ -21,6 +21,7 @@ import '../../../domain/models/task.dart';
 import 'drawing_cell.dart';
 import 'note_block_actions.dart';
 import 'note_cell_model.dart';
+import 'ocr_flow.dart';
 
 // ─── Router ───────────────────────────────────────────────────────────────
 
@@ -1112,6 +1113,8 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       onScrollLockChanged: (locked) {
         widget.onScrollLockChanged?.call(locked);
       },
+      onRecognizeText: (strokes) => runOcrFlow(context, ref, strokes,
+          accent: widget.folder.color, folderId: widget.folder.id),
     );
   }
 }
