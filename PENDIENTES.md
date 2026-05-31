@@ -36,10 +36,11 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
    - ✅ Toggle **FLASH/PRO** (modelo).
    - ✅ **Copiar** en cada respuesta de la IA.
    - ✅ Cerrar el chat / salir de la nota lo descarta (efímero).
-3. **Sin key** → al abrir el chat avisa "configura tu API key en Ajustes". **Key inválida / sin red / sin saldo** → mensaje de error claro en el chat.
-4. Arranque en frío (cuando exista botón global): pide "¿De qué es esto?" como ancla. (Hoy el chat soporta el ancla; falta el botón de lanzamiento en frío.)
+3. **Desde una nota:** abre una nota (FLIGHT) → botón **IA** (✨) en el header → el chat se ancla al **contenido de la nota**. Nota vacía → pide "¿De qué es esto?" (arranque en frío).
+4. **Sin key** → al abrir el chat avisa "configura tu API key en Ajustes". **Key inválida / sin red / sin saldo** → mensaje de error claro en el chat.
+5. **Límite:** el header muestra "N hoy"; al agotar el cupo (150) bloquea con aviso.
 
-**Aún NO hecho:** botón global para abrir el chat **en frío** y desde el **contenido de una nota** (no solo OCR); **v3** = que la IA aplique cambios (crear tareas, insertar/reemplazar celda, título).
+**Aún NO hecho:** **v3** = que la IA aplique cambios (crear tareas, insertar/reemplazar celda, título). Entradas ya listas: sheet de OCR + botón IA en el editor de notas. (Producción: retry con backoff, mover key/llamadas a un proxy.)
 
 ### OCR v1 — a futuro (verificado en dispositivo, NO bloquea)
 

@@ -68,9 +68,10 @@ que la IA *edite* (crear tareas, insertar/reemplazar celdas, poner título) se v
 queda chica, segura y shippeable, y v3 es puramente aditivo (botones de "aplicar" sobre el chat),
 sin recodeo.
 
-**Proveedor:** **DeepSeek** por defecto (API OpenAI-compatible). Interfaz provider-agnóstica para
-poder añadir Claude/OpenAI después (Claude es mejor pero más caro → opción futura). Key en secure
-storage.
+**Proveedor:** **DeepSeek** por defecto (API OpenAI-compatible). Endpoint
+`https://api.deepseek.com/v1/chat/completions`, `temperature: 0.3` (determinista para
+resumir/limpiar/extraer). Interfaz provider-agnóstica para añadir Claude/OpenAI después (Claude
+mejor pero más caro → futuro). Key en secure storage. (Pendiente producción: retry con backoff.)
 
 **Modelos por tarea (costo):** **DeepSeek V4 Flash** para lo barato (título, traducir corto);
 **DeepSeek V4 Pro** para razonar (resumir, limpiar/reescribir, extraer tareas, preguntar libre).
@@ -84,6 +85,10 @@ storage.
   - Abierto desde `[Preguntar a IA]` (sheet de OCR / celda / nota) → el ancla es ese texto, ya cargado.
   - Abierto en frío desde el panel → recuadro obligatorio "¿De qué es esto?" (ej. "Proceso de
     Markov"); ese texto queda como **ancla fija** que persiste toda la sesión.
+  - El ancla se envía como un **mensaje `user` aparte** ("Contexto:\n…"), NO concatenada al system
+    prompt (el modelo distingue mejor instrucción vs contenido).
+  - **Entradas:** sheet de OCR ("Preguntar a IA"), y botón **IA** en el header del editor de notas
+    (ancla = contenido de la nota; nota vacía → arranque en frío).
 - Las **acciones** (resumir, limpiar, extraer tareas, título, traducir, preguntar libre) son
   **botones de atajo** que mandan un mensaje plantilla dentro del chat. En v2 el resultado solo se
   **lee y se copia** (botón **Copiar** por respuesta — es portapapeles, no edita la app).

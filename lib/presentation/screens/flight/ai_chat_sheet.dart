@@ -6,13 +6,18 @@ import '../../providers/ai_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 
-/// Default system prompt (fixed). Defines role, language, format and soft rules.
+/// Default system prompt (fixed). Defines role, language, tone, format, and
+/// anti-hallucination rules. The context anchor is sent as a SEPARATE user
+/// message (not concatenated here) so the model distinguishes instruction from
+/// content.
 const _kAiSystemBase =
     'Eres el asistente personal del "segundo cerebro" del usuario (una app de '
-    'notas). Responde SIEMPRE en español, claro y conciso, usando markdown '
-    'cuando ayude. Cíñete al contexto dado; si falta información, dilo en una '
-    'línea en vez de inventar. Al extraer tareas, devuelve una por línea, '
-    'accionables y breves, sin numerar. No inventes datos del usuario.';
+    'notas). Responde SIEMPRE en español, en tono directo y tratando al usuario '
+    'de tú. Sé conciso: si la consulta es breve, responde en 1-2 líneas. Usa '
+    'markdown solo para listas, negritas y bloques de código; evita tablas y '
+    'cabeceras largas. Cíñete al contexto dado; si falta información, dilo sin '
+    'inventar. Al extraer tareas, devuelve una por línea, accionables y breves, '
+    'sin numerar. No inventes datos del usuario.';
 
 /// Cost guards: cap the anchor context and how many past turns are resent.
 const _kAnchorMaxChars = 8000;
@@ -93,11 +98,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     super.dispose();
   }
 
-  String _systemPrompt() {
+  /// The context anchor as a standalone user message (capped for token cost).
+  String _anchorContent() {
     final ctx = _anchor ?? '';
     final capped =
         ctx.length > _kAnchorMaxChars ? ctx.substring(0, _kAnchorMaxChars) : ctx;
-    return '$_kAiSystemBase\n\nContexto:\n\n$capped';
+    return 'Contexto:\n\n$capped';
   }
 
   void _scrollToBottom() {
@@ -139,7 +145,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         ? history.sublist(history.length - _kMaxHistoryMsgs)
         : history;
     final convo = <AiMessage>[
-      AiMessage(AiRole.system, _systemPrompt()),
+      const AiMessage(AiRole.system, _kAiSystemBase),
+      AiMessage(AiRole.user, _anchorContent()),
       ...capped.map((m) => AiMessage(m.role, m.text)),
       AiMessage(AiRole.user, t),
     ];

@@ -20,6 +20,7 @@ import 'format_toolbar.dart';
 import 'note_block_widgets.dart';
 import 'note_cell_model.dart';
 import 'drawing_cell.dart';
+import 'ai_chat_sheet.dart';
 import '../lab/lab_space_detail_screen.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
@@ -80,6 +81,38 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final updated = widget.note.copyWith(title: newTitle);
     await ref.read(noteRepositoryProvider).update(updated);
     if (mounted) setState(() => _dirty = false);
+  }
+
+  /// Open the AI chat anchored on the note's text. Empty note → cold "¿De qué
+  /// es esto?" gate inside the chat.
+  void _openAiChat(List<NoteBlock> blocks) {
+    showAiChat(context, ref,
+        initialContext: _noteContext(blocks), accent: _accent);
+  }
+
+  /// Flatten the note's textual cells into a plain-text context for the AI.
+  /// Skips tasks (entities) and drawings (ink).
+  String _noteContext(List<NoteBlock> blocks) {
+    final buf = StringBuffer();
+    final title = _titleCtrl.text.trim();
+    if (title.isNotEmpty) buf.writeln('# $title\n');
+    for (final b in blocks) {
+      switch (b) {
+        case TextBlock t:
+          if (t.markdown.trim().isNotEmpty) buf.writeln('${t.markdown}\n');
+        case BulletsBlock bl:
+          for (final it in bl.items) {
+            buf.writeln('- $it');
+          }
+          buf.writeln();
+        case MathBlock mb:
+          if (mb.latex.trim().isNotEmpty) buf.writeln('\$\$${mb.latex}\$\$\n');
+        case TareasBlock _:
+        case DrawingBlock _:
+          break;
+      }
+    }
+    return buf.toString().trim();
   }
 
   Future<void> _addBlock(NoteBlockType type) async {
@@ -248,6 +281,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     onSave: _saveTitle,
                     onTogglePreview: () => setState(() => _isPreview = !_isPreview),
                     onExpand: () => setState(() => _headerCollapsed = false),
+                    onAi: () => _openAiChat(blocks),
                   )
                 else ...[
                   ModeHeader(
@@ -486,6 +520,7 @@ class _CollapsedHeader extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onTogglePreview;
   final VoidCallback onExpand;
+  final VoidCallback onAi;
 
   const _CollapsedHeader({
     required this.folder,
@@ -496,6 +531,7 @@ class _CollapsedHeader extends StatelessWidget {
     required this.onSave,
     required this.onTogglePreview,
     required this.onExpand,
+    required this.onAi,
   });
 
   @override
@@ -540,6 +576,13 @@ class _CollapsedHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          _HeaderIcon(
+            icon: Icons.auto_awesome,
+            fill: true,
+            color: folder.color,
+            onTap: onAi,
+          ),
+          const SizedBox(width: 6),
           _HeaderIcon(
             icon: Icons.check,
             fill: !dirty,

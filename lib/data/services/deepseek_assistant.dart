@@ -15,7 +15,9 @@ class DeepseekAssistant implements AiAssistant {
   DeepseekAssistant(this.keyStore, {http.Client? client})
       : _client = client ?? http.Client();
 
-  static const _base = 'https://api.deepseek.com';
+  // Documented OpenAI-compatible path. Both `/chat/completions` and
+  // `/v1/chat/completions` work; we use the documented `/v1` to be safe.
+  static const _base = 'https://api.deepseek.com/v1';
 
   String _modelId(AiModel m) => switch (m) {
         AiModel.flash => 'deepseek-v4-flash',
@@ -37,6 +39,9 @@ class DeepseekAssistant implements AiAssistant {
         'model': _modelId(model),
         'stream': true,
         'max_tokens': maxTokens,
+        // Lower temperature → more deterministic (good for summarize/clean/
+        // extract-tasks, less drift).
+        'temperature': 0.3,
         'messages': messages
             .map((m) => {'role': m.role.name, 'content': m.content})
             .toList(),
