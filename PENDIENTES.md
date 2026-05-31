@@ -31,6 +31,7 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 1. **Ajustes → ASISTENTE IA (DEEPSEEK)** → pega tu API key → **Guardar** ("Configurada ✓"). No sale del dispositivo.
 2. Abre el chat (botón IA en pizarra/cuaderno/nota, o "Preguntar a IA" tras OCR).
    - ✅ Streaming, chips (Resumir/Limpiar/Extraer tareas/Título/Traducir), repreguntar mantiene hilo, toggle FLASH/PRO, Copiar, "N hoy" + bloqueo al llegar a 150.
+   - ✅ **La respuesta se renderiza como markdown** (negritas, listas, código, blockquotes, checklists, tablas, LaTeX `$..$`/`$$..$$`) con el mismo renderer de las notas. Durante el streaming se ve texto plano y al terminar "cuaja" a markdown.
 3. **Persistencia (lo que faltaba):**
    - ✅ **Cierra el sheet** y vuelve a abrir IA → la conversación **sigue ahí** (no se pierde).
    - ✅ **Sal de la nota/pizarra/cuaderno** y entra de nuevo → **los mensajes se descartan** (chat limpio) PERO **el contexto/ancla PERSISTE por nota** (sigue ahí, incluso tras reiniciar la app).

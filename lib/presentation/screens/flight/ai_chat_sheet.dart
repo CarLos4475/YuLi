@@ -6,6 +6,9 @@ import '../../providers/ai_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 import 'ai_chat_session.dart';
+// Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
+// the assistant's markdown/LaTeX renders exactly like a note.
+import 'note_block_widgets.dart' show NoteMarkdownPreview;
 
 /// Open the AI chat for a note view. The conversation is the per-note
 /// [AiChatSession] (persists while you're in the view; the sheet is a window).
@@ -343,10 +346,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           crossAxisAlignment:
               isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            SelectableText(
-              m.text.isEmpty && streaming ? '…' : m.text,
-              style: yBody(size: 14, color: isUser ? yCream : yInk),
-            ),
+            // User text + the live streaming text stay plain (markdown only
+            // makes sense once complete); finished assistant replies render as
+            // markdown/LaTeX with the notes' renderer.
+            if (isUser || streaming)
+              SelectableText(
+                m.text.isEmpty && streaming ? '…' : m.text,
+                style: yBody(size: 14, color: isUser ? yCream : yInk),
+              )
+            else
+              NoteMarkdownPreview(data: m.text),
             if (!isUser && m.text.isNotEmpty && !streaming) ...[
               const SizedBox(height: 4),
               GestureDetector(
