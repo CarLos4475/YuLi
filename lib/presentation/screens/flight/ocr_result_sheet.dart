@@ -11,20 +11,27 @@ Future<void> showOcrResultSheet(
   BuildContext context, {
   required String text,
   required bool looksNonTextual,
+  required Color accent,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _OcrResultSheet(text: text, looksNonTextual: looksNonTextual),
+    builder: (_) => _OcrResultSheet(
+        text: text, looksNonTextual: looksNonTextual, accent: accent),
   );
 }
 
 class _OcrResultSheet extends StatefulWidget {
   final String text;
   final bool looksNonTextual;
+  final Color accent;
 
-  const _OcrResultSheet({required this.text, required this.looksNonTextual});
+  const _OcrResultSheet({
+    required this.text,
+    required this.looksNonTextual,
+    required this.accent,
+  });
 
   @override
   State<_OcrResultSheet> createState() => _OcrResultSheetState();
@@ -132,7 +139,7 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                   height: 44,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: _copied ? yInk : yFight,
+                    color: _copied ? yInk : widget.accent,
                     border: Border.all(color: yInk, width: yLineMid),
                   ),
                   child: Text(

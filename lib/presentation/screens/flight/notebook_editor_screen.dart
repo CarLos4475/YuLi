@@ -15,6 +15,8 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/ink_recognizer_provider.dart';
+import '../../../domain/services/ink_recognizer.dart';
 import '../../widgets/yuli_design.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
@@ -29,6 +31,7 @@ import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
 import 'lasso_mini_toolbar.dart';
+import 'ocr_result_sheet.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'notebook_constants.dart';
@@ -1765,6 +1768,87 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _lassoCtrl.selectedImageIndices.length == 1 &&
       _lassoCtrl.selectedIndices.isEmpty;
 
+  /// True when the lasso selection contains handwriting (pen/fountain) — the
+  /// only thing OCR can read. Shapes/highlighter/images don't count.
+  bool get _selectionHasWriting {
+    final all = _allVisibleStrokes;
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i >= all.length) continue;
+      final s = all[i];
+      if (!s.isHighlighter && !s.isShape) return true;
+    }
+    return false;
+  }
+
+  /// OCR the selected handwriting → editable result sheet. On-device (ML Kit);
+  /// downloads the language model on first use. Strokes are world-coords from
+  /// [_allVisibleStrokes]; recognition only needs relative geometry.
+  Future<void> _recognizeSelection() async {
+    final all = _allVisibleStrokes;
+    final strokes = <List<Offset>>[];
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i >= all.length) continue;
+      final s = all[i];
+      if (s.isHighlighter || s.isShape) continue;
+      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+    }
+    if (strokes.isEmpty) return;
+
+    final recognizer = ref.read(inkRecognizerProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    String? error;
+    List<InkCandidate> candidates = const [];
+    try {
+      if (!await recognizer.isModelReady(kInkDefaultLang)) {
+        final ok = await recognizer.downloadModel(kInkDefaultLang);
+        if (!ok) error = 'No se pudo descargar el modelo de idioma.';
+      }
+      if (error == null) {
+        candidates =
+            await recognizer.recognize(strokes, langTag: kInkDefaultLang);
+      }
+    } catch (e) {
+      error = 'Error al reconocer: $e';
+    }
+
+    if (navigator.canPop()) navigator.pop();
+    if (!mounted) return;
+
+    if (error != null) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(error),
+        duration: const Duration(seconds: 3),
+      ));
+      return;
+    }
+
+    final text = candidates.isEmpty ? '' : candidates.first.text;
+    showOcrResultSheet(
+      context,
+      text: text,
+      looksNonTextual: _looksNonTextual(text),
+      accent: _accent,
+    );
+  }
+
+  /// Heuristic (NOT a real math classifier): flag results that are empty or
+  /// mostly non-letters/digits, to hint "this looks like math/drawing".
+  bool _looksNonTextual(String t) {
+    final s = t.trim();
+    if (s.isEmpty) return true;
+    final letters =
+        RegExp(r'[\p{L}\p{N}]', unicode: true).allMatches(s).length;
+    return letters / s.length < 0.5;
+  }
+
   /// Map a flattened selected-image index back to (pageIndex, localIndex).
   (int, int)? _flatImageToPage(int flatIdx) {
     int acc = 0;
@@ -2030,6 +2114,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
+        onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         palette: _palette,
         onColorChange: (c) =>
             _lassoMutate((s, im, b) => _lassoCtrl.changeColor(s, c.toARGB32())),

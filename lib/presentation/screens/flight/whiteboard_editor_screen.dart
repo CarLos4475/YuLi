@@ -1411,6 +1411,7 @@ class _WhiteboardEditorScreenState
       context,
       text: text,
       looksNonTextual: _looksNonTextual(text),
+      accent: _accent,
     );
   }
 
