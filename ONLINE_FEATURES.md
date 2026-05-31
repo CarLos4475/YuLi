@@ -79,8 +79,12 @@ mejor pero más caro → futuro). Key en secure storage. (Pendiente producción:
 **Forma del panel: CHAT (multi-turno) efímero y SIEMPRE anclado.**
 - Multi-turno: recuerda lo anterior; puedes repreguntar ("más corto", "ahora en inglés"). Salida
   en **streaming** (SSE estilo OpenAI).
-- **Efímero:** la conversación vive mientras estás en la vista de la nota; se borra al salir de
-  esa nota.
+- **Efímero, por nota:** la conversación vive en una **sesión por nota** (`AiChatSession` en un
+  provider `autoDispose` keyed por noteId; la pantalla la fija con `ref.watch`). El sheet es solo
+  una ventana: **cerrarlo NO la pierde**; se descarta al **salir de la vista** (nota/pizarra/
+  cuaderno). El contexto persiste por nota.
+- **Contexto editable:** el chip "CONTEXTO" se toca para editar/reemplazar/limpiar el ancla.
+  Contexto entrante nuevo (OCR/otra nota) con ancla existente → pregunta **Añadir/Reemplazar**.
 - **Siempre anclado a un contexto** antes del primer mensaje (la IA nunca opera a ciegas):
   - Abierto desde `[Preguntar a IA]` (sheet de OCR / celda / nota) → el ancla es ese texto, ya cargado.
   - Abierto en frío desde el panel → recuadro obligatorio "¿De qué es esto?" (ej. "Proceso de

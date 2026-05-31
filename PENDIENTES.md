@@ -25,22 +25,21 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 
 ### v2 — Asistente IA (chat) — branch `ocr` — NECESITA TU API KEY
 
-**Qué se implementó:** base DeepSeek (streaming, OpenAI-compatible) + key cifrada en Ajustes + panel de chat efímero anclado. Read-only (la IA habla, tú copias; NO edita notas → eso es v3). Entrada actual: desde la sheet de OCR, botón **"Preguntar a IA"**.
+**Qué se implementó:** base DeepSeek (streaming, OpenAI-compatible) + key cifrada en Ajustes + chat read-only (habla y copias; NO edita → v3). **La conversación vive en una sesión POR NOTA** (provider autoDispose), no en el sheet. Entradas: botón **IA** (✨) en el toolbar de **pizarra/cuaderno** y en el header del **editor de notas**, y **"Preguntar a IA"** desde la sheet de OCR.
 
 **Cómo probar (en dispositivo):**
-1. **Ajustes → ASISTENTE IA (DEEPSEEK)** → pega tu API key → **Guardar** (se guarda cifrada; el estado pasa a "Configurada ✓"). La key NO sale del dispositivo.
-2. Pizarra/cuaderno/celda: escribe a mano → lasso → **"→ TEXTO"** → en la sheet, **"Preguntar a IA"** → se abre el chat anclado a ese texto.
-   - ✅ La respuesta llega en **streaming** (token a token).
-   - ✅ Chips de atajo: Resumir / Limpiar / Extraer tareas / Título / Traducir.
-   - ✅ Repreguntar mantiene el hilo ("más corto", "en inglés").
-   - ✅ Toggle **FLASH/PRO** (modelo).
-   - ✅ **Copiar** en cada respuesta de la IA.
-   - ✅ Cerrar el chat / salir de la nota lo descarta (efímero).
-3. **Desde una nota:** abre una nota (FLIGHT) → botón **IA** (✨) en el header → el chat se ancla al **contenido de la nota**. Nota vacía → pide "¿De qué es esto?" (arranque en frío).
-4. **Sin key** → al abrir el chat avisa "configura tu API key en Ajustes". **Key inválida / sin red / sin saldo** → mensaje de error claro en el chat.
-5. **Límite:** el header muestra "N hoy"; al agotar el cupo (150) bloquea con aviso.
+1. **Ajustes → ASISTENTE IA (DEEPSEEK)** → pega tu API key → **Guardar** ("Configurada ✓"). No sale del dispositivo.
+2. Abre el chat (botón IA en pizarra/cuaderno/nota, o "Preguntar a IA" tras OCR).
+   - ✅ Streaming, chips (Resumir/Limpiar/Extraer tareas/Título/Traducir), repreguntar mantiene hilo, toggle FLASH/PRO, Copiar, "N hoy" + bloqueo al llegar a 150.
+3. **Persistencia (lo que faltaba):**
+   - ✅ **Cierra el sheet** y vuelve a abrir IA → la conversación **sigue ahí** (no se pierde).
+   - ✅ **Sal de la nota/pizarra/cuaderno** y entra de nuevo → la conversación **se descartó** (empieza limpia).
+4. **Cambiar/añadir contexto (lo que faltaba):**
+   - ✅ Toca el chip **"CONTEXTO"** arriba → editor para **editar / reemplazar / limpiar** el ancla.
+   - ✅ Con un chat ya con contexto, manda **otro** (OCR de pizarra, o IA desde otra nota) → pregunta **Añadir / Reemplazar**. (Si el contexto entrante es idéntico al actual, no pregunta.)
+5. **Sin key** → avisa ir a Ajustes. **Key inválida/sin red/sin saldo** → error claro en el chat.
 
-**Aún NO hecho:** **v3** = que la IA aplique cambios (crear tareas, insertar/reemplazar celda, título). Entradas ya listas: sheet de OCR + botón IA en el editor de notas. (Producción: retry con backoff, mover key/llamadas a un proxy.)
+**Aún NO hecho:** **v3** = que la IA aplique cambios (crear tareas, insertar/reemplazar celda, título). (Producción: retry con backoff, mover key/llamadas a un proxy.)
 
 ### OCR v1 — a futuro (verificado en dispositivo, NO bloquea)
 

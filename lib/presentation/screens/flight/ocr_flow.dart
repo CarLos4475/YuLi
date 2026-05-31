@@ -18,6 +18,7 @@ Future<void> runOcrFlow(
   List<List<Offset>> strokes, {
   required Color accent,
   int? folderId,
+  int? noteId,
 }) async {
   if (strokes.isEmpty) return;
 
@@ -64,7 +65,10 @@ Future<void> runOcrFlow(
         ? null
         : (t) => sendTextToNote(context, ref, t,
             defaultFolderId: folderId, accent: accent),
-    onAskAi: (t) => showAiChat(context, ref, initialContext: t, accent: accent),
+    onAskAi: noteId == null
+        ? null
+        : (t) => showAiChat(context, ref,
+            noteId: noteId, newContext: t, accent: accent),
   );
 }
 

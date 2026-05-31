@@ -1114,7 +1114,9 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
         widget.onScrollLockChanged?.call(locked);
       },
       onRecognizeText: (strokes) => runOcrFlow(context, ref, strokes,
-          accent: widget.folder.color, folderId: widget.folder.id),
+          accent: widget.folder.color,
+          folderId: widget.folder.id,
+          noteId: widget.block.noteId),
     );
   }
 }

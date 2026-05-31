@@ -14,8 +14,10 @@ import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
+import 'ai_chat_sheet.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
 import 'canvas_image_cache.dart';
@@ -1790,7 +1792,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
     runOcrFlow(context, ref, strokes,
-        accent: _accent, folderId: widget.note.folderId);
+        accent: _accent,
+        folderId: widget.note.folderId,
+        noteId: widget.note.id);
   }
 
   /// Map a flattened selected-image index back to (pageIndex, localIndex).
@@ -2125,6 +2129,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Pin the per-note AI session to this view's lifetime (discarded on leave).
+    ref.watch(aiSessionProvider(widget.note.id));
     return Scaffold(
       backgroundColor: yCream,
       body: Stack(
@@ -2693,6 +2699,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 active: _shapePopupOpen,
                 tooltip: 'Figuras',
                 onTap: _toggleShapePopup,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.auto_awesome,
+                active: false,
+                tooltip: 'IA',
+                onTap: () => showAiChat(context, ref,
+                    noteId: widget.note.id, accent: _accent),
               ),
               _divider(),
               ColorButton(

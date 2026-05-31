@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../theme/app_tokens.dart';
@@ -32,6 +33,7 @@ import 'shape_picker_popup.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
+import 'ai_chat_sheet.dart';
 import 'ocr_flow.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
@@ -1366,7 +1368,9 @@ class _WhiteboardEditorScreenState
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
     runOcrFlow(context, ref, strokes,
-        accent: _accent, folderId: widget.note.folderId);
+        accent: _accent,
+        folderId: widget.note.folderId,
+        noteId: widget.note.id);
   }
 
   Future<void> _cropSelectedImage() async {
@@ -1773,6 +1777,8 @@ class _WhiteboardEditorScreenState
     final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
+    // Pin the per-note AI session to this view's lifetime (discarded on leave).
+    ref.watch(aiSessionProvider(widget.note.id));
 
     return Scaffold(
       backgroundColor: yCream,
@@ -2235,6 +2241,14 @@ class _WhiteboardEditorScreenState
                 active: _shapePopupOpen,
                 tooltip: 'Figuras',
                 onTap: _toggleShapePopup,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: Icons.auto_awesome,
+                active: false,
+                tooltip: 'IA',
+                onTap: () => showAiChat(context, ref,
+                    noteId: widget.note.id, accent: _accent),
               ),
               _divider(),
               ColorButton(

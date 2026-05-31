@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
@@ -87,7 +88,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   /// es esto?" gate inside the chat.
   void _openAiChat(List<NoteBlock> blocks) {
     showAiChat(context, ref,
-        initialContext: _noteContext(blocks), accent: _accent);
+        noteId: widget.note.id,
+        newContext: _noteContext(blocks),
+        accent: _accent);
   }
 
   /// Flatten the note's textual cells into a plain-text context for the AI.
@@ -263,6 +266,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final blocks = ref.watch(noteBlocksProvider(widget.note.id)).valueOrNull ?? [];
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
     final linkedCards = ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
+    // Pin the per-note AI session to this view's lifetime (discarded on leave).
+    ref.watch(aiSessionProvider(widget.note.id));
 
     return Scaffold(
       backgroundColor: yCream,
