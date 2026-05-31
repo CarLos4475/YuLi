@@ -33,7 +33,7 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
    - ✅ Streaming, chips (Resumir/Limpiar/Extraer tareas/Título/Traducir), repreguntar mantiene hilo, toggle FLASH/PRO, Copiar, "N hoy" + bloqueo al llegar a 150.
 3. **Persistencia (lo que faltaba):**
    - ✅ **Cierra el sheet** y vuelve a abrir IA → la conversación **sigue ahí** (no se pierde).
-   - ✅ **Sal de la nota/pizarra/cuaderno** y entra de nuevo → la conversación **se descartó** (empieza limpia).
+   - ✅ **Sal de la nota/pizarra/cuaderno** y entra de nuevo → **los mensajes se descartan** (chat limpio) PERO **el contexto/ancla PERSISTE por nota** (sigue ahí, incluso tras reiniciar la app).
 4. **Cambiar/añadir contexto (lo que faltaba):**
    - ✅ Toca el chip **"CONTEXTO"** arriba → editor para **editar / reemplazar / limpiar** el ancla.
    - ✅ Con un chat ya con contexto, manda **otro** (OCR de pizarra, o IA desde otra nota) → pregunta **Añadir / Reemplazar**. (Si el contexto entrante es idéntico al actual, no pregunta.)

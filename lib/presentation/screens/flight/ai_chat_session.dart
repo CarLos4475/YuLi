@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../data/services/ai_usage_limiter.dart';
 import '../../../domain/services/ai_assistant.dart';
@@ -25,15 +26,44 @@ class AiChatMsg {
 }
 
 /// Per-note chat conversation. Lives in an autoDispose provider keyed by note
-/// id, so it **persists while you're in that note/pizarra/cuaderno** (the sheet
-/// is just a window over it) and is **discarded when you leave the view**.
+/// id. **Messages are ephemeral** (discarded when you leave the view); the
+/// **context anchor persists per note** (SharedPreferences keyed by [noteId]),
+/// so it survives leaving the view — even an app restart. The sheet is just a
+/// window over this.
 class AiChatSession extends ChangeNotifier {
+  final int noteId;
+  AiChatSession(this.noteId) {
+    _loadAnchor();
+  }
+
+  static const _kAnchorPrefix = 'ai_ctx_v1_';
+
   String? anchor; // context anchor; null until set
   final List<AiChatMsg> messages = [];
   AiModel model = AiModel.flash;
   bool streaming = false;
 
   bool get hasAnchor => (anchor?.trim().isNotEmpty) ?? false;
+
+  Future<void> _loadAnchor() async {
+    final p = await SharedPreferences.getInstance();
+    final saved = p.getString('$_kAnchorPrefix$noteId');
+    // Don't clobber an anchor that was set meanwhile (e.g. incoming OCR).
+    if (saved != null && saved.isNotEmpty && anchor == null) {
+      anchor = saved;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveAnchor() async {
+    final p = await SharedPreferences.getInstance();
+    final key = '$_kAnchorPrefix$noteId';
+    if (anchor == null || anchor!.isEmpty) {
+      await p.remove(key);
+    } else {
+      await p.setString(key, anchor!);
+    }
+  }
 
   void setModel(AiModel m) {
     model = m;
@@ -43,6 +73,7 @@ class AiChatSession extends ChangeNotifier {
   void setAnchor(String value) {
     final t = value.trim();
     anchor = t.isEmpty ? null : t;
+    _saveAnchor();
     notifyListeners();
   }
 
@@ -51,6 +82,7 @@ class AiChatSession extends ChangeNotifier {
     final t = value.trim();
     if (t.isEmpty) return;
     anchor = hasAnchor ? '${anchor!}\n\n---\n\n$t' : t;
+    _saveAnchor();
     notifyListeners();
   }
 

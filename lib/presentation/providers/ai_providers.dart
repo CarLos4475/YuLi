@@ -13,7 +13,7 @@ final aiKeyStoreProvider = Provider<AiKeyStore>((ref) => AiKeyStore());
 /// discarded when you leave that view. The chat sheet is just a window over it.
 final aiSessionProvider =
     Provider.autoDispose.family<AiChatSession, int>((ref, noteId) {
-  final session = AiChatSession();
+  final session = AiChatSession(noteId);
   ref.onDispose(session.dispose);
   return session;
 });
