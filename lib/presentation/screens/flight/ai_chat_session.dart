@@ -254,4 +254,26 @@ class AiChatSession extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Regenerate the assistant reply at [assistantIndex]: drop it and everything
+  /// after, then re-send the user turn that produced it. (Regenerating an older
+  /// reply discards the turns below it — it's an explicit "redo from here".)
+  Future<void> regenerate(
+      int assistantIndex, AiAssistant assistant, AiUsageLimiter limiter) async {
+    if (streaming) return;
+    if (assistantIndex < 0 || assistantIndex >= messages.length) return;
+    if (messages[assistantIndex].role != AiRole.assistant) return;
+    int ui = -1;
+    for (int i = assistantIndex - 1; i >= 0; i--) {
+      if (messages[i].role == AiRole.user) {
+        ui = i;
+        break;
+      }
+    }
+    if (ui < 0) return;
+    final prompt = messages[ui].text;
+    messages.removeRange(ui, messages.length);
+    notifyListeners();
+    await send(assistant, limiter, prompt);
+  }
 }

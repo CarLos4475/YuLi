@@ -11,6 +11,7 @@ import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../../../domain/models/note_block.dart';
 import 'ai_chat_session.dart';
+import 'ocr_send_to_note.dart' show sendTextToNote;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
 import 'note_block_widgets.dart' show NoteMarkdownPreview;
@@ -771,8 +772,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     final actions = (!streaming && m.text.isNotEmpty)
         ? <Widget>[
             _msgActionBtn('Copiar', () => _copy(m.text)),
-            _msgActionBtn('Guardar en nota', () => _v3Soon('Guardar en nota')),
-            _msgActionBtn('Rehacer', () => _v3Soon('Rehacer')),
+            _msgActionBtn('Guardar en nota', () {
+              final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
+              sendTextToNote(context, ref, m.text,
+                  defaultFolderId: note?.folderId, accent: widget.accent);
+            }),
+            _msgActionBtn(
+                'Rehacer',
+                () => _s.regenerate(i, ref.read(aiAssistantProvider),
+                    ref.read(aiUsageLimiterProvider))),
             _msgActionBtn('Extraer tareas', () => _v3Soon('Extraer tareas')),
           ]
         : null;

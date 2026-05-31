@@ -1,12 +1,7 @@
-import 'dart:convert';
-import 'dart:math' as math;
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ink_recognizer_provider.dart';
-import '../../providers/math_ocr_provider.dart';
 import '../../../domain/services/ink_recognizer.dart';
 import 'ai_chat_sheet.dart';
 import 'ocr_result_sheet.dart';
@@ -97,35 +92,11 @@ Future<void> runMathToYuliFlow(
 }) async {
   if (strokes.isEmpty) return;
 
-  final messenger = ScaffoldMessenger.of(context);
-  final navigator = Navigator.of(context);
+  final candidates = await _recognizeTextCandidates(context, ref, strokes);
+  if (candidates == null || !context.mounted) return;
 
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
-  );
-
-  String? error;
-  String latex = '';
-  try {
-    final dataUri = await _renderStrokesDataUri(strokes);
-    latex = await ref.read(mathOcrServiceProvider).recognizeImageDataUri(dataUri);
-  } catch (e) {
-    error = 'ERROR MATH OCR: $e';
-  }
-
-  if (navigator.canPop()) navigator.pop();
-  if (!context.mounted) return;
-
-  if (error != null) {
-    messenger.showSnackBar(
-      SnackBar(content: Text(error), duration: const Duration(seconds: 3)),
-    );
-    return;
-  }
-
-  final contextText = _displayMath(latex);
+  final dirty = candidates.isEmpty ? '' : candidates.first.text.trim();
+  final contextText = _displayMath(dirty);
   showYuliContextSheet(
     context,
     contextText: contextText,
@@ -199,67 +170,7 @@ bool ocrLooksNonTextual(String t) {
 
 String _displayMath(String latex) {
   final s = latex.trim();
+  if (s.isEmpty) return '\$\$\n\n\$\$';
   if (s.startsWith(r'$$') && s.endsWith(r'$$')) return s;
   return '\$\$\n$s\n\$\$';
-}
-
-Future<String> _renderStrokesDataUri(List<List<Offset>> strokes) async {
-  final points = strokes.expand((s) => s).toList();
-  if (points.isEmpty) throw const FormatException('Sin trazos.');
-
-  var left = points.first.dx;
-  var right = points.first.dx;
-  var top = points.first.dy;
-  var bottom = points.first.dy;
-  for (final p in points) {
-    left = math.min(left, p.dx);
-    right = math.max(right, p.dx);
-    top = math.min(top, p.dy);
-    bottom = math.max(bottom, p.dy);
-  }
-
-  const padding = 32.0;
-  final sourceW = math.max(1.0, right - left);
-  final sourceH = math.max(1.0, bottom - top);
-  final scale = math.min(3.0, 1400.0 / math.max(sourceW, sourceH));
-  final width = ((sourceW + padding * 2) * scale).ceil();
-  final height = ((sourceH + padding * 2) * scale).ceil();
-
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-  canvas.drawRect(
-    Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    Paint()..color = Colors.white,
-  );
-  canvas
-    ..scale(scale)
-    ..translate(-left + padding, -top + padding);
-
-  final paint = Paint()
-    ..color = Colors.black
-    ..strokeWidth = 4 / scale
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round
-    ..style = PaintingStyle.stroke;
-
-  for (final stroke in strokes) {
-    if (stroke.isEmpty) continue;
-    if (stroke.length == 1) {
-      canvas.drawCircle(stroke.first, 2 / scale, paint..style = PaintingStyle.fill);
-      paint.style = PaintingStyle.stroke;
-      continue;
-    }
-    final path = Path()..moveTo(stroke.first.dx, stroke.first.dy);
-    for (int i = 1; i < stroke.length; i++) {
-      path.lineTo(stroke[i].dx, stroke[i].dy);
-    }
-    canvas.drawPath(path, paint);
-  }
-
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(width, height);
-  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-  image.dispose();
-  if (bytes == null) throw const FormatException('No se pudo renderizar.');
-  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
 }
