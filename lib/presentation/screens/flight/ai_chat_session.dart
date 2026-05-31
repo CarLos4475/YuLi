@@ -203,6 +203,11 @@ class AiChatSession extends ChangeNotifier {
       return;
     }
 
+    // Mark busy NOW (before the auto-compact await) so the input is disabled
+    // and a second send can't run concurrently during compaction.
+    streaming = true;
+    notifyListeners();
+
     // Token-shielding: the AI compacts an excessively long context first (and
     // notifies the user in the chat).
     if (anchorIsLong && !_compactTried) {
@@ -212,7 +217,6 @@ class AiChatSession extends ChangeNotifier {
     final history = List<AiChatMsg>.from(messages);
     messages.add(AiChatMsg(AiRole.user, t));
     messages.add(const AiChatMsg(AiRole.assistant, ''));
-    streaming = true;
     notifyListeners();
     await limiter.record();
 
@@ -221,9 +225,12 @@ class AiChatSession extends ChangeNotifier {
       AiMessage(AiRole.system, _systemWithAnchor()),
     ];
     if (!quickAction) {
-      final capped = history.length > _kMaxHistoryMsgs
-          ? history.sublist(history.length - _kMaxHistoryMsgs)
-          : history;
+      // System notices (e.g. the compaction message) are UI-only — don't resend
+      // them to the model.
+      final relevant = history.where((m) => m.role != AiRole.system).toList();
+      final capped = relevant.length > _kMaxHistoryMsgs
+          ? relevant.sublist(relevant.length - _kMaxHistoryMsgs)
+          : relevant;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
     }
     convo.add(AiMessage(AiRole.user, t));

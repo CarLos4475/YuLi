@@ -1359,7 +1359,7 @@ class _WhiteboardEditorScreenState
   }
 
   /// OCR the selected handwriting → editable result sheet (shared flow).
-  Future<void> _recognizeSelection() async {
+  List<List<Offset>> _selectedWritingStrokes() {
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
       if (i >= _data.strokes.length) continue;
@@ -1367,10 +1367,27 @@ class _WhiteboardEditorScreenState
       if (s.isHighlighter || s.isShape) continue;
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
+    return strokes;
+  }
+
+  Future<void> _recognizeSelection() async {
+    final strokes = _selectedWritingStrokes();
     runOcrFlow(context, ref, strokes,
         accent: _accent,
         folderId: widget.note.folderId,
         noteId: widget.note.id);
+  }
+
+  Future<void> _sendSelectionToYuli() async {
+    final strokes = _selectedWritingStrokes();
+    runOcrToYuliFlow(context, ref, strokes,
+        accent: _accent, noteId: widget.note.id);
+  }
+
+  Future<void> _sendMathSelectionToYuli() async {
+    final strokes = _selectedWritingStrokes();
+    runMathToYuliFlow(context, ref, strokes,
+        accent: _accent, noteId: widget.note.id);
   }
 
   Future<void> _cropSelectedImage() async {
@@ -1479,6 +1496,9 @@ class _WhiteboardEditorScreenState
         onDuplicate: _lassoDuplicate,
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
+        onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
+        onSendMathToYuli:
+            _selectionHasWriting ? _sendMathSelectionToYuli : null,
         palette: _palette,
         onColorChange: (c) => _lassoMutate(
             () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32())),

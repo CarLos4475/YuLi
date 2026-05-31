@@ -1782,7 +1782,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   /// OCR the selected handwriting → editable result sheet (shared flow).
   /// Strokes are world-coords from [_allVisibleStrokes].
-  Future<void> _recognizeSelection() async {
+  List<List<Offset>> _selectedWritingStrokes() {
     final all = _allVisibleStrokes;
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
@@ -1791,10 +1791,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (s.isHighlighter || s.isShape) continue;
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
+    return strokes;
+  }
+
+  Future<void> _recognizeSelection() async {
+    final strokes = _selectedWritingStrokes();
     runOcrFlow(context, ref, strokes,
         accent: _accent,
         folderId: widget.note.folderId,
         noteId: widget.note.id);
+  }
+
+  Future<void> _sendSelectionToYuli() async {
+    final strokes = _selectedWritingStrokes();
+    runOcrToYuliFlow(context, ref, strokes,
+        accent: _accent, noteId: widget.note.id);
+  }
+
+  Future<void> _sendMathSelectionToYuli() async {
+    final strokes = _selectedWritingStrokes();
+    runMathToYuliFlow(context, ref, strokes,
+        accent: _accent, noteId: widget.note.id);
   }
 
   /// Map a flattened selected-image index back to (pageIndex, localIndex).
@@ -2063,6 +2080,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         onDuplicate: _lassoDuplicate,
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
+        onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
+        onSendMathToYuli:
+            _selectionHasWriting ? _sendMathSelectionToYuli : null,
         palette: _palette,
         onColorChange: (c) =>
             _lassoMutate((s, im, b) => _lassoCtrl.changeColor(s, c.toARGB32())),

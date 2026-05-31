@@ -12,6 +12,8 @@ class LassoMiniToolbar extends StatefulWidget {
   final VoidCallback onCut;
   final VoidCallback? onCrop; // only when a single image is selected
   final VoidCallback? onRecognizeText; // only when selection has handwriting
+  final VoidCallback? onSendToYuli; // only when selection can become AI context
+  final VoidCallback? onSendMathToYuli;
   final List<Color> palette;
   final List<double> widths;
 
@@ -27,6 +29,8 @@ class LassoMiniToolbar extends StatefulWidget {
     required this.onCut,
     this.onCrop,
     this.onRecognizeText,
+    this.onSendToYuli,
+    this.onSendMathToYuli,
     required this.palette,
     this.widths = const [3.0, 6.0, 10.0],
   });
@@ -131,6 +135,20 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
                     icon: Icons.text_fields,
                     label: 'TEXTO',
                     onTap: widget.onRecognizeText!),
+                _sep(),
+              ],
+              if (widget.onSendToYuli != null) ...[
+                _Btn(
+                    icon: Icons.auto_awesome,
+                    label: 'YULI',
+                    onTap: widget.onSendToYuli!),
+                _sep(),
+              ],
+              if (widget.onSendMathToYuli != null) ...[
+                _Btn(
+                    icon: Icons.functions,
+                    label: 'MATH',
+                    onTap: widget.onSendMathToYuli!),
                 _sep(),
               ],
               if (widget.onCrop != null) ...[

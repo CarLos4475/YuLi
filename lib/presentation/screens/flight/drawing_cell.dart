@@ -29,6 +29,8 @@ class DrawingCell extends StatefulWidget {
   /// the host (a Consumer) which has the recognizer + note folder. Null hides
   /// the lasso's "→ Texto" action.
   final Future<void> Function(List<List<Offset>> strokes)? onRecognizeText;
+  final Future<void> Function(List<List<Offset>> strokes)? onSendToYuli;
+  final Future<void> Function(List<List<Offset>> strokes)? onSendMathToYuli;
 
   const DrawingCell({
     super.key,
@@ -41,6 +43,8 @@ class DrawingCell extends StatefulWidget {
     this.accent,
     this.header,
     this.onRecognizeText,
+    this.onSendToYuli,
+    this.onSendMathToYuli,
   });
 
   @override
@@ -484,10 +488,7 @@ class _DrawingCellState extends State<DrawingCell>
     return false;
   }
 
-  /// Gather the selected handwriting and hand it to the host's OCR flow.
-  Future<void> _recognizeSelection() async {
-    final handler = widget.onRecognizeText;
-    if (handler == null) return;
+  List<List<Offset>> _selectedWritingStrokes() {
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
       if (i >= _data.strokes.length) continue;
@@ -495,6 +496,30 @@ class _DrawingCellState extends State<DrawingCell>
       if (s.isHighlighter || s.isShape) continue;
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
+    return strokes;
+  }
+
+  /// Gather the selected handwriting and hand it to the host's OCR flow.
+  Future<void> _recognizeSelection() async {
+    final handler = widget.onRecognizeText;
+    if (handler == null) return;
+    final strokes = _selectedWritingStrokes();
+    if (strokes.isEmpty) return;
+    await handler(strokes);
+  }
+
+  Future<void> _sendSelectionToYuli() async {
+    final handler = widget.onSendToYuli;
+    if (handler == null) return;
+    final strokes = _selectedWritingStrokes();
+    if (strokes.isEmpty) return;
+    await handler(strokes);
+  }
+
+  Future<void> _sendMathSelectionToYuli() async {
+    final handler = widget.onSendMathToYuli;
+    if (handler == null) return;
+    final strokes = _selectedWritingStrokes();
     if (strokes.isEmpty) return;
     await handler(strokes);
   }
@@ -1029,6 +1054,14 @@ class _DrawingCellState extends State<DrawingCell>
               onRecognizeText: (widget.onRecognizeText != null &&
                       _selectionHasWriting)
                   ? _recognizeSelection
+                  : null,
+              onSendToYuli: (widget.onSendToYuli != null &&
+                      _selectionHasWriting)
+                  ? _sendSelectionToYuli
+                  : null,
+              onSendMathToYuli: (widget.onSendMathToYuli != null &&
+                      _selectionHasWriting)
+                  ? _sendMathSelectionToYuli
                   : null,
               palette: _palette,
               onColorChange: (c) => _lassoMutate(

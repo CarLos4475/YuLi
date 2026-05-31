@@ -485,11 +485,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   /// Returns the complementary colour of [c] (180° hue shift).
-  Color _complementary(Color c) {
-    final hsl = HSLColor.fromColor(c);
-    return hsl.withHue((hsl.hue + 180) % 360).toColor();
-  }
-
   /// AI avatar: square accent-coloured tile that spins erratically.
   Widget _aiAvatar() {
     final erratic = TweenSequence<double>([

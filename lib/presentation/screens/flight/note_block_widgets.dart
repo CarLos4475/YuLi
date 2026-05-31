@@ -1117,6 +1117,12 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
           accent: widget.folder.color,
           folderId: widget.folder.id,
           noteId: widget.block.noteId),
+      onSendToYuli: (strokes) => runOcrToYuliFlow(context, ref, strokes,
+          accent: widget.folder.color,
+          noteId: widget.block.noteId),
+      onSendMathToYuli: (strokes) => runMathToYuliFlow(context, ref, strokes,
+          accent: widget.folder.color,
+          noteId: widget.block.noteId),
     );
   }
 }
