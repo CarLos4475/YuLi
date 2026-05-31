@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ai_providers.dart';
+import '../../providers/database_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../../../domain/models/note_block.dart';
+import '../../../domain/models/task.dart';
 import 'ai_chat_session.dart';
 import 'ocr_send_to_note.dart' show sendTextToNote;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
@@ -179,14 +181,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     _anchorInput.dispose();
     _scroll.dispose();
     super.dispose();
-  }
-
-  /// No-op for v3 actions not wired yet — tells the user it's coming.
-  void _v3Soon(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$label — disponible en v3'),
-      duration: const Duration(milliseconds: 1200),
-    ));
   }
 
   void _onSession() {
@@ -758,6 +752,55 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         content: Text('Copiado'), duration: Duration(milliseconds: 700)));
   }
 
+  String _cleanTaskLine(String s) =>
+      s.replaceAll('**', '').replaceAll('`', '').trim();
+
+  /// Pull candidate task lines from an assistant reply. Prefers bulleted /
+  /// numbered / checkbox lines; if there are none, falls back to all lines.
+  List<String> _parseTaskLines(String text) {
+    final bulletRe = RegExp(r'^\s*([-*•·]|\d+[.)]|\[[ xX]?\])\s+(.*)$');
+    final bulleted = <String>[];
+    final all = <String>[];
+    for (final line in text.split('\n')) {
+      if (line.trim().isEmpty) continue;
+      final m = bulletRe.firstMatch(line);
+      if (m != null) {
+        final c = _cleanTaskLine(m.group(2)!);
+        if (c.isNotEmpty) bulleted.add(c);
+      }
+      final a = _cleanTaskLine(line);
+      if (a.isNotEmpty) all.add(a);
+    }
+    final src = bulleted.isNotEmpty ? bulleted : all;
+    return src
+        .map((s) => s.length > 280 ? s.substring(0, 280) : s)
+        .toList();
+  }
+
+  /// Extract tasks from [text] → review checklist → create them in FIGHT,
+  /// linked to the host note.
+  Future<void> _extractTasks(String text) async {
+    final candidates = _parseTaskLines(text);
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No encontré tareas en esa respuesta'),
+          duration: Duration(seconds: 2)));
+      return;
+    }
+    final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _TaskReviewSheet(
+        candidates: candidates,
+        noteId: _s.noteId,
+        folderId: note?.folderId,
+        accent: widget.accent,
+      ),
+    );
+  }
+
   Widget _bubble(AiChatMsg m, int i) {
     if (m.role == AiRole.system) return _systemNotice(m, i);
     if (m.role == AiRole.user) return _userBubble(m.text);
@@ -781,7 +824,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 'Rehacer',
                 () => _s.regenerate(i, ref.read(aiAssistantProvider),
                     ref.read(aiUsageLimiterProvider))),
-            _msgActionBtn('Extraer tareas', () => _v3Soon('Extraer tareas')),
+            _msgActionBtn('Extraer tareas', () => _extractTasks(m.text)),
           ]
         : null;
     return _aiMsgFrame(content, actions: actions);
@@ -1106,6 +1149,238 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 weight: FontWeight.w700,
                 tracking: 1.4,
                 color: yCream)),
+      ),
+    );
+  }
+}
+
+/// Review checklist for "Extraer tareas": pick/edit which lines become FIGHT
+/// tasks, then create them linked to the host note.
+class _TaskReviewSheet extends ConsumerStatefulWidget {
+  final List<String> candidates;
+  final int noteId;
+  final int? folderId;
+  final Color accent;
+
+  const _TaskReviewSheet({
+    required this.candidates,
+    required this.noteId,
+    required this.folderId,
+    required this.accent,
+  });
+
+  @override
+  ConsumerState<_TaskReviewSheet> createState() => _TaskReviewSheetState();
+}
+
+class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
+  late final List<TextEditingController> _ctrls;
+  late final List<bool> _sel;
+  bool _creating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = widget.candidates
+        .map((c) => TextEditingController(text: c))
+        .toList();
+    _sel = List<bool>.filled(widget.candidates.length, true);
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  int get _count {
+    var n = 0;
+    for (var i = 0; i < _sel.length; i++) {
+      if (_sel[i] && _ctrls[i].text.trim().isNotEmpty) n++;
+    }
+    return n;
+  }
+
+  Future<void> _create() async {
+    if (_creating) return;
+    setState(() => _creating = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final taskRepo = ref.read(taskRepositoryProvider);
+    final noteRepo = ref.read(noteRepositoryProvider);
+    final now = DateTime.now();
+    var created = 0;
+    for (var i = 0; i < _ctrls.length; i++) {
+      if (!_sel[i]) continue;
+      final content = _ctrls[i].text.trim();
+      if (content.isEmpty) continue;
+      try {
+        final task = await taskRepo.save(Task(
+          id: 0,
+          content: content,
+          status: TaskStatus.pending,
+          folderId: widget.folderId,
+          createdAt: now,
+          expiresAt: DateTime(now.year, now.month, now.day, 23, 59, 59),
+        ));
+        await noteRepo.linkTask(widget.noteId, task.id);
+        created++;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    navigator.pop();
+    messenger.showSnackBar(SnackBar(
+      content: Text(created == 1
+          ? '1 tarea creada en FIGHT'
+          : '$created tareas creadas en FIGHT'),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final insets = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: insets),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: yCream,
+          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                Text('REVISAR TAREAS',
+                    style: yMono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yInk)),
+                const Spacer(),
+                Text('→ @FIGHT',
+                    style: yMono(size: 9, tracking: 1, color: yMuted)),
+              ]),
+              const SizedBox(height: 4),
+              Text('Marca/edita las que quieras crear.',
+                  style: yBody(size: 12, color: yMuted)),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 340),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _ctrls.length,
+                    itemBuilder: (_, i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() => _sel[i] = !_sel[i]),
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: _sel[i] ? widget.accent : yCream,
+                                border:
+                                    Border.all(color: yInk, width: yLineMid),
+                              ),
+                              child: _sel[i]
+                                  ? const Icon(Icons.check,
+                                      size: 14, color: yCream)
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrls[i],
+                              maxLines: null,
+                              style: yBody(size: 14, color: yInk),
+                              onChanged: (_) => setState(() {}),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                border: const UnderlineInputBorder(
+                                    borderSide:
+                                        BorderSide(color: yInk, width: yLineThin)),
+                                enabledBorder: const UnderlineInputBorder(
+                                    borderSide:
+                                        BorderSide(color: yInk, width: yLineThin)),
+                                focusedBorder: UnderlineInputBorder(
+                                    borderSide: BorderSide(
+                                        color: widget.accent, width: yLineMid)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _count == 0 || _creating ? null : _create,
+                    child: Container(
+                      height: 46,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _count == 0 ? yMuted : widget.accent,
+                        border: Border.all(color: yInk, width: yLineMid),
+                      ),
+                      child: _creating
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: yCream))
+                          : Text('CREAR $_count',
+                              style: yMono(
+                                  size: 12,
+                                  weight: FontWeight.w700,
+                                  tracking: 1.2,
+                                  color: yCream)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    height: 46,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: yCream,
+                      border: Border.all(color: yInk, width: yLineMid),
+                    ),
+                    child: Text('CANCELAR',
+                        style: yMono(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            tracking: 1.2,
+                            color: yInk)),
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ),
       ),
     );
   }

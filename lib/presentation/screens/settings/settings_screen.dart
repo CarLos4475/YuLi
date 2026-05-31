@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/ink_recognizer_provider.dart';
 import '../../providers/ai_providers.dart';
-import '../../providers/math_ocr_provider.dart';
 import '../../widgets/app_section_divider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -122,19 +120,6 @@ class SettingsScreen extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: _AiKeyBlock(),
             ),
-
-            if (kDebugMode) ...[
-              const SizedBox(height: 24),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: AppSectionDivider(label: 'MATH OCR (MATHPIX TEST)'),
-              ),
-              const SizedBox(height: 12),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: _MathpixKeyBlock(),
-              ),
-            ],
 
             const SizedBox(height: 24),
             const Padding(
@@ -660,191 +645,6 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
           const SizedBox(height: 8),
           Text(
             'Se guarda cifrada en el dispositivo. No sale de aquí (ni a git ni a la nube).',
-            style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MathpixKeyBlock extends ConsumerStatefulWidget {
-  const _MathpixKeyBlock();
-
-  @override
-  ConsumerState<_MathpixKeyBlock> createState() => _MathpixKeyBlockState();
-}
-
-class _MathpixKeyBlockState extends ConsumerState<_MathpixKeyBlock> {
-  final _appIdCtrl = TextEditingController();
-  final _appKeyCtrl = TextEditingController();
-  bool _busy = false;
-
-  @override
-  void dispose() {
-    _appIdCtrl.dispose();
-    _appKeyCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final appId = _appIdCtrl.text.trim();
-    final appKey = _appKeyCtrl.text.trim();
-    if (appId.isEmpty || appKey.isEmpty || _busy) return;
-    setState(() => _busy = true);
-    await ref
-        .read(mathpixKeyStoreProvider)
-        .write(appId: appId, appKey: appKey);
-    _appIdCtrl.clear();
-    _appKeyCtrl.clear();
-    ref.invalidate(mathpixHasKeysProvider);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('MATHPIX CONFIGURADO')),
-    );
-  }
-
-  Future<void> _clearKey() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    await ref.read(mathpixKeyStoreProvider).clear();
-    ref.invalidate(mathpixHasKeysProvider);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('MATHPIX BORRADO')),
-    );
-  }
-
-  InputDecoration _deco(BuildContext context, String hint) {
-    final ink = inkColor(context);
-    return InputDecoration(
-      isDense: true,
-      contentPadding: const EdgeInsets.all(10),
-      hintText: hint,
-      hintStyle: bodyS.copyWith(color: ink.withAlpha(120)),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: ink, width: borderWidth),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: ink, width: borderWidth),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: ink, width: borderWidth),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final hasKeys = ref.watch(mathpixHasKeysProvider).valueOrNull ?? false;
-    final ink = inkColor(context);
-    final paper = paperColor(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: paper,
-        border: Border.all(color: ink, width: borderWidth),
-        boxShadow: const [
-          BoxShadow(
-            color: inkBlack,
-            offset: shadowOffset,
-            blurRadius: shadowBlurRadius,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'MATHPIX API · TEST',
-                style: labelBold.copyWith(
-                    color: ink, fontSize: 11, letterSpacing: 1.2),
-              ),
-              const Spacer(),
-              Text(
-                hasKeys ? 'CONFIGURADO ✓' : 'NO CONFIGURADO',
-                style: bodyS.copyWith(
-                    color: hasKeys ? accentLab : ink.withAlpha(150)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _appIdCtrl,
-            autocorrect: false,
-            enableSuggestions: false,
-            style: bodyS.copyWith(color: ink),
-            decoration: _deco(context, 'APP ID'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _appKeyCtrl,
-            obscureText: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            style: bodyS.copyWith(color: ink),
-            decoration: _deco(context, 'APP KEY'),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _busy ? null : _save,
-                  child: Container(
-                    height: 42,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: accentJournal,
-                      border: Border.all(color: ink, width: borderWidth),
-                    ),
-                    child: _busy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: paperLight))
-                        : Text('GUARDAR',
-                            style: labelBold.copyWith(
-                                color: paperLight,
-                                fontSize: 11,
-                                letterSpacing: 1.2)),
-                  ),
-                ),
-              ),
-              if (hasKeys) ...[
-                const SizedBox(width: 8),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _busy ? null : _clearKey,
-                  child: Container(
-                    height: 42,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: paper,
-                      border: Border.all(color: ink, width: borderWidth),
-                    ),
-                    child: Text('BORRAR',
-                        style: labelBold.copyWith(
-                            color: ink, fontSize: 11, letterSpacing: 1.2)),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'SOLO PARA PRUEBAS. LA RUTA FINAL DEBE USAR LA MISMA KEY DE IA.',
             style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
           ),
         ],
