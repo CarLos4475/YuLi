@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -2081,8 +2082,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
-        onSendMathToYuli:
-            _selectionHasWriting ? _sendMathSelectionToYuli : null,
+        // Mathpix math OCR is debug-only for now (too costly for current scope).
+        onSendMathToYuli: (kDebugMode && _selectionHasWriting)
+            ? _sendMathSelectionToYuli
+            : null,
         palette: _palette,
         onColorChange: (c) =>
             _lassoMutate((s, im, b) => _lassoCtrl.changeColor(s, c.toARGB32())),

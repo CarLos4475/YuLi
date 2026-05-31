@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -1120,9 +1121,12 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       onSendToYuli: (strokes) => runOcrToYuliFlow(context, ref, strokes,
           accent: widget.folder.color,
           noteId: widget.block.noteId),
-      onSendMathToYuli: (strokes) => runMathToYuliFlow(context, ref, strokes,
-          accent: widget.folder.color,
-          noteId: widget.block.noteId),
+      // Mathpix math OCR is debug-only for now (too costly for the current
+      // scope — math will be handled another way). Hidden in release.
+      onSendMathToYuli: kDebugMode
+          ? (strokes) => runMathToYuliFlow(context, ref, strokes,
+              accent: widget.folder.color, noteId: widget.block.noteId)
+          : null,
     );
   }
 }

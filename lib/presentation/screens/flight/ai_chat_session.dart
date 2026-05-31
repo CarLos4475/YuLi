@@ -84,6 +84,9 @@ class AiChatSession extends ChangeNotifier {
   // auto-compacts; [_compactTried] avoids re-compacting on every send.
   String? _previousAnchor;
   bool _compactTried = false;
+  /// Index in [messages] of the latest compaction notice (for showing UNDO on
+  /// just that one).
+  int? compactNoticeIndex;
 
   bool get hasAnchor => (anchor?.trim().isNotEmpty) ?? false;
   bool get anchorIsLong => (anchor?.length ?? 0) > kAnchorLongChars;
@@ -132,13 +135,14 @@ class AiChatSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Builds the system prompt with the anchor inlined so it travels as a
-  /// single message, saving one user message slot per request.
-  String _systemWithAnchor() {
+  /// The context anchor as a standalone user message (capped for token cost),
+  /// kept SEPARATE from the system prompt so the model distinguishes the
+  /// instruction (system) from the content (this).
+  String _anchorContent() {
     final ctx = anchor ?? '';
     final capped =
         ctx.length > _kAnchorMaxChars ? ctx.substring(0, _kAnchorMaxChars) : ctx;
-    return '$kAiSystemBase\n\n---\n\nContexto:\n\n$capped';
+    return 'Contexto:\n\n$capped';
   }
 
   /// Undo the last AI auto-compaction, restoring the previous context.
@@ -183,6 +187,7 @@ class AiChatSession extends ChangeNotifier {
       '✦ Compacté el contexto para ahorrar tokens '
       '(${before.length} → ${compacted.length} caracteres).',
     ));
+    compactNoticeIndex = messages.length - 1;
     notifyListeners();
   }
 
@@ -222,7 +227,8 @@ class AiChatSession extends ChangeNotifier {
 
     final idx = messages.length - 1;
     final convo = <AiMessage>[
-      AiMessage(AiRole.system, _systemWithAnchor()),
+      const AiMessage(AiRole.system, kAiSystemBase),
+      AiMessage(AiRole.user, _anchorContent()),
     ];
     if (!quickAction) {
       // System notices (e.g. the compaction message) are UI-only — don't resend

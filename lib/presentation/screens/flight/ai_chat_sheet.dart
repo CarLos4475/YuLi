@@ -626,7 +626,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       )
                     else
                       NoteMarkdownPreview(data: m.text),
-                    if (isSystem && _s.canUndoCompact) ...[
+                    if (isSystem &&
+                        _s.canUndoCompact &&
+                        i == _s.compactNoticeIndex) ...[
                       const SizedBox(height: 6),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
