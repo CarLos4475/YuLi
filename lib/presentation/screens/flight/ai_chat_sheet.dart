@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -149,7 +151,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   final _scroll = ScrollController();
   int? _remaining;
   late final AnimationController _aiSpinCtrl;
-  late final AnimationController _userSpinCtrl;
 
   AiChatSession get _s => widget.session;
 
@@ -158,13 +159,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     super.initState();
     _s.addListener(_onSession);
     _loadRemaining();
+    // Drives the erratic rotation of the diamond inside the AI mark.
     _aiSpinCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    )..repeat();
-    _userSpinCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
     )..repeat();
     // If there are existing messages, jump to the latest one on first open.
     if (_s.messages.isNotEmpty) _scrollToBottom();
@@ -175,12 +173,19 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   @override
   void dispose() {
     _aiSpinCtrl.dispose();
-    _userSpinCtrl.dispose();
     _s.removeListener(_onSession);
     _input.dispose();
     _anchorInput.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// No-op for v3 actions not wired yet — tells the user it's coming.
+  void _v3Soon(String label) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('$label — disponible en v3'),
+      duration: const Duration(milliseconds: 1200),
+    ));
   }
 
   void _onSession() {
@@ -236,15 +241,17 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   Widget _buildAnchorGate() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _header(),
-          const SizedBox(height: 16),
-          Text('¿DE QUÉ ES ESTO?',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('¿DE QUÉ ES ESTO?',
               style: yMono(
                   size: 11,
                   weight: FontWeight.w700,
@@ -287,8 +294,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       color: yInk)),
             ),
           ),
-        ],
-      ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -401,47 +410,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   Widget _buildChat() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
-          child: _header(),
-        ),
-        // Context anchor preview — tap to edit / replace / clear.
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _editContext,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: yCream2,
-                border: Border.all(color: yInk, width: yLineThin),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'CONTEXTO: ${_s.anchor}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: yMono(size: 9, tracking: 0.4, color: yMuted),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.edit, size: 13, color: yMuted),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
+        _header(),
+        _contextBar(),
         Expanded(
-          child: ListView.builder(
+          child: ListView(
             controller: _scroll,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            itemCount: _s.messages.length,
-            itemBuilder: (_, i) => _bubble(_s.messages[i], i),
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
+            children: [
+              // Canned greeting (UI-only, no request) when the thread is empty.
+              if (_s.messages.isEmpty) _greeting(),
+              for (int i = 0; i < _s.messages.length; i++)
+                _bubble(_s.messages[i], i),
+            ],
           ),
         ),
         _quickActions(),
@@ -450,42 +430,204 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  Widget _header() {
-    return Row(
-      children: [
-        Text('YuLi AI · ${_s.model == AiModel.flash ? 'FLASH' : 'PRO'}',
-            style: yMono(
-                size: 11, weight: FontWeight.w700, tracking: 1.4, color: yInk)),
-        const SizedBox(width: 8),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _s.setModel(
-              _s.model == AiModel.flash ? AiModel.pro : AiModel.flash),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration:
-                BoxDecoration(border: Border.all(color: yInk, width: yLineThin)),
-            child: Text(_s.model == AiModel.flash ? 'usar PRO' : 'usar FLASH',
-                style: yMono(size: 8, tracking: 0.8, color: yInk)),
+  /// CONTEXTO ▸ [texto del ancla]  ✎  ✕
+  Widget _contextBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
+      child: Row(
+        children: [
+          Text('CONTEXTO ▸',
+              style: yMono(
+                  size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _editContext,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: yCream,
+                  border: Border.all(color: yInk, width: yLineMid),
+                ),
+                child: Text(
+                  _s.anchor ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: yBody(size: 13, weight: FontWeight.w600, color: yInk),
+                ),
+              ),
+            ),
           ),
-        ),
-        if (_remaining != null) ...[
           const SizedBox(width: 8),
-          Text('$_remaining hoy',
-              style: yMono(size: 8, tracking: 0.6, color: yMuted)),
+          _ghostIcon(Icons.edit, 'Editar contexto', _editContext),
+          const SizedBox(width: 6),
+          _ghostIcon(Icons.close, 'Quitar contexto', () => _s.setAnchor('')),
         ],
-        const Spacer(),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(context).pop(),
-          child: const Icon(Icons.close, size: 20, color: yInk),
+      ),
+    );
+  }
+
+  Widget _ghostIcon(IconData icon, String tip, VoidCallback onTap) {
+    return Tooltip(
+      message: tip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: yCream,
+            border: Border.all(color: yInk, width: yLineMid),
+          ),
+          child: Icon(icon, size: 14, color: yInk),
         ),
-      ],
+      ),
+    );
+  }
+
+  /// UI-only greeting bubble shown when the conversation is empty.
+  Widget _greeting() => _aiMsgFrame(
+        const Text(
+          'Hola. Tengo tu contexto cargado, ¿qué hacemos con él?',
+          style: TextStyle(fontSize: 15, height: 1.5, color: yInk),
+        ),
+      );
+
+  static const _kDailyCap = 150;
+
+  /// Command bar: ink background, mark + wordmark + FLASH|PRO segmented control
+  /// + usage meter + close. Accent = the note's accent (everything is accent).
+  Widget _header() {
+    final used =
+        _remaining == null ? null : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
+    return Container(
+      decoration: const BoxDecoration(
+        color: yInk,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      child: Row(
+        children: [
+          // Mark: accent square with a cream diamond.
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: widget.accent,
+              border: Border.all(color: yCream, width: yLineMid),
+            ),
+            child: Transform.rotate(
+              angle: math.pi / 4,
+              child: Container(width: 12, height: 12, color: yCream),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('YuLi · IA',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ySans(
+                        size: 18, weight: FontWeight.w700, color: yCream)),
+                Text('ASISTENTE DE NOTAS',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yMono(
+                        size: 8,
+                        tracking: 1.6,
+                        color: yCream.withValues(alpha: 0.6))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // FLASH | PRO segmented control.
+          Container(
+            decoration: BoxDecoration(border: Border.all(color: yCream, width: yLineMid)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _seg('FLASH', _s.model == AiModel.flash,
+                  () => _s.setModel(AiModel.flash)),
+              Container(width: yLineThin, height: 24, color: yCream),
+              _seg('PRO', _s.model == AiModel.pro,
+                  () => _s.setModel(AiModel.pro)),
+            ]),
+          ),
+          if (used != null) ...[
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 58,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('$used/$_kDailyCap',
+                      textAlign: TextAlign.right,
+                      style: yMono(
+                          size: 9, tracking: 0.6, color: yCream)),
+                  const SizedBox(height: 4),
+                  Container(
+                    height: 5,
+                    decoration:
+                        BoxDecoration(border: Border.all(color: yCream, width: 1)),
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
+                      child: Container(color: widget.accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration:
+                  BoxDecoration(border: Border.all(color: yCream, width: yLineMid)),
+              child: const Icon(Icons.close, size: 16, color: yCream),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _seg(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        color: active ? widget.accent : Colors.transparent,
+        child: Text(label,
+            style: yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.0,
+                color: yCream)),
+      ),
     );
   }
 
   /// Returns the complementary colour of [c] (180° hue shift).
   /// AI avatar: square accent-coloured tile that spins erratically.
+  /// AI mark: ink square containing a rotating accent diamond (keeps the
+  /// erratic animation).
   Widget _aiAvatar() {
     final erratic = TweenSequence<double>([
       TweenSequenceItem(
@@ -514,237 +656,274 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           weight: 15),
     ]).animate(_aiSpinCtrl);
 
-    return AnimatedBuilder(
-      animation: erratic,
-      builder: (_, _) => Transform.rotate(
-        angle: erratic.value,
-        child: Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: widget.accent,
-            border: Border.all(color: yInk, width: yLineMid),
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: yInk,
+        border: Border.all(color: yInk, width: yLineMid),
+      ),
+      child: AnimatedBuilder(
+        animation: erratic,
+        builder: (_, _) => Transform.rotate(
+          angle: math.pi / 4 + erratic.value,
+          child: Container(
+            width: 13,
+            height: 13,
+            decoration: BoxDecoration(
+              color: widget.accent,
+              border: Border.all(color: yCream, width: 2),
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// User avatar: accent-coloured circle that spins erratically,
-  /// completely out of sync with the AI avatar.
-  Widget _userAvatar() {
-    final erratic = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: -0.5)
-              .chain(CurveTween(curve: Curves.easeOutBack)),
-          weight: 15),
-      TweenSequenceItem(
-          tween: Tween(begin: -0.5, end: 0.7)
-              .chain(CurveTween(curve: Curves.easeInOutExpo)),
-          weight: 20),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.7, end: -0.2)
-              .chain(CurveTween(curve: Curves.bounceOut)),
-          weight: 18),
-      TweenSequenceItem(
-          tween: Tween(begin: -0.2, end: 0.9)
-              .chain(CurveTween(curve: Curves.easeInOutCubic)),
-          weight: 20),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.9, end: -0.4)
-              .chain(CurveTween(curve: Curves.elasticIn)),
-          weight: 15),
-      TweenSequenceItem(
-          tween: Tween(begin: -0.4, end: 0.0)
-              .chain(CurveTween(curve: Curves.decelerate)),
-          weight: 12),
-    ]).animate(_userSpinCtrl);
-
-    return AnimatedBuilder(
-      animation: erratic,
-      builder: (_, _) => Transform.rotate(
-        angle: erratic.value,
-        child: Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: widget.accent,
-            shape: BoxShape.circle,
-            border: Border.all(color: yInk, width: yLineMid),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _bubble(AiChatMsg m, int i) {
-    final isUser = m.role == AiRole.user;
-    final isSystem = m.role == AiRole.system;
-    final streaming = _s.streaming && i == _s.messages.length - 1 && !isUser;
+  /// Assistant message frame: mark + "YULI · IA" label + cream bubble (hard
+  /// shadow) holding [content], with optional [actions] under a divider.
+  Widget _aiMsgFrame(Widget content, {List<Widget>? actions}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 18),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // AI avatar (left side, only for assistant/system)
-          if (!isUser)
-            Padding(
-              padding: const EdgeInsets.only(right: 8, top: 2),
-              child: _aiAvatar(),
-            )
-          else
-            const SizedBox(width: 36),
-          // Bubble
+          _aiAvatar(),
+          const SizedBox(width: 10),
           Expanded(
-            child: Align(
-              alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-              child: Container(
-                constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.72),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isUser ? widget.accent : yCream,
-                  border: Border.all(color: yInk, width: yLineThin),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 6),
+                  child: Text('YULI · IA',
+                      style: yMono(
+                          size: 9,
+                          weight: FontWeight.w700,
+                          tracking: 1.6,
+                          color: yMuted)),
                 ),
-                child: Column(
-                  crossAxisAlignment: isUser
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
-                  children: [
-                    if (isSystem)
-                      Text(
-                        m.text,
-                        style: yMono(size: 10, tracking: 0.5, color: yMuted)
-                            .copyWith(fontStyle: FontStyle.italic),
-                      )
-                    else if (isUser || streaming)
-                      SelectableText(
-                        m.text.isEmpty && streaming ? '…' : m.text,
-                        style: yBody(
-                            size: 14, color: isUser ? yCream : yInk),
-                      )
-                    else
-                      NoteMarkdownPreview(data: m.text),
-                    if (isSystem &&
-                        _s.canUndoCompact &&
-                        i == _s.compactNoticeIndex) ...[
-                      const SizedBox(height: 6),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _s.undoCompact(),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.undo, size: 11, color: yMuted),
-                          const SizedBox(width: 3),
-                          Text('DESHACER',
-                              style: yMono(
-                                  size: 8, tracking: 0.8, color: yMuted)),
-                        ]),
-                      ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
+                  decoration: BoxDecoration(
+                    color: yCream,
+                    border: Border.all(color: yInk, width: yLineMid),
+                    boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      content,
+                      if (actions != null && actions.isNotEmpty) ...[
+                        const SizedBox(height: 11),
+                        Container(
+                            height: yLineThin,
+                            color: yInk.withValues(alpha: 0.25)),
+                        const SizedBox(height: 11),
+                        Wrap(spacing: 6, runSpacing: 6, children: actions),
+                      ],
                     ],
-                    if (!isUser &&
-                        !isSystem &&
-                        m.text.isNotEmpty &&
-                        !streaming) ...[
-                      const SizedBox(height: 4),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: m.text));
-                          HapticFeedback.selectionClick();
-                          ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(
-                                  content: Text('Copiado'),
-                                  duration: Duration(milliseconds: 700)));
-                        },
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.copy, size: 11, color: yMuted),
-                          const SizedBox(width: 3),
-                          Text('Copiar',
-                              style: yMono(
-                                  size: 8, tracking: 0.8, color: yMuted)),
-                        ]),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-          // User avatar (right side, only for user)
-          if (isUser)
-            Padding(
-              padding: const EdgeInsets.only(left: 8, top: 2),
-              child: _userAvatar(),
-            )
-          else
-            const SizedBox(width: 36),
         ],
       ),
     );
   }
 
-  Widget _quickActions() {
-    const actions = {
-      'Resumir': 'Resume el contexto en pocas líneas.',
-      'Limpiar': 'Reescribe y limpia el contexto: corrige ortografía y '
-          'redacción, mantén el significado.',
-      'Extraer tareas':
-          'Lista las tareas accionables del contexto, una por línea, sin numerar.',
-      'Título': 'Sugiere 3 títulos cortos para el contexto.',
-      'Traducir': 'Traduce el contexto al inglés.',
-    };
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+  Widget _msgActionBtn(String label, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(border: Border.all(color: yInk, width: yLineThin)),
+        child: Text(label.toUpperCase(),
+            style: yMono(
+                size: 9, weight: FontWeight.w700, tracking: 0.8, color: yInk)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
+    );
+  }
+
+  void _copy(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Copiado'), duration: Duration(milliseconds: 700)));
+  }
+
+  Widget _bubble(AiChatMsg m, int i) {
+    if (m.role == AiRole.system) return _systemNotice(m, i);
+    if (m.role == AiRole.user) return _userBubble(m.text);
+
+    // Assistant.
+    final streaming = _s.streaming && i == _s.messages.length - 1;
+    final Widget content = (m.text.isEmpty && streaming)
+        ? Text('…', style: yBody(size: 14, color: yInk))
+        : streaming
+            ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
+            : NoteMarkdownPreview(data: m.text);
+    final actions = (!streaming && m.text.isNotEmpty)
+        ? <Widget>[
+            _msgActionBtn('Copiar', () => _copy(m.text)),
+            _msgActionBtn('Guardar en nota', () => _v3Soon('Guardar en nota')),
+            _msgActionBtn('Rehacer', () => _v3Soon('Rehacer')),
+            _msgActionBtn('Extraer tareas', () => _v3Soon('Extraer tareas')),
+          ]
+        : null;
+    return _aiMsgFrame(content, actions: actions);
+  }
+
+  Widget _userBubble(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 2, bottom: 6),
+            child: Text('TÚ',
+                style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.6,
+                    color: yMuted)),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.78),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
+              decoration: BoxDecoration(
+                color: widget.accent,
+                border: Border.all(color: yInk, width: yLineMid),
+                boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
+              ),
+              child: SelectableText(text,
+                  style: yBody(size: 15, weight: FontWeight.w500, color: yCream)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _systemNotice(AiChatMsg m, int i) {
+    final canUndo = _s.canUndoCompact && i == _s.compactNoticeIndex;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            for (final e in actions.entries) ...[
+            Text(m.text,
+                textAlign: TextAlign.center,
+                style: yMono(size: 10, tracking: 0.5, color: yMuted)
+                    .copyWith(fontStyle: FontStyle.italic)),
+            if (canUndo) ...[
+              const SizedBox(height: 6),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _s.streaming ? null : () => _send(e.value, quickAction: true),
-                child: Container(
-                  margin: const EdgeInsets.only(right: 6),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _s.streaming ? yCream2 : yCream,
-                    border: Border.all(color: yInk, width: yLineThin),
-                  ),
-                  child: Text(e.key.toUpperCase(),
-                      style: yMono(
-                          size: 9,
-                          weight: FontWeight.w700,
-                          tracking: 0.8,
-                          color: yInk)),
-                ),
+                onTap: () => _s.undoCompact(),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.undo, size: 11, color: yMuted),
+                  const SizedBox(width: 3),
+                  Text('DESHACER',
+                      style: yMono(size: 8, tracking: 0.8, color: yMuted)),
+                ]),
               ),
             ],
-            // "Resumir conversación" is NOT a quick action: it sends the full
-            // chat history so the model can summarise the entire thread.
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _s.streaming ? null : () => _send('Resume nuestra conversación hasta ahora en 3-4 puntos clave.'),
-              child: Container(
-                margin: const EdgeInsets.only(right: 6),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _s.streaming ? yCream2 : yCream,
-                  border: Border.all(color: yInk, width: yLineThin),
-                ),
-                child: Text('RESUMIR CONVERSACIÓN',
-                    style: yMono(
-                        size: 9,
-                        weight: FontWeight.w700,
-                        tracking: 0.8,
-                        color: yInk)),
-              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickActions() {
+    // (glyph, label, prompt, sendWithHistory)
+    final items = <(String, String, String, bool)>[
+      ('≡', 'Resumir', 'Resume el contexto en pocas líneas.', false),
+      ('☑', 'Extraer tareas',
+          'Lista las tareas accionables del contexto, una por línea, sin numerar.',
+          false),
+      ('A', 'Título', 'Sugiere 3 títulos cortos para el contexto.', false),
+      ('⇄', 'Traducir', 'Traduce el contexto al inglés.', false),
+      ('⌫', 'Limpiar',
+          'Reescribe y limpia el contexto: corrige ortografía y redacción, '
+              'mantén el significado.',
+          false),
+      // Uses full chat history (not a one-shot quick action).
+      ('❝', 'Resumir chat',
+          'Resume nuestra conversación hasta ahora en 3-4 puntos clave.', true),
+    ];
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(top: BorderSide(color: yInk, width: yLineMid)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _hair('// ACCIONES SOBRE LA NOTA'),
+          const SizedBox(height: 9),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final it in items)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 7),
+                    child: _qaChip(it.$1, it.$2, it.$3, withHistory: it.$4),
+                  ),
+              ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hair(String label) {
+    return Row(
+      children: [
+        Text(label,
+            style: yMono(
+                size: 10, weight: FontWeight.w700, tracking: 1.6, color: yMuted)),
+        const SizedBox(width: 10),
+        Expanded(
+            child: Container(height: 2, color: yInk.withValues(alpha: 0.14))),
+      ],
+    );
+  }
+
+  Widget _qaChip(String glyph, String label, String prompt,
+      {required bool withHistory}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _s.streaming ? null : () => _send(prompt, quickAction: !withHistory),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+        decoration: BoxDecoration(
+          color: _s.streaming ? yCream2 : yCream,
+          border: Border.all(color: yInk, width: yLineMid),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(glyph,
+                style: yMono(
+                    size: 12, weight: FontWeight.w700, color: widget.accent)),
+            const SizedBox(width: 7),
+            Text(label.toUpperCase(),
+                style: yMono(
+                    size: 10, weight: FontWeight.w700, tracking: 0.8, color: yInk)),
           ],
         ),
       ),
@@ -753,11 +932,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   Widget _inputBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+        color: yCream,
+        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
       ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
             child: TextField(
@@ -765,31 +946,34 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               minLines: 1,
               maxLines: 4,
               enabled: !_s.streaming,
-              style: yBody(size: 14, color: yInk),
+              style: yBody(size: 15, color: yInk),
               onSubmitted: _s.streaming ? null : _send,
               textInputAction: TextInputAction.send,
-              decoration: _fieldDeco('Escribe…'),
+              decoration: _fieldDeco('Escribe a YuLi…'),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _s.streaming ? null : () => _send(_input.text),
             child: Container(
-              width: 44,
-              height: 44,
+              width: 52,
+              height: 52,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: _s.streaming ? yMuted : widget.accent,
                 border: Border.all(color: yInk, width: yLineMid),
+                boxShadow: _s.streaming
+                    ? null
+                    : const [BoxShadow(color: yInk, offset: Offset(3, 3))],
               ),
               child: _s.streaming
                   ? const SizedBox(
-                      width: 16,
-                      height: 16,
+                      width: 18,
+                      height: 18,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: yCream))
-                  : const Icon(Icons.arrow_upward, color: yCream, size: 20),
+                  : const Icon(Icons.arrow_upward, color: yCream, size: 22),
             ),
           ),
         ],

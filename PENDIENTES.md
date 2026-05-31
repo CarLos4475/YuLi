@@ -40,6 +40,14 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
    - ✅ Toca el chip **"CONTEXTO"** arriba → editor para **editar / reemplazar / limpiar** el ancla.
    - ✅ Con un chat ya con contexto, manda **otro** (OCR de pizarra, o IA desde otra nota) → pregunta **Añadir / Reemplazar**. (Si el contexto entrante es idéntico al actual, no pregunta.)
 5. **Sin key** → avisa ir a Ajustes. **Key inválida/sin red/sin saldo** → error claro en el chat.
+7. **Rediseño visual (Claude Design, ADN brutalista):** verificar en dispositivo (no probado en remoto):
+   - Header **ink** con marca (cuadro + diamante), wordmark "YuLi · IA / ASISTENTE DE NOTAS", **segmentado FLASH|PRO**, **barra de uso** (usado/150) y cerrar.
+   - **Barra CONTEXTO ▸** con el texto del ancla + ✎ (editar) + ✕ (quitar).
+   - Burbujas con **sombra dura**: usuario (etiqueta TÚ, accent) e IA (marca con **diamante que rota**, etiqueta YULI · IA, markdown).
+   - **Saludo** genérico al abrir un chat vacío.
+   - **Acciones por respuesta de IA:** Copiar (real), **Guardar en nota / Rehacer / Extraer tareas** (por ahora muestran "disponible en v3").
+   - Quick actions con glifos (≡ ☑ A ⇄ ⌫ ❝) bajo "// ACCIONES SOBRE LA NOTA".
+   - Todo usa el **accent de la nota** (no azul fijo). Revisar que no haya overflow del header en pantallas angostas.
 6. **Auto-compactación del contexto (token-shielding):** carga un contexto largo (>3000 chars; p.ej. varios OCR/notas añadidos) y manda un mensaje → ✅ la IA **compacta** el contexto una vez, aparece el aviso **"✦ Compacté el contexto…"** y un botón **DESHACER** (solo en ese aviso). Deshacer restaura el contexto largo. Editar/añadir contexto vuelve a habilitar la compactación. (No debe poder enviarse otro mensaje mientras compacta.)
 
 **Aún NO hecho:** **v3 real** = que la IA edite notas (crear tareas → FIGHT, insertar/reemplazar celda, poner título). La auto-compactación (#6) ya fue el calentamiento: la IA edita el *contexto*, no las notas. (Producción: retry con backoff, mover key/llamadas a un proxy.)
