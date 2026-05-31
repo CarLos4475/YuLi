@@ -11,7 +11,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../providers/database_providers.dart';
-import '../../providers/ink_recognizer_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
@@ -20,7 +19,6 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
-import '../../../domain/services/ink_recognizer.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
 import 'color_picker.dart';
@@ -34,7 +32,7 @@ import 'shape_picker_popup.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
-import 'ocr_result_sheet.dart';
+import 'ocr_flow.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
 import 'image_crop_screen.dart';
@@ -1358,8 +1356,7 @@ class _WhiteboardEditorScreenState
     return false;
   }
 
-  /// OCR the selected handwriting → editable result sheet. On-device (ML Kit);
-  /// downloads the language model on first use.
+  /// OCR the selected handwriting → editable result sheet (shared flow).
   Future<void> _recognizeSelection() async {
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
@@ -1368,61 +1365,8 @@ class _WhiteboardEditorScreenState
       if (s.isHighlighter || s.isShape) continue;
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
-    if (strokes.isEmpty) return;
-
-    final recognizer = ref.read(inkRecognizerProvider);
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-
-    // Block with a spinner while (maybe downloading the model and) recognizing.
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-
-    String? error;
-    List<InkCandidate> candidates = const [];
-    try {
-      if (!await recognizer.isModelReady(kInkDefaultLang)) {
-        final ok = await recognizer.downloadModel(kInkDefaultLang);
-        if (!ok) error = 'No se pudo descargar el modelo de idioma.';
-      }
-      if (error == null) {
-        candidates = await recognizer.recognize(strokes, langTag: kInkDefaultLang);
-      }
-    } catch (e) {
-      error = 'Error al reconocer: $e';
-    }
-
-    if (navigator.canPop()) navigator.pop(); // close spinner
-    if (!mounted) return;
-
-    if (error != null) {
-      messenger.showSnackBar(SnackBar(
-        content: Text(error),
-        duration: const Duration(seconds: 3),
-      ));
-      return;
-    }
-
-    final text = candidates.isEmpty ? '' : candidates.first.text;
-    showOcrResultSheet(
-      context,
-      text: text,
-      looksNonTextual: _looksNonTextual(text),
-      accent: _accent,
-    );
-  }
-
-  /// Heuristic (NOT a real math classifier): flag results that are empty or
-  /// mostly non-letters/digits, so we can hint "this looks like math/drawing".
-  bool _looksNonTextual(String t) {
-    final s = t.trim();
-    if (s.isEmpty) return true;
-    final letters =
-        RegExp(r'[\p{L}\p{N}]', unicode: true).allMatches(s).length;
-    return letters / s.length < 0.5;
+    runOcrFlow(context, ref, strokes,
+        accent: _accent, folderId: widget.note.folderId);
   }
 
   Future<void> _cropSelectedImage() async {

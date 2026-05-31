@@ -12,13 +12,18 @@ Future<void> showOcrResultSheet(
   required String text,
   required bool looksNonTextual,
   required Color accent,
+  ValueChanged<String>? onSendToNote,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _OcrResultSheet(
-        text: text, looksNonTextual: looksNonTextual, accent: accent),
+      text: text,
+      looksNonTextual: looksNonTextual,
+      accent: accent,
+      onSendToNote: onSendToNote,
+    ),
   );
 }
 
@@ -27,10 +32,15 @@ class _OcrResultSheet extends StatefulWidget {
   final bool looksNonTextual;
   final Color accent;
 
+  /// Called with the (possibly edited) text to push it into a FLIGHT note.
+  /// Null hides the "Enviar a nota" action.
+  final ValueChanged<String>? onSendToNote;
+
   const _OcrResultSheet({
     required this.text,
     required this.looksNonTextual,
     required this.accent,
+    this.onSendToNote,
   });
 
   @override
@@ -132,25 +142,61 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _copyAll,
-                child: Container(
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _copied ? yInk : widget.accent,
-                    border: Border.all(color: yInk, width: yLineMid),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _copyAll,
+                      child: Container(
+                        height: 44,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _copied ? yInk : widget.accent,
+                          border: Border.all(color: yInk, width: yLineMid),
+                        ),
+                        child: Text(
+                          _copied ? '✓ COPIADO' : 'COPIAR TODO',
+                          style: yMono(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              tracking: 1.4,
+                              color: yCream),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    _copied ? '✓ COPIADO' : 'COPIAR TODO',
-                    style: yMono(
-                        size: 12,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yCream),
-                  ),
-                ),
+                  if (widget.onSendToNote != null) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          final t = _ctrl.text;
+                          Navigator.of(context).pop();
+                          widget.onSendToNote!(t);
+                        },
+                        child: Container(
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: yCream,
+                            border:
+                                Border.all(color: widget.accent, width: yLineMid),
+                          ),
+                          child: Text(
+                            'ENVIAR A NOTA',
+                            style: yMono(
+                                size: 12,
+                                weight: FontWeight.w700,
+                                tracking: 1.4,
+                                color: yInk),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 4),
               Text(
