@@ -92,8 +92,14 @@ mejor pero más caro → futuro). Key en secure storage. (Pendiente producción:
     Markov"); ese texto queda como **ancla fija** que persiste toda la sesión.
   - El ancla se envía como un **mensaje `user` aparte** ("Contexto:\n…"), NO concatenada al system
     prompt (el modelo distingue mejor instrucción vs contenido).
-  - **Entradas:** sheet de OCR ("Preguntar a IA"), y botón **IA** en el header del editor de notas
-    (ancla = contenido de la nota; nota vacía → arranque en frío).
+  - **Entradas (todas comparten la sesión por nota):** botón **IA** (✦) en el header del editor de
+    notas (ancla = contenido de la nota) y en el header/toolbar de **pizarra y cuaderno** (frío si
+    no hay ancla); desde el lasso: **"Enviar a Yuli"** (OCR → ancla) y **"Preguntar a Yuli"** (OCR →
+    pre-llena el input sin tocar el ancla); **"Importar nota"** desde pizarra/cuaderno (elegir otra
+    nota de la carpeta → su contenido como ancla). Long-press en una nota inyecta su contenido como
+    contexto (detecta duplicados).
+  - **Render:** las respuestas se muestran con **markdown/LaTeX** reusando el renderer de notas
+    (`NoteMarkdownPreview`); texto plano durante el streaming, markdown al terminar.
 - Las **acciones** (resumir, limpiar, extraer tareas, título, traducir, preguntar libre) son
   **botones de atajo** que mandan un mensaje plantilla dentro del chat. En v2 el resultado solo se
   **lee y se copia** (botón **Copiar** por respuesta — es portapapeles, no edita la app).
@@ -102,6 +108,11 @@ mejor pero más caro → futuro). Key en secure storage. (Pendiente producción:
   últimas ~16 vueltas; **límite diario local de 150 solicitudes** (contador en SharedPreferences,
   reinicia a medianoche, muestra restantes y bloquea con aviso). Todo client-side; en producción
   migraría al proxy.
+- **Auto-compactación del contexto (token-shielding · primer paso de v3, IMPLEMENTADO):** si el
+  ancla supera ~3000 chars, la IA la **compacta** automáticamente (preservando datos/términos
+  clave) antes de usarla, **avisa con un mensaje system en el chat** y ofrece **DESHACER**. Ocurre
+  una vez por sesión (`_compactTried`; se resetea si editas/añades contexto), cuesta 1 request. Es
+  el primer caso en que la IA "edita" algo — pero edita el **contexto**, no tus notas.
 
 **Cómo le llega el contexto:** la IA NO lee trazos; lee texto. La **sheet de OCR** tiene un botón
 `[Preguntar a IA]` que pasa su texto (ya corregido) como ancla inicial. Otros orígenes: una celda
@@ -123,6 +134,10 @@ DeepSeek en v2).
 
 ## v3 — Acciones que editan (la IA aplica cambios) [parqueado]
 
+**Calentamiento hecho:** la **auto-compactación del contexto** (ver v2) ya estrena el patrón "la IA
+edita con aviso + DESHACER" — pero sobre el *contexto*, no sobre notas/tareas/celdas. El v3 real es
+lo de abajo.
+
 Aditivo sobre el chat de v2: cada respuesta del chat gana **botones de "aplicar"**. Siempre
 explícito, nunca en silencio; deshacible vía el editor de celdas. Las notas son por celdas, así que
 aplicar opera a nivel celda.
@@ -143,7 +158,10 @@ aplicar opera a nivel celda.
   reconocido en el lienzo), pero fuera de la v1 de OCR. Requiere nuevo tipo de objeto + edición.
 - **Captura de URLs:** pegar un link → importar como nota markdown limpia (readability) o tarjeta enriquecida (Open Graph). Buen flujo de captura. Nube (fetch).
 - **Búsqueda semántica del segundo cerebro:** embeddings + vector guardado en SQLite; buscar/preguntar por significado, no por palabras exactas. La apuesta grande; la de más trabajo (indexado + re-index incremental). Se conecta con guardar el texto OCR de los manuscritos.
-- **Mate manuscrito → LaTeX** (Mathpix u on-device): es el "modo Matemáticas" que v1-OCR deja
-  apuntado. Manuscrito → LaTeX → **celda Math** (ya existe, usa `flutter_math_fork`). Se enchufa en
-  el mismo seam de reconocimiento que el texto (selector Texto / Matemáticas).
+- **Mate manuscrito → LaTeX:** se PROBÓ Mathpix (trazos → PNG B/N → Mathpix `/v3/text` → LaTeX →
+  contexto/celda Math). Queda en el repo pero **solo en `kDebugMode`** (botón MATH del lasso + bloque
+  de Ajustes): **Mathpix es demasiado caro** para el scope actual → **descartado** como solución.
+  El "modo Matemáticas" se resolverá de **otra forma** (por decidir: on-device, otro proveedor…).
+  El seam de reconocimiento y la celda Math (`flutter_math_fork`) ya están listos. Limpiar el código
+  Mathpix cuando se decida el reemplazo.
 - **Voz → texto** para captura rápida en FIGHT (on-device).
