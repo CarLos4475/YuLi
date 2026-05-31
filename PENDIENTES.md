@@ -23,22 +23,8 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 - **Cerrar y reabrir** el cuaderno/pizarra: el bloque debe conservar su tamaño/escala (se serializa `scale`). Bloques **viejos** (creados antes de este cambio) deben verse igual que antes (scale por defecto 1.0).
 - Que el **bounding box del lasso** quede bien ajustado al bloque después de redimensionar (sin franja vacía arriba/abajo).
 
-### OCR v1 — COMPLETO en pizarra + cuaderno + celda de dibujo (branch `ocr`)
+### OCR v1 — a futuro (verificado en dispositivo, NO bloquea)
 
-**Qué se implementó:** tinta→texto on-device en las 3 superficies de tinta.
-- Dependencia `google_mlkit_digital_ink_recognition`. Servicio `InkRecognizer` (seam `text`/`math`; `math` lanza, reservado) + impl ML Kit + provider. Flujo compartido `runOcrFlow`.
-- Lasso con **escritura** (pen/fountain; excluye figuras/resaltador/imágenes) → botón **"→ TEXTO"** → reconoce → **sheet `TEXTO RECONOCIDO`** editable: **Copiar todo** (usa accent), copiar fragmentos a mano, **Enviar a nota**, aviso "parece no-texto".
-- **Enviar a nota:** selector de **carpeta** (chips) + **notas existentes** (añade celda de texto) o **NUEVA NOTA** (crea nota tipo bloque en la carpeta).
-- **Ajustes → RECONOCIMIENTO (OCR):** descargar/borrar el modelo de español.
-
-**Cómo probar (en dispositivo) — repetir en pizarra, cuaderno y una celda de dibujo de nota:**
-- Escribe a mano, lasso, toca selección → **"→ TEXTO"**.
-  - ✅ Primera vez descarga modelo (red una vez; spinner). Luego offline. (También se puede pre-descargar en Ajustes.)
-  - ✅ Sheet editable; corriges, **Copiar todo** (botón con el color/accent de la nota) o selección manual.
-  - ✅ **Enviar a nota**: elige carpeta y una nota existente (se añade celda de texto al final) o crea una nueva → SnackBar de confirmación; abre la nota y verifica la celda.
-- Notación matemática (Σ, integral) → ✅ **aviso** "parece matemáticas/dibujo".
-- Solo figuras/imágenes/resaltador → ✅ NO aparece "→ TEXTO".
-- **Ajustes**: estado del modelo (Descargado/No), botón Descargar/Borrar funciona.
-- Calidad del reconocimiento con tu letra real (punto sensible).
-
-**Aún NO hecho:** elegir **idioma** del modelo (hoy fijo español); el **modo Matemáticas** (seam listo, motor LaTeX futuro).
+OCR v1 funciona en pizarra, cuaderno y celda de dibujo. Quedan para más adelante:
+- **Elegir idioma del modelo** (hoy fijo español `es`). Sería un selector en Ajustes + pasar el `langTag` a `runOcrFlow`. La base ya soporta varios idiomas.
+- **Modo Matemáticas** (Σ, integrales, etc.): el seam `InkRecognitionMode.math` ya está reservado (hoy lanza). Falta el motor manuscrito → LaTeX (Mathpix, nube) → celda Math. Ver `ONLINE_FEATURES.md`.
