@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ink_recognizer_provider.dart';
 import '../../../domain/services/ink_recognizer.dart';
+import 'ai_chat_sheet.dart';
 import 'ocr_result_sheet.dart';
 import 'ocr_send_to_note.dart';
 
@@ -63,6 +64,7 @@ Future<void> runOcrFlow(
         ? null
         : (t) => sendTextToNote(context, ref, t,
             defaultFolderId: folderId, accent: accent),
+    onAskAi: (t) => showAiChat(context, ref, initialContext: t, accent: accent),
   );
 }
 

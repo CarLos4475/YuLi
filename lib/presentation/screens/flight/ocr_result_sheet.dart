@@ -13,6 +13,7 @@ Future<void> showOcrResultSheet(
   required bool looksNonTextual,
   required Color accent,
   ValueChanged<String>? onSendToNote,
+  ValueChanged<String>? onAskAi,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -23,6 +24,7 @@ Future<void> showOcrResultSheet(
       looksNonTextual: looksNonTextual,
       accent: accent,
       onSendToNote: onSendToNote,
+      onAskAi: onAskAi,
     ),
   );
 }
@@ -36,11 +38,16 @@ class _OcrResultSheet extends StatefulWidget {
   /// Null hides the "Enviar a nota" action.
   final ValueChanged<String>? onSendToNote;
 
+  /// Called with the (possibly edited) text to open the AI chat anchored on it.
+  /// Null hides the "Preguntar a IA" action.
+  final ValueChanged<String>? onAskAi;
+
   const _OcrResultSheet({
     required this.text,
     required this.looksNonTextual,
     required this.accent,
     this.onSendToNote,
+    this.onAskAi,
   });
 
   @override
@@ -62,6 +69,26 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
     Clipboard.setData(ClipboardData(text: _ctrl.text));
     HapticFeedback.selectionClick();
     setState(() => _copied = true);
+  }
+
+  Widget _secondaryBtn(String label, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: widget.accent, width: yLineMid),
+        ),
+        child: Text(
+          label,
+          style: yMono(
+              size: 11, weight: FontWeight.w700, tracking: 1.2, color: yInk),
+        ),
+      ),
+    );
   }
 
   @override
@@ -142,62 +169,51 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _copyAll,
-                      child: Container(
-                        height: 44,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: _copied ? yInk : widget.accent,
-                          border: Border.all(color: yInk, width: yLineMid),
-                        ),
-                        child: Text(
-                          _copied ? '✓ COPIADO' : 'COPIAR TODO',
-                          style: yMono(
-                              size: 12,
-                              weight: FontWeight.w700,
-                              tracking: 1.4,
-                              color: yCream),
-                        ),
-                      ),
-                    ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _copyAll,
+                child: Container(
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _copied ? yInk : widget.accent,
+                    border: Border.all(color: yInk, width: yLineMid),
                   ),
-                  if (widget.onSendToNote != null) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
+                  child: Text(
+                    _copied ? '✓ COPIADO' : 'COPIAR TODO',
+                    style: yMono(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yCream),
+                  ),
+                ),
+              ),
+              if (widget.onSendToNote != null || widget.onAskAi != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (widget.onSendToNote != null)
+                      Expanded(
+                        child: _secondaryBtn('ENVIAR A NOTA', () {
                           final t = _ctrl.text;
                           Navigator.of(context).pop();
                           widget.onSendToNote!(t);
-                        },
-                        child: Container(
-                          height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: yCream,
-                            border:
-                                Border.all(color: widget.accent, width: yLineMid),
-                          ),
-                          child: Text(
-                            'ENVIAR A NOTA',
-                            style: yMono(
-                                size: 12,
-                                weight: FontWeight.w700,
-                                tracking: 1.4,
-                                color: yInk),
-                          ),
-                        ),
+                        }),
                       ),
-                    ),
+                    if (widget.onSendToNote != null && widget.onAskAi != null)
+                      const SizedBox(width: 8),
+                    if (widget.onAskAi != null)
+                      Expanded(
+                        child: _secondaryBtn('PREGUNTAR A IA', () {
+                          final t = _ctrl.text;
+                          Navigator.of(context).pop();
+                          widget.onAskAi!(t);
+                        }),
+                      ),
                   ],
-                ],
-              ),
+                ),
+              ],
               const SizedBox(height: 4),
               Text(
                 'Tip: mantén presionado para seleccionar y copiar un fragmento.',

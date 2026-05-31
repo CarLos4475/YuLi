@@ -23,6 +23,24 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 - **Cerrar y reabrir** el cuaderno/pizarra: el bloque debe conservar su tamaño/escala (se serializa `scale`). Bloques **viejos** (creados antes de este cambio) deben verse igual que antes (scale por defecto 1.0).
 - Que el **bounding box del lasso** quede bien ajustado al bloque después de redimensionar (sin franja vacía arriba/abajo).
 
+### v2 — Asistente IA (chat) — branch `ocr` — NECESITA TU API KEY
+
+**Qué se implementó:** base DeepSeek (streaming, OpenAI-compatible) + key cifrada en Ajustes + panel de chat efímero anclado. Read-only (la IA habla, tú copias; NO edita notas → eso es v3). Entrada actual: desde la sheet de OCR, botón **"Preguntar a IA"**.
+
+**Cómo probar (en dispositivo):**
+1. **Ajustes → ASISTENTE IA (DEEPSEEK)** → pega tu API key → **Guardar** (se guarda cifrada; el estado pasa a "Configurada ✓"). La key NO sale del dispositivo.
+2. Pizarra/cuaderno/celda: escribe a mano → lasso → **"→ TEXTO"** → en la sheet, **"Preguntar a IA"** → se abre el chat anclado a ese texto.
+   - ✅ La respuesta llega en **streaming** (token a token).
+   - ✅ Chips de atajo: Resumir / Limpiar / Extraer tareas / Título / Traducir.
+   - ✅ Repreguntar mantiene el hilo ("más corto", "en inglés").
+   - ✅ Toggle **FLASH/PRO** (modelo).
+   - ✅ **Copiar** en cada respuesta de la IA.
+   - ✅ Cerrar el chat / salir de la nota lo descarta (efímero).
+3. **Sin key** → al abrir el chat avisa "configura tu API key en Ajustes". **Key inválida / sin red / sin saldo** → mensaje de error claro en el chat.
+4. Arranque en frío (cuando exista botón global): pide "¿De qué es esto?" como ancla. (Hoy el chat soporta el ancla; falta el botón de lanzamiento en frío.)
+
+**Aún NO hecho:** botón global para abrir el chat **en frío** y desde el **contenido de una nota** (no solo OCR); **v3** = que la IA aplique cambios (crear tareas, insertar/reemplazar celda, título).
+
 ### OCR v1 — a futuro (verificado en dispositivo, NO bloquea)
 
 OCR v1 funciona en pizarra, cuaderno y celda de dibujo. Quedan para más adelante:
