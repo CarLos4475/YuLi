@@ -11,6 +11,7 @@ class LassoMiniToolbar extends StatefulWidget {
   final VoidCallback onCopy;
   final VoidCallback onCut;
   final VoidCallback? onCrop; // only when a single image is selected
+  final VoidCallback? onRecognizeText; // only when selection has handwriting
   final List<Color> palette;
   final List<double> widths;
 
@@ -25,6 +26,7 @@ class LassoMiniToolbar extends StatefulWidget {
     required this.onCopy,
     required this.onCut,
     this.onCrop,
+    this.onRecognizeText,
     required this.palette,
     this.widths = const [3.0, 6.0, 10.0],
   });
@@ -124,6 +126,13 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (widget.onRecognizeText != null) ...[
+                _Btn(
+                    icon: Icons.text_fields,
+                    label: 'TEXTO',
+                    onTap: widget.onRecognizeText!),
+                _sep(),
+              ],
               if (widget.onCrop != null) ...[
                 _Btn(icon: Icons.crop, label: 'RECORTAR', onTap: widget.onCrop!),
                 _sep(),

@@ -29,6 +29,9 @@ dependencies:
   photo_manager: ^3.6.1
   flutter_image_compress: ^2.3.0
 
+  # OCR — handwriting → text (on-device, ML Kit Digital Ink)
+  google_mlkit_digital_ink_recognition: ^0.14.2
+
   # Utilities
   shared_preferences: ^2.3.2
   path_provider: ^2.1.5

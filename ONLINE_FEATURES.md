@@ -25,6 +25,20 @@ puntos → conversión directa a `Ink`/`StrokePoint`.
 **Qué se reconoce:** solo escritura (`pen`, `fountainPen`). Excluye `isShape`, resaltador,
 imágenes y task blocks.
 
+**TEXTO, no matemáticas.** ML Kit es un reconocedor de *palabras/prosa*, NO de notación
+matemática: una Σ, integral, fracción, exponentes/subíndices salen MAL por diseño (mapea el trazo
+a la letra/símbolo más cercano; no da LaTeX). No es afinable — es la herramienta equivocada para
+mate. Decisiones:
+- v1 reconoce **texto** y punto. La **sheet editable** es la red de seguridad para correcciones.
+- **Aviso "parece no-texto":** tras reconocer, si la confianza es baja / el resultado pinta
+  no-textual (mucho símbolo no alfanumérico, tokens muy cortos), mostrar un hint suave: "esto
+  parece matemáticas/dibujo — el modo Matemáticas llega después", en vez de devolver basura.
+  (Nota honesta: es un hint por baja confianza, NO un clasificador de mate fiable; eso es difícil.)
+- **Dejar la BASE lista para el motor de matemáticas** (recordatorio): la interfaz de
+  reconocimiento se diseña con la idea de un *modo*/segundo motor. El camino de mate (futuro) es
+  **manuscrito → LaTeX** (motor específico tipo Mathpix, nube) → **celda Math** (que ya existe en
+  la app). Ver "Mate manuscrito → LaTeX" en Parqueado; conecta directo aquí.
+
 **Fuente de trazos:** selección con **lasso** (reusa `selectedIndices`) en ambos editores;
 en **cuaderno** además "página completa". Pizarra (infinita): solo por lasso.
 
@@ -44,7 +58,8 @@ búsqueda en manuscrito queda para la fase de búsqueda semántica.
 mlkit_ink_recognizer.dart` (impl) + provider Riverpod (feature-flag = modelo descargado).
 Gestión del modelo de idioma en una pantalla de ajustes.
 
-**No-goals v1:** capa IA, bloque de texto editable en el canvas, auto-indexado para búsqueda.
+**No-goals v1:** capa IA, motor de matemáticas/LaTeX (solo se deja la base/seam para el modo
+futuro), bloque de texto editable en el canvas, auto-indexado para búsqueda.
 
 ## v2 — Asistente IA: CHAT (solo conversación) [scope CONGELADO]
 
@@ -114,5 +129,7 @@ aplicar opera a nivel celda.
   reconocido en el lienzo), pero fuera de la v1 de OCR. Requiere nuevo tipo de objeto + edición.
 - **Captura de URLs:** pegar un link → importar como nota markdown limpia (readability) o tarjeta enriquecida (Open Graph). Buen flujo de captura. Nube (fetch).
 - **Búsqueda semántica del segundo cerebro:** embeddings + vector guardado en SQLite; buscar/preguntar por significado, no por palabras exactas. La apuesta grande; la de más trabajo (indexado + re-index incremental). Se conecta con guardar el texto OCR de los manuscritos.
-- **Mate manuscrito → LaTeX** (Mathpix u on-device): nicho, calza con `flutter_math_fork`.
+- **Mate manuscrito → LaTeX** (Mathpix u on-device): es el "modo Matemáticas" que v1-OCR deja
+  apuntado. Manuscrito → LaTeX → **celda Math** (ya existe, usa `flutter_math_fork`). Se enchufa en
+  el mismo seam de reconocimiento que el texto (selector Texto / Matemáticas).
 - **Voz → texto** para captura rápida en FIGHT (on-device).
