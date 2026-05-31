@@ -4,8 +4,14 @@ import '../../widgets/yuli_design.dart';
 class FormatToolbar extends StatelessWidget {
   final TextEditingController? controller;
   final VoidCallback? onOpenInsertMenu;
+  final Color accent;
 
-  const FormatToolbar({super.key, this.controller, this.onOpenInsertMenu});
+  const FormatToolbar({
+    super.key,
+    this.controller,
+    this.onOpenInsertMenu,
+    this.accent = yFlight,
+  });
 
   void _wrap(String before, String after) {
     final ctrl = controller;
@@ -77,7 +83,7 @@ class FormatToolbar extends StatelessWidget {
                 height: 30,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: yFlight,
+                  color: accent,
                   border: Border.all(color: yInk, width: 1.5),
                 ),
                 child: Text('+',

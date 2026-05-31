@@ -7,9 +7,11 @@ import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
+import '../../providers/note_providers.dart';
 import '../../utils/pdf_export.dart';
 import '../../widgets/fight_panel.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/ai_link_badge.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/lab_space.dart';
@@ -308,6 +310,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
     final linkedCards = ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
+    final aiLinked = hasAiKey && (widget.note.kind == NoteKind.block
+        ? blocks.isNotEmpty
+        : (ref.watch(canvasContextSourcesProvider(widget.note.id)).valueOrNull?.isNotEmpty ?? false));
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
 
@@ -325,6 +330,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     dirty: _dirty,
                     isPreview: _isPreview,
                     hasAiKey: hasAiKey,
+                    aiLinked: aiLinked,
+                    accent: _accent,
                     onBack: () => Navigator.pop(context),
                     onSave: _saveTitle,
                     onTogglePreview: () => setState(() => _isPreview = !_isPreview),
@@ -344,19 +351,23 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         bg: widget.folder.color,
                         fg: yCream,
                       ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: hasAiKey ? _openAiChat : null,
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: hasAiKey ? _accent : yMuted,
-                            border: Border.all(color: yInk, width: yLineMid),
+                      AiLinkBadge(
+                        active: aiLinked,
+                        color: _accent,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: hasAiKey ? _openAiChat : null,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: hasAiKey ? _accent : yMuted,
+                              border: Border.all(color: yInk, width: yLineMid),
+                            ),
+                            child: Icon(Icons.auto_awesome,
+                                color: hasAiKey ? yCream : yCream2, size: 18),
                           ),
-                          child: Icon(Icons.auto_awesome,
-                              color: hasAiKey ? yCream : yCream2, size: 18),
                         ),
                       ),
                       GestureDetector(
@@ -440,6 +451,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       ? FormatToolbar(
                           controller: _activeTextCtrl,
                           onOpenInsertMenu: _showInsertMenu,
+                          accent: _accent,
                         )
                       : const SizedBox.shrink(),
                 ),
@@ -581,6 +593,8 @@ class _CollapsedHeader extends StatelessWidget {
   final bool dirty;
   final bool isPreview;
   final bool hasAiKey;
+  final bool aiLinked;
+  final Color accent;
   final VoidCallback onBack;
   final VoidCallback onSave;
   final VoidCallback onTogglePreview;
@@ -594,6 +608,8 @@ class _CollapsedHeader extends StatelessWidget {
     required this.dirty,
     required this.isPreview,
     required this.hasAiKey,
+    required this.aiLinked,
+    required this.accent,
     required this.onBack,
     required this.onSave,
     required this.onTogglePreview,
@@ -627,7 +643,7 @@ class _CollapsedHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Container(width: 4, height: 24, color: folder.color),
+          Container(width: 4, height: 24, color: accent),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -636,7 +652,7 @@ class _CollapsedHeader extends StatelessWidget {
                 size: 16,
                 weight: FontWeight.w700,
                 letterSpacing: -0.3,
-                color: folder.color,
+                color: accent,
                 height: 1.0,
               ),
               maxLines: 1,
@@ -644,12 +660,16 @@ class _CollapsedHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _HeaderIcon(
-            icon: Icons.auto_awesome,
-            fill: hasAiKey,
-            color: hasAiKey ? folder.color : yMuted,
-            onTap: hasAiKey ? onAi : null,
-            onLongPress: hasAiKey ? onAiLongPress : null,
+          AiLinkBadge(
+            active: aiLinked,
+            color: accent,
+            child: _HeaderIcon(
+              icon: Icons.auto_awesome,
+              fill: hasAiKey,
+              color: hasAiKey ? accent : yMuted,
+              onTap: hasAiKey ? onAi : null,
+              onLongPress: hasAiKey ? onAiLongPress : null,
+            ),
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
@@ -743,7 +763,7 @@ class _NoteHeroHeader extends ConsumerWidget {
         children: [
           Positioned(
             top: 0, bottom: 0, left: 0,
-            child: Container(width: 6, color: folder.color),
+            child: Container(width: 6, color: accent),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
@@ -773,7 +793,7 @@ class _NoteHeroHeader extends ConsumerWidget {
                               size: 28,
                               weight: FontWeight.w700,
                               letterSpacing: -1,
-                              color: folder.color,
+                              color: accent,
                               height: 1.1,
                             ),
                             decoration: InputDecoration(

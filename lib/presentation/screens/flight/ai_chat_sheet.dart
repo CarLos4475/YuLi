@@ -196,15 +196,35 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   DateTime? _syncedAt;
 
-  /// Rebuild the anchor from ALL of this canvas's context sources (notes +
-  /// urls). Each source is compacted-if-long and cached per content, so unchanged
-  /// sources are free on resync/re-open. No-op if there are no sources.
+  /// Rebuild the anchor from ALL context sources. For **block notes** the
+  /// note's own content is the primary source (implicit, no DB row) followed by
+  /// any additional sources (other notes + urls). For **canvases**, reads all DB
+  /// sources (notes + urls), no implicit self-source.
   Future<void> _resyncFromSources() async {
     final repo = ref.read(noteRepositoryProvider);
-    final sources = await repo.getContextSources(_s.noteId);
-    if (sources.isEmpty) return; // not linked → manual anchor stays
+    final note = await repo.getById(_s.noteId);
+    if (note == null) return;
+    final isBlock = note.kind == NoteKind.block;
+
     final pieces = <String>[];
+
+    // Block note: own content is always the first (implicit) source.
+    if (isBlock) {
+      final blocks = await ref.read(noteBlocksProvider(_s.noteId).future);
+      final label = (note.title?.trim().isEmpty ?? true)
+          ? 'Nota'
+          : note.title!.trim();
+      final raw = _extractNoteContext(blocks);
+      if (raw.trim().isNotEmpty) {
+        final piece = await _compactPiece('note:${note.id}', raw);
+        pieces.add('## $label\n\n$piece');
+      }
+    }
+
+    // Additional sources from DB: URLs for block notes; notes + URLs for canvases.
+    final sources = await repo.getContextSources(_s.noteId);
     for (final s in sources) {
+      if (s.isNote && s.ref == _s.noteId.toString()) continue; // skip self-ref
       String raw;
       String label;
       String key;
@@ -214,13 +234,14 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           await repo.removeContextSource(s.id);
           continue;
         }
-        final note = await repo.getById(nid);
-        if (note == null) {
-          await repo.removeContextSource(s.id); // dangling → drop
+        final srcNote = await repo.getById(nid);
+        if (srcNote == null) {
+          await repo.removeContextSource(s.id);
           continue;
         }
         final blocks = await ref.read(noteBlocksProvider(nid).future);
-        label = (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
+        label =
+            (srcNote.title?.trim().isEmpty ?? true) ? 'Nota' : srcNote.title!.trim();
         raw = _extractNoteContext(blocks);
         key = 'note:$nid';
       } else {
@@ -232,6 +253,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       final piece = await _compactPiece(key, raw);
       pieces.add('## $label\n\n$piece');
     }
+
+    if (pieces.isEmpty) return; // empty block note → no anchor yet
+
     _s.setSyncedAnchor(pieces.join('\n\n---\n\n'));
     if (mounted) setState(() => _syncedAt = DateTime.now());
   }
@@ -335,16 +359,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             child: AnimatedBuilder(
               animation: _s,
               builder: (_, _) {
-                // A linked canvas always shows the chat (so its SINCRONIZADA
-                // bar / unlink is reachable even if the source note is empty).
+                final hostKind = ref
+                    .watch(noteByIdProvider(_s.noteId))
+                    .valueOrNull
+                    ?.kind;
+                final isBlock = hostKind == NoteKind.block;
+                // Block notes: show the chat only when there's actual content
+                // (hasAnchor set by _resyncFromSources). Empty → gate.
                 final linked = (ref
                         .watch(canvasContextSourcesProvider(_s.noteId))
                         .valueOrNull
                         ?.isNotEmpty) ??
                     false;
-                return (_s.hasAnchor || linked)
-                    ? _buildChat()
-                    : _buildAnchorGate();
+                final showChat =
+                    isBlock ? _s.hasAnchor : (_s.hasAnchor || linked);
+                return showChat ? _buildChat() : _buildAnchorGate(isBlock);
               },
             ),
           ),
@@ -353,7 +382,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  Widget _buildAnchorGate() {
+  Widget _buildAnchorGate([bool isBlock = false]) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -364,31 +393,45 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('¿DE QUÉ ES ESTO?',
-              style: yMono(
-                  size: 11,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yInk)),
-          const SizedBox(height: 6),
-          Text(
-            'Dale un punto de partida (ej. "Proceso de Markov"). Queda como '
-            'contexto de la conversación; puedes editarlo luego.',
-            style: yMono(size: 10, tracking: 0.4, color: yMuted),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _anchorInput,
-            autofocus: true,
-            maxLines: 3,
-            minLines: 1,
-            style: yBody(size: 15, color: yInk),
-            onSubmitted: (v) => _s.setAnchor(v),
-            decoration: _fieldDeco('¿Sobre qué quieres hablar?'),
-          ),
-          const SizedBox(height: 12),
-          _primaryButton('EMPEZAR', () => _s.setAnchor(_anchorInput.text)),
-          const SizedBox(height: 10),
+              if (isBlock) ...[
+                Text('ESTA NOTA ESTÁ VACÍA',
+                style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk)),
+            const SizedBox(height: 6),
+            Text(
+              'Importa otra nota o agrega un enlace para darle contexto a la IA.',
+              style: yMono(size: 10, tracking: 0.4, color: yMuted),
+            ),
+              ] else ...[
+                Text('¿DE QUÉ ES ESTO?',
+                style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk)),
+            const SizedBox(height: 6),
+            Text(
+              'Dale un punto de partida (ej. "Proceso de Markov"). Queda como '
+              'contexto de la conversación; puedes editarlo luego.',
+              style: yMono(size: 10, tracking: 0.4, color: yMuted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _anchorInput,
+              autofocus: true,
+              maxLines: 3,
+              minLines: 1,
+              style: yBody(size: 15, color: yInk),
+              onSubmitted: (v) => _s.setAnchor(v),
+              decoration: _fieldDeco('¿Sobre qué quieres hablar?'),
+            ),
+            const SizedBox(height: 12),
+            _primaryButton('EMPEZAR', () => _s.setAnchor(_anchorInput.text)),
+            const SizedBox(height: 10),
+              ],
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _showNotePicker,
@@ -407,37 +450,30 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       color: yInk)),
             ),
           ),
-          if (_hostIsCanvas) ...[
-            const SizedBox(height: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _showSourcesSheet,
-              child: Container(
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: yCream,
-                  border: Border.all(color: widget.accent, width: yLineMid),
-                ),
-                child: Text('FUENTES DE CONTEXTO',
-                    style: yMono(
-                        size: 12,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yInk)),
+          const SizedBox(height: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _showSourcesSheet,
+            child: Container(
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: widget.accent, width: yLineMid),
               ),
+              child: Text('FUENTES DE CONTEXTO',
+                  style: yMono(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk)),
             ),
-          ],
+          ),
             ],
           ),
         ),
       ],
     );
-  }
-
-  bool get _hostIsCanvas {
-    final k = ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
-    return k == NoteKind.whiteboard || k == NoteKind.notebook;
   }
 
   /// Open a bottom sheet listing the other notes in the same folder so the
@@ -569,10 +605,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// Branches: a linked canvas shows the SINCRONIZADA bar; everything else the
-  /// normal editable CONTEXTO bar (+ a link affordance when the host is a
-  /// canvas).
+  /// Branches: block notes get the implicit "NOTA COMO CONTEXTO" bar; canvases
+  /// show the SINCRONIZADA / CONTEXTO bar as before.
   Widget _contextBar() {
+    final hostKind =
+        ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
+    if (hostKind == NoteKind.block) return _noteContextBar();
     final sources =
         ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
             const [];
@@ -580,11 +618,37 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return _normalContextBar();
   }
 
-  /// CONTEXTO ▸ [texto del ancla]  ✎  ✕  (🔗 si es un canvas)
+  /// NOTA COMO CONTEXTO · [N enlaces]   [🔗]
+  Widget _noteContextBar() {
+    final urls = (ref
+                .watch(canvasContextSourcesProvider(_s.noteId))
+                .valueOrNull ??
+            const [])
+        .where((s) => s.isUrl)
+        .length;
+    final urlLabel = urls == 0 ? '' : ' · $urls enlaces';
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
+      child: Row(
+        children: [
+          Container(width: 8, height: 8, color: widget.accent),
+          const SizedBox(width: 8),
+          Text('NOTA COMO CONTEXTO$urlLabel',
+              style: yMono(
+                  size: 10, weight: FontWeight.w700, tracking: 1.2, color: yInk)),
+          const Spacer(),
+          _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
+        ],
+      ),
+    );
+  }
+
+  /// CONTEXTO ▸ [texto del ancla]  ✎  ✕  🔗
   Widget _normalContextBar() {
-    final hostKind = ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
-    final isCanvas =
-        hostKind == NoteKind.whiteboard || hostKind == NoteKind.notebook;
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
@@ -617,10 +681,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ),
           ),
           const SizedBox(width: 8),
-          if (isCanvas) ...[
-            _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
-            const SizedBox(width: 6),
-          ],
+          _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
+          const SizedBox(width: 6),
           _ghostIcon(Icons.edit, 'Editar contexto', _editContext),
           const SizedBox(width: 6),
           _ghostIcon(Icons.close, 'Quitar contexto', () => _s.setAnchor('')),
@@ -828,10 +890,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// Returns the complementary colour of [c] (180° hue shift).
-  /// AI avatar: square accent-coloured tile that spins erratically.
-  /// AI mark: ink square containing a rotating accent diamond (keeps the
-  /// erratic animation).
+  /// AI avatar: rotating accent square (no background), same size as the old
+  /// ink square (32×32). Erratic spin.
   Widget _aiAvatar() {
     final erratic = TweenSequence<double>([
       TweenSequenceItem(
@@ -860,25 +920,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           weight: 15),
     ]).animate(_aiSpinCtrl);
 
-    return Container(
-      width: 32,
-      height: 32,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: yInk,
-        border: Border.all(color: yInk, width: yLineMid),
-      ),
-      child: AnimatedBuilder(
-        animation: erratic,
-        builder: (_, _) => Transform.rotate(
-          angle: math.pi / 4 + erratic.value,
-          child: Container(
-            width: 13,
-            height: 13,
-            decoration: BoxDecoration(
-              color: widget.accent,
-              border: Border.all(color: yCream, width: 2),
-            ),
+    return AnimatedBuilder(
+      animation: erratic,
+      builder: (_, _) => Transform.rotate(
+        angle: math.pi / 4 + erratic.value,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: widget.accent,
+            border: Border.all(color: yInk, width: 2.5),
           ),
         ),
       ),
@@ -1205,7 +1256,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     // (glyph, label, prompt, sendWithHistory)
     final items = <(String, String, String, bool)>[
       ('≡', 'Resumir', 'Resume el contexto en pocas líneas.', false),
-      ('☑', 'Extraer tareas',
+      ('☐', 'Extraer tareas',
           'Lista las tareas accionables del contexto, una por línea, sin numerar.',
           false),
       ('A', 'Título', 'Sugiere 3 títulos cortos para el contexto.', false),
