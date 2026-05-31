@@ -752,6 +752,35 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         content: Text('Copiado'), duration: Duration(milliseconds: 700)));
   }
 
+  /// Repairs malformed GFM tables from the model: rebuilds each delimiter row
+  /// (`|---|---|`) to match the header's column count. The model sometimes
+  /// emits a delimiter with the wrong number of columns, which markdown_widget
+  /// (strict) then refuses to render → raw pipes. We only touch delimiter rows.
+  String _fixMarkdownTables(String md) {
+    if (!md.contains('|')) return md;
+    final lines = md.split('\n');
+    // A delimiter-only row: pipes/dashes/colons/spaces, with at least one dash.
+    final sepRe = RegExp(r'^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$');
+    int colCount(String row) {
+      var s = row.trim();
+      if (s.startsWith('|')) s = s.substring(1);
+      if (s.endsWith('|')) s = s.substring(0, s.length - 1);
+      return s.split('|').length;
+    }
+
+    for (var i = 1; i < lines.length; i++) {
+      final line = lines[i];
+      if (!line.contains('|') || !sepRe.hasMatch(line)) continue;
+      final header = lines[i - 1];
+      if (!header.contains('|')) continue;
+      final cols = colCount(header);
+      if (cols < 1) continue;
+      final rebuilt = '|${List.filled(cols, '---').join('|')}|';
+      if (rebuilt != line.trim()) lines[i] = rebuilt;
+    }
+    return lines.join('\n');
+  }
+
   String _cleanTaskLine(String s) =>
       s.replaceAll('**', '').replaceAll('`', '').trim();
 
@@ -811,7 +840,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         ? Text('…', style: yBody(size: 14, color: yInk))
         : streaming
             ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
-            : NoteMarkdownPreview(data: m.text);
+            : NoteMarkdownPreview(data: _fixMarkdownTables(m.text));
     final actions = (!streaming && m.text.isNotEmpty)
         ? <Widget>[
             _msgActionBtn('Copiar', () => _copy(m.text)),
