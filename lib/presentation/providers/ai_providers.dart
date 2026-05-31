@@ -1,10 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/services/ai_key_store.dart';
+import '../../data/services/ai_usage_limiter.dart';
 import '../../data/services/deepseek_assistant.dart';
 import '../../domain/services/ai_assistant.dart';
 
 final aiKeyStoreProvider = Provider<AiKeyStore>((ref) => AiKeyStore());
+
+/// Local daily request cap (150/day). See [AiUsageLimiter].
+final aiUsageLimiterProvider =
+    Provider<AiUsageLimiter>((ref) => const AiUsageLimiter(dailyLimit: 150));
 
 final aiAssistantProvider = Provider<AiAssistant>(
     (ref) => DeepseekAssistant(ref.read(aiKeyStoreProvider)));

@@ -87,7 +87,11 @@ storage.
 - Las **acciones** (resumir, limpiar, extraer tareas, título, traducir, preguntar libre) son
   **botones de atajo** que mandan un mensaje plantilla dentro del chat. En v2 el resultado solo se
   **lee y se copia** (botón **Copiar** por respuesta — es portapapeles, no edita la app).
-- **Costo:** el historial acumula tokens → recortar conversaciones largas.
+- **Guardarraíles (implementados):** system prompt fijo (rol/idioma/formato/reglas);
+  `max_tokens=2048` por respuesta; ancla recortada a ~8000 chars; historial recortado a las
+  últimas ~16 vueltas; **límite diario local de 150 solicitudes** (contador en SharedPreferences,
+  reinicia a medianoche, muestra restantes y bloquea con aviso). Todo client-side; en producción
+  migraría al proxy.
 
 **Cómo le llega el contexto:** la IA NO lee trazos; lee texto. La **sheet de OCR** tiene un botón
 `[Preguntar a IA]` que pasa su texto (ya corregido) como ancla inicial. Otros orígenes: una celda

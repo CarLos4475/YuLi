@@ -6,6 +6,18 @@ import '../../providers/ai_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 
+/// Default system prompt (fixed). Defines role, language, format and soft rules.
+const _kAiSystemBase =
+    'Eres el asistente personal del "segundo cerebro" del usuario (una app de '
+    'notas). Responde SIEMPRE en español, claro y conciso, usando markdown '
+    'cuando ayude. Cíñete al contexto dado; si falta información, dilo en una '
+    'línea en vez de inventar. Al extraer tareas, devuelve una por línea, '
+    'accionables y breves, sin numerar. No inventes datos del usuario.';
+
+/// Cost guards: cap the anchor context and how many past turns are resent.
+const _kAnchorMaxChars = 8000;
+const _kMaxHistoryMsgs = 16;
+
 /// Open the AI chat. v2 is **read-only**: the assistant talks and you copy; it
 /// never edits notes/tasks (that's v3). The conversation is **ephemeral** (dies
 /// with the sheet) and **always anchored** to a context: [initialContext] when
@@ -58,12 +70,19 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   String? _anchor; // context anchor; null until set (cold start)
   bool _streaming = false;
   AiModel _model = AiModel.flash;
+  int? _remaining; // requests left today (daily cap)
 
   @override
   void initState() {
     super.initState();
     final ctx = widget.initialContext?.trim();
     if (ctx != null && ctx.isNotEmpty) _anchor = ctx;
+    _loadRemaining();
+  }
+
+  Future<void> _loadRemaining() async {
+    final r = await ref.read(aiUsageLimiterProvider).remaining();
+    if (mounted) setState(() => _remaining = r);
   }
 
   @override
@@ -74,9 +93,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     super.dispose();
   }
 
-  String _systemPrompt() =>
-      "Eres el asistente del 'segundo cerebro' del usuario. Responde en "
-      "español, claro y conciso. Trabaja sobre este contexto:\n\n${_anchor ?? ''}";
+  String _systemPrompt() {
+    final ctx = _anchor ?? '';
+    final capped =
+        ctx.length > _kAnchorMaxChars ? ctx.substring(0, _kAnchorMaxChars) : ctx;
+    return '$_kAiSystemBase\n\nContexto:\n\n$capped';
+  }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -90,6 +112,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   Future<void> _send(String text) async {
     final t = text.trim();
     if (_streaming || t.isEmpty || _anchor == null) return;
+
+    final limiter = ref.read(aiUsageLimiterProvider);
+    if (!await limiter.canSend()) {
+      if (!mounted) return;
+      setState(() => _msgs.add(const _ChatMsg(AiRole.assistant,
+          '⚠️ Límite diario de IA alcanzado (150/día). Se reinicia mañana.')));
+      _scrollToBottom();
+      return;
+    }
+
     final history = List<_ChatMsg>.from(_msgs);
     setState(() {
       _msgs.add(_ChatMsg(AiRole.user, t));
@@ -97,12 +129,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       _streaming = true;
       _input.clear();
     });
+    await limiter.record();
+    _loadRemaining();
     final assistantIdx = _msgs.length - 1;
     _scrollToBottom();
 
+    // Cap resent history to bound token cost.
+    final capped = history.length > _kMaxHistoryMsgs
+        ? history.sublist(history.length - _kMaxHistoryMsgs)
+        : history;
     final convo = <AiMessage>[
       AiMessage(AiRole.system, _systemPrompt()),
-      ...history.map((m) => AiMessage(m.role, m.text)),
+      ...capped.map((m) => AiMessage(m.role, m.text)),
       AiMessage(AiRole.user, t),
     ];
 
@@ -248,6 +286,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                 style: yMono(size: 8, tracking: 0.8, color: yInk)),
           ),
         ),
+        if (_remaining != null) ...[
+          const SizedBox(width: 8),
+          Text('$_remaining hoy',
+              style: yMono(size: 8, tracking: 0.6, color: yMuted)),
+        ],
         const Spacer(),
         GestureDetector(
           behavior: HitTestBehavior.opaque,

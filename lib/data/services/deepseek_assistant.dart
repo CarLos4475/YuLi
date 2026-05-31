@@ -24,7 +24,7 @@ class DeepseekAssistant implements AiAssistant {
 
   @override
   Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash}) async* {
+      {AiModel model = AiModel.flash, int maxTokens = 2048}) async* {
     final key = (await keyStore.read())?.trim();
     if (key == null || key.isEmpty) {
       throw const AiException('Falta la API key (configúrala en Ajustes).');
@@ -36,6 +36,7 @@ class DeepseekAssistant implements AiAssistant {
       ..body = jsonEncode({
         'model': _modelId(model),
         'stream': true,
+        'max_tokens': maxTokens,
         'messages': messages
             .map((m) => {'role': m.role.name, 'content': m.content})
             .toList(),

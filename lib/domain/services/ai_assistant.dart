@@ -15,9 +15,10 @@ enum AiModel { flash, pro }
 /// does not edit notes/tasks — those "apply" actions are v3.
 abstract class AiAssistant {
   /// Stream the assistant's reply token-by-token for [messages].
+  /// [maxTokens] caps each reply's length/cost.
   /// Throws [AiException] on missing key / network / API errors.
   Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash});
+      {AiModel model = AiModel.flash, int maxTokens = 2048});
 }
 
 class AiException implements Exception {
