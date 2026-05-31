@@ -50,10 +50,19 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
    - Todo usa el **accent de la nota** (no azul fijo). Revisar que no haya overflow del header en pantallas angostas.
 6. **Auto-compactación del contexto (token-shielding):** carga un contexto largo (>3000 chars; p.ej. varios OCR/notas añadidos) y manda un mensaje → ✅ la IA **compacta** el contexto una vez, aparece el aviso **"✦ Compacté el contexto…"** y un botón **DESHACER** (solo en ese aviso). Deshacer restaura el contexto largo. Editar/añadir contexto vuelve a habilitar la compactación. (No debe poder enviarse otro mensaje mientras compacta.)
 
-**Aún NO hecho:** **v3 real** = que la IA edite notas (crear tareas → FIGHT, insertar/reemplazar celda, poner título). La auto-compactación (#6) ya fue el calentamiento: la IA edita el *contexto*, no las notas. (Producción: retry con backoff, mover key/llamadas a un proxy.)
+### v3 — Acciones que editan (IMPLEMENTADO) — verificar en dispositivo
+
+Botones en cada respuesta de la IA:
+- ✅ **Copiar** (portapapeles).
+- ✅ **Rehacer** → descarta esa respuesta y regenera el turno (re-envía tu mensaje). Verificar que en una respuesta anterior descarte las de abajo (es "rehacer desde aquí").
+- ✅ **Guardar en nota** → abre el selector de carpeta/nota (mismo que OCR): elige nota existente (añade celda de texto al final) o crea nueva. Verifica la celda en la nota.
+- ✅ **Extraer tareas → FIGHT** → abre **REVISAR TAREAS** (checkbox + texto editable por línea) → **CREAR N** → tareas en FIGHT (`@carpeta` de la nota) enlazadas a la nota. Verifica que aparezcan en FIGHT y en el bloque de tareas de la nota.
+- Probar con respuestas SIN lista (extraer no debe inventar; avisa "no encontré tareas" si no hay).
+
+**Pendiente v3.1:** sugerir **título** → `note.title`; **limpiar/reescribir → reemplazar** una celda concreta (hoy "Guardar en nota" siempre añade nueva). Producción: retry con backoff, proxy para la key.
 
 ### OCR v1 — a futuro (verificado en dispositivo, NO bloquea)
 
 OCR v1 funciona en pizarra, cuaderno y celda de dibujo. Quedan para más adelante:
 - **Elegir idioma del modelo** (hoy fijo español `es`). Sería un selector en Ajustes + pasar el `langTag` a `runOcrFlow`. La base ya soporta varios idiomas.
-- **Modo Matemáticas** (Σ, integrales, etc.): el seam `InkRecognitionMode.math` está reservado. Se **probó Mathpix** (manuscrito → LaTeX) y quedó **solo en debug** (botón MATH del lasso + bloque de Ajustes gateados a `kDebugMode`); **descartado por caro**. Resolver de **otra forma** (por decidir). Limpiar el código Mathpix cuando se decida el reemplazo. Ver `ONLINE_FEATURES.md`.
+- **Modo Matemáticas** (Σ, integrales, etc.): el seam `InkRecognitionMode.math` sigue reservado. Mathpix se **eliminó por completo** (muy caro). Resolver de **otra forma** (por decidir: on-device u otro proveedor). Ver `ONLINE_FEATURES.md`.

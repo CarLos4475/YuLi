@@ -132,24 +132,23 @@ importa para *leer* el contexto: una celda o toda la nota unida.)
 sugerir carpeta, historial persistido, otros proveedores implementados (interfaz lista, solo
 DeepSeek en v2).
 
-## v3 — Acciones que editan (la IA aplica cambios) [parqueado]
+## v3 — Acciones que editan (la IA aplica cambios) [IMPLEMENTADO]
 
-**Calentamiento hecho:** la **auto-compactación del contexto** (ver v2) ya estrena el patrón "la IA
-edita con aviso + DESHACER" — pero sobre el *contexto*, no sobre notas/tareas/celdas. El v3 real es
-lo de abajo.
+Cada respuesta de la IA tiene **botones de "aplicar"** (siempre explícito, nunca en silencio):
 
-Aditivo sobre el chat de v2: cada respuesta del chat gana **botones de "aplicar"**. Siempre
-explícito, nunca en silencio; deshacible vía el editor de celdas. Las notas son por celdas, así que
-aplicar opera a nivel celda.
+- **Copiar** — al portapapeles.
+- **Rehacer** — `AiChatSession.regenerate(i)`: descarta esa respuesta (y lo que sigue) y reenvía el
+  turno del usuario.
+- **Guardar en nota** — reusa `sendTextToNote`: selector de carpeta/nota → añade celda de texto a
+  una nota existente o crea una nueva. Funciona desde pizarra/cuaderno/nota.
+- **Extraer tareas → FIGHT** (la estrella): `_parseTaskLines` (prefiere viñetas/números/checkbox) →
+  **`_TaskReviewSheet`** (checkbox + texto editable por tarea) → crea `Task`s (pending, `expiresAt`
+  hoy, `folderId` de la nota) y `noteRepo.linkTask` al host. Reusa el flujo de tareas existente.
 
-- **Extraer tareas → FIGHT** (la estrella, se enchufa con OCR): de la respuesta saca tareas →
-  **checklist de revisión** (toggle/editar) → crea `Task`s (pending, `expiresAt` hoy, `folderId` de
-  la nota) **enlazadas a la nota**. Reusa el flujo de creación existente. Requiere parsing
-  estructurado de la lista.
-- **Resumir → nueva celda** de texto en la nota.
-- **Limpiar / reescribir → reemplaza la celda** seleccionada (o el texto en la sheet de OCR).
-- **Sugerir título → set `note.title`** (sin tags, sin carpeta).
-- Integración con el **deshacer** del editor de celdas.
+**Pendiente a futuro (v3.1):** **Sugerir título → set `note.title`**, **Limpiar/reescribir →
+reemplazar una celda** concreta (hoy "Guardar en nota" siempre añade celda nueva), e integración
+más fina con el deshacer del editor de celdas. También: retry con backoff y mover key/llamadas a un
+proxy (producción).
 
 ## Parqueado (retomar después — interesante)
 
@@ -158,10 +157,8 @@ aplicar opera a nivel celda.
   reconocido en el lienzo), pero fuera de la v1 de OCR. Requiere nuevo tipo de objeto + edición.
 - **Captura de URLs:** pegar un link → importar como nota markdown limpia (readability) o tarjeta enriquecida (Open Graph). Buen flujo de captura. Nube (fetch).
 - **Búsqueda semántica del segundo cerebro:** embeddings + vector guardado en SQLite; buscar/preguntar por significado, no por palabras exactas. La apuesta grande; la de más trabajo (indexado + re-index incremental). Se conecta con guardar el texto OCR de los manuscritos.
-- **Mate manuscrito → LaTeX:** se PROBÓ Mathpix (trazos → PNG B/N → Mathpix `/v3/text` → LaTeX →
-  contexto/celda Math). Queda en el repo pero **solo en `kDebugMode`** (botón MATH del lasso + bloque
-  de Ajustes): **Mathpix es demasiado caro** para el scope actual → **descartado** como solución.
-  El "modo Matemáticas" se resolverá de **otra forma** (por decidir: on-device, otro proveedor…).
-  El seam de reconocimiento y la celda Math (`flutter_math_fork`) ya están listos. Limpiar el código
-  Mathpix cuando se decida el reemplazo.
+- **Mate manuscrito → LaTeX:** se probó Mathpix y se **ELIMINÓ por completo** (demasiado caro para
+  el scope). El "modo Matemáticas" se resolverá de **otra forma** (por decidir: on-device, otro
+  proveedor…). El seam `InkRecognitionMode.math` y la celda Math (`flutter_math_fork`) siguen listos
+  para enchufar el reemplazo cuando se decida.
 - **Voz → texto** para captura rápida en FIGHT (on-device).
