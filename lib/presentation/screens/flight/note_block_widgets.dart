@@ -44,20 +44,24 @@ class BlockRouter extends StatelessWidget {
     this.onScrollLockChanged,
   });
 
+  Color get _accent => note.color ?? folder.color;
+
   @override
   Widget build(BuildContext context) {
+    final accent = _accent;
     return _BlockShell(
       block: block,
       index: index,
       child: switch (block) {
         TextBlock t => _TextBlockBody(
             block: t, onFocusChanged: onTextBlockFocusChanged),
-        MathBlock m => _MathBlockBody(block: m, accentColor: folder.color),
-
+        MathBlock m => _MathBlockBody(block: m, accentColor: accent),
         BulletsBlock bl => _BulletsBlockBody(block: bl),
-        TareasBlock tb => _TareasBlockBody(block: tb, note: note, folder: folder),
+        TareasBlock tb =>
+            _TareasBlockBody(block: tb, note: note, folder: folder, accent: accent),
         DrawingBlock d => _DrawingBlockBody(
-            block: d, folder: folder, onScrollLockChanged: onScrollLockChanged),
+            block: d, accent: accent, folderId: folder.id,
+            onScrollLockChanged: onScrollLockChanged),
       },
     );
   }
@@ -612,11 +616,13 @@ class _TareasBlockBody extends ConsumerStatefulWidget {
   final TareasBlock block;
   final Note note;
   final Folder folder;
+  final Color accent;
 
   const _TareasBlockBody({
     required this.block,
     required this.note,
     required this.folder,
+    required this.accent,
   });
 
   @override
@@ -730,7 +736,7 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
       child: Container(
         decoration: BoxDecoration(
           border: Border(
-            left: BorderSide(color: widget.folder.color, width: 6),
+            left: BorderSide(color: widget.accent, width: 6),
           ),
         ),
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -1056,12 +1062,14 @@ class _SpacePickerDialog extends StatelessWidget {
 
 class _DrawingBlockBody extends ConsumerStatefulWidget {
   final DrawingBlock block;
-  final Folder folder;
+  final Color accent;
+  final int? folderId;
   final ValueChanged<bool>? onScrollLockChanged;
 
   const _DrawingBlockBody({
     required this.block,
-    required this.folder,
+    required this.accent,
+    this.folderId,
     this.onScrollLockChanged,
   });
 
@@ -1104,7 +1112,7 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
   Widget build(BuildContext context) {
     return DrawingCell(
       data: _data,
-      accent: widget.folder.color,
+      accent: widget.accent,
       onChanged: _persist,
       onDelete: () async {
         await ref.read(noteBlockRepositoryProvider).delete(widget.block.id);
@@ -1115,23 +1123,51 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
         widget.onScrollLockChanged?.call(locked);
       },
       onRecognizeText: (strokes) => runOcrFlow(context, ref, strokes,
-          accent: widget.folder.color,
-          folderId: widget.folder.id,
+          accent: widget.accent,
+          folderId: widget.folderId,
           noteId: widget.block.noteId),
       onSendToYuli: (strokes) => runOcrToYuliFlow(context, ref, strokes,
-          accent: widget.folder.color,
+          accent: widget.accent,
           noteId: widget.block.noteId),
-      // Mathpix math OCR is debug-only for now (too costly for the current
-      // scope — math will be handled another way). Hidden in release.
       onSendMathToYuli: kDebugMode
           ? (strokes) => runMathToYuliFlow(context, ref, strokes,
-              accent: widget.folder.color, noteId: widget.block.noteId)
+              accent: widget.accent, noteId: widget.block.noteId)
           : null,
     );
   }
 }
 
 // ─── Markdown preview (compiled) ─────────────────────────────────────────
+
+/// Repairs malformed GFM tables (a delimiter row `|---|---|` with the wrong
+/// column count) by rebuilding each delimiter to match its header's columns.
+/// `markdown_widget` (strict) otherwise refuses to render them → raw pipes, and
+/// some malformed shapes can throw. Conservative: only touches delimiter rows,
+/// leaves non-table text untouched. Shared by the AI chat and canvas text
+/// blocks (both render raw model output).
+String fixMarkdownTables(String md) {
+  if (!md.contains('|')) return md;
+  final lines = md.split('\n');
+  final sepRe = RegExp(r'^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$');
+  int colCount(String row) {
+    var s = row.trim();
+    if (s.startsWith('|')) s = s.substring(1);
+    if (s.endsWith('|')) s = s.substring(0, s.length - 1);
+    return s.split('|').length;
+  }
+
+  for (var i = 1; i < lines.length; i++) {
+    final line = lines[i];
+    if (!line.contains('|') || !sepRe.hasMatch(line)) continue;
+    final header = lines[i - 1];
+    if (!header.contains('|')) continue;
+    final cols = colCount(header);
+    if (cols < 1) continue;
+    final rebuilt = '|${List.filled(cols, '---').join('|')}|';
+    if (rebuilt != line.trim()) lines[i] = rebuilt;
+  }
+  return lines.join('\n');
+}
 
 class NoteMarkdownPreview extends ConsumerWidget {
   final String data;

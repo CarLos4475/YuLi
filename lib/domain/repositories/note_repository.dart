@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/note.dart';
+import '../models/canvas_context_source.dart';
 
 abstract class NoteRepository {
   Stream<List<Note>> watchByFolder(int folderId);
@@ -30,4 +31,14 @@ abstract class NoteRepository {
   Future<List<int>> getLinkedNoteIds(int taskId);
   Stream<List<Note>> watchAllActive();
   Stream<List<Note>> watchDeleted();
+
+  // Canvas context sources (AI context: linked notes + external urls).
+  Future<void> addContextSource(int canvasNoteId, CanvasSourceKind kind,
+      String ref, {String? label, DateTime? fetchedAt});
+  Future<void> removeContextSource(int id);
+  Future<void> updateContextSourceFetch(int id,
+      {String? label, DateTime? fetchedAt});
+  Stream<List<CanvasContextSource>> watchContextSources(int canvasNoteId);
+  Future<List<CanvasContextSource>> getContextSources(int canvasNoteId);
+  Future<void> removeNoteSourceRefs(int noteId);
 }

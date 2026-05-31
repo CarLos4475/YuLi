@@ -120,6 +120,11 @@ class SettingsScreen extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: _AiKeyBlock(),
             ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _JinaKeyBlock(),
+            ),
 
             const SizedBox(height: 24),
             const Padding(
@@ -645,6 +650,175 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
           const SizedBox(height: 8),
           Text(
             'Se guarda cifrada en el dispositivo. No sale de aquí (ni a git ni a la nube).',
+            style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Optional Jina Reader key (external web context sources). The reader works
+/// without it (free tier); a key raises rate limits. Mirrors [_AiKeyBlock].
+class _JinaKeyBlock extends ConsumerStatefulWidget {
+  const _JinaKeyBlock();
+
+  @override
+  ConsumerState<_JinaKeyBlock> createState() => _JinaKeyBlockState();
+}
+
+class _JinaKeyBlockState extends ConsumerState<_JinaKeyBlock> {
+  final _ctrl = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final v = _ctrl.text.trim();
+    if (v.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    await ref.read(jinaKeyStoreProvider).write(v);
+    _ctrl.clear();
+    ref.invalidate(jinaHasKeyProvider);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Jina key guardada')),
+    );
+  }
+
+  Future<void> _clearKey() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await ref.read(jinaKeyStoreProvider).clear();
+    ref.invalidate(jinaHasKeyProvider);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Jina key borrada')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasKey = ref.watch(jinaHasKeyProvider).valueOrNull ?? false;
+    final ink = inkColor(context);
+    final paper = paperColor(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: paper,
+        border: Border.all(color: ink, width: borderWidth),
+        boxShadow: const [
+          BoxShadow(
+            color: inkBlack,
+            offset: shadowOffset,
+            blurRadius: shadowBlurRadius,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'JINA READER KEY (OPCIONAL)',
+                style: labelBold.copyWith(
+                    color: ink, fontSize: 11, letterSpacing: 1.2),
+              ),
+              const Spacer(),
+              Text(
+                hasKey ? 'Configurada ✓' : 'Sin key (free)',
+                style: bodyS.copyWith(
+                    color: hasKey ? accentLab : ink.withAlpha(150)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _ctrl,
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: bodyS.copyWith(color: ink),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.all(10),
+              hintText: hasKey ? 'Pega una nueva key…' : 'Pega tu Jina key…',
+              hintStyle: bodyS.copyWith(color: ink.withAlpha(120)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: ink, width: borderWidth),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: ink, width: borderWidth),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: ink, width: borderWidth),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _busy ? null : _save,
+                  child: Container(
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accentJournal,
+                      border: Border.all(color: ink, width: borderWidth),
+                    ),
+                    child: _busy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: paperLight))
+                        : Text('GUARDAR',
+                            style: labelBold.copyWith(
+                                color: paperLight,
+                                fontSize: 11,
+                                letterSpacing: 1.2)),
+                  ),
+                ),
+              ),
+              if (hasKey) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _busy ? null : _clearKey,
+                  child: Container(
+                    height: 42,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: paper,
+                      border: Border.all(color: ink, width: borderWidth),
+                    ),
+                    child: Text('BORRAR',
+                        style: labelBold.copyWith(
+                            color: ink, fontSize: 11, letterSpacing: 1.2)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Lee enlaces como contexto (r.jina.ai). Funciona sin key; agrégala '
+            'solo si topas límites. Se guarda cifrada, no sale del dispositivo.',
             style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
           ),
         ],

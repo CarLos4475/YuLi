@@ -12,6 +12,8 @@ import 'tables/lab_spaces_table.dart';
 import 'tables/kanban_columns_table.dart';
 import 'tables/kanban_cards_table.dart';
 import 'tables/space_folder_links_table.dart';
+import 'tables/note_canvas_links_table.dart';
+import 'tables/canvas_context_sources_table.dart';
 import 'tables/onboarding_flags_table.dart';
 import 'tables/notifications_table.dart';
 import 'tables/schedule_blocks_table.dart';
@@ -41,6 +43,8 @@ part 'database.g.dart';
     KanbanColumns,
     KanbanCards,
     SpaceFolderLinks,
+    NoteCanvasLinks,
+    CanvasContextSources,
     OnboardingFlags,
     Notifications,
     ScheduleBlocks,
@@ -63,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -130,6 +134,23 @@ class AppDatabase extends _$AppDatabase {
               await customStatement(
                   "UPDATE kanban_columns SET is_expired = 1, is_terminal = 0 "
                   "WHERE name = 'Vencido'");
+            } catch (_) {}
+          }
+          if (from <= 14) {
+            try {
+              await m.createTable(noteCanvasLinks);
+            } catch (_) {}
+          }
+          if (from <= 15) {
+            try {
+              await m.createTable(canvasContextSources);
+              // Carry over any existing single-source links as note sources.
+              await customStatement(
+                  "INSERT INTO canvas_context_sources "
+                  "(canvas_note_id, kind, ref, created_at) "
+                  "SELECT canvas_note_id, 'note', "
+                  "CAST(source_note_id AS TEXT), created_at "
+                  "FROM note_canvas_links");
             } catch (_) {}
           }
         },

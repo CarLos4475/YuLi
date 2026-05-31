@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 
 import '../../../domain/models/note.dart';
+import '../../../domain/models/canvas_context_source.dart';
 import '../../../domain/repositories/note_repository.dart';
 import '../../local/database.dart';
 
@@ -63,13 +64,20 @@ class LocalNoteRepository implements NoteRepository {
   }
 
   @override
-  Future<void> softDelete(int id) => _db.notesDao.softDelete(id);
+  Future<void> softDelete(int id) async {
+    await _db.notesDao.softDelete(id);
+    // Trashing a note removes it as a context source from any canvas.
+    await _db.notesDao.removeNoteSourceRefs(id);
+  }
 
   @override
   Future<void> restore(int id) => _db.notesDao.restore(id);
 
   @override
-  Future<void> hardDelete(int id) => _db.notesDao.hardDelete(id);
+  Future<void> hardDelete(int id) async {
+    await _db.notesDao.hardDelete(id);
+    await _db.notesDao.removeNoteSourceRefs(id);
+  }
 
   @override
   Stream<List<Note>> watchAllActive() =>
@@ -135,6 +143,49 @@ class LocalNoteRepository implements NoteRepository {
   @override
   Future<List<int>> getLinkedNoteIds(int taskId) =>
       _db.notesDao.getLinkedNoteIds(taskId);
+
+  @override
+  Future<void> addContextSource(int canvasNoteId, CanvasSourceKind kind,
+          String ref, {String? label, DateTime? fetchedAt}) =>
+      _db.notesDao.addContextSource(canvasNoteId, kind.toDbString(), ref,
+          label: label, fetchedAt: fetchedAt);
+
+  @override
+  Future<void> removeContextSource(int id) =>
+      _db.notesDao.removeContextSource(id);
+
+  @override
+  Future<void> updateContextSourceFetch(int id,
+          {String? label, DateTime? fetchedAt}) =>
+      _db.notesDao
+          .updateContextSourceFetch(id, label: label, fetchedAt: fetchedAt);
+
+  @override
+  Stream<List<CanvasContextSource>> watchContextSources(int canvasNoteId) =>
+      _db.notesDao
+          .watchContextSources(canvasNoteId)
+          .map((rows) => rows.map(_rowToSource).toList());
+
+  @override
+  Future<List<CanvasContextSource>> getContextSources(int canvasNoteId) async {
+    final rows = await _db.notesDao.getContextSources(canvasNoteId);
+    return rows.map(_rowToSource).toList();
+  }
+
+  @override
+  Future<void> removeNoteSourceRefs(int noteId) =>
+      _db.notesDao.removeNoteSourceRefs(noteId);
+
+  CanvasContextSource _rowToSource(CanvasContextSourceRow row) =>
+      CanvasContextSource(
+        id: row.id,
+        canvasNoteId: row.canvasNoteId,
+        kind: CanvasSourceKind.fromString(row.kind),
+        ref: row.ref,
+        label: row.label,
+        fetchedAt: row.fetchedAt,
+        createdAt: row.createdAt,
+      );
 
   Note _rowToNote(NoteRow row) => Note(
         id: row.id,

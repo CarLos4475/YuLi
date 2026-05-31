@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ink_recognizer_provider.dart';
+import '../../providers/database_providers.dart';
+import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ink_recognizer.dart';
+import '../../../domain/models/note_block.dart';
 import 'ai_chat_sheet.dart';
 import 'ocr_result_sheet.dart';
 import 'ocr_send_to_note.dart';
@@ -66,13 +69,7 @@ Future<void> runOcrToYuliFlow(
     context,
     contextText: text,
     accent: accent,
-    onSend: (t) => showAiChat(
-      context,
-      ref,
-      noteId: noteId,
-      newContext: t,
-      accent: accent,
-    ),
+    onSend: (t) => _sendOcrContextToYuli(context, ref, noteId, accent, t),
     onAsk: (t) => showAiChat(
       context,
       ref,
@@ -101,13 +98,7 @@ Future<void> runMathToYuliFlow(
     context,
     contextText: contextText,
     accent: accent,
-    onSend: (t) => showAiChat(
-      context,
-      ref,
-      noteId: noteId,
-      newContext: t,
-      accent: accent,
-    ),
+    onSend: (t) => _sendOcrContextToYuli(context, ref, noteId, accent, t),
     onAsk: (t) => showAiChat(
       context,
       ref,
@@ -157,6 +148,87 @@ Future<List<InkCandidate>?> _recognizeTextCandidates(
   }
 
   return candidates;
+}
+
+/// Send OCR text to the chat as context. If [noteId] is a canvas with linked
+/// NOTE sources, the text is appended as a TextBlock to one of them (asking
+/// which when there are several) and the chat resyncs — keeping the note as the
+/// source of truth. With no note source, it's pushed as a one-off anchor.
+Future<void> _sendOcrContextToYuli(
+  BuildContext context,
+  WidgetRef ref,
+  int noteId,
+  Color accent,
+  String text,
+) async {
+  final sources = await ref.read(noteRepositoryProvider).getContextSources(noteId);
+  final noteSources =
+      sources.where((s) => s.isNote && s.noteId != null).toList();
+  if (!context.mounted) return;
+  if (noteSources.isEmpty) {
+    showAiChat(context, ref, noteId: noteId, newContext: text, accent: accent);
+    return;
+  }
+  int target;
+  if (noteSources.length == 1) {
+    target = noteSources.first.noteId!;
+  } else {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: yCream,
+          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('¿A QUÉ NOTA ENVÍO EL TEXTO?',
+                  style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk)),
+              const SizedBox(height: 10),
+              for (final s in noteSources)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(ctx).pop(s.noteId),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                          bottom: BorderSide(color: yInk, width: yLineThin)),
+                    ),
+                    child: Text(
+                      (s.label?.trim().isEmpty ?? true)
+                          ? 'Nota'
+                          : s.label!.trim(),
+                      style:
+                          ySans(size: 14, weight: FontWeight.w700, color: yInk),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    target = picked;
+  }
+  await ref.read(noteBlockRepositoryProvider).insertAtEnd(
+        target,
+        NoteBlockType.text,
+        payload: {'md': text},
+      );
+  if (!context.mounted) return;
+  showAiChat(context, ref, noteId: noteId, accent: accent);
 }
 
 /// Heuristic (NOT a real math classifier): flag results that are empty or

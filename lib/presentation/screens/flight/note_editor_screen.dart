@@ -84,12 +84,21 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (mounted) setState(() => _dirty = false);
   }
 
+  /// Apply an AI-suggested title to the note's title field + persist.
+  void _applyAiTitle(String title) {
+    _titleCtrl.text = title;
+    _titleCtrl.selection =
+        TextSelection.collapsed(offset: _titleCtrl.text.length);
+    _saveTitle();
+  }
+
   /// Open the AI chat for this note. The persisted anchor (if any) is loaded
   /// automatically by [AiChatSession]; no new context is injected here.
   void _openAiChat() {
     showAiChat(context, ref,
         noteId: widget.note.id,
-        accent: _accent);
+        accent: _accent,
+        onApplyTitle: _applyAiTitle);
   }
 
   /// Explicitly push the current note content as the AI context anchor.
@@ -112,14 +121,17 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           anchor.isNotEmpty &&
           _normalise(anchor).contains(_normalise(ctx))) {
         showAiChat(context, ref,
-            noteId: widget.note.id, accent: _accent);
+            noteId: widget.note.id,
+            accent: _accent,
+            onApplyTitle: _applyAiTitle);
         return;
       }
     }
     showAiChat(context, ref,
         noteId: widget.note.id,
         newContext: ctx,
-        accent: _accent);
+        accent: _accent,
+        onApplyTitle: _applyAiTitle);
   }
 
   String _normalise(String s) =>

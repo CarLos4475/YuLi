@@ -10,6 +10,8 @@ mixin _$NotesDaoMixin on DatabaseAccessor<AppDatabase> {
   $NoteVersionsTable get noteVersions => attachedDatabase.noteVersions;
   $TasksTable get tasks => attachedDatabase.tasks;
   $NoteTaskLinksTable get noteTaskLinks => attachedDatabase.noteTaskLinks;
+  $CanvasContextSourcesTable get canvasContextSources =>
+      attachedDatabase.canvasContextSources;
   NotesDaoManager get managers => NotesDaoManager(this);
 }
 
@@ -28,4 +30,9 @@ class NotesDaoManager {
       $$TasksTableTableManager(_db.attachedDatabase, _db.tasks);
   $$NoteTaskLinksTableTableManager get noteTaskLinks =>
       $$NoteTaskLinksTableTableManager(_db.attachedDatabase, _db.noteTaskLinks);
+  $$CanvasContextSourcesTableTableManager get canvasContextSources =>
+      $$CanvasContextSourcesTableTableManager(
+        _db.attachedDatabase,
+        _db.canvasContextSources,
+      );
 }

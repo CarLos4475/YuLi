@@ -4,10 +4,17 @@ import '../tables/notes_table.dart';
 import '../tables/note_images_table.dart';
 import '../tables/note_versions_table.dart';
 import '../tables/note_task_links_table.dart';
+import '../tables/canvas_context_sources_table.dart';
 
 part 'notes_dao.g.dart';
 
-@DriftAccessor(tables: [Notes, NoteImages, NoteVersions, NoteTaskLinks])
+@DriftAccessor(tables: [
+  Notes,
+  NoteImages,
+  NoteVersions,
+  NoteTaskLinks,
+  CanvasContextSources
+])
 class NotesDao extends DatabaseAccessor<AppDatabase> with _$NotesDaoMixin {
   NotesDao(super.db);
 
@@ -128,4 +135,52 @@ class NotesDao extends DatabaseAccessor<AppDatabase> with _$NotesDaoMixin {
         .get();
     return rows.map((r) => r.noteId).toList();
   }
+
+  // ─── Canvas context sources (AI context: notes + urls) ───────────────────
+
+  /// Add a source (deduped by canvas+kind+ref). Returns silently if it exists.
+  Future<void> addContextSource(int canvasNoteId, String kind, String ref,
+          {String? label, DateTime? fetchedAt}) =>
+      into(canvasContextSources).insert(
+        CanvasContextSourcesCompanion.insert(
+          canvasNoteId: canvasNoteId,
+          kind: kind,
+          ref: ref,
+          label: Value(label),
+          fetchedAt: Value(fetchedAt),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+
+  Future<void> removeContextSource(int id) =>
+      (delete(canvasContextSources)..where((s) => s.id.equals(id))).go();
+
+  /// Update a url source's cached label + fetch time after a re-fetch.
+  Future<void> updateContextSourceFetch(int id,
+          {String? label, DateTime? fetchedAt}) =>
+      (update(canvasContextSources)..where((s) => s.id.equals(id))).write(
+        CanvasContextSourcesCompanion(
+          label: Value(label),
+          fetchedAt: Value(fetchedAt),
+        ),
+      );
+
+  Stream<List<CanvasContextSourceRow>> watchContextSources(int canvasNoteId) =>
+      (select(canvasContextSources)
+            ..where((s) => s.canvasNoteId.equals(canvasNoteId))
+            ..orderBy([(s) => OrderingTerm.asc(s.createdAt)]))
+          .watch();
+
+  Future<List<CanvasContextSourceRow>> getContextSources(int canvasNoteId) =>
+      (select(canvasContextSources)
+            ..where((s) => s.canvasNoteId.equals(canvasNoteId))
+            ..orderBy([(s) => OrderingTerm.asc(s.createdAt)]))
+          .get();
+
+  /// Remove every source row referencing a deleted note (cleanup).
+  Future<void> removeNoteSourceRefs(int noteId) =>
+      (delete(canvasContextSources)
+            ..where((s) =>
+                s.kind.equals('note') & s.ref.equals(noteId.toString())))
+          .go();
 }

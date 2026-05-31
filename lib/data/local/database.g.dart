@@ -4968,6 +4968,742 @@ class SpaceFolderLinksCompanion extends UpdateCompanion<SpaceFolderLinkRow> {
   }
 }
 
+class $NoteCanvasLinksTable extends NoteCanvasLinks
+    with TableInfo<$NoteCanvasLinksTable, NoteCanvasLinkRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NoteCanvasLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _canvasNoteIdMeta = const VerificationMeta(
+    'canvasNoteId',
+  );
+  @override
+  late final GeneratedColumn<int> canvasNoteId = GeneratedColumn<int>(
+    'canvas_note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _sourceNoteIdMeta = const VerificationMeta(
+    'sourceNoteId',
+  );
+  @override
+  late final GeneratedColumn<int> sourceNoteId = GeneratedColumn<int>(
+    'source_note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [canvasNoteId, sourceNoteId, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'note_canvas_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteCanvasLinkRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('canvas_note_id')) {
+      context.handle(
+        _canvasNoteIdMeta,
+        canvasNoteId.isAcceptableOrUnknown(
+          data['canvas_note_id']!,
+          _canvasNoteIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_note_id')) {
+      context.handle(
+        _sourceNoteIdMeta,
+        sourceNoteId.isAcceptableOrUnknown(
+          data['source_note_id']!,
+          _sourceNoteIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceNoteIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {canvasNoteId};
+  @override
+  NoteCanvasLinkRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteCanvasLinkRow(
+      canvasNoteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}canvas_note_id'],
+          )!,
+      sourceNoteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}source_note_id'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $NoteCanvasLinksTable createAlias(String alias) {
+    return $NoteCanvasLinksTable(attachedDatabase, alias);
+  }
+}
+
+class NoteCanvasLinkRow extends DataClass
+    implements Insertable<NoteCanvasLinkRow> {
+  final int canvasNoteId;
+  final int sourceNoteId;
+  final DateTime createdAt;
+  const NoteCanvasLinkRow({
+    required this.canvasNoteId,
+    required this.sourceNoteId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['canvas_note_id'] = Variable<int>(canvasNoteId);
+    map['source_note_id'] = Variable<int>(sourceNoteId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  NoteCanvasLinksCompanion toCompanion(bool nullToAbsent) {
+    return NoteCanvasLinksCompanion(
+      canvasNoteId: Value(canvasNoteId),
+      sourceNoteId: Value(sourceNoteId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory NoteCanvasLinkRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteCanvasLinkRow(
+      canvasNoteId: serializer.fromJson<int>(json['canvasNoteId']),
+      sourceNoteId: serializer.fromJson<int>(json['sourceNoteId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'canvasNoteId': serializer.toJson<int>(canvasNoteId),
+      'sourceNoteId': serializer.toJson<int>(sourceNoteId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  NoteCanvasLinkRow copyWith({
+    int? canvasNoteId,
+    int? sourceNoteId,
+    DateTime? createdAt,
+  }) => NoteCanvasLinkRow(
+    canvasNoteId: canvasNoteId ?? this.canvasNoteId,
+    sourceNoteId: sourceNoteId ?? this.sourceNoteId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  NoteCanvasLinkRow copyWithCompanion(NoteCanvasLinksCompanion data) {
+    return NoteCanvasLinkRow(
+      canvasNoteId:
+          data.canvasNoteId.present
+              ? data.canvasNoteId.value
+              : this.canvasNoteId,
+      sourceNoteId:
+          data.sourceNoteId.present
+              ? data.sourceNoteId.value
+              : this.sourceNoteId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteCanvasLinkRow(')
+          ..write('canvasNoteId: $canvasNoteId, ')
+          ..write('sourceNoteId: $sourceNoteId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(canvasNoteId, sourceNoteId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteCanvasLinkRow &&
+          other.canvasNoteId == this.canvasNoteId &&
+          other.sourceNoteId == this.sourceNoteId &&
+          other.createdAt == this.createdAt);
+}
+
+class NoteCanvasLinksCompanion extends UpdateCompanion<NoteCanvasLinkRow> {
+  final Value<int> canvasNoteId;
+  final Value<int> sourceNoteId;
+  final Value<DateTime> createdAt;
+  const NoteCanvasLinksCompanion({
+    this.canvasNoteId = const Value.absent(),
+    this.sourceNoteId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  NoteCanvasLinksCompanion.insert({
+    this.canvasNoteId = const Value.absent(),
+    required int sourceNoteId,
+    this.createdAt = const Value.absent(),
+  }) : sourceNoteId = Value(sourceNoteId);
+  static Insertable<NoteCanvasLinkRow> custom({
+    Expression<int>? canvasNoteId,
+    Expression<int>? sourceNoteId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (canvasNoteId != null) 'canvas_note_id': canvasNoteId,
+      if (sourceNoteId != null) 'source_note_id': sourceNoteId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  NoteCanvasLinksCompanion copyWith({
+    Value<int>? canvasNoteId,
+    Value<int>? sourceNoteId,
+    Value<DateTime>? createdAt,
+  }) {
+    return NoteCanvasLinksCompanion(
+      canvasNoteId: canvasNoteId ?? this.canvasNoteId,
+      sourceNoteId: sourceNoteId ?? this.sourceNoteId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (canvasNoteId.present) {
+      map['canvas_note_id'] = Variable<int>(canvasNoteId.value);
+    }
+    if (sourceNoteId.present) {
+      map['source_note_id'] = Variable<int>(sourceNoteId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteCanvasLinksCompanion(')
+          ..write('canvasNoteId: $canvasNoteId, ')
+          ..write('sourceNoteId: $sourceNoteId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CanvasContextSourcesTable extends CanvasContextSources
+    with TableInfo<$CanvasContextSourcesTable, CanvasContextSourceRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanvasContextSourcesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _canvasNoteIdMeta = const VerificationMeta(
+    'canvasNoteId',
+  );
+  @override
+  late final GeneratedColumn<int> canvasNoteId = GeneratedColumn<int>(
+    'canvas_note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _refMeta = const VerificationMeta('ref');
+  @override
+  late final GeneratedColumn<String> ref = GeneratedColumn<String>(
+    'ref',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fetchedAtMeta = const VerificationMeta(
+    'fetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> fetchedAt = GeneratedColumn<DateTime>(
+    'fetched_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    canvasNoteId,
+    kind,
+    ref,
+    label,
+    fetchedAt,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canvas_context_sources';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanvasContextSourceRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('canvas_note_id')) {
+      context.handle(
+        _canvasNoteIdMeta,
+        canvasNoteId.isAcceptableOrUnknown(
+          data['canvas_note_id']!,
+          _canvasNoteIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_canvasNoteIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('ref')) {
+      context.handle(
+        _refMeta,
+        ref.isAcceptableOrUnknown(data['ref']!, _refMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_refMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
+    if (data.containsKey('fetched_at')) {
+      context.handle(
+        _fetchedAtMeta,
+        fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {canvasNoteId, kind, ref},
+  ];
+  @override
+  CanvasContextSourceRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanvasContextSourceRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      canvasNoteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}canvas_note_id'],
+          )!,
+      kind:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}kind'],
+          )!,
+      ref:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}ref'],
+          )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      ),
+      fetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}fetched_at'],
+      ),
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $CanvasContextSourcesTable createAlias(String alias) {
+    return $CanvasContextSourcesTable(attachedDatabase, alias);
+  }
+}
+
+class CanvasContextSourceRow extends DataClass
+    implements Insertable<CanvasContextSourceRow> {
+  final int id;
+  final int canvasNoteId;
+  final String kind;
+  final String ref;
+  final String? label;
+  final DateTime? fetchedAt;
+  final DateTime createdAt;
+  const CanvasContextSourceRow({
+    required this.id,
+    required this.canvasNoteId,
+    required this.kind,
+    required this.ref,
+    this.label,
+    this.fetchedAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['canvas_note_id'] = Variable<int>(canvasNoteId);
+    map['kind'] = Variable<String>(kind);
+    map['ref'] = Variable<String>(ref);
+    if (!nullToAbsent || label != null) {
+      map['label'] = Variable<String>(label);
+    }
+    if (!nullToAbsent || fetchedAt != null) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  CanvasContextSourcesCompanion toCompanion(bool nullToAbsent) {
+    return CanvasContextSourcesCompanion(
+      id: Value(id),
+      canvasNoteId: Value(canvasNoteId),
+      kind: Value(kind),
+      ref: Value(ref),
+      label:
+          label == null && nullToAbsent ? const Value.absent() : Value(label),
+      fetchedAt:
+          fetchedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(fetchedAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory CanvasContextSourceRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanvasContextSourceRow(
+      id: serializer.fromJson<int>(json['id']),
+      canvasNoteId: serializer.fromJson<int>(json['canvasNoteId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      ref: serializer.fromJson<String>(json['ref']),
+      label: serializer.fromJson<String?>(json['label']),
+      fetchedAt: serializer.fromJson<DateTime?>(json['fetchedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'canvasNoteId': serializer.toJson<int>(canvasNoteId),
+      'kind': serializer.toJson<String>(kind),
+      'ref': serializer.toJson<String>(ref),
+      'label': serializer.toJson<String?>(label),
+      'fetchedAt': serializer.toJson<DateTime?>(fetchedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  CanvasContextSourceRow copyWith({
+    int? id,
+    int? canvasNoteId,
+    String? kind,
+    String? ref,
+    Value<String?> label = const Value.absent(),
+    Value<DateTime?> fetchedAt = const Value.absent(),
+    DateTime? createdAt,
+  }) => CanvasContextSourceRow(
+    id: id ?? this.id,
+    canvasNoteId: canvasNoteId ?? this.canvasNoteId,
+    kind: kind ?? this.kind,
+    ref: ref ?? this.ref,
+    label: label.present ? label.value : this.label,
+    fetchedAt: fetchedAt.present ? fetchedAt.value : this.fetchedAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  CanvasContextSourceRow copyWithCompanion(CanvasContextSourcesCompanion data) {
+    return CanvasContextSourceRow(
+      id: data.id.present ? data.id.value : this.id,
+      canvasNoteId:
+          data.canvasNoteId.present
+              ? data.canvasNoteId.value
+              : this.canvasNoteId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      ref: data.ref.present ? data.ref.value : this.ref,
+      label: data.label.present ? data.label.value : this.label,
+      fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasContextSourceRow(')
+          ..write('id: $id, ')
+          ..write('canvasNoteId: $canvasNoteId, ')
+          ..write('kind: $kind, ')
+          ..write('ref: $ref, ')
+          ..write('label: $label, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, canvasNoteId, kind, ref, label, fetchedAt, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanvasContextSourceRow &&
+          other.id == this.id &&
+          other.canvasNoteId == this.canvasNoteId &&
+          other.kind == this.kind &&
+          other.ref == this.ref &&
+          other.label == this.label &&
+          other.fetchedAt == this.fetchedAt &&
+          other.createdAt == this.createdAt);
+}
+
+class CanvasContextSourcesCompanion
+    extends UpdateCompanion<CanvasContextSourceRow> {
+  final Value<int> id;
+  final Value<int> canvasNoteId;
+  final Value<String> kind;
+  final Value<String> ref;
+  final Value<String?> label;
+  final Value<DateTime?> fetchedAt;
+  final Value<DateTime> createdAt;
+  const CanvasContextSourcesCompanion({
+    this.id = const Value.absent(),
+    this.canvasNoteId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.ref = const Value.absent(),
+    this.label = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  CanvasContextSourcesCompanion.insert({
+    this.id = const Value.absent(),
+    required int canvasNoteId,
+    required String kind,
+    required String ref,
+    this.label = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : canvasNoteId = Value(canvasNoteId),
+       kind = Value(kind),
+       ref = Value(ref);
+  static Insertable<CanvasContextSourceRow> custom({
+    Expression<int>? id,
+    Expression<int>? canvasNoteId,
+    Expression<String>? kind,
+    Expression<String>? ref,
+    Expression<String>? label,
+    Expression<DateTime>? fetchedAt,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (canvasNoteId != null) 'canvas_note_id': canvasNoteId,
+      if (kind != null) 'kind': kind,
+      if (ref != null) 'ref': ref,
+      if (label != null) 'label': label,
+      if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  CanvasContextSourcesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? canvasNoteId,
+    Value<String>? kind,
+    Value<String>? ref,
+    Value<String?>? label,
+    Value<DateTime?>? fetchedAt,
+    Value<DateTime>? createdAt,
+  }) {
+    return CanvasContextSourcesCompanion(
+      id: id ?? this.id,
+      canvasNoteId: canvasNoteId ?? this.canvasNoteId,
+      kind: kind ?? this.kind,
+      ref: ref ?? this.ref,
+      label: label ?? this.label,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (canvasNoteId.present) {
+      map['canvas_note_id'] = Variable<int>(canvasNoteId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (ref.present) {
+      map['ref'] = Variable<String>(ref.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (fetchedAt.present) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasContextSourcesCompanion(')
+          ..write('id: $id, ')
+          ..write('canvasNoteId: $canvasNoteId, ')
+          ..write('kind: $kind, ')
+          ..write('ref: $ref, ')
+          ..write('label: $label, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $OnboardingFlagsTable extends OnboardingFlags
     with TableInfo<$OnboardingFlagsTable, OnboardingFlagRow> {
   @override
@@ -6814,6 +7550,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SpaceFolderLinksTable spaceFolderLinks = $SpaceFolderLinksTable(
     this,
   );
+  late final $NoteCanvasLinksTable noteCanvasLinks = $NoteCanvasLinksTable(
+    this,
+  );
+  late final $CanvasContextSourcesTable canvasContextSources =
+      $CanvasContextSourcesTable(this);
   late final $OnboardingFlagsTable onboardingFlags = $OnboardingFlagsTable(
     this,
   );
@@ -6850,6 +7591,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     kanbanColumns,
     kanbanCards,
     spaceFolderLinks,
+    noteCanvasLinks,
+    canvasContextSources,
     onboardingFlags,
     notifications,
     scheduleBlocks,
@@ -8085,6 +8828,34 @@ final class $$NotesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $CanvasContextSourcesTable,
+    List<CanvasContextSourceRow>
+  >
+  _canvasContextSourcesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.canvasContextSources,
+        aliasName: $_aliasNameGenerator(
+          db.notes.id,
+          db.canvasContextSources.canvasNoteId,
+        ),
+      );
+
+  $$CanvasContextSourcesTableProcessedTableManager
+  get canvasContextSourcesRefs {
+    final manager = $$CanvasContextSourcesTableTableManager(
+      $_db,
+      $_db.canvasContextSources,
+    ).filter((f) => f.canvasNoteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _canvasContextSourcesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
@@ -8279,6 +9050,31 @@ class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
           }) => $$KanbanCardsTableFilterComposer(
             $db: $db,
             $table: $db.kanbanCards,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> canvasContextSourcesRefs(
+    Expression<bool> Function($$CanvasContextSourcesTableFilterComposer f) f,
+  ) {
+    final $$CanvasContextSourcesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasContextSources,
+      getReferencedColumn: (t) => t.canvasNoteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasContextSourcesTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasContextSources,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8552,6 +9348,32 @@ class $$NotesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> canvasContextSourcesRefs<T extends Object>(
+    Expression<T> Function($$CanvasContextSourcesTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasContextSourcesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.canvasContextSources,
+          getReferencedColumn: (t) => t.canvasNoteId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CanvasContextSourcesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.canvasContextSources,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$NotesTableTableManager
@@ -8574,6 +9396,7 @@ class $$NotesTableTableManager
             bool noteTaskLinksRefs,
             bool noteBlocksRefs,
             bool kanbanCardsRefs,
+            bool canvasContextSourcesRefs,
           })
         > {
   $$NotesTableTableManager(_$AppDatabase db, $NotesTable table)
@@ -8652,6 +9475,7 @@ class $$NotesTableTableManager
             noteTaskLinksRefs = false,
             noteBlocksRefs = false,
             kanbanCardsRefs = false,
+            canvasContextSourcesRefs = false,
           }) {
             return PrefetchHooks(
               db: db,
@@ -8661,6 +9485,7 @@ class $$NotesTableTableManager
                 if (noteTaskLinksRefs) db.noteTaskLinks,
                 if (noteBlocksRefs) db.noteBlocks,
                 if (kanbanCardsRefs) db.kanbanCards,
+                if (canvasContextSourcesRefs) db.canvasContextSources,
               ],
               addJoins: <
                 T extends TableManagerState<
@@ -8800,6 +9625,28 @@ class $$NotesTableTableManager
                           ),
                       typedResults: items,
                     ),
+                  if (canvasContextSourcesRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      CanvasContextSourceRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._canvasContextSourcesRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasContextSourcesRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.canvasNoteId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
                 ];
               },
             );
@@ -8827,6 +9674,7 @@ typedef $$NotesTableProcessedTableManager =
         bool noteTaskLinksRefs,
         bool noteBlocksRefs,
         bool kanbanCardsRefs,
+        bool canvasContextSourcesRefs,
       })
     >;
 typedef $$NoteImagesTableCreateCompanionBuilder =
@@ -12637,6 +13485,767 @@ typedef $$SpaceFolderLinksTableProcessedTableManager =
       SpaceFolderLinkRow,
       PrefetchHooks Function({bool labSpaceId, bool folderId})
     >;
+typedef $$NoteCanvasLinksTableCreateCompanionBuilder =
+    NoteCanvasLinksCompanion Function({
+      Value<int> canvasNoteId,
+      required int sourceNoteId,
+      Value<DateTime> createdAt,
+    });
+typedef $$NoteCanvasLinksTableUpdateCompanionBuilder =
+    NoteCanvasLinksCompanion Function({
+      Value<int> canvasNoteId,
+      Value<int> sourceNoteId,
+      Value<DateTime> createdAt,
+    });
+
+final class $$NoteCanvasLinksTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $NoteCanvasLinksTable,
+          NoteCanvasLinkRow
+        > {
+  $$NoteCanvasLinksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $NotesTable _canvasNoteIdTable(_$AppDatabase db) =>
+      db.notes.createAlias(
+        $_aliasNameGenerator(db.noteCanvasLinks.canvasNoteId, db.notes.id),
+      );
+
+  $$NotesTableProcessedTableManager get canvasNoteId {
+    final $_column = $_itemColumn<int>('canvas_note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_canvasNoteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $NotesTable _sourceNoteIdTable(_$AppDatabase db) =>
+      db.notes.createAlias(
+        $_aliasNameGenerator(db.noteCanvasLinks.sourceNoteId, db.notes.id),
+      );
+
+  $$NotesTableProcessedTableManager get sourceNoteId {
+    final $_column = $_itemColumn<int>('source_note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sourceNoteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NoteCanvasLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $NoteCanvasLinksTable> {
+  $$NoteCanvasLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NotesTableFilterComposer get canvasNoteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableFilterComposer get sourceNoteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteCanvasLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $NoteCanvasLinksTable> {
+  $$NoteCanvasLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NotesTableOrderingComposer get canvasNoteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableOrderingComposer get sourceNoteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteCanvasLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NoteCanvasLinksTable> {
+  $$NoteCanvasLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$NotesTableAnnotationComposer get canvasNoteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableAnnotationComposer get sourceNoteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sourceNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NoteCanvasLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NoteCanvasLinksTable,
+          NoteCanvasLinkRow,
+          $$NoteCanvasLinksTableFilterComposer,
+          $$NoteCanvasLinksTableOrderingComposer,
+          $$NoteCanvasLinksTableAnnotationComposer,
+          $$NoteCanvasLinksTableCreateCompanionBuilder,
+          $$NoteCanvasLinksTableUpdateCompanionBuilder,
+          (NoteCanvasLinkRow, $$NoteCanvasLinksTableReferences),
+          NoteCanvasLinkRow,
+          PrefetchHooks Function({bool canvasNoteId, bool sourceNoteId})
+        > {
+  $$NoteCanvasLinksTableTableManager(
+    _$AppDatabase db,
+    $NoteCanvasLinksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () =>
+                  $$NoteCanvasLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$NoteCanvasLinksTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$NoteCanvasLinksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> canvasNoteId = const Value.absent(),
+                Value<int> sourceNoteId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => NoteCanvasLinksCompanion(
+                canvasNoteId: canvasNoteId,
+                sourceNoteId: sourceNoteId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> canvasNoteId = const Value.absent(),
+                required int sourceNoteId,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => NoteCanvasLinksCompanion.insert(
+                canvasNoteId: canvasNoteId,
+                sourceNoteId: sourceNoteId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$NoteCanvasLinksTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({
+            canvasNoteId = false,
+            sourceNoteId = false,
+          }) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (canvasNoteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.canvasNoteId,
+                            referencedTable: $$NoteCanvasLinksTableReferences
+                                ._canvasNoteIdTable(db),
+                            referencedColumn:
+                                $$NoteCanvasLinksTableReferences
+                                    ._canvasNoteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+                if (sourceNoteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.sourceNoteId,
+                            referencedTable: $$NoteCanvasLinksTableReferences
+                                ._sourceNoteIdTable(db),
+                            referencedColumn:
+                                $$NoteCanvasLinksTableReferences
+                                    ._sourceNoteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NoteCanvasLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NoteCanvasLinksTable,
+      NoteCanvasLinkRow,
+      $$NoteCanvasLinksTableFilterComposer,
+      $$NoteCanvasLinksTableOrderingComposer,
+      $$NoteCanvasLinksTableAnnotationComposer,
+      $$NoteCanvasLinksTableCreateCompanionBuilder,
+      $$NoteCanvasLinksTableUpdateCompanionBuilder,
+      (NoteCanvasLinkRow, $$NoteCanvasLinksTableReferences),
+      NoteCanvasLinkRow,
+      PrefetchHooks Function({bool canvasNoteId, bool sourceNoteId})
+    >;
+typedef $$CanvasContextSourcesTableCreateCompanionBuilder =
+    CanvasContextSourcesCompanion Function({
+      Value<int> id,
+      required int canvasNoteId,
+      required String kind,
+      required String ref,
+      Value<String?> label,
+      Value<DateTime?> fetchedAt,
+      Value<DateTime> createdAt,
+    });
+typedef $$CanvasContextSourcesTableUpdateCompanionBuilder =
+    CanvasContextSourcesCompanion Function({
+      Value<int> id,
+      Value<int> canvasNoteId,
+      Value<String> kind,
+      Value<String> ref,
+      Value<String?> label,
+      Value<DateTime?> fetchedAt,
+      Value<DateTime> createdAt,
+    });
+
+final class $$CanvasContextSourcesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $CanvasContextSourcesTable,
+          CanvasContextSourceRow
+        > {
+  $$CanvasContextSourcesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $NotesTable _canvasNoteIdTable(_$AppDatabase db) =>
+      db.notes.createAlias(
+        $_aliasNameGenerator(db.canvasContextSources.canvasNoteId, db.notes.id),
+      );
+
+  $$NotesTableProcessedTableManager get canvasNoteId {
+    final $_column = $_itemColumn<int>('canvas_note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_canvasNoteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CanvasContextSourcesTableFilterComposer
+    extends Composer<_$AppDatabase, $CanvasContextSourcesTable> {
+  $$CanvasContextSourcesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ref => $composableBuilder(
+    column: $table.ref,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NotesTableFilterComposer get canvasNoteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasContextSourcesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CanvasContextSourcesTable> {
+  $$CanvasContextSourcesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ref => $composableBuilder(
+    column: $table.ref,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NotesTableOrderingComposer get canvasNoteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasContextSourcesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CanvasContextSourcesTable> {
+  $$CanvasContextSourcesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get ref =>
+      $composableBuilder(column: $table.ref, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get fetchedAt =>
+      $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$NotesTableAnnotationComposer get canvasNoteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.canvasNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasContextSourcesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CanvasContextSourcesTable,
+          CanvasContextSourceRow,
+          $$CanvasContextSourcesTableFilterComposer,
+          $$CanvasContextSourcesTableOrderingComposer,
+          $$CanvasContextSourcesTableAnnotationComposer,
+          $$CanvasContextSourcesTableCreateCompanionBuilder,
+          $$CanvasContextSourcesTableUpdateCompanionBuilder,
+          (CanvasContextSourceRow, $$CanvasContextSourcesTableReferences),
+          CanvasContextSourceRow,
+          PrefetchHooks Function({bool canvasNoteId})
+        > {
+  $$CanvasContextSourcesTableTableManager(
+    _$AppDatabase db,
+    $CanvasContextSourcesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$CanvasContextSourcesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer:
+              () => $$CanvasContextSourcesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$CanvasContextSourcesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> canvasNoteId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> ref = const Value.absent(),
+                Value<String?> label = const Value.absent(),
+                Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => CanvasContextSourcesCompanion(
+                id: id,
+                canvasNoteId: canvasNoteId,
+                kind: kind,
+                ref: ref,
+                label: label,
+                fetchedAt: fetchedAt,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int canvasNoteId,
+                required String kind,
+                required String ref,
+                Value<String?> label = const Value.absent(),
+                Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => CanvasContextSourcesCompanion.insert(
+                id: id,
+                canvasNoteId: canvasNoteId,
+                kind: kind,
+                ref: ref,
+                label: label,
+                fetchedAt: fetchedAt,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$CanvasContextSourcesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({canvasNoteId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (canvasNoteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.canvasNoteId,
+                            referencedTable:
+                                $$CanvasContextSourcesTableReferences
+                                    ._canvasNoteIdTable(db),
+                            referencedColumn:
+                                $$CanvasContextSourcesTableReferences
+                                    ._canvasNoteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CanvasContextSourcesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CanvasContextSourcesTable,
+      CanvasContextSourceRow,
+      $$CanvasContextSourcesTableFilterComposer,
+      $$CanvasContextSourcesTableOrderingComposer,
+      $$CanvasContextSourcesTableAnnotationComposer,
+      $$CanvasContextSourcesTableCreateCompanionBuilder,
+      $$CanvasContextSourcesTableUpdateCompanionBuilder,
+      (CanvasContextSourceRow, $$CanvasContextSourcesTableReferences),
+      CanvasContextSourceRow,
+      PrefetchHooks Function({bool canvasNoteId})
+    >;
 typedef $$OnboardingFlagsTableCreateCompanionBuilder =
     OnboardingFlagsCompanion Function({
       required String key,
@@ -14094,6 +15703,10 @@ class $AppDatabaseManager {
       $$KanbanCardsTableTableManager(_db, _db.kanbanCards);
   $$SpaceFolderLinksTableTableManager get spaceFolderLinks =>
       $$SpaceFolderLinksTableTableManager(_db, _db.spaceFolderLinks);
+  $$NoteCanvasLinksTableTableManager get noteCanvasLinks =>
+      $$NoteCanvasLinksTableTableManager(_db, _db.noteCanvasLinks);
+  $$CanvasContextSourcesTableTableManager get canvasContextSources =>
+      $$CanvasContextSourcesTableTableManager(_db, _db.canvasContextSources);
   $$OnboardingFlagsTableTableManager get onboardingFlags =>
       $$OnboardingFlagsTableTableManager(_db, _db.onboardingFlags);
   $$NotificationsTableTableManager get notifications =>

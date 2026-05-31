@@ -10,13 +10,17 @@ import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
+import '../../../domain/models/note.dart' show NoteKind;
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
+import '../../../domain/models/canvas_context_source.dart';
+import '../../../data/services/context_cache.dart';
+import '../../../data/services/web_reader.dart' show WebReaderException;
 import 'ai_chat_session.dart';
 import 'ocr_send_to_note.dart' show sendTextToNote;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
-import 'note_block_widgets.dart' show NoteMarkdownPreview;
+import 'note_block_widgets.dart' show NoteMarkdownPreview, fixMarkdownTables;
 
 /// Open the AI chat for a note view. The conversation is the per-note
 /// [AiChatSession] (persists while you're in the view; the sheet is a window).
@@ -30,6 +34,13 @@ Future<void> showAiChat(
   String? newContext,
   String? prefillMessage,
   required Color accent,
+  /// When non-null, AI replies show an "Enviar a lienzo" action that drops the
+  /// reply (raw markdown) onto the host canvas as a [CanvasTextBlock]. Only the
+  /// whiteboard/notebook editors pass this; a plain note leaves it null.
+  void Function(String markdown)? onSendToCanvas,
+  /// When non-null, the "Título" action suggests titles and applies the chosen
+  /// one here (the note editor wires its title field). Null → no title action.
+  void Function(String title)? onApplyTitle,
 }) async {
   final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
   if (!context.mounted) return;
@@ -68,6 +79,8 @@ Future<void> showAiChat(
       session: session,
       accent: accent,
       prefillMessage: prefillMessage,
+      onSendToCanvas: onSendToCanvas,
+      onApplyTitle: onApplyTitle,
     ),
   );
 }
@@ -137,10 +150,14 @@ class _AiChatSheet extends ConsumerStatefulWidget {
   final AiChatSession session;
   final Color accent;
   final String? prefillMessage;
+  final void Function(String markdown)? onSendToCanvas;
+  final void Function(String title)? onApplyTitle;
   const _AiChatSheet({
     required this.session,
     required this.accent,
     this.prefillMessage,
+    this.onSendToCanvas,
+    this.onApplyTitle,
   });
 
   @override
@@ -171,6 +188,97 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     if (_s.messages.isNotEmpty) _scrollToBottom();
     final prefill = widget.prefillMessage?.trim();
     if (prefill != null && prefill.isNotEmpty) _input.text = prefill;
+    // If this canvas is linked to a source note, resync the context on open.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resyncFromSources());
+  }
+
+  // ─── Canvas context sources (notes + urls) — assembly & sync ──────────────
+
+  DateTime? _syncedAt;
+
+  /// Rebuild the anchor from ALL of this canvas's context sources (notes +
+  /// urls). Each source is compacted-if-long and cached per content, so unchanged
+  /// sources are free on resync/re-open. No-op if there are no sources.
+  Future<void> _resyncFromSources() async {
+    final repo = ref.read(noteRepositoryProvider);
+    final sources = await repo.getContextSources(_s.noteId);
+    if (sources.isEmpty) return; // not linked → manual anchor stays
+    final pieces = <String>[];
+    for (final s in sources) {
+      String raw;
+      String label;
+      String key;
+      if (s.isNote) {
+        final nid = s.noteId;
+        if (nid == null) {
+          await repo.removeContextSource(s.id);
+          continue;
+        }
+        final note = await repo.getById(nid);
+        if (note == null) {
+          await repo.removeContextSource(s.id); // dangling → drop
+          continue;
+        }
+        final blocks = await ref.read(noteBlocksProvider(nid).future);
+        label = (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
+        raw = _extractNoteContext(blocks);
+        key = 'note:$nid';
+      } else {
+        label = (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim();
+        raw = (await readUrlContent(s.ref)) ?? '';
+        key = 'url:${contextStableHash(s.ref)}';
+      }
+      if (raw.trim().isEmpty) continue;
+      final piece = await _compactPiece(key, raw);
+      pieces.add('## $label\n\n$piece');
+    }
+    _s.setSyncedAnchor(pieces.join('\n\n---\n\n'));
+    if (mounted) setState(() => _syncedAt = DateTime.now());
+  }
+
+  /// Compact a single source if it's long, caching the result by content hash
+  /// (one compaction per source version, reused thereafter). Short → as-is.
+  Future<String> _compactPiece(String key, String raw) async {
+    if (raw.length <= kAnchorLongChars) return raw;
+    final cached = await readCompactCache(key, raw);
+    if (cached != null) return cached;
+    final limiter = ref.read(aiUsageLimiterProvider);
+    if (!await limiter.canSend()) {
+      return raw.length > 4000 ? raw.substring(0, 4000) : raw;
+    }
+    await limiter.record();
+    final buf = StringBuffer();
+    try {
+      await for (final tok in ref.read(aiAssistantProvider).streamReply([
+        const AiMessage(AiRole.system, kCompactPrompt),
+        AiMessage(AiRole.user, raw),
+      ], model: AiModel.flash)) {
+        buf.write(tok);
+      }
+    } catch (_) {
+      return raw;
+    }
+    final compacted = buf.toString().trim();
+    if (compacted.isEmpty || compacted.length >= raw.length) return raw;
+    await writeCompactCache(key, raw, compacted);
+    return compacted;
+  }
+
+  /// Open the "Fuentes" manager (add/remove notes + urls; refetch a url).
+  Future<void> _showSourcesSheet() async {
+    final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
+    if (note == null || !context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SourcesSheet(
+        canvasNoteId: _s.noteId,
+        folderId: note.folderId,
+        accent: widget.accent,
+        onChanged: _resyncFromSources,
+      ),
+    );
   }
 
   @override
@@ -226,8 +334,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             top: false,
             child: AnimatedBuilder(
               animation: _s,
-              builder: (_, _) =>
-                  _s.hasAnchor ? _buildChat() : _buildAnchorGate(),
+              builder: (_, _) {
+                // A linked canvas always shows the chat (so its SINCRONIZADA
+                // bar / unlink is reachable even if the source note is empty).
+                final linked = (ref
+                        .watch(canvasContextSourcesProvider(_s.noteId))
+                        .valueOrNull
+                        ?.isNotEmpty) ??
+                    false;
+                return (_s.hasAnchor || linked)
+                    ? _buildChat()
+                    : _buildAnchorGate();
+              },
             ),
           ),
         ),
@@ -289,11 +407,37 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       color: yInk)),
             ),
           ),
+          if (_hostIsCanvas) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _showSourcesSheet,
+              child: Container(
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: yCream,
+                  border: Border.all(color: widget.accent, width: yLineMid),
+                ),
+                child: Text('FUENTES DE CONTEXTO',
+                    style: yMono(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yInk)),
+              ),
+            ),
+          ],
             ],
           ),
         ),
       ],
     );
+  }
+
+  bool get _hostIsCanvas {
+    final k = ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
+    return k == NoteKind.whiteboard || k == NoteKind.notebook;
   }
 
   /// Open a bottom sheet listing the other notes in the same folder so the
@@ -425,8 +569,22 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// CONTEXTO ▸ [texto del ancla]  ✎  ✕
+  /// Branches: a linked canvas shows the SINCRONIZADA bar; everything else the
+  /// normal editable CONTEXTO bar (+ a link affordance when the host is a
+  /// canvas).
   Widget _contextBar() {
+    final sources =
+        ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
+            const [];
+    if (sources.isNotEmpty) return _linkedContextBar(sources.length);
+    return _normalContextBar();
+  }
+
+  /// CONTEXTO ▸ [texto del ancla]  ✎  ✕  (🔗 si es un canvas)
+  Widget _normalContextBar() {
+    final hostKind = ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
+    final isCanvas =
+        hostKind == NoteKind.whiteboard || hostKind == NoteKind.notebook;
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
@@ -459,12 +617,63 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ),
           ),
           const SizedBox(width: 8),
+          if (isCanvas) ...[
+            _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
+            const SizedBox(width: 6),
+          ],
           _ghostIcon(Icons.edit, 'Editar contexto', _editContext),
           const SizedBox(width: 6),
           _ghostIcon(Icons.close, 'Quitar contexto', () => _s.setAnchor('')),
         ],
       ),
     );
+  }
+
+  /// SINCRONIZADA ▸ N fuentes · hace Xmin   ↻(notas)   ⚙(gestionar)
+  Widget _linkedContextBar(int count) {
+    final ago = _syncedAt == null ? '' : ' · ${_agoLabel(_syncedAt!)}';
+    final label = count == 1 ? '1 fuente' : '$count fuentes';
+    return Container(
+      decoration: BoxDecoration(
+        color: yCream2,
+        border: const Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
+      child: Row(
+        children: [
+          Container(width: 8, height: 8, color: widget.accent),
+          const SizedBox(width: 8),
+          Text('SINCRONIZADA ▸',
+              style: yMono(
+                  size: 10, weight: FontWeight.w700, tracking: 1.2, color: yInk)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _showSourcesSheet,
+              child: Text('$label$ago',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Re-reads local notes only; urls are refreshed per-source from the
+          // Fuentes sheet (no surprise network).
+          _ghostIcon(Icons.refresh, 'Re-sincronizar notas', _resyncFromSources),
+          const SizedBox(width: 6),
+          _ghostIcon(Icons.tune, 'Gestionar fuentes', _showSourcesSheet),
+        ],
+      ),
+    );
+  }
+
+  String _agoLabel(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'recién';
+    if (d.inMinutes < 60) return 'hace ${d.inMinutes} min';
+    if (d.inHours < 24) return 'hace ${d.inHours} h';
+    return 'hace ${d.inDays} d';
   }
 
   Widget _ghostIcon(IconData icon, String tip, VoidCallback onTap) {
@@ -752,33 +961,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         content: Text('Copiado'), duration: Duration(milliseconds: 700)));
   }
 
-  /// Repairs malformed GFM tables from the model: rebuilds each delimiter row
-  /// (`|---|---|`) to match the header's column count. The model sometimes
-  /// emits a delimiter with the wrong number of columns, which markdown_widget
-  /// (strict) then refuses to render → raw pipes. We only touch delimiter rows.
-  String _fixMarkdownTables(String md) {
-    if (!md.contains('|')) return md;
-    final lines = md.split('\n');
-    // A delimiter-only row: pipes/dashes/colons/spaces, with at least one dash.
-    final sepRe = RegExp(r'^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$');
-    int colCount(String row) {
-      var s = row.trim();
-      if (s.startsWith('|')) s = s.substring(1);
-      if (s.endsWith('|')) s = s.substring(0, s.length - 1);
-      return s.split('|').length;
-    }
-
-    for (var i = 1; i < lines.length; i++) {
-      final line = lines[i];
-      if (!line.contains('|') || !sepRe.hasMatch(line)) continue;
-      final header = lines[i - 1];
-      if (!header.contains('|')) continue;
-      final cols = colCount(header);
-      if (cols < 1) continue;
-      final rebuilt = '|${List.filled(cols, '---').join('|')}|';
-      if (rebuilt != line.trim()) lines[i] = rebuilt;
-    }
-    return lines.join('\n');
+  /// Drop this reply (raw markdown) onto the host canvas as a text block, then
+  /// close the sheet so the new block is visible. Same engine as note cells →
+  /// it renders identically.
+  void _sendToCanvas(String text) {
+    final send = widget.onSendToCanvas;
+    if (send == null) return;
+    send(text.trim());
+    HapticFeedback.selectionClick();
+    Navigator.of(context).pop();
   }
 
   String _cleanTaskLine(String s) =>
@@ -840,7 +1031,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         ? Text('…', style: yBody(size: 14, color: yInk))
         : streaming
             ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
-            : NoteMarkdownPreview(data: _fixMarkdownTables(m.text));
+            : NoteMarkdownPreview(data: fixMarkdownTables(m.text));
     final actions = (!streaming && m.text.isNotEmpty)
         ? <Widget>[
             _msgActionBtn('Copiar', () => _copy(m.text)),
@@ -849,6 +1040,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               sendTextToNote(context, ref, m.text,
                   defaultFolderId: note?.folderId, accent: widget.accent);
             }),
+            if (widget.onSendToCanvas != null)
+              _msgActionBtn('Enviar a lienzo', () => _sendToCanvas(m.text)),
             _msgActionBtn(
                 'Rehacer',
                 () => _s.regenerate(i, ref.read(aiAssistantProvider),
@@ -924,6 +1117,90 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
+  /// One-shot: ask for 3 short titles, show a pick+edit popup, apply the chosen
+  /// one via [widget.onApplyTitle]. Doesn't touch the chat thread.
+  Future<void> _suggestTitle() async {
+    final apply = widget.onApplyTitle;
+    if (apply == null) return;
+    if (!_s.hasAnchor) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No hay contexto para titular.'),
+          duration: Duration(seconds: 2)));
+      return;
+    }
+    final limiter = ref.read(aiUsageLimiterProvider);
+    if (!await limiter.canSend()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Límite diario de IA alcanzado.'),
+          duration: Duration(seconds: 2)));
+      return;
+    }
+    final navigator = Navigator.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    await limiter.record();
+    final buf = StringBuffer();
+    String? err;
+    try {
+      await for (final tok in ref.read(aiAssistantProvider).streamReply([
+        const AiMessage(
+            AiRole.system,
+            'Sugiere títulos cortos. Responde SOLO con 3 títulos, uno por '
+            'línea, máximo 6 palabras cada uno, sin numerar, sin comillas, '
+            'sin explicación.'),
+        AiMessage(AiRole.user,
+            '<context_documents>\n${_s.anchor}\n</context_documents>'),
+        const AiMessage(AiRole.user, 'Dame 3 títulos para este contenido.'),
+      ], model: AiModel.flash)) {
+        buf.write(tok);
+      }
+    } catch (e) {
+      err = '$e';
+    }
+    if (navigator.canPop()) navigator.pop(); // close spinner
+    if (!mounted) return;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err), duration: const Duration(seconds: 3)));
+      return;
+    }
+    final options = _parseTitles(buf.toString());
+    if (options.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No pude sugerir títulos.'),
+          duration: Duration(seconds: 2)));
+      return;
+    }
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _TitlePickerDialog(options: options, accent: widget.accent),
+    );
+    if (chosen == null || chosen.trim().isEmpty) return;
+    apply(chosen.trim());
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Título aplicado'), duration: Duration(seconds: 2)));
+  }
+
+  List<String> _parseTitles(String raw) {
+    final out = <String>[];
+    for (final line in raw.split('\n')) {
+      var s = line.trim();
+      if (s.isEmpty) continue;
+      s = s.replaceFirst(RegExp(r'^\s*([-*•]|\d+[.)])\s*'), '');
+      s = s.replaceAll(RegExp('^["“”\']+|["“”\']+\$'), '').trim();
+      if (s.isEmpty) continue;
+      out.add(s);
+      if (out.length >= 3) break;
+    }
+    return out;
+  }
+
   Widget _quickActions() {
     // (glyph, label, prompt, sendWithHistory)
     final items = <(String, String, String, bool)>[
@@ -985,9 +1262,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   Widget _qaChip(String glyph, String label, String prompt,
       {required bool withHistory}) {
+    // "Título" with an apply target → suggest+pick popup; otherwise the normal
+    // one-shot that streams the answer into the chat.
+    final isTitleApply = label == 'Título' && widget.onApplyTitle != null;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _s.streaming ? null : () => _send(prompt, quickAction: !withHistory),
+      onTap: _s.streaming
+          ? null
+          : isTitleApply
+              ? _suggestTitle
+              : () => _send(prompt, quickAction: !withHistory),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
@@ -1409,6 +1693,503 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
               ]),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Manages a canvas's context sources (linked notes + external urls). Notes
+/// re-sync from local; urls are fetched once via Jina and refreshed only here,
+/// per-source.
+class _SourcesSheet extends ConsumerStatefulWidget {
+  final int canvasNoteId;
+  final int folderId;
+  final Color accent;
+  final Future<void> Function() onChanged;
+  const _SourcesSheet({
+    required this.canvasNoteId,
+    required this.folderId,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  @override
+  ConsumerState<_SourcesSheet> createState() => _SourcesSheetState();
+}
+
+class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
+  bool _busy = false;
+
+  void _snack(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(m), duration: const Duration(seconds: 3)));
+  }
+
+  String _ago(DateTime? t) {
+    if (t == null) return '';
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'recién';
+    if (d.inMinutes < 60) return 'hace ${d.inMinutes} min';
+    if (d.inHours < 24) return 'hace ${d.inHours} h';
+    return 'hace ${d.inDays} d';
+  }
+
+  Future<void> _addNote() async {
+    final notes = ref.read(notesByFolderProvider(widget.folderId)).valueOrNull ??
+        const [];
+    final existing =
+        (ref.read(canvasContextSourcesProvider(widget.canvasNoteId)).valueOrNull ??
+                const [])
+            .where((s) => s.isNote)
+            .map((s) => s.ref)
+            .toSet();
+    final candidates = notes
+        .where((n) =>
+            n.id != widget.canvasNoteId &&
+            n.kind == NoteKind.block &&
+            !existing.contains(n.id.toString()))
+        .toList();
+    if (candidates.isEmpty) {
+      _snack('No hay más notas en esta carpeta para agregar.');
+      return;
+    }
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: yCream,
+          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('AGREGAR NOTA',
+                  style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk)),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: candidates.length,
+                  itemBuilder: (_, i) {
+                    final n = candidates[i];
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(ctx).pop(n.id),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom:
+                                  BorderSide(color: yInk, width: yLineThin)),
+                        ),
+                        child: Text(
+                          (n.title?.isEmpty ?? true) ? 'Sin título' : n.title!,
+                          style: ySans(
+                              size: 14, weight: FontWeight.w700, color: yInk),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    final title =
+        candidates.firstWhere((n) => n.id == picked).title;
+    await ref.read(noteRepositoryProvider).addContextSource(
+        widget.canvasNoteId, CanvasSourceKind.note, picked.toString(),
+        label: title);
+    await widget.onChanged();
+  }
+
+  Future<void> _addUrl() async {
+    final ctrl = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: yCream,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: Text('Agregar enlace',
+            style: ySans(size: 18, weight: FontWeight.w700)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(hintText: 'https://…'),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+              child: const Text('Agregar')),
+        ],
+      ),
+    );
+    if (url == null || url.trim().isEmpty) return;
+    final clean = url.trim();
+    setState(() => _busy = true);
+    try {
+      final doc = await ref.read(webReaderProvider).fetch(clean);
+      await writeUrlContent(clean, doc.content);
+      await ref.read(noteRepositoryProvider).addContextSource(
+          widget.canvasNoteId, CanvasSourceKind.url, clean,
+          label: doc.title, fetchedAt: DateTime.now());
+      await widget.onChanged();
+    } on WebReaderException catch (e) {
+      _snack(e.message);
+    } catch (_) {
+      _snack('No se pudo leer la página.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _refetch(CanvasContextSource s) async {
+    setState(() => _busy = true);
+    try {
+      final doc = await ref.read(webReaderProvider).fetch(s.ref);
+      await writeUrlContent(s.ref, doc.content);
+      await ref
+          .read(noteRepositoryProvider)
+          .updateContextSourceFetch(s.id, label: doc.title, fetchedAt: DateTime.now());
+      await widget.onChanged();
+    } on WebReaderException catch (e) {
+      _snack(e.message);
+    } catch (_) {
+      _snack('No se pudo actualizar la página.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove(CanvasContextSource s) async {
+    await ref.read(noteRepositoryProvider).removeContextSource(s.id);
+    await widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sources =
+        ref.watch(canvasContextSourcesProvider(widget.canvasNoteId)).valueOrNull ??
+            const [];
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream,
+        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Text('FUENTES DE CONTEXTO',
+                  style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk)),
+              const Spacer(),
+              if (_busy)
+                const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+                'El chat usa estas fuentes como contexto. Las notas se '
+                'sincronizan al abrir; los enlaces se leen una vez y se '
+                'actualizan solo con su ↻.',
+                style: yBody(size: 12, color: yMuted)),
+            const SizedBox(height: 12),
+            if (sources.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text('Sin fuentes. Agrega una nota o un enlace.',
+                    style: yBody(size: 13, color: yMuted)),
+              )
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [for (final s in sources) _sourceRow(s)],
+                ),
+              ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: _addBtn(Icons.description_outlined, 'Nota', _addNote)),
+              const SizedBox(width: 8),
+              Expanded(child: _addBtn(Icons.link, 'Enlace', _addUrl)),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sourceRow(CanvasContextSource s) {
+    final String title;
+    if (s.isNote) {
+      final n = ref.watch(noteByIdProvider(s.noteId ?? -1)).valueOrNull;
+      title = (n?.title?.trim().isEmpty ?? true) ? 'Sin título' : n!.title!.trim();
+    } else {
+      title = (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim();
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
+      ),
+      child: Row(
+        children: [
+          Icon(s.isNote ? Icons.description_outlined : Icons.link,
+              size: 16, color: yInk),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ySans(size: 14, weight: FontWeight.w700, color: yInk)),
+                if (s.isUrl)
+                  Text('${s.ref}  ·  ${_ago(s.fetchedAt)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: yMono(size: 9, tracking: 0.3, color: yMuted)),
+              ],
+            ),
+          ),
+          if (s.isUrl) ...[
+            const SizedBox(width: 4),
+            _iconBtn(Icons.refresh, 'Actualizar', _busy ? null : () => _refetch(s)),
+          ],
+          const SizedBox(width: 4),
+          _iconBtn(Icons.close, 'Quitar', _busy ? null : () => _remove(s)),
+        ],
+      ),
+    );
+  }
+
+  Widget _iconBtn(IconData icon, String tip, VoidCallback? onTap) => Tooltip(
+        message: tip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(icon,
+                size: 16, color: onTap == null ? yMuted : yInk),
+          ),
+        ),
+      );
+
+  Widget _addBtn(IconData icon, String label, VoidCallback onTap) =>
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _busy ? null : onTap,
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: yCream,
+            border: Border.all(color: widget.accent, width: yLineMid),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: yInk),
+              const SizedBox(width: 8),
+              Text(label.toUpperCase(),
+                  style: yMono(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: yInk)),
+            ],
+          ),
+        ),
+      );
+}
+
+/// Pick one of the AI-suggested titles (tap to select → fills the field) and
+/// optionally edit it before applying. Returns the final string, or null.
+class _TitlePickerDialog extends StatefulWidget {
+  final List<String> options;
+  final Color accent;
+  const _TitlePickerDialog({required this.options, required this.accent});
+
+  @override
+  State<_TitlePickerDialog> createState() => _TitlePickerDialogState();
+}
+
+class _TitlePickerDialogState extends State<_TitlePickerDialog> {
+  late final TextEditingController _ctrl;
+  int _sel = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.options.first);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _pick(int i) => setState(() {
+        _sel = i;
+        _ctrl.text = widget.options[i];
+        _ctrl.selection =
+            TextSelection.collapsed(offset: _ctrl.text.length);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 360),
+        decoration: BoxDecoration(border: Border.all(color: yInk, width: yLineHeavy)),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('SUGERIR TÍTULO',
+                style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk)),
+            const SizedBox(height: 12),
+            for (int i = 0; i < widget.options.length; i++)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _pick(i),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: _sel == i ? widget.accent : yCream,
+                          border: Border.all(color: yInk, width: yLineMid),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(widget.options[i],
+                            style: ySans(
+                                size: 15,
+                                weight: FontWeight.w600,
+                                color: yInk)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            Container(height: 2, color: yInk.withValues(alpha: 0.14)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ctrl,
+              style: yBody(size: 15, color: yInk),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.all(10),
+                hintText: 'Editar título…',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: yInk, width: yLineMid),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: yInk, width: yLineMid),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: yInk, width: yLineMid),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: yCream,
+                        border: Border.all(color: yInk, width: yLineMid),
+                      ),
+                      child: Text('CANCELAR',
+                          style: yMono(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              tracking: 1.2,
+                              color: yInk)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () =>
+                        Navigator.of(context).pop(_ctrl.text.trim()),
+                    child: Container(
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: widget.accent,
+                        border: Border.all(color: yInk, width: yLineMid),
+                      ),
+                      child: Text('APLICAR',
+                          style: yMono(
+                              size: 12,
+                              weight: FontWeight.w700,
+                              tracking: 1.2,
+                              color: yCream)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

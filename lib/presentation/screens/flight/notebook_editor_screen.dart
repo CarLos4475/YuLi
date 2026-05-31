@@ -16,6 +16,8 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../providers/ai_providers.dart';
+import '../../providers/note_providers.dart';
+import '../../widgets/ai_link_badge.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
 import 'ai_chat_sheet.dart';
@@ -23,6 +25,7 @@ import 'background_paint.dart';
 import 'background_popup.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
+import 'canvas_text_block.dart';
 import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
@@ -90,11 +93,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Offset? _snapAnchor;
   double _snapRefDist = 1;
   final List<Map<int, (List<DrawingStroke>, List<CanvasImage>,
-      List<CanvasTaskBlock>)>> _undoStack = [];
+      List<CanvasTaskBlock>, List<CanvasTextBlock>)>> _undoStack = [];
   final List<Map<int, (List<DrawingStroke>, List<CanvasImage>,
-      List<CanvasTaskBlock>)>> _redoStack = [];
-  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>?
-      _gestureBefore;
+      List<CanvasTaskBlock>, List<CanvasTextBlock>)>> _redoStack = [];
+  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
+      List<CanvasTextBlock>)>? _gestureBefore;
   bool _gestureChanged = false;
   bool _isDrawing = false;
   bool _stylusActive = false;
@@ -335,6 +338,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       's': strokes,
       'i': images,
       't': taskBlocks,
+      if (payload['tx'] != null) 'tx': payload['tx'],
       'bg': payload['bg'],
       'bgc': payload['bgc'],
     });
@@ -380,6 +384,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       's': data.strokes.map((s) => s.toJson()).toList(),
       'i': data.images.map((im) => im.toJson()).toList(),
       't': data.taskBlocks.map((b) => b.toJson()).toList(),
+      'tx': data.textBlocks.map((b) => b.toJson()).toList(),
       'bg': data.background.toDbString(),
       if (data.bgColorValue != null) 'bgc': data.bgColorValue,
       'starred': _starredBlockIds.contains(blockId),
@@ -717,6 +722,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // ─── Drawing helpers ───────────────────────────────────────────────────
 
   bool _shouldDraw(PointerDeviceKind kind) {
+    if (_tool == DrawTool.text) return false; // text mode never draws
     if (kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus) {
       return true;
@@ -1035,7 +1041,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       });
       return;
     }
-    // Nothing selected. A tap on an interactive block belongs to its task UI.
+    // Nothing selected. A tap on an interactive TASK block belongs to its UI;
+    // text blocks lasso-select here (they only edit in text mode).
+    final textBlocks = _allVisibleTextBlocks;
     for (int i = 0; i < blocks.length; i++) {
       if (_lassoCtrl.selectedBlockIndices.contains(i)) continue;
       final b = blocks[i];
@@ -1043,7 +1051,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     setState(() {
       if (_lassoCtrl.tapSelect(
-          p, _allVisibleStrokes, _allVisibleImages, blocks)) {
+          p, _allVisibleStrokes, _allVisibleImages, blocks, textBlocks)) {
         _toolbarVisible = false;
       } else {
         _lassoCtrl.deselect();
@@ -1372,6 +1380,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return all;
   }
 
+  List<CanvasTextBlock> get _allVisibleTextBlocks {
+    final all = <CanvasTextBlock>[];
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      if (data == null) continue;
+      final offset = _pageOffsetY(i);
+      for (final b in data.textBlocks) {
+        all.add(b.clone()..y += offset);
+      }
+    }
+    return all;
+  }
+
   /// Page whose vertical band contains [worldY], else the nearest page. Shared
   /// by strokes/images/task blocks so a selection dragged into a gap or past
   /// the last page lands somewhere instead of being dropped.
@@ -1486,23 +1507,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final strokes = _allVisibleStrokes;
     final images = _allVisibleImages;
     final blocks = _allVisibleTaskBlocks;
+    final textBlocks = _allVisibleTextBlocks;
     if (_lassoCtrl.phase == LassoPhase.tracing) {
-      _lassoCtrl.finishTracing(strokes, images, blocks);
+      _lassoCtrl.finishTracing(strokes, images, blocks, textBlocks);
       _toolbarVisible = false;
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
-      _lassoCtrl.finishMove(strokes, images, blocks);
-      _finishTransformOrTap(moved, strokes, images, blocks);
+      _lassoCtrl.finishMove(strokes, images, blocks, 0, textBlocks);
+      _finishTransformOrTap(moved, strokes, images, blocks, textBlocks);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       final side = _lassoCtrl.isSideResize;
       final cornerScale = _lassoCtrl.resizeScale;
+      final sideScaleX = _lassoCtrl.resizeScaleX;
+      final sideScaleY = _lassoCtrl.resizeScaleY;
       final moved = side
-          ? (_lassoCtrl.resizeScaleX - 1).abs() > 0.02 ||
-              (_lassoCtrl.resizeScaleY - 1).abs() > 0.02
+          ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
           : (cornerScale - 1).abs() > 0.02;
       side
-          ? _lassoCtrl.finishSideResize(strokes, images, blocks)
-          : _lassoCtrl.finishResize(strokes, images, blocks);
+          ? _lassoCtrl.finishSideResize(strokes, images, blocks, textBlocks)
+          : _lassoCtrl.finishResize(strokes, images, blocks, textBlocks);
       for (final i in _lassoCtrl.selectedBlockIndices) {
         if (i >= blocks.length) continue;
         final b = blocks[i];
@@ -1512,20 +1535,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         if (b.w < 220) b.w = 220;
         if (b.h < 90) b.h = 90;
       }
-      _finishTransformOrTap(moved, strokes, images, blocks);
+      for (final i in _lassoCtrl.selectedTextBlockIndices) {
+        if (i >= textBlocks.length) continue;
+        final b = textBlocks[i];
+        // Corner = uniform scale (text grows with box). Horizontal side = width
+        // reflow (controller already set w). Vertical resize is disabled for
+        // text (hitTestSideHandle skips top/bottom for text-only selections).
+        if (!side) b.scale = (b.scale * cornerScale).clamp(0.2, 8.0);
+        if (b.w < kCanvasTextBlockMinW) b.w = kCanvasTextBlockMinW;
+      }
+      _finishTransformOrTap(moved, strokes, images, blocks, textBlocks);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
-      _lassoCtrl.finishRotation(strokes, images, blocks);
-      _finishTransformOrTap(moved, strokes, images, blocks);
+      _lassoCtrl.finishRotation(strokes, images, blocks, textBlocks);
+      _finishTransformOrTap(moved, strokes, images, blocks, textBlocks);
     }
   }
 
   /// A transform that moved is synced to the pages and committed; one that
   /// didn't is a tap on the selection → toggle the action toolbar.
   void _finishTransformOrTap(bool moved, List<DrawingStroke> strokes,
-      List<CanvasImage> images, List<CanvasTaskBlock> blocks) {
+      List<CanvasImage> images, List<CanvasTaskBlock> blocks,
+      List<CanvasTextBlock> textBlocks) {
     if (moved) {
-      _syncLassoToPages(strokes, images, blocks);
+      _syncLassoToPages(strokes, images, blocks, textBlocks);
       _commitGesture();
     } else {
       _gestureBefore = null;
@@ -1534,15 +1567,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _syncLassoToPages(List<DrawingStroke> worldStrokes,
-      List<CanvasImage> worldImages, List<CanvasTaskBlock> worldBlocks) {
+      List<CanvasImage> worldImages, List<CanvasTaskBlock> worldBlocks,
+      List<CanvasTextBlock> worldTextBlocks) {
     final pages = <int, List<DrawingStroke>>{};
     final imagesByPage = <int, List<CanvasImage>>{};
     final blocksByPage = <int, List<CanvasTaskBlock>>{};
+    final textBlocksByPage = <int, List<CanvasTextBlock>>{};
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final bid = _pageBlockIds[i];
       pages[bid] = [];
       imagesByPage[bid] = [];
       blocksByPage[bid] = [];
+      textBlocksByPage[bid] = [];
     }
     for (final s in worldStrokes) {
       if (s.points.isEmpty) continue;
@@ -1571,6 +1607,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       blocksByPage[_pageBlockIds[idx]]!
           .add(b.clone()..y -= _pageOffsetY(idx));
     }
+    for (final b in worldTextBlocks) {
+      final idx = _nearestPageIndex(b.y + b.h / 2);
+      if (idx < 0) continue;
+      textBlocksByPage[_pageBlockIds[idx]]!
+          .add(b.clone()..y -= _pageOffsetY(idx));
+    }
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final bid = _pageBlockIds[i];
       final prev = _pageData[bid];
@@ -1579,6 +1621,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         strokes: pages[bid]!,
         images: imagesByPage[bid]!,
         taskBlocks: blocksByPage[bid]!,
+        textBlocks: textBlocksByPage[bid]!,
         background: prev?.background ?? PageBackground.blank,
         bgColorValue: prev?.bgColorValue,
       );
@@ -1591,24 +1634,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// sync back to the pages, and record it as one undoable step.
   void _lassoMutate(
       void Function(List<DrawingStroke>, List<CanvasImage>,
-              List<CanvasTaskBlock>)
+              List<CanvasTaskBlock>, List<CanvasTextBlock>)
           op) {
     final before = _snapshot();
     final strokes = _allVisibleStrokes;
     final images = _allVisibleImages;
     final blocks = _allVisibleTaskBlocks;
-    op(strokes, images, blocks);
-    _syncLassoToPages(strokes, images, blocks);
+    final textBlocks = _allVisibleTextBlocks;
+    op(strokes, images, blocks, textBlocks);
+    _syncLassoToPages(strokes, images, blocks, textBlocks);
     _commit(before);
   }
 
   void _lassoDelete() {
-    _lassoMutate((s, im, b) => _lassoCtrl.deleteSelected(s, im, b));
+    _lassoMutate(
+        (s, im, b, tx) => _lassoCtrl.deleteSelected(s, im, b, tx));
     HapticFeedback.lightImpact();
   }
 
   void _lassoDuplicate() {
-    _lassoMutate((s, im, b) => _lassoCtrl.duplicateSelected(s, im));
+    _lassoMutate((s, im, b, tx) => _lassoCtrl.duplicateSelected(s, im));
     HapticFeedback.lightImpact();
   }
 
@@ -1632,6 +1677,54 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     setState(() {
       _pageData[_pageBlockIds[pageIdx]]?.taskBlocks.add(block);
       if (_tool != DrawTool.lasso) _tool = DrawTool.lasso;
+    });
+    _commit(before);
+    _persistPage(pageIdx);
+    HapticFeedback.lightImpact();
+  }
+
+  /// Insert a new text block (empty, or seeded with [markdown]) on the page
+  /// currently in view. Used by the insert button and the AI chat's "send to
+  /// canvas".
+  void _insertTextBlock([String markdown = '']) {
+    if (_pageBlockIds.isEmpty) return;
+    final screen = MediaQuery.of(context).size;
+    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+    final pageIdx =
+        _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
+    // Size by zoom so the box is a consistent ~240px on screen.
+    final w = (240.0 / _viewScale).clamp(60.0, 600.0);
+    final h = w / 2;
+    final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
+    final block = CanvasTextBlock(
+      x: center.dx - w / 2,
+      y: localY,
+      w: w,
+      h: h,
+      markdown: markdown,
+    );
+    final before = _snapshot();
+    setState(() {
+      _pageData[_pageBlockIds[pageIdx]]?.textBlocks.add(block);
+      if (markdown.isEmpty) {
+        // Manual insert (Texto button): stay in text mode.
+        _tool = DrawTool.text;
+      } else {
+        // From the AI chat: select it via the lasso so it's clearly a placed,
+        // movable/resizable object. World-space flat index = text blocks on
+        // earlier pages + this block's position on its page.
+        var worldIdx = 0;
+        for (int i = 0; i < pageIdx; i++) {
+          worldIdx += _pageData[_pageBlockIds[i]]?.textBlocks.length ?? 0;
+        }
+        worldIdx +=
+            (_pageData[_pageBlockIds[pageIdx]]?.textBlocks.length ?? 1) - 1;
+        _tool = DrawTool.lasso;
+        _lassoCtrl.hitScale = _viewScale;
+        _lassoCtrl.selectTextBlock(worldIdx, _allVisibleStrokes,
+            _allVisibleImages, _allVisibleTaskBlocks, _allVisibleTextBlocks);
+        _toolbarVisible = false;
+      }
     });
     _commit(before);
     _persistPage(pageIdx);
@@ -1765,6 +1858,67 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return out;
   }
 
+  /// Text block overlays. Flat index matches [_allVisibleTextBlocks] so lasso
+  /// selection lines up.
+  List<Widget> _buildTextBlockOverlays() {
+    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating;
+    final out = <Widget>[];
+    int flat = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      if (data == null) continue;
+      final offset = _pageOffsetY(i);
+      final pageIndex = i;
+      for (final b in data.textBlocks) {
+        final idx = flat++;
+        final selected = _lassoCtrl.selectedTextBlockIndices.contains(idx);
+        Widget overlay = RepaintBoundary(
+          child: CanvasTextBlockOverlay(
+            key: ValueKey(b.id),
+            block: b,
+            accent: _accent,
+            // Text blocks are ONLY interactive (tap = edit, drag = move) in text
+            // mode. Inert (IgnorePointer) in pen/lasso: the lasso transforms
+            // them by geometry, pens never touch them. Avoids a multi-touch
+            // crash (finger on block + 2-finger zoom).
+            interactive: !selected && !gesture && _tool == DrawTool.text,
+            movable: !selected && !gesture && _tool == DrawTool.text,
+            onPersist: () => _persistPage(pageIndex),
+            onChanged: () {
+              if (mounted) setState(() {});
+            },
+            onHeightMeasured: (h) {
+              if (!mounted) return;
+              setState(() => b.h = h);
+              _lassoCtrl.refreshBoundingBox(_allVisibleStrokes,
+                  _allVisibleImages, _allVisibleTaskBlocks, _allVisibleTextBlocks);
+              _persistPage(pageIndex);
+            },
+            onDragStart: () => _gestureBefore = _snapshot(),
+            onDragEnd: () {
+              _commitGesture();
+              _persistPage(pageIndex);
+            },
+          ),
+        );
+        final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+            _lassoCtrl.phase == LassoPhase.rotating ||
+            (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
+        if (isLiveTransform && selected) {
+          final off = Offset(b.x, offset + b.y);
+          final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+              _lassoCtrl.liveGestureMatrix() *
+              Matrix4.translationValues(off.dx, off.dy, 0);
+          overlay = Transform(transform: tm, child: overlay);
+        }
+        out.add(Positioned(left: b.x, top: offset + b.y, child: overlay));
+      }
+    }
+    return out;
+  }
+
   bool get _singleImageSelected =>
       _lassoCtrl.selectedImageIndices.length == 1 &&
       _lassoCtrl.selectedIndices.isEmpty;
@@ -1867,22 +2021,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Undo / redo (snapshot history, all pages) ──────────────────────────
 
-  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
+          List<CanvasTextBlock>)>
       _snapshot() {
     final m = <int,
-        (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>{};
+        (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
+            List<CanvasTextBlock>)>{};
     for (final entry in _pageData.entries) {
       m[entry.key] = (
         entry.value.strokes.map((s) => s.clone()).toList(),
         entry.value.images.map((im) => im.clone()).toList(),
         entry.value.taskBlocks.map((b) => b.clone()).toList(),
+        entry.value.textBlocks.map((b) => b.clone()).toList(),
       );
     }
     return m;
   }
 
   void _commit(
-      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
+              List<CanvasTextBlock>)>
           before) {
     _undoStack.add(before);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
@@ -1905,7 +2063,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _restore(
-      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
+              List<CanvasTextBlock>)>
           snap) {
     for (final entry in snap.entries) {
       final data = _pageData[entry.key];
@@ -1913,6 +2072,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         data.strokes = entry.value.$1;
         data.images = entry.value.$2;
         data.taskBlocks = entry.value.$3;
+        data.textBlocks = entry.value.$4;
       }
     }
   }
@@ -2088,11 +2248,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             : null,
         palette: _palette,
         onColorChange: (c) =>
-            _lassoMutate((s, im, b) => _lassoCtrl.changeColor(s, c.toARGB32())),
+            _lassoMutate((s, im, b, _) => _lassoCtrl.changeColor(s, c.toARGB32())),
         onWidthChange: (w) =>
-            _lassoMutate((s, im, b) => _lassoCtrl.changeWidth(s, w)),
-        onFlipH: () => _lassoMutate((s, im, b) => _lassoCtrl.flipHorizontal(s)),
-        onFlipV: () => _lassoMutate((s, im, b) => _lassoCtrl.flipVertical(s)),
+            _lassoMutate((s, im, b, _) => _lassoCtrl.changeWidth(s, w)),
+        onFlipH: () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipHorizontal(s)),
+        onFlipV: () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipVertical(s)),
         onCopy: () {
           _lassoCtrl.copySelected(_allVisibleStrokes, _allVisibleImages);
           HapticFeedback.lightImpact();
@@ -2104,7 +2264,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           );
         },
         onCut: () {
-          _lassoMutate((s, im, b) => _lassoCtrl.cutSelected(s, im, b));
+          _lassoMutate((s, im, b, _) => _lassoCtrl.cutSelected(s, im, b));
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2126,7 +2286,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          _lassoMutate((s, im, b) => _lassoCtrl.pasteAt(_showPasteAt!, s, im));
+          _lassoMutate((s, im, b, _) => _lassoCtrl.pasteAt(_showPasteAt!, s, im));
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -2153,6 +2313,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   Widget build(BuildContext context) {
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
+    final aiLinked = (ref
+                .watch(canvasContextSourcesProvider(widget.note.id))
+                .valueOrNull
+                ?.isNotEmpty) ??
+        false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
     return Scaffold(
@@ -2170,10 +2335,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 background: _currentBg,
                 accent: _accent,
                 hasAiKey: hasAiKey,
+                aiLinked: aiLinked,
                 onExpand: () => setState(() => _headerCollapsed = false),
                 onOpenPages: _togglePageDrawer,
                 onAi: () => showAiChat(context, ref,
-                    noteId: widget.note.id, accent: _accent),
+                    noteId: widget.note.id,
+                    accent: _accent,
+                    onSendToCanvas: _insertTextBlock),
               ),
             )
           else ...[
@@ -2208,9 +2376,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                         behavior: HitTestBehavior.opaque,
                         onTap: hasAiKey
                             ? () => showAiChat(context, ref,
-                                noteId: widget.note.id, accent: _accent)
+                                noteId: widget.note.id,
+                                accent: _accent,
+                                onSendToCanvas: _insertTextBlock)
                             : null,
-                        child: Container(
+                        child: AiLinkBadge(
+                          active: aiLinked,
+                          color: _accent,
+                          child: Container(
                           width: 34,
                           height: 34,
                           alignment: Alignment.center,
@@ -2220,6 +2393,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                           ),
                           child: Icon(Icons.auto_awesome,
                               color: hasAiKey ? yCream : yCream2, size: 18),
+                        ),
                         ),
                       ),
                       GestureDetector(
@@ -2286,24 +2460,32 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                     horizontal: c.maxWidth,
                                     vertical: _totalCanvasHeight * 0.3,
                                   ),
-                                  panEnabled: _tool == DrawTool.lasso
-                                      ? (_lassoCtrl.phase ==
-                                              LassoPhase.idle &&
-                                          !_isDrawing)
-                                      : _palmRejection
-                                          ? !_stylusActive
-                                          : !_isDrawing,
-                                  scaleEnabled: _tool == DrawTool.lasso
-                                      ? (_lassoCtrl.phase ==
-                                              LassoPhase.idle &&
-                                          !_isDrawing)
-                                      : !_stylusActive,
+                                  // Text mode: 1-finger drag moves a box (its
+                                  // GestureDetector), so disable pan; 2-finger
+                                  // still navigates.
+                                  panEnabled: _tool == DrawTool.text
+                                      ? false
+                                      : _tool == DrawTool.lasso
+                                          ? (_lassoCtrl.phase ==
+                                                  LassoPhase.idle &&
+                                              !_isDrawing)
+                                          : _palmRejection
+                                              ? !_stylusActive
+                                              : !_isDrawing,
+                                  scaleEnabled: _tool == DrawTool.text
+                                      ? true
+                                      : _tool == DrawTool.lasso
+                                          ? (_lassoCtrl.phase ==
+                                                  LassoPhase.idle &&
+                                              !_isDrawing)
+                                          : !_stylusActive,
                                   constrained: false,
                                   child: SizedBox(
                                     width: kNotebookPageWidth,
                                     height: _totalCanvasHeight,
                                     child: Stack(
                                       children: [
+                                        // Page chrome + images (no strokes).
                                         RepaintBoundary(
                                           child: CustomPaint(
                                             painter: _NotebookCanvasPainter(
@@ -2311,33 +2493,56 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                               pageData: _pageData,
                                               visibleRect: visibleRect,
                                               accentColor: _accent,
-                                              hiddenStrokes:
-                                                  _hiddenStrokes(),
                                               hiddenImages: _hiddenImages(),
                                               imageCache: _imgCache,
+                                              drawStrokes: false,
                                             ),
                                             size: Size(kNotebookPageWidth,
                                                 _totalCanvasHeight),
                                           ),
                                         ),
-                                        RepaintBoundary(
-                                          child: AnimatedBuilder(
-                                            animation: _activeTick,
-                                            builder: (_, _) => CustomPaint(
-                                              painter: _ActiveStrokePainter(
-                                                active: _active,
-                                                pageTop: _activePageIndex !=
-                                                        null
-                                                    ? _activePageIndex! *
-                                                        (kNotebookPageHeight +
-                                                            kNotebookPageGap)
-                                                    : 0.0,
+                                        // Text blocks BELOW the ink.
+                                        ..._buildTextBlockOverlays(),
+                                        // Strokes above text blocks; IgnorePointer
+                                        // so taps reach the boxes.
+                                        IgnorePointer(
+                                          child: RepaintBoundary(
+                                            child: CustomPaint(
+                                              painter: _NotebookCanvasPainter(
+                                                pageBlockIds: _pageBlockIds,
+                                                pageData: _pageData,
+                                                visibleRect: visibleRect,
+                                                accentColor: _accent,
+                                                hiddenStrokes: _hiddenStrokes(),
+                                                imageCache: _imgCache,
+                                                drawBackground: false,
                                               ),
                                               size: Size(kNotebookPageWidth,
                                                   _totalCanvasHeight),
                                             ),
                                           ),
                                         ),
+                                        IgnorePointer(
+                                          child: RepaintBoundary(
+                                            child: AnimatedBuilder(
+                                              animation: _activeTick,
+                                              builder: (_, _) => CustomPaint(
+                                                painter: _ActiveStrokePainter(
+                                                  active: _active,
+                                                  pageTop: _activePageIndex !=
+                                                          null
+                                                      ? _activePageIndex! *
+                                                          (kNotebookPageHeight +
+                                                              kNotebookPageGap)
+                                                      : 0.0,
+                                                ),
+                                                size: Size(kNotebookPageWidth,
+                                                    _totalCanvasHeight),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        // Task blocks above the ink.
                                         ..._buildTaskBlockOverlays(),
                                         if (_lassoCtrl.phase !=
                                             LassoPhase.idle)
@@ -2740,6 +2945,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
+                icon: Icons.notes,
+                active: _tool == DrawTool.text,
+                tooltip: 'Texto',
+                onTap: _insertTextBlock,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
                 icon: Icons.category_outlined,
                 active: _shapePopupOpen,
                 tooltip: 'Figuras',
@@ -3001,6 +3213,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final PageBackground background;
   final Color accent;
   final bool hasAiKey;
+  final bool aiLinked;
   final VoidCallback onExpand;
   final VoidCallback onOpenPages;
   final VoidCallback onAi;
@@ -3011,6 +3224,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
     required this.background,
     required this.accent,
     required this.hasAiKey,
+    required this.aiLinked,
     required this.onExpand,
     required this.onOpenPages,
     required this.onAi,
@@ -3070,7 +3284,10 @@ class _CollapsedNotebookHeader extends StatelessWidget {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: hasAiKey ? onAi : null,
-            child: Container(
+            child: AiLinkBadge(
+              active: aiLinked,
+              color: accent,
+              child: Container(
               width: 32,
               height: 32,
               alignment: Alignment.center,
@@ -3080,6 +3297,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               ),
               child: Icon(Icons.auto_awesome,
                   color: hasAiKey ? yCream : yCream2, size: 16),
+            ),
             ),
           ),
           const SizedBox(width: 6),
@@ -3114,6 +3332,12 @@ class _NotebookCanvasPainter extends CustomPainter {
   final Map<int, Set<int>> hiddenImages;
   final CanvasImageCache? imageCache;
 
+  /// Layer split so strokes render ABOVE the text-block overlays: the bottom
+  /// layer paints page chrome + images ([drawStrokes] false), and a second
+  /// layer above the text overlays paints only strokes ([drawBackground] false).
+  final bool drawBackground;
+  final bool drawStrokes;
+
   _NotebookCanvasPainter({
     required this.pageBlockIds,
     required this.pageData,
@@ -3122,15 +3346,19 @@ class _NotebookCanvasPainter extends CustomPainter {
     this.hiddenStrokes = const {},
     this.hiddenImages = const {},
     this.imageCache,
+    this.drawBackground = true,
+    this.drawStrokes = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Background behind pages
-    canvas.drawRect(
-      visibleRect,
-      Paint()..color = const Color(0xFFF0EDE6),
-    );
+    if (drawBackground) {
+      // Background behind pages
+      canvas.drawRect(
+        visibleRect,
+        Paint()..color = const Color(0xFFF0EDE6),
+      );
+    }
 
     for (int i = 0; i < pageBlockIds.length; i++) {
       final pageTop = i * (kNotebookPageHeight + kNotebookPageGap);
@@ -3141,50 +3369,52 @@ class _NotebookCanvasPainter extends CustomPainter {
 
       final pageDataItem = pageData[pageBlockIds[i]];
 
-      // Page shadow
-      canvas.drawRect(
-        pageRect.shift(const Offset(4, 4)),
-        Paint()..color = yInk.withValues(alpha: 0.12),
-      );
+      if (drawBackground) {
+        // Page shadow
+        canvas.drawRect(
+          pageRect.shift(const Offset(4, 4)),
+          Paint()..color = yInk.withValues(alpha: 0.12),
+        );
 
-      // Paper + pattern (per page).
-      final paper =
-          bgPaper(pageDataItem?.bgColorValue, const Color(0xFFFFFDF8));
-      canvas.drawRect(pageRect, Paint()..color = paper);
-      paintBgPattern(canvas, pageRect,
-          pageDataItem?.background ?? PageBackground.blank, bgMark(paper));
+        // Paper + pattern (per page).
+        final paper =
+            bgPaper(pageDataItem?.bgColorValue, const Color(0xFFFFFDF8));
+        canvas.drawRect(pageRect, Paint()..color = paper);
+        paintBgPattern(canvas, pageRect,
+            pageDataItem?.background ?? PageBackground.blank, bgMark(paper));
 
-      // Page border
-      canvas.drawRect(
-        pageRect,
-        Paint()
-          ..color = yInk.withValues(alpha: 0.3)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0,
-      );
+        // Page border
+        canvas.drawRect(
+          pageRect,
+          Paint()
+            ..color = yInk.withValues(alpha: 0.3)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0,
+        );
 
-      // Page number
-      final tp = TextPainter(
-        text: TextSpan(
-          text: '${i + 1}',
-          style: TextStyle(
-            fontSize: 10,
-            color: yMuted.withValues(alpha: 0.4),
-            fontFamily: 'monospace',
-            fontWeight: FontWeight.w700,
+        // Page number
+        final tp = TextPainter(
+          text: TextSpan(
+            text: '${i + 1}',
+            style: TextStyle(
+              fontSize: 10,
+              color: yMuted.withValues(alpha: 0.4),
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(
-        canvas,
-        Offset(
-          kNotebookPageWidth - tp.width - 16,
-          pageTop + kNotebookPageHeight - tp.height - 12,
-        ),
-      );
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(
+          canvas,
+          Offset(
+            kNotebookPageWidth - tp.width - 16,
+            pageTop + kNotebookPageHeight - tp.height - 12,
+          ),
+        );
+      }
 
-      // Strokes
+      // Strokes / images — clipped + translated into page-local space.
       canvas.save();
       canvas.clipRect(pageRect);
       canvas.translate(0, pageTop);
@@ -3201,19 +3431,23 @@ class _NotebookCanvasPainter extends CustomPainter {
       if (data != null) {
         // Images behind strokes.
         final skipImg = hiddenImages[i];
-        for (int ii = 0; ii < data.images.length; ii++) {
-          if (skipImg != null && skipImg.contains(ii)) continue;
-          final im = data.images[ii];
-          if (!Rect.fromLTWH(im.x, im.y, im.w, im.h).overlaps(pageVisible)) {
-            continue;
+        if (drawBackground) {
+          for (int ii = 0; ii < data.images.length; ii++) {
+            if (skipImg != null && skipImg.contains(ii)) continue;
+            final im = data.images[ii];
+            if (!Rect.fromLTWH(im.x, im.y, im.w, im.h).overlaps(pageVisible)) {
+              continue;
+            }
+            drawCanvasImage(canvas, imageCache?.get(im.filename), im);
           }
-          drawCanvasImage(canvas, imageCache?.get(im.filename), im);
         }
         final skip = hiddenStrokes[i];
-        for (int si = 0; si < data.strokes.length; si++) {
-          if (skip != null && skip.contains(si)) continue;
-          if (!_strokeInRect(data.strokes[si], pageVisible)) continue;
-          drawStroke(canvas, data.strokes[si]);
+        if (drawStrokes) {
+          for (int si = 0; si < data.strokes.length; si++) {
+            if (skip != null && skip.contains(si)) continue;
+            if (!_strokeInRect(data.strokes[si], pageVisible)) continue;
+            drawStroke(canvas, data.strokes[si]);
+          }
         }
       }
 

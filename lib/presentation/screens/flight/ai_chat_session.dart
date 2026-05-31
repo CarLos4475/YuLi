@@ -9,50 +9,48 @@ import '../../../domain/services/ai_assistant.dart';
 /// so the model distinguishes instruction from content.
 const kAiSystemBase =
     'Eres YuLi, el asistente personal del "segundo cerebro" del usuario (una '
-    'app de notas). Responde SIEMPRE en español, en tono directo y tratando al '
-    'usuario de tú. Sé conciso: si la consulta es breve, responde en 1-2 '
-    'líneas. Tus respuestas se renderizan con markdown: usa **negritas**, '
-    '*cursiva*, listas, `código inline`, bloques de código, **tablas** '
-    '(úsalas para comparar/estructurar; deben ser GFM VÁLIDAS: fila de '
-    'encabezado, fila separadora con guiones |---|---|, y una fila por renglón '
-    'con el mismo número de columnas; mantenlas simples), blockquotes, '
-    'checklists y enlaces. NO insertes imágenes. Para matemáticas usa \$...\$ si la '
+    'app de notas). Responde SIEMPRE en español, en tono directo pero amable, '
+    'tratando al usuario de tú. Sé conciso pero no seco: si la consulta es '
+    'breve, responde en 1-3 líneas. Ve al punto sin rodeos. Puedes empezar '
+    'con afirmaciones cortas '
+    'como "Claro", "Sí", "Entiendo". Tus respuestas se renderizan con '
+    'markdown: usa **negritas**, *cursiva*, listas, `código inline`, bloques '
+    'de código, **tablas** (formato GFM: encabezado, separador |---|---|, '
+    'columnas consistentes; mantenlas simples), blockquotes, checklists y '
+    'enlaces. NO insertes imágenes. Para matemáticas usa \$...\$ si la '
     'expresión va dentro de un párrafo (inline), y usa SIEMPRE \$\$...\$\$ '
-    'cuando la ecuación ocupe su propia línea o varias líneas (bloque). Nunca '
-    'mezcles los dos modos en la misma expresión. NUNA uses emojis ni símbolos '
-    'decorativos. NUNCA termines tu respuesta con una pregunta como "¿quieres '
-    'que...?", "¿gustas que...?" o "¿necesitas algo más?". Responde ÚNICAMENTE '
-    'lo que el usuario pidió, sin ofrecer seguimiento. Tu fuente de información '
-    'PRINCIPAL es el contexto proporcionado; responde basándote en él. Si '
-    'algo no está en el contexto, puedes usar tu conocimiento general, pero '
-    'prioriza siempre lo que el usuario te ha dado. NO repitas el contexto al '
-    'inicio de tu respuesta; ve directo al punto. NUNCA uses frases de relleno '
-    'como "En conclusión", "Para resumir", "Es importante notar que" o '
-    '"Es relevante mencionar que". NO inventes enlaces, referencias '
-    'bibliográficas, citas de personas, estadísticas o hechos históricos que no '
-    'aparezcan en el contexto. Mantén los nombres propios, términos técnicos, '
-    'siglas y acrónimos EXACTAMENTE como aparecen en el contexto; no los '
-    'parafrasees ni traduzcas. Si la pregunta del usuario es ambigua o '
-    'incompleta, responde con la interpretación más probable basada en el '
-    'contexto; solo si falta por completo, pide aclaración en UNA línea. Cíñete '
-    'al contexto dado; si falta información, dilo sin inventar. Al extraer '
-    'tareas, devuelve una por línea, accionables y breves, sin numerar. No '
-    'inventes datos del usuario. NO repitas la pregunta del usuario antes de '
-    'responder; ve directo a la respuesta. Si la pregunta es de sí/no, '
-    'empieza con SÍ o NO en la primera palabra, luego explica brevemente. NO '
-    'abuses de las negritas: máximo una o dos por respuesta. Mantén los '
-    'términos técnicos en el idioma original del contexto; no los traduzcas al '
-    'español si aparecen en inglés.';
+    'cuando la ecuación ocupe su propia línea o varias líneas (bloque). '
+    'No intentes meter matemáticas en algo que no sea \$ o \$\$, no va a '
+    'funcionar. No mezcles los dos modos en la misma expresión. NUNCA uses '
+    'emojis ni '
+    'símbolos decorativos. No uses frases de relleno extensas. Puedes terminar '
+    'con una pregunta breve si es útil. Tu fuente de información PRINCIPAL es '
+    'el contexto proporcionado; responde basándote en él. Si algo no está en '
+    'el contexto, puedes usar tu conocimiento general, pero prioriza siempre '
+    'lo que el usuario te ha dado. No inventes enlaces, referencias '
+    'bibliográficas, citas, estadísticas o hechos históricos que no aparezcan '
+    'en el contexto. Mantén los nombres propios, términos técnicos, siglas y '
+    'acrónimos EXACTAMENTE como aparecen en el contexto; no los parafrasees '
+    'ni traduzcas. Si la pregunta es ambigua o incompleta, responde con la '
+    'interpretación más probable basada en el contexto; solo si falta por '
+    'completo, pide aclaración breve. Si falta información, dilo sin inventar. '
+    'Al extraer tareas, devuelve una por línea, accionables y breves, sin '
+    'numerar. No repitas la pregunta del usuario antes de responder; ve '
+    'directo a la respuesta. Si la pregunta es de sí/no, empieza con SÍ o NO '
+    'en la primera palabra, luego explica brevemente. No abuses de las '
+    'negritas: máximo una o dos por respuesta. Mantén los términos técnicos '
+    'en el idioma original del contexto; no los traduzcas al español si '
+    'aparecen en inglés.';
 
 const _kAnchorMaxChars = 8000;
-const _kMaxHistoryMsgs = 16;
+
 
 /// Above this length the context is "largo" → the chat suggests compacting it.
 const kAnchorLongChars = 3000;
 
 /// System prompt for compacting the context anchor (token-shielding). Preserves
 /// facts/terms, drops filler; returns ONLY the compacted context.
-const _kCompactPrompt =
+const kCompactPrompt =
     'Compacta el siguiente contexto preservando TODOS los datos, hechos, '
     'nombres y términos clave; elimina redundancia y relleno; conserva el '
     'idioma original. Responde SOLO con el contexto compactado, sin comentarios '
@@ -121,8 +119,35 @@ class AiChatSession extends ChangeNotifier {
 
   void setAnchor(String value) {
     final t = value.trim();
-    anchor = t.isEmpty ? null : t;
-    _compactTried = false;
+    _applyAnchor(t.isEmpty ? null : t, compactTried: false);
+  }
+
+  /// Set the anchor from the assembled multi-source context. The assembler has
+  /// already compacted each source (cached), so skip the lazy whole-blob
+  /// compaction ([compactTried] = true). Resets the thread if the context
+  /// actually changed (see [_applyAnchor]).
+  void setSyncedAnchor(String combined) {
+    final t = combined.trim();
+    _applyAnchor(t.isEmpty ? null : t, compactTried: true);
+  }
+
+  /// Replace the anchor, resetting the thread if the context actually changed
+  /// mid-conversation (the prior turns are about the OLD context and would
+  /// mislead the model — it trusts history over the changed anchor; resetting
+  /// is the same as leaving + re-entering the view, but automatic).
+  void _applyAnchor(String? next, {required bool compactTried}) {
+    final changed = next != anchor;
+    anchor = next;
+    _compactTried = compactTried;
+    if (changed && messages.isNotEmpty) {
+      messages.clear();
+      _previousAnchor = null;
+      compactNoticeIndex = null;
+      if (next != null) {
+        messages.add(const AiChatMsg(
+            AiRole.system, '✦ Contexto actualizado — empecé de cero.'));
+      }
+    }
     _saveAnchor();
     notifyListeners();
   }
@@ -144,7 +169,7 @@ class AiChatSession extends ChangeNotifier {
     final ctx = anchor ?? '';
     final capped =
         ctx.length > _kAnchorMaxChars ? ctx.substring(0, _kAnchorMaxChars) : ctx;
-    return 'Contexto:\n\n$capped';
+    return '<context_documents>\n$capped\n</context_documents>';
   }
 
   /// Undo the last AI auto-compaction, restoring the previous context.
@@ -171,7 +196,7 @@ class AiChatSession extends ChangeNotifier {
     final buf = StringBuffer();
     try {
       await for (final tok in assistant.streamReply([
-        const AiMessage(AiRole.system, _kCompactPrompt),
+        const AiMessage(AiRole.system, kCompactPrompt),
         AiMessage(AiRole.user, before),
       ], model: AiModel.flash)) {
         buf.write(tok);
@@ -233,28 +258,48 @@ class AiChatSession extends ChangeNotifier {
       AiMessage(AiRole.user, _anchorContent()),
     ];
     if (!quickAction) {
-      // System notices (e.g. the compaction message) are UI-only — don't resend
-      // them to the model.
       final relevant = history.where((m) => m.role != AiRole.system).toList();
-      final capped = relevant.length > _kMaxHistoryMsgs
-          ? relevant.sublist(relevant.length - _kMaxHistoryMsgs)
+      final maxHistory = model == AiModel.flash ? 8 : 16;
+      final capped = relevant.length > maxHistory
+          ? relevant.sublist(relevant.length - maxHistory)
           : relevant;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
     }
     convo.add(AiMessage(AiRole.user, t));
 
-    try {
-      await for (final tok in assistant.streamReply(convo, model: model)) {
-        messages[idx] = AiChatMsg(AiRole.assistant, messages[idx].text + tok);
+    // Retry transient failures (network / 429 / 5xx) with backoff, but ONLY
+    // before any token has streamed in this attempt — once text starts flowing
+    // a retry would duplicate it. Shows a "Reintentando…" hint between tries.
+    const maxRetries = 2;
+    var attempt = 0;
+    while (true) {
+      var yielded = false;
+      try {
+        await for (final tok in assistant.streamReply(convo, model: model)) {
+          yielded = true;
+          messages[idx] = AiChatMsg(AiRole.assistant, messages[idx].text + tok);
+          notifyListeners();
+        }
+        break; // completed cleanly
+      } catch (e) {
+        final retryable = e is AiException && e.retryable;
+        if (!yielded && retryable && attempt < maxRetries) {
+          attempt++;
+          messages[idx] =
+              AiChatMsg(AiRole.assistant, '⟳ Reintentando… ($attempt)');
+          notifyListeners();
+          await Future.delayed(Duration(milliseconds: 600 * attempt));
+          messages[idx] = const AiChatMsg(AiRole.assistant, '');
+          notifyListeners();
+          continue; // retry
+        }
+        messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e');
         notifyListeners();
+        break;
       }
-    } catch (e) {
-      messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e');
-      notifyListeners();
-    } finally {
-      streaming = false;
-      notifyListeners();
     }
+    streaming = false;
+    notifyListeners();
   }
 
   /// Regenerate the assistant reply at [assistantIndex]: drop it and everything

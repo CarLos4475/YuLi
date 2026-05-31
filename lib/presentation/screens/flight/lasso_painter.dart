@@ -388,12 +388,20 @@ class LassoPainter extends CustomPainter {
       );
     }
     final ss = 6.0 / s;
-    for (final side in [
-      Offset(box.center.dx, box.top),
-      Offset(box.right, box.center.dy),
-      Offset(box.center.dx, box.bottom),
-      Offset(box.left, box.center.dy),
-    ]) {
+    // Text-only selections can't resize vertically → omit the top/bottom side
+    // handles (matches hitTestSideHandle).
+    final sideHandles = ctrl.textOnlySelection
+        ? [
+            Offset(box.right, box.center.dy),
+            Offset(box.left, box.center.dy),
+          ]
+        : [
+            Offset(box.center.dx, box.top),
+            Offset(box.right, box.center.dy),
+            Offset(box.center.dx, box.bottom),
+            Offset(box.left, box.center.dy),
+          ];
+    for (final side in sideHandles) {
       canvas.drawRect(
         Rect.fromCenter(center: side, width: ss, height: ss),
         handlePaint,

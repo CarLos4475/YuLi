@@ -18,12 +18,17 @@ abstract class AiAssistant {
   /// [maxTokens] caps each reply's length/cost.
   /// Throws [AiException] on missing key / network / API errors.
   Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash, int maxTokens = 2048});
+      {AiModel model = AiModel.flash, int maxTokens = 1024});
 }
 
 class AiException implements Exception {
   final String message;
-  const AiException(this.message);
+
+  /// True for transient failures (network, 429, 5xx) where an automatic retry
+  /// with backoff makes sense. False for permanent ones (bad key, no balance).
+  final bool retryable;
+
+  const AiException(this.message, {this.retryable = false});
   @override
   String toString() => message;
 }

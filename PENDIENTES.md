@@ -6,6 +6,51 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 
 ## Verificación pendiente
 
+### Fuentes de contexto MÚLTIPLES (notas + enlaces web) — NUEVO, migración BD schema 16
+
+**Qué se implementó:** generaliza el link Nota↔Canvas a **N fuentes** de dos tipos: notas `block` internas y **URLs externas** (leídas con Jina Reader → markdown). Tabla unificada `canvas_context_sources`. Compactación **por fuente, cacheada** (cada nota/URL larga se compacta 1 vez y se reusa). Migración copia los links viejos como fuentes `note`.
+
+**Cómo probar (en dispositivo) — migra al primer arranque:**
+- **Hoja Fuentes:** botón IA → barra `SINCRONIZADA ▸ N fuentes` (o 🔗 "Fuentes" si no hay) → abre la hoja. Botones **+ Nota** (notas de la carpeta) y **+ Enlace** (campo URL → fetch Jina → agrega con el **título de la página** como label).
+- **Multi-nota:** agrega 2-3 notas → el chat combina sus contextos (etiquetados, separados por `---`).
+- **URL:** agrega un enlace → debe traer el contenido (verifica que el título salga bien). Pregúntale a la IA sobre la página.
+- **↻ por URL (en la hoja):** actualiza esa URL (re-fetch). El **↻ global** de la barra **NO** re-fetchea URLs (solo re-lee notas locales) — verifica que no dispare red.
+- **Cache:** agrega una nota/URL larga (>3000 chars) → primera vez compacta (1 request); sal y entra → no re-compacta (cache hit). Editar la nota / re-fetch la URL → re-compacta solo esa.
+- **OCR:** "Enviar a Yuli" con 1 nota fuente → escribe en ella; con ≥2 notas → **diálogo "¿a qué nota?"**; con 0 notas (solo URLs) → ancla puntual.
+- **Quitar fuente / sin red:** quitar desde la hoja; sin conexión al agregar/refetch URL → aviso claro, usa lo cacheado.
+- **Jina key (Ajustes):** funciona sin key (free); sección "JINA READER KEY (OPCIONAL)" para subir límites.
+- **Notas normales (block):** sin cambios (no aparece 🔗 ni badge).
+
+### Sincronización Nota ↔ Canvas (link único) — REEMPLAZADO por multi-fuente (arriba); ignorar
+
+**Qué se implementó:** un canvas (pizarra/cuaderno) puede **vincularse** a una nota `block` fuente; el contexto del chat IA se toma de esa nota. Lo existente (import manual, OCR→contexto, ancla manual) sigue igual cuando NO hay link. La gestión del link vive **dentro del chat** (reactivo vía `canvasSourceNoteIdProvider`).
+
+**Cómo probar (en dispositivo) — al primer arranque corre la migración (crea `note_canvas_links`):**
+- **Vincular:** en un canvas, abre el chat IA → si no hay ancla, en el gate aparece **VINCULAR NOTA FUENTE**; si ya hay ancla, el icono 🔗 en la barra CONTEXTO. Elige una nota de la carpeta → la barra cambia a **`SINCRONIZADA ▸ [título] · hace Xmin`**.
+- **Sync:** edita la nota fuente (sal del canvas → nota → edita → vuelve) y reabre el chat → el contexto se actualiza. El botón **↻** re-sincroniza sin reabrir.
+- **Badge:** con link activo, el botón IA (✦) muestra un **cuadrito accent que parpadea duro** (600ms) en ambos headers (colapsado y expandido), pizarra y cuaderno.
+- **OCR redirigido:** con link, lasso → "Enviar a Yuli" debe **agregar un bloque de texto a la nota fuente** (no al ancla) y abrir el chat ya sincronizado. "Preguntar a Yuli" sigue prellenando el input.
+- **Desvincular:** desde la barra (icono link-off) → el ancla queda **congelada** (control manual vuelve), el badge se apaga.
+- **Defensa:** borra la nota fuente → al reabrir el chat del canvas, se **auto-desvincula** (no truena).
+- **Notas normales (block):** sin cambios — no aparece 🔗 ni "Vincular" ni badge.
+
+### Cajas de TEXTO en canvas (pizarra + cuaderno) — suelo fértil para v3
+
+**Qué se implementó:** nuevo `CanvasTextBlock` (markdown) que se renderiza con el MISMO motor que las celdas de texto de notas (`NoteMarkdownPreview`) → se ve idéntico a una nota. Botón **Texto** (icono notas) en el toolbar de pizarra/cuaderno. Serializado en `DrawingData['tx']` (bloques viejos sin la clave → lista vacía, no rompe).
+
+**Cómo probar (en dispositivo):**
+- **MODO TEXTO:** toca **Texto** (icono notas) → inserta una caja Y **se queda en modo texto** (el botón queda activo). El tamaño de inserción **se adapta al zoom** (~240px en pantalla; el user hace zoom para escribir).
+  - En modo texto: **tocar la caja en cualquier zona = abre el editor** (markdown dockeado sobre el teclado). **Arrastrar (1 dedo) = mover** la caja. **2 dedos = navegar** (zoom/pan). 1 dedo en vacío no hace pan (reservado para mover cajas).
+  - GUARDAR → se renderiza igual que una nota (mismo motor).
+- **Resize (con el LAZO):** 4 esquinas + 2 lados (izq/der). **Arriba/abajo deshabilitado** (no se dibujan ni responden esos handles).
+  - **Esquinas** → escala uniforme (letra crece/encoge). **Lados izq/der** → ancho, texto refluye. NUNCA deforma.
+  - **Mínimo MUCHO más chico** que las cajas de tarea (40px world) — probar encoger bastante estando con zoom.
+- **Trazos ENCIMA de la caja:** dibuja con lápiz sobre una caja de texto → la tinta debe quedar **encima** (no detrás). (Las cajas de tarea siguen encima de los trazos.)
+- **Tablas raras de la IA:** si la IA mete una tabla con `|---|` mal formado, la caja la **repara** (misma protección que el chat) y NO truena.
+- **Persistencia:** cerrar y reabrir la pizarra/cuaderno → las cajas **siguen ahí** (bug arreglado: `DrawingBlock.textBlocksJson`). Cuaderno multi-página: mover entre páginas reasigna por `_syncLassoToPages`.
+- **Enviar a lienzo (chat):** chat IA desde **pizarra/cuaderno** → en una respuesta, **Enviar a lienzo** → cierra el sheet y aparece la caja con la respuesta (markdown crudo). Idéntica a la del chat. En una **nota normal** el botón NO aparece.
+- **Espacio blanco arriba:** se redujo el padding de la caja; verificar que el texto arranca cerca del borde (el padding top de headings del markdown puede dejar algo — avisar si molesta).
+
 ### 2. Caja de tareas — resize por esquina y lateral (cuaderno + pizarra)
 
 **Qué se cambió:** el bloque ahora tiene un campo `scale`. El contenido se maqueta a ancho `w/scale` y se escala uniforme con `FittedBox(fit: fitWidth)`. Se eliminó el viejo `_heightLocked` + `FittedBox.fill` (deformaba y nunca se activaba porque el lasso muta el bloque in-place).
@@ -59,7 +104,11 @@ Botones en cada respuesta de la IA:
 - ✅ **Extraer tareas → FIGHT** → abre **REVISAR TAREAS** (checkbox + texto editable por línea) → **CREAR N** → tareas en FIGHT (`@carpeta` de la nota) enlazadas a la nota. Verifica que aparezcan en FIGHT y en el bloque de tareas de la nota.
 - Probar con respuestas SIN lista (extraer no debe inventar; avisa "no encontré tareas" si no hay).
 
-**Pendiente v3.1:** sugerir **título** → `note.title`; **limpiar/reescribir → reemplazar** una celda concreta (hoy "Guardar en nota" siempre añade nueva). Producción: retry con backoff, proxy para la key.
+**v3.1 (IMPLEMENTADO) — verificar en dispositivo:**
+- ✅ **Sugerir título** → en el editor de **notas** (no en canvas), la quick-action "Título" pide 3 → **popup elegir + editar** → aplica a `note.title` (y guarda). Verifica que el campo de título se actualice y persista.
+- ✅ **Retry con backoff** → en fallos transitorios (sin red / 429 / 5xx) reintenta 2× con backoff, mostrando **"⟳ Reintentando…"** en la burbuja. Solo reintenta si aún no llegó ningún token (no duplica). Errores permanentes (key inválida/sin saldo) no reintentan.
+- ❌ **Reemplazar celda** → DROPEADO (con contexto multi-fuente "la celda de origen" ya no aplica; "Guardar en nota" añadiendo cubre el caso).
+- ❌ **Proxy para la key** → descartado (app personal, key cifrada local; no se publica).
 
 ### OCR v1 — a futuro (verificado en dispositivo, NO bloquea)
 

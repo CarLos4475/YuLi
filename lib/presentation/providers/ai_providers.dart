@@ -3,10 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/services/ai_key_store.dart';
 import '../../data/services/ai_usage_limiter.dart';
 import '../../data/services/deepseek_assistant.dart';
+import '../../data/services/web_reader.dart';
 import '../../domain/services/ai_assistant.dart';
 import '../screens/flight/ai_chat_session.dart';
 
 final aiKeyStoreProvider = Provider<AiKeyStore>((ref) => AiKeyStore());
+
+/// Optional Jina Reader key + the URL→markdown reader (external context sources).
+final jinaKeyStoreProvider = Provider<JinaKeyStore>((ref) => JinaKeyStore());
+final webReaderProvider =
+    Provider<WebReader>((ref) => WebReader(ref.read(jinaKeyStoreProvider)));
+
+/// Whether an (optional) Jina key is stored. Invalidate after save/clear.
+final jinaHasKeyProvider =
+    FutureProvider<bool>((ref) => ref.read(jinaKeyStoreProvider).hasKey());
 
 /// Per-note chat session, keyed by note id. autoDispose → lives while the
 /// note/pizarra/cuaderno view keeps it alive (the screen watches it) and is

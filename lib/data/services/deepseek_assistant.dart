@@ -26,7 +26,7 @@ class DeepseekAssistant implements AiAssistant {
 
   @override
   Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash, int maxTokens = 2048}) async* {
+      {AiModel model = AiModel.flash, int maxTokens = 1024}) async* {
     final key = (await keyStore.read())?.trim();
     if (key == null || key.isEmpty) {
       throw const AiException('Falta la API key (configúrala en Ajustes).');
@@ -51,13 +51,15 @@ class DeepseekAssistant implements AiAssistant {
     try {
       resp = await _client.send(req);
     } catch (_) {
-      throw const AiException('Sin conexión o error de red.');
+      throw const AiException('Sin conexión o error de red.', retryable: true);
     }
 
     if (resp.statusCode != 200) {
       // Drain the body so we can map to a friendly message (never expose key).
       await resp.stream.drain<void>();
-      throw AiException(_friendlyError(resp.statusCode));
+      // Transient: rate limit (429) and server errors (5xx) → retryable.
+      final retryable = resp.statusCode == 429 || resp.statusCode >= 500;
+      throw AiException(_friendlyError(resp.statusCode), retryable: retryable);
     }
 
     await for (final line in resp.stream

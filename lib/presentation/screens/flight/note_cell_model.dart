@@ -7,7 +7,7 @@ import '../../../domain/models/page_background.dart';
 
 enum CellType { markdown, drawing }
 
-enum DrawTool { pen, fountainPen, highlighter, eraser, lasso }
+enum DrawTool { pen, fountainPen, highlighter, eraser, lasso, text }
 
 /// stroke = erase the whole stroke on touch (object eraser, default).
 /// partial = erase only the touched portion, splitting the stroke.
@@ -32,6 +32,7 @@ class DrawingData {
   List<DrawingStroke> strokes;
   List<CanvasImage> images;
   List<CanvasTaskBlock> taskBlocks;
+  List<CanvasTextBlock> textBlocks;
   PageBackground background;
 
   /// Paper color (ARGB). null → editor's default paper color.
@@ -42,11 +43,13 @@ class DrawingData {
     List<DrawingStroke>? strokes,
     List<CanvasImage>? images,
     List<CanvasTaskBlock>? taskBlocks,
+    List<CanvasTextBlock>? textBlocks,
     this.background = PageBackground.blank,
     this.bgColorValue,
   })  : strokes = strokes ?? [],
         images = images ?? [],
-        taskBlocks = taskBlocks ?? [];
+        taskBlocks = taskBlocks ?? [],
+        textBlocks = textBlocks ?? [];
 
   Map<String, dynamic> toJson() => {
         'h': height,
@@ -54,6 +57,8 @@ class DrawingData {
         if (images.isNotEmpty) 'i': images.map((im) => im.toJson()).toList(),
         if (taskBlocks.isNotEmpty)
           't': taskBlocks.map((b) => b.toJson()).toList(),
+        if (textBlocks.isNotEmpty)
+          'tx': textBlocks.map((b) => b.toJson()).toList(),
         'bg': background.toDbString(),
         if (bgColorValue != null) 'bgc': bgColorValue,
       };
@@ -72,6 +77,11 @@ class DrawingData {
         taskBlocks: (json['t'] as List?)
                 ?.map((b) =>
                     CanvasTaskBlock.fromJson(b as Map<String, dynamic>))
+                .toList() ??
+            [],
+        textBlocks: (json['tx'] as List?)
+                ?.map((b) =>
+                    CanvasTextBlock.fromJson(b as Map<String, dynamic>))
                 .toList() ??
             [],
         background: PageBackground.fromString((json['bg'] as String?) ?? ''),
@@ -221,6 +231,80 @@ class CanvasTaskBlock implements CanvasGeo {
         taskIds: ((json['ids'] as List?) ?? const [])
             .map((e) => (e as num).toInt())
             .toList(),
+      );
+}
+
+/// An interactive markdown text block placed on the drawing canvas. Geometry
+/// mirrors [CanvasTaskBlock] (same lasso treatment, same uniform-scale resize
+/// model) but it holds raw [markdown] rendered with the note editor's markdown
+/// engine — so a chat message "sent to canvas" looks identical to a note cell.
+class CanvasTextBlock implements CanvasGeo {
+  /// Stable id for overlay widget keys (survives reorders of the list).
+  final String id;
+  @override
+  double x;
+  @override
+  double y;
+  @override
+  double w;
+  @override
+  double h;
+  @override
+  double rotation;
+
+  /// Markdown source rendered by the shared note markdown engine.
+  String markdown;
+
+  /// Uniform visual scale applied on top of the content layout. The content is
+  /// laid out at width `w / scale` (text reflow) and then scaled by [scale], so
+  /// corner/vertical resize (which multiplies [scale]) grows the whole block
+  /// including its text, while horizontal resize (which only changes [w])
+  /// reflows the text at the same font size.
+  double scale;
+
+  CanvasTextBlock({
+    String? id,
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+    this.rotation = 0,
+    this.scale = 1.0,
+    this.markdown = '',
+  }) : id = id ?? const Uuid().v4();
+
+  CanvasTextBlock clone() => CanvasTextBlock(
+        id: id,
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+        rotation: rotation,
+        scale: scale,
+        markdown: markdown,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'x': x,
+        'y': y,
+        'w': w,
+        'h': h,
+        if (rotation != 0) 'r': rotation,
+        if (scale != 1.0) 'sc': scale,
+        'md': markdown,
+      };
+
+  factory CanvasTextBlock.fromJson(Map<String, dynamic> json) =>
+      CanvasTextBlock(
+        id: json['id'] as String?,
+        x: (json['x'] as num).toDouble(),
+        y: (json['y'] as num).toDouble(),
+        w: (json['w'] as num).toDouble(),
+        h: (json['h'] as num).toDouble(),
+        rotation: (json['r'] as num?)?.toDouble() ?? 0,
+        scale: (json['sc'] as num?)?.toDouble() ?? 1.0,
+        markdown: (json['md'] as String?) ?? '',
       );
 }
 

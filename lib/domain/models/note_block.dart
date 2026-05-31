@@ -97,6 +97,7 @@ sealed class NoteBlock {
           strokesJson: jsonEncode(json['s'] ?? const []),
           imagesJson: jsonEncode(json['i'] ?? const []),
           taskBlocksJson: jsonEncode(json['t'] ?? const []),
+          textBlocksJson: jsonEncode(json['tx'] ?? const []),
           background: json['bg'] as String?,
           bgColor: (json['bgc'] as num?)?.toInt(),
         );
@@ -190,6 +191,7 @@ class DrawingBlock extends NoteBlock {
   final String strokesJson;
   final String imagesJson;
   final String taskBlocksJson;
+  final String textBlocksJson;
   final String? background;
   final int? bgColor;
   const DrawingBlock({
@@ -200,6 +202,7 @@ class DrawingBlock extends NoteBlock {
     required this.strokesJson,
     this.imagesJson = '[]',
     this.taskBlocksJson = '[]',
+    this.textBlocksJson = '[]',
     this.background,
     this.bgColor,
   }) : super(type: NoteBlockType.drawing);
@@ -209,6 +212,7 @@ class DrawingBlock extends NoteBlock {
     String? strokesJson,
     String? imagesJson,
     String? taskBlocksJson,
+    String? textBlocksJson,
     String? background,
     int? bgColor,
   }) =>
@@ -220,6 +224,7 @@ class DrawingBlock extends NoteBlock {
         strokesJson: strokesJson ?? this.strokesJson,
         imagesJson: imagesJson ?? this.imagesJson,
         taskBlocksJson: taskBlocksJson ?? this.taskBlocksJson,
+        textBlocksJson: textBlocksJson ?? this.textBlocksJson,
         background: background ?? this.background,
         bgColor: bgColor ?? this.bgColor,
       );
@@ -230,6 +235,7 @@ class DrawingBlock extends NoteBlock {
         's': jsonDecode(strokesJson),
         'i': jsonDecode(imagesJson),
         't': jsonDecode(taskBlocksJson),
+        'tx': jsonDecode(textBlocksJson),
         if (background != null) 'bg': background,
         if (bgColor != null) 'bgc': bgColor,
       };

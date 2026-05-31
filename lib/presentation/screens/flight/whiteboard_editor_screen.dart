@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../providers/ai_providers.dart';
+import '../../providers/note_providers.dart';
+import '../../widgets/ai_link_badge.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../theme/app_tokens.dart';
@@ -38,6 +40,7 @@ import 'ai_chat_sheet.dart';
 import 'ocr_flow.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
+import 'canvas_text_block.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
 import 'stroke_stabilizer.dart';
@@ -103,11 +106,11 @@ class _WhiteboardEditorScreenState
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)>
       _undoStack = [];
-  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)>
+  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)>
       _redoStack = [];
-  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)?
+  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)?
       _gestureBefore;
   bool _gestureChanged = false;
   DrawingStroke? _active;
@@ -503,6 +506,7 @@ class _WhiteboardEditorScreenState
       's': strokes,
       'i': images,
       't': taskBlocks,
+      if (payload['tx'] != null) 'tx': payload['tx'],
       'bg': payload['bg'],
       'bgc': payload['bgc'],
     });
@@ -515,6 +519,7 @@ class _WhiteboardEditorScreenState
       's': _data.strokes.map((s) => s.toJson()).toList(),
       'i': _data.images.map((im) => im.toJson()).toList(),
       't': _data.taskBlocks.map((b) => b.toJson()).toList(),
+      'tx': _data.textBlocks.map((b) => b.toJson()).toList(),
       'bg': _data.background.toDbString(),
       if (_data.bgColorValue != null) 'bgc': _data.bgColorValue,
       'whiteboard': true,
@@ -625,6 +630,44 @@ class _WhiteboardEditorScreenState
     HapticFeedback.lightImpact();
   }
 
+  /// Place a new text block (empty, or seeded with [markdown]) at the centre of
+  /// the current viewport. Used by the insert button and by the AI chat's
+  /// "send to canvas".
+  void _insertTextBlock([String markdown = '']) {
+    final screen = MediaQuery.of(context).size;
+    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+    // Size by zoom so the box is a consistent ~240px on screen — the user zooms
+    // in to write, where a fixed world width would be huge.
+    final w = (240.0 / _viewScale).clamp(60.0, 600.0);
+    final block = CanvasTextBlock(
+      x: center.dx - w / 2,
+      y: center.dy - w / 4,
+      w: w,
+      h: w / 2,
+      markdown: markdown,
+    );
+    final before = _snapshot();
+    setState(() {
+      _data.textBlocks.add(block);
+      if (markdown.isEmpty) {
+        // Manual insert (Texto button): stay in text mode — tap a box to edit,
+        // drag to move.
+        _tool = DrawTool.text;
+      } else {
+        // From the AI chat: show it selected via the lasso so the user sees a
+        // placed, movable/resizable object instead of a box with no affordance.
+        _tool = DrawTool.lasso;
+        _lassoCtrl.hitScale = _viewScale;
+        _lassoCtrl.selectTextBlock(_data.textBlocks.length - 1, _data.strokes,
+            _data.images, _data.taskBlocks, _data.textBlocks);
+        _toolbarVisible = false;
+      }
+    });
+    _commit(before);
+    _persist();
+    HapticFeedback.lightImpact();
+  }
+
   void _toggleShapePopup() {
     setState(() {
       _shapePopupOpen = !_shapePopupOpen;
@@ -695,6 +738,7 @@ class _WhiteboardEditorScreenState
   }
 
   bool _shouldDraw(PointerDeviceKind kind) {
+    if (_tool == DrawTool.text) return false; // text mode never draws
     if (kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus) {
       return true;
@@ -895,8 +939,8 @@ class _WhiteboardEditorScreenState
     // Nothing selected. A tap on an interactive block belongs to its task UI.
     if (_interactiveBlockAt(p)) return;
     setState(() {
-      if (_lassoCtrl.tapSelect(
-          p, _data.strokes, _data.images, _data.taskBlocks)) {
+      if (_lassoCtrl.tapSelect(p, _data.strokes, _data.images,
+          _data.taskBlocks, _data.textBlocks)) {
         _toolbarVisible = false;
       } else {
         _lassoCtrl.deselect();
@@ -904,8 +948,10 @@ class _WhiteboardEditorScreenState
     });
   }
 
-  /// True when [worldPos] is over a task block that is currently interactive
-  /// (lasso tool active and the block isn't the lasso selection).
+  /// True when [worldPos] is over a TASK block that is currently interactive
+  /// (lasso tool active and the block isn't the lasso selection). Text blocks
+  /// are excluded: in lasso mode a tap on them lasso-selects (they only edit in
+  /// text mode).
   bool _interactiveBlockAt(Offset worldPos) {
     if (_tool != DrawTool.lasso) return false;
     for (int i = _data.taskBlocks.length - 1; i >= 0; i--) {
@@ -1284,25 +1330,27 @@ class _WhiteboardEditorScreenState
       return;
     }
     if (_lassoCtrl.phase == LassoPhase.tracing) {
-      _lassoCtrl.finishTracing(_data.strokes, _data.images, _data.taskBlocks);
+      _lassoCtrl.finishTracing(
+          _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks);
       _toolbarVisible = false; // a fresh selection starts with the toolbar hidden
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
       _lassoCtrl.finishMove(
-          _data.strokes, _data.images, _data.taskBlocks, 0);
+          _data.strokes, _data.images, _data.taskBlocks, 0, _data.textBlocks);
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       final side = _lassoCtrl.isSideResize;
       final cornerScale = _lassoCtrl.resizeScale;
+      final sideScaleX = _lassoCtrl.resizeScaleX;
+      final sideScaleY = _lassoCtrl.resizeScaleY;
       final moved = side
-          ? (_lassoCtrl.resizeScaleX - 1).abs() > 0.02 ||
-              (_lassoCtrl.resizeScaleY - 1).abs() > 0.02
+          ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
           : (cornerScale - 1).abs() > 0.02;
       side
           ? _lassoCtrl.finishSideResize(
-              _data.strokes, _data.images, _data.taskBlocks)
+              _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks)
           : _lassoCtrl.finishResize(
-              _data.strokes, _data.images, _data.taskBlocks);
+              _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks);
       for (final i in _lassoCtrl.selectedBlockIndices) {
         if (i >= _data.taskBlocks.length) continue;
         final b = _data.taskBlocks[i];
@@ -1312,10 +1360,20 @@ class _WhiteboardEditorScreenState
         if (b.w < 220) b.w = 220;
         if (b.h < 90) b.h = 90;
       }
+      for (final i in _lassoCtrl.selectedTextBlockIndices) {
+        if (i >= _data.textBlocks.length) continue;
+        final b = _data.textBlocks[i];
+        // Corner = uniform scale (text grows with box). Horizontal side = width
+        // reflow (controller already set w). Vertical resize is disabled for
+        // text (hitTestSideHandle skips top/bottom for text-only selections).
+        if (!side) b.scale = (b.scale * cornerScale).clamp(0.2, 8.0);
+        if (b.w < kCanvasTextBlockMinW) b.w = kCanvasTextBlockMinW;
+      }
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
-      _lassoCtrl.finishRotation(_data.strokes, _data.images, _data.taskBlocks);
+      _lassoCtrl.finishRotation(
+          _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks);
       _finishTransformOrTap(moved);
     }
   }
@@ -1334,7 +1392,7 @@ class _WhiteboardEditorScreenState
 
   void _lassoDelete() {
     _lassoMutate(() => _lassoCtrl.deleteSelected(
-        _data.strokes, _data.images, _data.taskBlocks));
+        _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks));
     HapticFeedback.lightImpact();
   }
 
@@ -1481,6 +1539,58 @@ class _WhiteboardEditorScreenState
     return out;
   }
 
+  List<Widget> _buildTextBlockOverlays() {
+    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating;
+    final out = <Widget>[];
+    for (int i = 0; i < _data.textBlocks.length; i++) {
+      final b = _data.textBlocks[i];
+      final selected = _lassoCtrl.selectedTextBlockIndices.contains(i);
+      Widget overlay = RepaintBoundary(
+        child: CanvasTextBlockOverlay(
+          key: ValueKey(b.id),
+          block: b,
+          accent: _accent,
+          // Text blocks are ONLY interactive (tap = edit, drag = move) in text
+          // mode. In pen/lasso modes they're inert (IgnorePointer): the lasso
+          // selects/moves/resizes them by geometry, pens never touch them. This
+          // also avoids a multi-touch crash (finger on block + 2-finger zoom).
+          interactive: !selected && !gesture && _tool == DrawTool.text,
+          movable: !selected && !gesture && _tool == DrawTool.text,
+          onPersist: _persist,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+          onHeightMeasured: (h) {
+            if (!mounted) return;
+            setState(() => b.h = h);
+            _lassoCtrl.refreshBoundingBox(_data.strokes, _data.images,
+                _data.taskBlocks, _data.textBlocks);
+            _persist();
+          },
+          onDragStart: () => _gestureBefore = _snapshot(),
+          onDragEnd: () {
+            _commitGesture();
+            _persist();
+          },
+        ),
+      );
+      final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+          _lassoCtrl.phase == LassoPhase.rotating ||
+          (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
+      if (isLiveTransform && selected) {
+        final off = Offset(b.x, b.y);
+        final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+            _lassoCtrl.liveGestureMatrix() *
+            Matrix4.translationValues(off.dx, off.dy, 0);
+        overlay = Transform(transform: tm, child: overlay);
+      }
+      out.add(Positioned(left: b.x, top: b.y, child: overlay));
+    }
+    return out;
+  }
+
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
     final screenTop =
@@ -1567,25 +1677,27 @@ class _WhiteboardEditorScreenState
 
   // ─── Undo / redo (snapshot history) ─────────────────────────────────────
 
-  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>)
+  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)
       _snapshot() => (
             _data.strokes.map((s) => s.clone()).toList(),
             _data.images.map((im) => im.clone()).toList(),
             _data.taskBlocks.map((b) => b.clone()).toList(),
+            _data.textBlocks.map((b) => b.clone()).toList(),
           );
 
   void _commit(
-      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>) before) {
+      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>) before) {
     _undoStack.add(before);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
   void _restore(
-      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>) snap) {
+      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>) snap) {
     _data.strokes = snap.$1;
     _data.images = snap.$2;
     _data.taskBlocks = snap.$3;
+    _data.textBlocks = snap.$4;
   }
 
   void _commitGesture() {
@@ -1699,6 +1811,12 @@ class _WhiteboardEditorScreenState
       if (b.x + b.w > maxX) maxX = b.x + b.w;
       if (b.y + b.h > maxY) maxY = b.y + b.h;
     }
+    for (final b in _data.textBlocks) {
+      if (b.x < minX) minX = b.x;
+      if (b.y < minY) minY = b.y;
+      if (b.x + b.w > maxX) maxX = b.x + b.w;
+      if (b.y + b.h > maxY) maxY = b.y + b.h;
+    }
     if (minX == double.infinity) return null;
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
@@ -1801,6 +1919,11 @@ class _WhiteboardEditorScreenState
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
+    final aiLinked = (ref
+                .watch(canvasContextSourcesProvider(widget.note.id))
+                .valueOrNull
+                ?.isNotEmpty) ??
+        false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
 
@@ -1818,11 +1941,14 @@ class _WhiteboardEditorScreenState
                 spaces: spaces,
                 accent: _accent,
                 hasAiKey: hasAiKey,
+                aiLinked: aiLinked,
                 onExpand: () => setState(() => _headerCollapsed = false),
                 onReset: _resetView,
                 onLink: () => _linkToLab(spaces),
                 onAi: () => showAiChat(context, ref,
-                    noteId: widget.note.id, accent: _accent),
+                    noteId: widget.note.id,
+                    accent: _accent,
+                    onSendToCanvas: _insertTextBlock),
               ),
             )
           else ...[
@@ -1853,18 +1979,24 @@ class _WhiteboardEditorScreenState
                         behavior: HitTestBehavior.opaque,
                         onTap: hasAiKey
                             ? () => showAiChat(context, ref,
-                                noteId: widget.note.id, accent: _accent)
+                                noteId: widget.note.id,
+                                accent: _accent,
+                                onSendToCanvas: _insertTextBlock)
                             : null,
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: hasAiKey ? _accent : yMuted,
-                            border: Border.all(color: yInk, width: yLineMid),
+                        child: AiLinkBadge(
+                          active: aiLinked,
+                          color: _accent,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: hasAiKey ? _accent : yMuted,
+                              border: Border.all(color: yInk, width: yLineMid),
+                            ),
+                            child: Icon(Icons.auto_awesome,
+                                color: hasAiKey ? yCream : yCream2, size: 18),
                           ),
-                          child: Icon(Icons.auto_awesome,
-                              color: hasAiKey ? yCream : yCream2, size: 18),
                         ),
                       ),
                       GestureDetector(
@@ -1920,20 +2052,28 @@ class _WhiteboardEditorScreenState
                               minScale: 0.3,
                               maxScale: 4.0,
                               boundaryMargin: const EdgeInsets.all(_kCanvasW * 0.5),
-                              panEnabled: _tool == DrawTool.lasso
-                                  ? (_lassoCtrl.phase == LassoPhase.idle && !_isDrawing)
-                                  : _palmRejection
-                                      ? !_stylusActive
-                                      : !_isDrawing,
-                              scaleEnabled: _tool == DrawTool.lasso
-                                  ? (_lassoCtrl.phase == LassoPhase.idle && !_isDrawing)
-                                  : !_stylusActive && !_locked,
+                              // Text mode: 1-finger drag is reserved for moving
+                              // a box (its GestureDetector), so disable pan;
+                              // 2-finger still zooms/navigates.
+                              panEnabled: _tool == DrawTool.text
+                                  ? false
+                                  : _tool == DrawTool.lasso
+                                      ? (_lassoCtrl.phase == LassoPhase.idle && !_isDrawing)
+                                      : _palmRejection
+                                          ? !_stylusActive
+                                          : !_isDrawing,
+                              scaleEnabled: _tool == DrawTool.text
+                                  ? true
+                                  : _tool == DrawTool.lasso
+                                      ? (_lassoCtrl.phase == LassoPhase.idle && !_isDrawing)
+                                      : !_stylusActive && !_locked,
                               constrained: false,
                               child: SizedBox(
                                 width: _kCanvasW,
                                 height: _kCanvasH,
                                 child: Stack(
                                   children: [
+                                    // Paper + pattern + images (no strokes).
                                     RepaintBoundary(
                                       child: CustomPaint(
                                         painter: _CanvasPainter(
@@ -1943,30 +2083,55 @@ class _WhiteboardEditorScreenState
                                           background: _data.background,
                                           paper: bgPaper(_data.bgColorValue, yCream),
                                           visibleRect: visibleRect,
-                                          hiddenIndices: (_lassoCtrl.phase == LassoPhase.moving ||
-                                                  _lassoCtrl.phase == LassoPhase.resizing ||
-                                                  _lassoCtrl.phase == LassoPhase.rotating)
-                                              ? _lassoCtrl.selectedIndices
-                                              : null,
                                           hiddenImageIndices: (_lassoCtrl.phase == LassoPhase.moving ||
                                                   _lassoCtrl.phase == LassoPhase.resizing ||
                                                   _lassoCtrl.phase == LassoPhase.rotating)
                                               ? _lassoCtrl.selectedImageIndices
                                               : null,
+                                          drawStrokes: false,
                                         ),
                                         size: const Size(_kCanvasW, _kCanvasH),
                                       ),
                                     ),
-                                    RepaintBoundary(
-                                      child: AnimatedBuilder(
-                                        animation: _activeTick,
-                                        builder: (_, _) => CustomPaint(
-                                          painter: _ActiveStrokePainter(
-                                              active: _active),
+                                    // Text blocks sit BELOW the ink so strokes
+                                    // drawn over them stay visible.
+                                    ..._buildTextBlockOverlays(),
+                                    // Strokes — painted above the text blocks.
+                                    // IgnorePointer so taps still reach the boxes.
+                                    IgnorePointer(
+                                      child: RepaintBoundary(
+                                        child: CustomPaint(
+                                          painter: _CanvasPainter(
+                                            strokes: _data.strokes,
+                                            images: _data.images,
+                                            imageCache: _imgCache,
+                                            background: _data.background,
+                                            paper: bgPaper(_data.bgColorValue, yCream),
+                                            visibleRect: visibleRect,
+                                            hiddenIndices: (_lassoCtrl.phase == LassoPhase.moving ||
+                                                    _lassoCtrl.phase == LassoPhase.resizing ||
+                                                    _lassoCtrl.phase == LassoPhase.rotating)
+                                                ? _lassoCtrl.selectedIndices
+                                                : null,
+                                            drawBackground: false,
+                                          ),
                                           size: const Size(_kCanvasW, _kCanvasH),
                                         ),
                                       ),
                                     ),
+                                    IgnorePointer(
+                                      child: RepaintBoundary(
+                                        child: AnimatedBuilder(
+                                          animation: _activeTick,
+                                          builder: (_, _) => CustomPaint(
+                                            painter: _ActiveStrokePainter(
+                                                active: _active),
+                                            size: const Size(_kCanvasW, _kCanvasH),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Task blocks above the ink (interactive UI).
                                     ..._buildTaskBlockOverlays(),
                                     if (_lassoCtrl.phase != LassoPhase.idle)
                                       AnimatedBuilder(
@@ -2282,6 +2447,13 @@ class _WhiteboardEditorScreenState
               ),
               const SizedBox(width: 10),
               _toolBtn(
+                icon: Icons.notes,
+                active: _tool == DrawTool.text,
+                tooltip: 'Texto',
+                onTap: _insertTextBlock,
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
                 icon: Icons.category_outlined,
                 active: _shapePopupOpen,
                 tooltip: 'Figuras',
@@ -2547,6 +2719,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
   final List<LabSpace> spaces;
   final Color accent;
   final bool hasAiKey;
+  final bool aiLinked;
   final VoidCallback onExpand;
   final VoidCallback onReset;
   final VoidCallback onLink;
@@ -2557,6 +2730,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
     required this.spaces,
     required this.accent,
     required this.hasAiKey,
+    required this.aiLinked,
     required this.onExpand,
     required this.onReset,
     required this.onLink,
@@ -2632,16 +2806,20 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: hasAiKey ? onAi : null,
-            child: Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: hasAiKey ? accent : yMuted,
-                border: Border.all(color: yInk, width: yLineMid),
+            child: AiLinkBadge(
+              active: aiLinked,
+              color: accent,
+              child: Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: hasAiKey ? accent : yMuted,
+                  border: Border.all(color: yInk, width: yLineMid),
+                ),
+                child: Icon(Icons.auto_awesome,
+                    color: hasAiKey ? yCream : yCream2, size: 16),
               ),
-              child: Icon(Icons.auto_awesome,
-                  color: hasAiKey ? yCream : yCream2, size: 16),
             ),
           ),
           const SizedBox(width: 6),
@@ -2677,6 +2855,12 @@ class _CanvasPainter extends CustomPainter {
   final Set<int>? hiddenIndices;
   final Set<int>? hiddenImageIndices;
 
+  /// Layer split so strokes can render ABOVE the text-block overlays: the bottom
+  /// layer paints paper+pattern+images ([drawStrokes] false), and a second
+  /// layer above the text overlays paints only strokes ([drawBackground] false).
+  final bool drawBackground;
+  final bool drawStrokes;
+
   _CanvasPainter({
     required this.strokes,
     required this.images,
@@ -2686,27 +2870,33 @@ class _CanvasPainter extends CustomPainter {
     required this.visibleRect,
     this.hiddenIndices,
     this.hiddenImageIndices,
+    this.drawBackground = true,
+    this.drawStrokes = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final vr = visibleRect;
-    // Paper + pattern — only the visible portion.
-    canvas.drawRect(vr, Paint()..color = paper);
-    paintBgPattern(canvas, vr, background, bgMark(paper));
-    // Images — behind strokes; skip those outside the visible rect.
-    for (int i = 0; i < images.length; i++) {
-      if (hiddenImageIndices != null && hiddenImageIndices!.contains(i)) {
-        continue;
+    if (drawBackground) {
+      // Paper + pattern — only the visible portion.
+      canvas.drawRect(vr, Paint()..color = paper);
+      paintBgPattern(canvas, vr, background, bgMark(paper));
+      // Images — behind strokes; skip those outside the visible rect.
+      for (int i = 0; i < images.length; i++) {
+        if (hiddenImageIndices != null && hiddenImageIndices!.contains(i)) {
+          continue;
+        }
+        final im = images[i];
+        if (!Rect.fromLTWH(im.x, im.y, im.w, im.h).overlaps(vr)) continue;
+        drawCanvasImage(canvas, imageCache?.get(im.filename), im);
       }
-      final im = images[i];
-      if (!Rect.fromLTWH(im.x, im.y, im.w, im.h).overlaps(vr)) continue;
-      drawCanvasImage(canvas, imageCache?.get(im.filename), im);
     }
-    // Strokes — skip those that don't intersect the visible rect.
-    for (int i = 0; i < strokes.length; i++) {
-      if (hiddenIndices != null && hiddenIndices!.contains(i)) continue;
-      if (_strokeInRect(strokes[i], vr)) _draw(canvas, strokes[i]);
+    if (drawStrokes) {
+      // Strokes — skip those that don't intersect the visible rect.
+      for (int i = 0; i < strokes.length; i++) {
+        if (hiddenIndices != null && hiddenIndices!.contains(i)) continue;
+        if (_strokeInRect(strokes[i], vr)) _draw(canvas, strokes[i]);
+      }
     }
   }
 
