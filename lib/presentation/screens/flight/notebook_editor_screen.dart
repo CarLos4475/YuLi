@@ -1666,8 +1666,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
     final pageIdx = _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
-    final w = kCanvasTaskBlockDefaultW;
-    final h = 120.0;
+    final w = (kCanvasTaskBlockDefaultW / _viewScale).clamp(60.0, 600.0);
+    final h = (w * 0.375).clamp(40.0, 400.0);
     final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
     final block = CanvasTaskBlock(
       x: center.dx - w / 2,
@@ -1726,7 +1726,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final pageIdx =
         _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
     final w = (240.0 / _viewScale).clamp(60.0, 600.0);
-    final h = w / 2;
+    final h = markdown.isNotEmpty ? w : w / 2;
     final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
     final block = CanvasTextBlock(
       x: center.dx - w / 2,
