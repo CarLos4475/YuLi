@@ -1018,6 +1018,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// Finger tap (touch only) in lasso mode selects the stroke/image under it.
   void _onLassoTap(TapUpDetails d) {
     if (d.kind != PointerDeviceKind.touch) return;
+    if (_tool == DrawTool.text) {
+      final p = _screenToWorld(d.localPosition);
+      _insertTextBlockAt(p);
+      return;
+    }
     if (_tool != DrawTool.lasso || !_palmRejection) return;
     if (_lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
@@ -1686,13 +1691,43 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// Insert a new text block (empty, or seeded with [markdown]) on the page
   /// currently in view. Used by the insert button and the AI chat's "send to
   /// canvas".
+  void _enterTextMode() {
+    setState(() => _tool = DrawTool.text);
+    _lassoCtrl.deselect();
+    HapticFeedback.lightImpact();
+  }
+
+  /// Insert a text block at [worldPos] (tap-to-insert in text mode).
+  void _insertTextBlockAt(Offset worldPos) {
+    if (_pageBlockIds.isEmpty) return;
+    final pageIdx =
+        _nearestPageIndex(worldPos.dy).clamp(0, _pageBlockIds.length - 1);
+    final w = (240.0 / _viewScale).clamp(60.0, 600.0);
+    final h = w / 2;
+    final localY = worldPos.dy - _pageOffsetY(pageIdx) - h / 2;
+    final block = CanvasTextBlock(
+      x: worldPos.dx - w / 2,
+      y: localY,
+      w: w,
+      h: h,
+    );
+    final before = _snapshot();
+    setState(() {
+      _pageData[_pageBlockIds[pageIdx]]?.textBlocks.add(block);
+      _tool = DrawTool.text;
+    });
+    _commit(before);
+    _persistPage(pageIdx);
+    HapticFeedback.lightImpact();
+  }
+
+  /// Insert at centre with [markdown] (called from AI chat "Enviar a lienzo").
   void _insertTextBlock([String markdown = '']) {
     if (_pageBlockIds.isEmpty) return;
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
     final pageIdx =
         _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
-    // Size by zoom so the box is a consistent ~240px on screen.
     final w = (240.0 / _viewScale).clamp(60.0, 600.0);
     final h = w / 2;
     final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
@@ -1706,25 +1741,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final before = _snapshot();
     setState(() {
       _pageData[_pageBlockIds[pageIdx]]?.textBlocks.add(block);
-      if (markdown.isEmpty) {
-        // Manual insert (Texto button): stay in text mode.
-        _tool = DrawTool.text;
-      } else {
-        // From the AI chat: select it via the lasso so it's clearly a placed,
-        // movable/resizable object. World-space flat index = text blocks on
-        // earlier pages + this block's position on its page.
-        var worldIdx = 0;
-        for (int i = 0; i < pageIdx; i++) {
-          worldIdx += _pageData[_pageBlockIds[i]]?.textBlocks.length ?? 0;
-        }
-        worldIdx +=
-            (_pageData[_pageBlockIds[pageIdx]]?.textBlocks.length ?? 1) - 1;
-        _tool = DrawTool.lasso;
-        _lassoCtrl.hitScale = _viewScale;
-        _lassoCtrl.selectTextBlock(worldIdx, _allVisibleStrokes,
-            _allVisibleImages, _allVisibleTaskBlocks, _allVisibleTextBlocks);
-        _toolbarVisible = false;
+      var worldIdx = 0;
+      for (int i = 0; i < pageIdx; i++) {
+        worldIdx += _pageData[_pageBlockIds[i]]?.textBlocks.length ?? 0;
       }
+      worldIdx +=
+          (_pageData[_pageBlockIds[pageIdx]]?.textBlocks.length ?? 1) - 1;
+      _tool = DrawTool.lasso;
+      _lassoCtrl.hitScale = _viewScale;
+      _lassoCtrl.selectTextBlock(worldIdx, _allVisibleStrokes,
+          _allVisibleImages, _allVisibleTaskBlocks, _allVisibleTextBlocks);
+      _toolbarVisible = false;
     });
     _commit(before);
     _persistPage(pageIdx);
@@ -2948,7 +2975,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 icon: Icons.notes,
                 active: _tool == DrawTool.text,
                 tooltip: 'Texto',
-                onTap: _insertTextBlock,
+                onTap: _enterTextMode,
               ),
               const SizedBox(width: 10),
               _toolBtn(

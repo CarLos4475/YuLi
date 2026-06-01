@@ -48,13 +48,34 @@ const _kAnchorMaxChars = 8000;
 /// Above this length the context is "largo" → the chat suggests compacting it.
 const kAnchorLongChars = 3000;
 
+/// Above this raw-source length, the compactor switches from "compacta" to
+/// "sintetiza en detalle" so huge Wikipedia-style articles don't become
+/// superficial.
+const kLongDocThreshold = 50000;
+
 /// System prompt for compacting the context anchor (token-shielding). Preserves
-/// facts/terms, drops filler; returns ONLY the compacted context.
+/// facts/terms; drops web noise (nav, sidebar, footer). Returns ONLY the
+/// compacted context.
 const kCompactPrompt =
-    'Compacta el siguiente contexto preservando TODOS los datos, hechos, '
-    'nombres y términos clave; elimina redundancia y relleno; conserva el '
-    'idioma original. Responde SOLO con el contexto compactado, sin comentarios '
-    'ni encabezados.';
+    'Compacta el siguiente contexto. Elimina elementos de navegación, '
+    'enlaces del sitio, barras laterales, pies de página, comentarios de '
+    'usuarios, reseñas y cabeceras irrelevantes. Preserva TODO el '
+    'contenido útil: instrucciones paso a paso, listas, tablas, código, '
+    'datos, fechas, nombres propios y términos técnicos. Conserva el '
+    'formato markdown. Mantén el idioma original. Responde SOLO con el '
+    'contexto compactado, sin comentarios ni encabezados adicionales.';
+
+/// Alternate prompt for very long documents (>[kLongDocThreshold] chars).
+/// Instead of "compact", asks for a detailed technical synthesis so the AI
+/// doesn't over-compress out of necessity.
+const kSynthesizePrompt =
+    'Este es un documento extenso. Extrae una síntesis técnica detallada '
+    'preservando TODOS los puntos clave, teoremas, fórmulas, datos '
+    'numéricos, fechas, nombres propios y términos técnicos. Elimina '
+    'navegación, enlaces del sitio, barras laterales, pies de página, '
+    'comentarios de usuarios y cabeceras irrelevantes. Conserva el '
+    'formato markdown. Mantén el idioma original. Responde SOLO con la '
+    'síntesis, sin comentarios ni encabezados adicionales.';
 
 class AiChatMsg {
   final AiRole role;

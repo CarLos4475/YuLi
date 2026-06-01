@@ -633,11 +633,35 @@ class _WhiteboardEditorScreenState
   /// Place a new text block (empty, or seeded with [markdown]) at the centre of
   /// the current viewport. Used by the insert button and by the AI chat's
   /// "send to canvas".
+  void _enterTextMode() {
+    setState(() => _tool = DrawTool.text);
+    _lassoCtrl.deselect();
+    HapticFeedback.lightImpact();
+  }
+
+  /// Insert a text block at [worldPos] (tap-to-insert in text mode).
+  void _insertTextBlockAt(Offset worldPos) {
+    final w = (240.0 / _viewScale).clamp(60.0, 600.0);
+    final block = CanvasTextBlock(
+      x: worldPos.dx - w / 2,
+      y: worldPos.dy - w / 4,
+      w: w,
+      h: w / 2,
+    );
+    final before = _snapshot();
+    setState(() {
+      _data.textBlocks.add(block);
+      _tool = DrawTool.text;
+    });
+    _commit(before);
+    _persist();
+    HapticFeedback.lightImpact();
+  }
+
+  /// Insert at centre with [markdown] (called from AI chat "Enviar a lienzo").
   void _insertTextBlock([String markdown = '']) {
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    // Size by zoom so the box is a consistent ~240px on screen — the user zooms
-    // in to write, where a fixed world width would be huge.
     final w = (240.0 / _viewScale).clamp(60.0, 600.0);
     final block = CanvasTextBlock(
       x: center.dx - w / 2,
@@ -649,19 +673,13 @@ class _WhiteboardEditorScreenState
     final before = _snapshot();
     setState(() {
       _data.textBlocks.add(block);
-      if (markdown.isEmpty) {
-        // Manual insert (Texto button): stay in text mode — tap a box to edit,
-        // drag to move.
-        _tool = DrawTool.text;
-      } else {
-        // From the AI chat: show it selected via the lasso so the user sees a
-        // placed, movable/resizable object instead of a box with no affordance.
-        _tool = DrawTool.lasso;
-        _lassoCtrl.hitScale = _viewScale;
-        _lassoCtrl.selectTextBlock(_data.textBlocks.length - 1, _data.strokes,
-            _data.images, _data.taskBlocks, _data.textBlocks);
-        _toolbarVisible = false;
-      }
+      // From the AI chat: show it selected via the lasso so the user sees a
+      // placed, movable/resizable object instead of a box with no affordance.
+      _tool = DrawTool.lasso;
+      _lassoCtrl.hitScale = _viewScale;
+      _lassoCtrl.selectTextBlock(_data.textBlocks.length - 1, _data.strokes,
+          _data.images, _data.taskBlocks, _data.textBlocks);
+      _toolbarVisible = false;
     });
     _commit(before);
     _persist();
@@ -914,6 +932,11 @@ class _WhiteboardEditorScreenState
   /// InteractiveViewer pan in the gesture arena.
   void _onLassoTap(TapUpDetails d) {
     if (d.kind != PointerDeviceKind.touch) return;
+    if (_tool == DrawTool.text) {
+      final p = _screenToWorld(d.localPosition);
+      _insertTextBlockAt(p);
+      return;
+    }
     if (_tool != DrawTool.lasso || !_palmRejection) return;
     if (_lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
@@ -2450,7 +2473,7 @@ class _WhiteboardEditorScreenState
                 icon: Icons.notes,
                 active: _tool == DrawTool.text,
                 tooltip: 'Texto',
-                onTap: _insertTextBlock,
+                onTap: _enterTextMode,
               ),
               const SizedBox(width: 10),
               _toolBtn(

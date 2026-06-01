@@ -273,10 +273,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     await limiter.record();
     final buf = StringBuffer();
     try {
+      final prompt = raw.length > kLongDocThreshold
+          ? kSynthesizePrompt
+          : kCompactPrompt;
       await for (final tok in ref.read(aiAssistantProvider).streamReply([
-        const AiMessage(AiRole.system, kCompactPrompt),
+        AiMessage(AiRole.system, prompt),
         AiMessage(AiRole.user, raw),
-      ], model: AiModel.flash)) {
+      ], model: AiModel.flash, maxTokens: 4096, temperature: 0.2)) {
         buf.write(tok);
       }
     } catch (_) {
@@ -2039,6 +2042,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
         wasCompacted: wasCompacted,
         originalLen: wasCompacted ? raw.length : null,
         compactedLen: wasCompacted ? compacted!.length : null,
+        url: s.isUrl ? s.ref : null,
       ),
     );
   }
@@ -2317,6 +2321,7 @@ class _SourceViewDialog extends StatelessWidget {
   final bool wasCompacted;
   final int? originalLen;
   final int? compactedLen;
+  final String? url;
 
   const _SourceViewDialog({
     required this.label,
@@ -2325,6 +2330,7 @@ class _SourceViewDialog extends StatelessWidget {
     required this.wasCompacted,
     this.originalLen,
     this.compactedLen,
+    this.url,
   });
 
   @override
@@ -2443,6 +2449,31 @@ class _SourceViewDialog extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  if (url != null) ...[
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: url!));
+                        HapticFeedback.selectionClick();
+                      },
+                      child: Container(
+                        height: 38,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: yCream,
+                          border: Border.all(color: yInk, width: yLineMid),
+                        ),
+                        child: Text('COPIAR ENLACE',
+                            style: yMono(
+                                size: 10,
+                                weight: FontWeight.w700,
+                                tracking: 1.2,
+                                color: yInk)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.of(context).pop(),

@@ -26,7 +26,8 @@ class DeepseekAssistant implements AiAssistant {
 
   @override
   Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash, int maxTokens = 1024}) async* {
+      {AiModel model = AiModel.flash, int maxTokens = 2048,
+      double temperature = 0.3}) async* {
     final key = (await keyStore.read())?.trim();
     if (key == null || key.isEmpty) {
       throw const AiException('Falta la API key (configúrala en Ajustes).');
@@ -41,7 +42,7 @@ class DeepseekAssistant implements AiAssistant {
         'max_tokens': maxTokens,
         // Lower temperature → more deterministic (good for summarize/clean/
         // extract-tasks, less drift).
-        'temperature': 0.3,
+        'temperature': temperature,
         'messages': messages
             .map((m) => {'role': m.role.name, 'content': m.content})
             .toList(),

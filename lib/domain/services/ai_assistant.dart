@@ -18,7 +18,8 @@ abstract class AiAssistant {
   /// [maxTokens] caps each reply's length/cost.
   /// Throws [AiException] on missing key / network / API errors.
   Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash, int maxTokens = 1024});
+      {AiModel model = AiModel.flash, int maxTokens = 2048,
+      double temperature = 0.3});
 }
 
 class AiException implements Exception {
