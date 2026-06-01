@@ -383,45 +383,51 @@ class _HeaderStrip extends StatelessWidget {
               ),
             ),
           ),
-          Container(
-            width: 360,
-            color: _yInk,
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                RichText(
-                  text: const TextSpan(
-                    style: TextStyle(
-                      fontFamily: 'SpaceGrotesk',
-                      fontSize: 64,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -2.5,
-                      height: 1.0,
-                      color: _yCream,
+          Flexible(
+            flex: 1,
+            child: Container(
+              color: _yInk,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Stack(
+                children: [
+                  Center(
+                    child: RichText(
+                      text: const TextSpan(
+                        style: TextStyle(
+                          fontFamily: 'SpaceGrotesk',
+                          fontSize: 64,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -2.5,
+                          height: 1.0,
+                          color: _yCream,
+                        ),
+                        children: [
+                          TextSpan(text: 'Yu'),
+                          TextSpan(
+                              text: 'Li', style: TextStyle(color: _yAmber)),
+                        ],
+                      ),
                     ),
-                    children: [
-                      TextSpan(text: 'Yu'),
-                      TextSpan(
-                          text: 'Li', style: TextStyle(color: _yAmber)),
-                    ],
                   ),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onSettings,
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: _yCream, width: 2.5),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onSettings,
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: _yCream, width: 2.5),
+                        ),
+                        child: const Icon(Icons.settings,
+                            color: _yCream, size: 20),
+                      ),
                     ),
-                    child: const Icon(Icons.settings,
-                        color: _yCream, size: 20),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -643,7 +649,8 @@ class _FightPillar extends ConsumerWidget {
                         horizontal: 12, vertical: 4),
                     child: Row(
                       children: [
-                        Expanded(
+          Expanded(
+            flex: 1,
                           child: TextField(
                             controller: controller,
                             focusNode: focusNode,
