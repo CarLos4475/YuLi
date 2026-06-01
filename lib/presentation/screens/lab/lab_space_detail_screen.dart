@@ -7,6 +7,7 @@ import '../../providers/folder_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../widgets/yuli_design.dart' as y;
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
@@ -146,6 +147,10 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final tabs = ref.watch(labTabsProvider(widget.space.id));
+    // Pin the LAB AI chat session to this screen's lifetime (autoDispose →
+    // discarded on leave). Without this, showLabChat's ref.read created it and
+    // it disposed immediately → "AiChatSession used after being disposed".
+    ref.watch(aiLabSessionProvider(widget.space.id));
 
     return Scaffold(
       backgroundColor: paperColor(context),

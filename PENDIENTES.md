@@ -4,6 +4,12 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 
 ---
 
+### 🐞→✅ FIX aplicado: error rojo "AiChatSession used after being disposed" al abrir el Chat del proyecto
+
+**Era:** la caja roja al abrir **"Chat del proyecto"** (LAB) — `aiLabSessionProvider` (autoDispose) se desechaba de inmediato porque `showLabChat` solo hacía `ref.read` (no ancla); `initState` luego hacía `addListener` sobre la sesión muerta.
+**Fix aplicado:** `ref.watch(aiLabSessionProvider(widget.space.id))` en `LabSpaceDetailScreen.build` (ancla la sesión a la vida de la pantalla, igual que los editores con las notas).
+**Verificar mañana:** relanzar → abrir Chat del proyecto → ya NO debe salir el error rojo; abrir/cerrar varias veces; que el chat de proyecto y el de una nota con el mismo id sigan separados.
+
 ## Verificación pendiente
 
 ### YuLi AI en Lab (one-shot) — generar tarjetas + resumir/triage
