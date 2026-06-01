@@ -1208,6 +1208,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
     return MarkdownWidget(
       data: data,
       shrinkWrap: true,
+      padding: tight ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.all(8.0),
       markdownGenerator: generator,
       config: MarkdownConfig(configs: [
         PConfig(textStyle: yBody(size: 15, color: yInk2, height: 1.55)),
