@@ -262,6 +262,10 @@ class CanvasTextBlock implements CanvasGeo {
   /// reflows the text at the same font size.
   double scale;
 
+  /// When true the block was created from the AI chat as a fixed square; its
+  /// height never auto-adjusts and overflow is scrollable instead of clipped.
+  bool isSquare;
+
   CanvasTextBlock({
     String? id,
     required this.x,
@@ -271,6 +275,7 @@ class CanvasTextBlock implements CanvasGeo {
     this.rotation = 0,
     this.scale = 1.0,
     this.markdown = '',
+    this.isSquare = false,
   }) : id = id ?? const Uuid().v4();
 
   CanvasTextBlock clone() => CanvasTextBlock(
@@ -282,6 +287,7 @@ class CanvasTextBlock implements CanvasGeo {
         rotation: rotation,
         scale: scale,
         markdown: markdown,
+        isSquare: isSquare,
       );
 
   Map<String, dynamic> toJson() => {
@@ -292,6 +298,7 @@ class CanvasTextBlock implements CanvasGeo {
         'h': h,
         if (rotation != 0) 'r': rotation,
         if (scale != 1.0) 'sc': scale,
+        if (isSquare) 'sq': true,
         'md': markdown,
       };
 
@@ -305,6 +312,7 @@ class CanvasTextBlock implements CanvasGeo {
         rotation: (json['r'] as num?)?.toDouble() ?? 0,
         scale: (json['sc'] as num?)?.toDouble() ?? 1.0,
         markdown: (json['md'] as String?) ?? '',
+        isSquare: json['sq'] as bool? ?? false,
       );
 }
 

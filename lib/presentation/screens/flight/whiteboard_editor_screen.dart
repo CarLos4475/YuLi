@@ -663,7 +663,10 @@ class _WhiteboardEditorScreenState
   void _insertTextBlock([String markdown = '']) {
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    final w = (240.0 / _viewScale).clamp(60.0, 600.0);
+    final screenW = markdown.isNotEmpty
+        ? (200.0 + markdown.length * 0.35).clamp(120.0, 800.0)
+        : 200.0;
+    final w = (screenW / _viewScale).clamp(60.0, 600.0);
     final h = markdown.isNotEmpty ? w : w / 2;
     final block = CanvasTextBlock(
       x: center.dx - w / 2,
