@@ -554,76 +554,177 @@ class _DueDateRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('// VENCIMIENTO Y CONTEXTO',
+        Text('// FECHAS',
             style: y.yMono(
                 size: 10,
                 weight: FontWeight.w700,
                 tracking: 1.4,
                 color: y.yMuted)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        const SizedBox(height: 10),
+        // INICIO (fecha de inicio real / agregado como fallback)
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (card.dueDate != null)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: overdue ? y.yFight : y.yFlight,
-                  border: Border.all(color: y.yInk, width: 1.5),
-                ),
-                child: Text(
-                  _formatDate(card.dueDate!),
-                  style: y.yMono(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      color: y.yCream,
-                      tracking: 0.5),
-                ),
-              ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _pickDate(context),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                decoration: BoxDecoration(
-                  color: y.yCream,
-                  border: Border.all(color: y.yInk, width: 2),
-                ),
-                child: Text(
-                  'EDITAR FECHA',
+            SizedBox(
+              width: 46,
+              child: Text('INICIO',
                   style: y.yMono(
                       size: 10,
                       weight: FontWeight.w700,
-                      tracking: 1.2,
-                      color: y.yInk),
+                      tracking: 1,
+                      color: y.yInk)),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _pickStartDate(context),
+                    child: _dateChip(
+                      card.startDate != null
+                          ? _formatDate(card.startDate!)
+                          : 'agregado · ${_formatDate(card.createdAt)}',
+                      card.startDate != null ? y.yLab : y.yCream,
+                    ),
+                  ),
+                  _startToggleChip('AUTO', card.startDate == null, () {
+                    if (card.startDate != null) {
+                      final u = card.copyWith(clearStartDate: true);
+                      repo.update(u);
+                      onChanged(u);
+                    }
+                  }),
+                  _startToggleChip('MANUAL', card.startDate != null,
+                      () => _pickStartDate(context)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // FIN (due date / fecha de acabado al entregar)
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 46,
+              child: Text('FIN',
+                  style: y.yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1,
+                      color: y.yInk)),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _pickDate(context),
+                child: _dateChip(
+                  card.dueDate != null ? _formatDate(card.dueDate!) : 'sin fecha',
+                  card.dueDate != null
+                      ? (overdue ? y.yFight : y.yFlight)
+                      : y.yCream,
                 ),
               ),
             ),
-            if (card.originFolderColor != null &&
-                RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').hasMatch(card.title))
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Color(card.originFolderColor!),
-                  border: Border.all(color: y.yInk, width: 1.5),
-                ),
-                child: Text(
-                  '@${RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').firstMatch(card.title)!.group(1)!}',
-                  style: y.yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      color: y.yCream,
-                      tracking: 0.5),
-                ),
-              ),
           ],
         ),
+        if (card.dueDate != null) ...[
+          const SizedBox(height: 8),
+          Text(
+              'rango timeline:  ${_short(card.startDate ?? card.createdAt)} → ${_short(card.dueDate!)}',
+              style: y.yMono(size: 10, tracking: 0.5, color: y.yMuted)),
+        ],
+        if (card.originFolderColor != null &&
+            RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').hasMatch(card.title)) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Color(card.originFolderColor!),
+              border: Border.all(color: y.yInk, width: 1.5),
+            ),
+            child: Text(
+              '@${RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').firstMatch(card.title)!.group(1)!}',
+              style: y.yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  color: y.yCream,
+                  tracking: 0.5),
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  Widget _dateChip(String label, Color bg) {
+    final dark = bg.computeLuminance() < 0.5;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: y.yInk, width: 1.5),
+      ),
+      child: Text(label,
+          style: y.yMono(
+              size: 12,
+              weight: FontWeight.w700,
+              color: dark ? y.yCream : y.yInk,
+              tracking: 0.3)),
+    );
+  }
+
+  String _short(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+
+  Widget _startToggleChip(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? y.yInk : y.yCream,
+          border: Border.all(color: y.yInk, width: 2),
+        ),
+        child: Text(label,
+            style: y.yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.2,
+                color: active ? y.yCream : y.yInk)),
+      ),
+    );
+  }
+
+  Future<void> _pickStartDate(BuildContext context) async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: card.startDate ?? card.createdAt,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary: inkColor(ctx),
+                onPrimary: paperColor(ctx),
+              ),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null) return;
+    final dt = DateTime(date.year, date.month, date.day);
+    final updated = card.copyWith(startDate: dt);
+    await repo.update(updated);
+    onChanged(updated);
   }
 
   Future<void> _pickDate(BuildContext context) async {

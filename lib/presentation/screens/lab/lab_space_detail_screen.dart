@@ -19,6 +19,7 @@ import 'kanban_card_detail.dart';
 import 'calendar_tab.dart';
 import 'timeline_tab.dart';
 import 'schedule_tab.dart';
+import 'lab_ai_sheet.dart';
 
 class LabSpaceDetailScreen extends ConsumerStatefulWidget {
   final LabSpace space;
@@ -506,6 +507,14 @@ class _KanbanHeader extends ConsumerWidget {
             bg: space.accentColor,
             onTap: () => _showDateEditor(context, ref),
           ),
+          const SizedBox(width: 6),
+          _HeaderIcon(
+            icon: Icons.auto_awesome,
+            bg: space.accentColor,
+            fg: y.yCream,
+            fill: true,
+            onTap: () => showLabAiSheet(context, ref, space),
+          ),
           if (onToggleSelectionMode != null) ...[
             const SizedBox(width: 6),
             _HeaderIcon(
@@ -968,7 +977,9 @@ class _KanbanColumn extends ConsumerWidget {
   });
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final isProtected = column.name == 'Entregado' || column.name == 'Vencido';
+    final isProtected = column.name == 'Entregado' ||
+        column.name == 'Vencido' ||
+        column.name == 'En Proceso';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -2134,6 +2145,23 @@ class _ColumnHead extends StatelessWidget {
                     weight: FontWeight.w700,
                     tracking: 1,
                     color: y.yFight,
+                  )),
+            ),
+          ],
+          if (column.name == 'En Proceso') ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+              decoration: BoxDecoration(
+                color: y.yCream2,
+                border: Border.all(color: y.yFlight, width: 1.5),
+              ),
+              child: Text('INICIO',
+                  style: y.yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1,
+                    color: y.yFlight,
                   )),
             ),
           ],

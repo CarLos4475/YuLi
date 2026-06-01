@@ -11,6 +11,7 @@ abstract class KanbanCardRepository {
     String? description,
     CardPriority priority,
     DateTime? dueDate,
+    DateTime? startDate,
     int? sourceNoteId,
     String? sourceAnchor,
     int? originTaskId,

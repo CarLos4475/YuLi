@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -218,76 +219,81 @@ class _TimelineViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalDays = space.dueDate!.difference(space.startDate!).inDays + 1;
-    const baseLaneHeight = 100.0;
+    final startDay = DateTime(
+        space.startDate!.year, space.startDate!.month, space.startDate!.day);
+    final endDay =
+        DateTime(space.dueDate!.year, space.dueDate!.month, space.dueDate!.day);
+    final totalDays = endDay.difference(startDay).inDays + 1;
     const headerHeight = 40.0;
+    const rowH = 32.0; // height of one stacked bar row
+    const laneVPad = 8.0;
     final availWidth = MediaQuery.of(context).size.width;
 
-    // Count cards per day and per lane for dynamic sizing
-    final cardsPerDay = <int, int>{};
-    final cardsPerLane = <int, int>{};
-    final startDay = DateTime(space.startDate!.year, space.startDate!.month, space.startDate!.day);
+    // Uniform day width (so a bar's length reads as its duration). Min keeps it
+    // legible; InteractiveViewer scrolls when there are many days.
+    final dayW = math.max(availWidth / totalDays, 26.0);
+    final dayPositions = List.generate(totalDays, (d) => d * dayW);
+    final dayWidths = List.filled(totalDays, dayW);
+    final totalWidth = totalDays * dayW;
 
-    for (final card in cards) {
-      if (card.dueDate == null) continue;
-      final cardDay = DateTime(card.dueDate!.year, card.dueDate!.month, card.dueDate!.day);
-      final dayIndex = cardDay.difference(startDay).inDays;
-      if (dayIndex < 0 || dayIndex >= totalDays) continue;
-      final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
-      if (laneIndex < 0) continue;
-      cardsPerDay[dayIndex] = (cardsPerDay[dayIndex] ?? 0) + 1;
-      cardsPerLane[laneIndex] = (cardsPerLane[laneIndex] ?? 0) + 1;
+    int clampDay(DateTime d) {
+      final day = DateTime(d.year, d.month, d.day);
+      return day.difference(startDay).inDays.clamp(0, totalDays - 1);
     }
 
-    // Day widths: empty days keep original width, days with cards get extra space
-    final baseW = availWidth / totalDays;
-    final dayWidths = List.generate(totalDays, (d) =>
-        (cardsPerDay[d] ?? 0) > 0 ? baseW * 2.5 : baseW);
-    final dayPositions = List.filled(totalDays, 0.0);
-    for (int d = 0; d < totalDays; d++) {
-      dayPositions[d] = d == 0 ? 0 : dayPositions[d - 1] + dayWidths[d - 1];
+    // Per-lane interval packing: a card spans (startDate ?? createdAt) → dueDate;
+    // overlapping spans get stacked into separate rows. dueDate keeps its
+    // existing cross-mode behavior — we only READ it here.
+    final placed = <_BarPlacement>[];
+    final laneRowCount = List.filled(columns.length, 1);
+    for (int li = 0; li < columns.length; li++) {
+      final spans = cards
+          .where((c) => c.dueDate != null && c.columnId == columns[li].id)
+          .map((c) {
+        final s = clampDay(c.startDate ?? c.createdAt);
+        var e = clampDay(c.dueDate!);
+        if (e < s) e = s;
+        return (card: c, s: s, e: e);
+      }).toList()
+        ..sort((a, b) => a.s.compareTo(b.s));
+      final rowEnds = <int>[]; // last end-day index per row
+      for (final sp in spans) {
+        int row = -1;
+        for (int r = 0; r < rowEnds.length; r++) {
+          if (rowEnds[r] < sp.s) {
+            row = r;
+            break;
+          }
+        }
+        if (row < 0) {
+          row = rowEnds.length;
+          rowEnds.add(sp.e);
+        } else {
+          rowEnds[row] = sp.e;
+        }
+        placed.add(_BarPlacement(
+            card: sp.card, lane: li, row: row, startIdx: sp.s, endIdx: sp.e));
+      }
+      laneRowCount[li] = math.max(1, rowEnds.length);
     }
-    final totalWidth = dayPositions.last + dayWidths.last;
 
-    // Calculate per-lane Y positions with dynamic heights
+    // Per-lane Y positions (height grows with stacked rows).
     final laneTopPositions = List.filled(columns.length, 0.0);
     double currentY = headerHeight;
     for (int i = 0; i < columns.length; i++) {
       laneTopPositions[i] = currentY;
-      final count = cardsPerLane[i] ?? 0;
-      currentY += baseLaneHeight + (count > 4 ? (count - 4) * 26.0 : 0);
+      currentY += laneVPad + laneRowCount[i] * rowH + laneVPad;
     }
     final totalHeight = currentY;
 
-    // Group cards by (dayIndex, laneIndex) for vertical stacking
-    final groups = <String, List<KanbanCard>>{};
-    for (final card in cards) {
-      if (card.dueDate == null) continue;
-      final cardDay = DateTime(card.dueDate!.year, card.dueDate!.month, card.dueDate!.day);
-      final dayIndex = cardDay.difference(startDay).inDays;
-      if (dayIndex < 0 || dayIndex >= totalDays) continue;
-      final laneIndex = columns.indexWhere((c) => c.id == card.columnId);
-      if (laneIndex < 0) continue;
-      final key = '$dayIndex|$laneIndex';
-      groups.putIfAbsent(key, () => []).add(card);
-    }
-
-    // Build positioned card widgets with vertical stacking
+    // Build positioned bar widgets.
     final cardWidgets = <Widget>[];
-    for (final group in groups.entries) {
-      final parts = group.key.split('|');
-      final dayIndex = int.parse(parts[0]);
-      final laneIndex = int.parse(parts[1]);
-      final groupCards = group.value;
-
-      groupCards.sort((a, b) => a.position.compareTo(b.position));
-
-      for (int gi = 0; gi < groupCards.length; gi++) {
-        final card = groupCards[gi];
-        final dayW = dayWidths[dayIndex];
-        final x = dayPositions[dayIndex] + 2;
-        final top = laneTopPositions[laneIndex] + 4 + gi * 32;
-        final cardWidth = dayW - 4;
+    {
+      for (final p in placed) {
+        final card = p.card;
+        final x = dayPositions[p.startIdx] + 2;
+        final top = laneTopPositions[p.lane] + laneVPad + p.row * rowH;
+        final cardWidth = (p.endIdx - p.startIdx + 1) * dayW - 4;
         final cardHeight = 28.0;
         final isSelected = selectedCardIds.contains(card.id);
         final isDone = card.originTaskDoneAt != null;
@@ -406,6 +412,23 @@ class _TimelineViewer extends StatelessWidget {
       CardPriority.none => inkGray,
     };
   }
+}
+
+/// A card's placement on the timeline: its lane (column), the stacked row it
+/// got packed into, and the day-index span [startIdx]..[endIdx] of its bar.
+class _BarPlacement {
+  final KanbanCard card;
+  final int lane;
+  final int row;
+  final int startIdx;
+  final int endIdx;
+  const _BarPlacement({
+    required this.card,
+    required this.lane,
+    required this.row,
+    required this.startIdx,
+    required this.endIdx,
+  });
 }
 
 // ─── Timeline Grid Painter ───────────────────────────────────────────────

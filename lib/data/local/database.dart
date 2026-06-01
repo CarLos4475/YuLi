@@ -67,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -151,6 +151,11 @@ class AppDatabase extends _$AppDatabase {
                   "SELECT canvas_note_id, 'note', "
                   "CAST(source_note_id AS TEXT), created_at "
                   "FROM note_canvas_links");
+            } catch (_) {}
+          }
+          if (from <= 16) {
+            try {
+              await m.addColumn(kanbanCards, kanbanCards.startDate);
             } catch (_) {}
           }
         },

@@ -29,6 +29,9 @@ class KanbanCard {
   final CardPriority priority;
   final int position;
   final DateTime? dueDate;
+
+  /// Lab-only optional planned start. Null → auto (timeline uses [createdAt]).
+  final DateTime? startDate;
   final int? sourceNoteId;
   final String? sourceAnchor;
   final int? originTaskId;
@@ -45,6 +48,7 @@ class KanbanCard {
     required this.priority,
     required this.position,
     this.dueDate,
+    this.startDate,
     this.sourceNoteId,
     this.sourceAnchor,
     this.originTaskId,
@@ -64,6 +68,8 @@ class KanbanCard {
     int? position,
     DateTime? dueDate,
     bool clearDueDate = false,
+    DateTime? startDate,
+    bool clearStartDate = false,
     int? sourceNoteId,
     bool clearSourceNoteId = false,
     String? sourceAnchor,
@@ -86,6 +92,7 @@ class KanbanCard {
       priority: priority ?? this.priority,
       position: position ?? this.position,
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+      startDate: clearStartDate ? null : (startDate ?? this.startDate),
       sourceNoteId:
           clearSourceNoteId ? null : (sourceNoteId ?? this.sourceNoteId),
       sourceAnchor:

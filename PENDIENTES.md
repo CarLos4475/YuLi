@@ -6,6 +6,29 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 
 ## Verificación pendiente
 
+### YuLi AI en Lab (one-shot) — generar tarjetas + resumir/triage
+
+**Qué se implementó:** hoja **YuLi · LAB** desde el botón ✦ en el header del espacio. Dos acciones one-shot (sin chat persistente; el chat es fase 2 y se sumará a esta misma hoja).
+
+**Cómo probar (en dispositivo, necesita API key DeepSeek):**
+- **✦ en el header** del espacio → abre la hoja "YuLi · LAB" con [Generar tarjetas] y [Resumir / triage].
+- **Generar tarjetas:** escribe un objetivo/prompt → la IA propone tarjetas → **vista de revisión**: por tarjeta editas **título**, ciclas **prioridad** (chip), y ajustas **inicio/due** (date-pickers); desmarcas las que no quieras → **CREAR N** → se crean **todas en Backlog** con sus fechas. Verifica que aparezcan en el kanban y, si pusiste fechas, como barras en la timeline.
+- **Resumir / triage:** serializa el board (columnas + tarjetas + prioridad/due/hecha) → **diálogo markdown** (mismo render que el chat) con resumen + atorados + siguientes pasos, con botón **COPIAR**. No debe inventar tarjetas.
+- **Sin key** → avisa ir a Ajustes. **Límite diario** respetado (cada acción cuenta 1 request). **Sin red / error** → aviso claro.
+
+### Lab — rango de fechas por tarjeta + timeline en barras (base para IA-Lab) — migración schema 17
+
+**Qué se implementó:** `KanbanCard.startDate` nullable (campo nuevo, Lab-only). La timeline pasa de **puntos** a **barras**: cada tarjeta con `dueDate` se dibuja como una barra de `(startDate ?? createdAt) → dueDate`, con **packing por carriles** (barras que se solapan se apilan en filas). Ancho de día **uniforme** (barra = duración). En el detalle de tarjeta hay un toggle **AUTO / MANUAL** para el inicio.
+
+**⚠️ Crítico verificar (no debe romperse cross-mode):** `dueDate` quedó **intacto** — sigue volviéndose fecha de acabado al pasar a "Entregado", sigue sincronizando con FIGHT y con la expiry. Solo se **lee** en la timeline. Confirmar que completar una tarjeta / moverla a Entregado / vencerla sigue igual que antes.
+
+**Cómo probar (migra al primer arranque, agrega la columna `start_date`):**
+- **"En Proceso" = columna del sistema:** mover una card a **En Proceso** debe fijar su **fecha de inicio** (= ahora) automáticamente, si no tenía. Si la card va **directo a Entregado** (sin pasar por En Proceso), el inicio = **agregado** (createdAt). Verifica con drag y con cambio de columna desde el detalle.
+- **Card detail:** sección "// FECHAS" con **INICIO** (chip: fecha manual / "agregado · dd/mm" en auto, + toggle AUTO/MANUAL) y **FIN** (chip due, toca para editar), más una línea "rango timeline: dd/mm → dd/mm".
+- **Barra multi-día:** una card con inicio y fin distintos debe verse como un **rectángulo que se extiende varios días** en la timeline (no un punto).
+- **Timeline:** las tarjetas con due aparecen como **barras** del inicio al due. Auto → la barra arranca en la fecha de creación. Manual → arranca en la fecha elegida. Barras que coinciden en el tiempo se apilan en filas dentro del carril (columna). Tarjetas sin `dueDate` no aparecen (igual que antes).
+- **Cross-mode:** completar/mover a Entregado/vencer una tarjeta → el `dueDate` y la sync con FIGHT deben comportarse **idéntico** a antes del cambio.
+
 ### Fuentes de contexto MÚLTIPLES (notas + enlaces web) — NUEVO, migración BD schema 16
 
 **Qué se implementó:** generaliza el link Nota↔Canvas a **N fuentes** de dos tipos: notas `block` internas y **URLs externas** (leídas con Jina Reader → markdown). Tabla unificada `canvas_context_sources`. Compactación **por fuente, cacheada** (cada nota/URL larga se compacta 1 vez y se reusa). Migración copia los links viejos como fuentes `note`.

@@ -3974,6 +3974,17 @@ class $KanbanCardsTable extends KanbanCards
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startDate = GeneratedColumn<DateTime>(
+    'start_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _sourceNoteIdMeta = const VerificationMeta(
     'sourceNoteId',
   );
@@ -4058,6 +4069,7 @@ class $KanbanCardsTable extends KanbanCards
     priority,
     position,
     dueDate,
+    startDate,
     sourceNoteId,
     sourceAnchor,
     originTaskId,
@@ -4134,6 +4146,12 @@ class $KanbanCardsTable extends KanbanCards
       context.handle(
         _dueDateMeta,
         dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
       );
     }
     if (data.containsKey('source_note_id')) {
@@ -4234,6 +4252,10 @@ class $KanbanCardsTable extends KanbanCards
         DriftSqlType.dateTime,
         data['${effectivePrefix}due_date'],
       ),
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}start_date'],
+      ),
       sourceNoteId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}source_note_id'],
@@ -4277,6 +4299,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
   final String priority;
   final int position;
   final DateTime? dueDate;
+  final DateTime? startDate;
   final int? sourceNoteId;
   final String? sourceAnchor;
   final int? originTaskId;
@@ -4292,6 +4315,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     required this.priority,
     required this.position,
     this.dueDate,
+    this.startDate,
     this.sourceNoteId,
     this.sourceAnchor,
     this.originTaskId,
@@ -4313,6 +4337,9 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     map['position'] = Variable<int>(position);
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<DateTime>(dueDate);
+    }
+    if (!nullToAbsent || startDate != null) {
+      map['start_date'] = Variable<DateTime>(startDate);
     }
     if (!nullToAbsent || sourceNoteId != null) {
       map['source_note_id'] = Variable<int>(sourceNoteId);
@@ -4349,6 +4376,10 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           dueDate == null && nullToAbsent
               ? const Value.absent()
               : Value(dueDate),
+      startDate:
+          startDate == null && nullToAbsent
+              ? const Value.absent()
+              : Value(startDate),
       sourceNoteId:
           sourceNoteId == null && nullToAbsent
               ? const Value.absent()
@@ -4387,6 +4418,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       priority: serializer.fromJson<String>(json['priority']),
       position: serializer.fromJson<int>(json['position']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      startDate: serializer.fromJson<DateTime?>(json['startDate']),
       sourceNoteId: serializer.fromJson<int?>(json['sourceNoteId']),
       sourceAnchor: serializer.fromJson<String?>(json['sourceAnchor']),
       originTaskId: serializer.fromJson<int?>(json['originTaskId']),
@@ -4409,6 +4441,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       'priority': serializer.toJson<String>(priority),
       'position': serializer.toJson<int>(position),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'startDate': serializer.toJson<DateTime?>(startDate),
       'sourceNoteId': serializer.toJson<int?>(sourceNoteId),
       'sourceAnchor': serializer.toJson<String?>(sourceAnchor),
       'originTaskId': serializer.toJson<int?>(originTaskId),
@@ -4427,6 +4460,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     String? priority,
     int? position,
     Value<DateTime?> dueDate = const Value.absent(),
+    Value<DateTime?> startDate = const Value.absent(),
     Value<int?> sourceNoteId = const Value.absent(),
     Value<String?> sourceAnchor = const Value.absent(),
     Value<int?> originTaskId = const Value.absent(),
@@ -4442,6 +4476,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     priority: priority ?? this.priority,
     position: position ?? this.position,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    startDate: startDate.present ? startDate.value : this.startDate,
     sourceNoteId: sourceNoteId.present ? sourceNoteId.value : this.sourceNoteId,
     sourceAnchor: sourceAnchor.present ? sourceAnchor.value : this.sourceAnchor,
     originTaskId: originTaskId.present ? originTaskId.value : this.originTaskId,
@@ -4467,6 +4502,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       priority: data.priority.present ? data.priority.value : this.priority,
       position: data.position.present ? data.position.value : this.position,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
       sourceNoteId:
           data.sourceNoteId.present
               ? data.sourceNoteId.value
@@ -4502,6 +4538,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           ..write('priority: $priority, ')
           ..write('position: $position, ')
           ..write('dueDate: $dueDate, ')
+          ..write('startDate: $startDate, ')
           ..write('sourceNoteId: $sourceNoteId, ')
           ..write('sourceAnchor: $sourceAnchor, ')
           ..write('originTaskId: $originTaskId, ')
@@ -4522,6 +4559,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     priority,
     position,
     dueDate,
+    startDate,
     sourceNoteId,
     sourceAnchor,
     originTaskId,
@@ -4541,6 +4579,7 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           other.priority == this.priority &&
           other.position == this.position &&
           other.dueDate == this.dueDate &&
+          other.startDate == this.startDate &&
           other.sourceNoteId == this.sourceNoteId &&
           other.sourceAnchor == this.sourceAnchor &&
           other.originTaskId == this.originTaskId &&
@@ -4558,6 +4597,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
   final Value<String> priority;
   final Value<int> position;
   final Value<DateTime?> dueDate;
+  final Value<DateTime?> startDate;
   final Value<int?> sourceNoteId;
   final Value<String?> sourceAnchor;
   final Value<int?> originTaskId;
@@ -4573,6 +4613,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     this.priority = const Value.absent(),
     this.position = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.startDate = const Value.absent(),
     this.sourceNoteId = const Value.absent(),
     this.sourceAnchor = const Value.absent(),
     this.originTaskId = const Value.absent(),
@@ -4589,6 +4630,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     this.priority = const Value.absent(),
     required int position,
     this.dueDate = const Value.absent(),
+    this.startDate = const Value.absent(),
     this.sourceNoteId = const Value.absent(),
     this.sourceAnchor = const Value.absent(),
     this.originTaskId = const Value.absent(),
@@ -4608,6 +4650,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     Expression<String>? priority,
     Expression<int>? position,
     Expression<DateTime>? dueDate,
+    Expression<DateTime>? startDate,
     Expression<int>? sourceNoteId,
     Expression<String>? sourceAnchor,
     Expression<int>? originTaskId,
@@ -4624,6 +4667,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
       if (priority != null) 'priority': priority,
       if (position != null) 'position': position,
       if (dueDate != null) 'due_date': dueDate,
+      if (startDate != null) 'start_date': startDate,
       if (sourceNoteId != null) 'source_note_id': sourceNoteId,
       if (sourceAnchor != null) 'source_anchor': sourceAnchor,
       if (originTaskId != null) 'origin_task_id': originTaskId,
@@ -4642,6 +4686,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     Value<String>? priority,
     Value<int>? position,
     Value<DateTime?>? dueDate,
+    Value<DateTime?>? startDate,
     Value<int?>? sourceNoteId,
     Value<String?>? sourceAnchor,
     Value<int?>? originTaskId,
@@ -4658,6 +4703,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
       priority: priority ?? this.priority,
       position: position ?? this.position,
       dueDate: dueDate ?? this.dueDate,
+      startDate: startDate ?? this.startDate,
       sourceNoteId: sourceNoteId ?? this.sourceNoteId,
       sourceAnchor: sourceAnchor ?? this.sourceAnchor,
       originTaskId: originTaskId ?? this.originTaskId,
@@ -4694,6 +4740,9 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     if (dueDate.present) {
       map['due_date'] = Variable<DateTime>(dueDate.value);
     }
+    if (startDate.present) {
+      map['start_date'] = Variable<DateTime>(startDate.value);
+    }
     if (sourceNoteId.present) {
       map['source_note_id'] = Variable<int>(sourceNoteId.value);
     }
@@ -4726,6 +4775,7 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
           ..write('priority: $priority, ')
           ..write('position: $position, ')
           ..write('dueDate: $dueDate, ')
+          ..write('startDate: $startDate, ')
           ..write('sourceNoteId: $sourceNoteId, ')
           ..write('sourceAnchor: $sourceAnchor, ')
           ..write('originTaskId: $originTaskId, ')
@@ -12347,6 +12397,7 @@ typedef $$KanbanCardsTableCreateCompanionBuilder =
       Value<String> priority,
       required int position,
       Value<DateTime?> dueDate,
+      Value<DateTime?> startDate,
       Value<int?> sourceNoteId,
       Value<String?> sourceAnchor,
       Value<int?> originTaskId,
@@ -12364,6 +12415,7 @@ typedef $$KanbanCardsTableUpdateCompanionBuilder =
       Value<String> priority,
       Value<int> position,
       Value<DateTime?> dueDate,
+      Value<DateTime?> startDate,
       Value<int?> sourceNoteId,
       Value<String?> sourceAnchor,
       Value<int?> originTaskId,
@@ -12489,6 +12541,11 @@ class $$KanbanCardsTableFilterComposer
 
   ColumnFilters<DateTime> get dueDate => $composableBuilder(
     column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startDate => $composableBuilder(
+    column: $table.startDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12644,6 +12701,11 @@ class $$KanbanCardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get sourceAnchor => $composableBuilder(
     column: $table.sourceAnchor,
     builder: (column) => ColumnOrderings(column),
@@ -12785,6 +12847,9 @@ class $$KanbanCardsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
 
   GeneratedColumn<String> get sourceAnchor => $composableBuilder(
     column: $table.sourceAnchor,
@@ -12939,6 +13004,7 @@ class $$KanbanCardsTableTableManager
                 Value<String> priority = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> startDate = const Value.absent(),
                 Value<int?> sourceNoteId = const Value.absent(),
                 Value<String?> sourceAnchor = const Value.absent(),
                 Value<int?> originTaskId = const Value.absent(),
@@ -12954,6 +13020,7 @@ class $$KanbanCardsTableTableManager
                 priority: priority,
                 position: position,
                 dueDate: dueDate,
+                startDate: startDate,
                 sourceNoteId: sourceNoteId,
                 sourceAnchor: sourceAnchor,
                 originTaskId: originTaskId,
@@ -12971,6 +13038,7 @@ class $$KanbanCardsTableTableManager
                 Value<String> priority = const Value.absent(),
                 required int position,
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> startDate = const Value.absent(),
                 Value<int?> sourceNoteId = const Value.absent(),
                 Value<String?> sourceAnchor = const Value.absent(),
                 Value<int?> originTaskId = const Value.absent(),
@@ -12986,6 +13054,7 @@ class $$KanbanCardsTableTableManager
                 priority: priority,
                 position: position,
                 dueDate: dueDate,
+                startDate: startDate,
                 sourceNoteId: sourceNoteId,
                 sourceAnchor: sourceAnchor,
                 originTaskId: originTaskId,

@@ -31,6 +31,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
     String? description,
     CardPriority priority = CardPriority.none,
     DateTime? dueDate,
+    DateTime? startDate,
     int? sourceNoteId,
     String? sourceAnchor,
     int? originTaskId,
@@ -46,6 +47,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         priority: Value(priority.toDbString()),
         position: position,
         dueDate: Value(dueDate),
+        startDate: Value(startDate),
         sourceNoteId: Value(sourceNoteId),
         sourceAnchor: Value(sourceAnchor),
         originTaskId: Value(originTaskId),
@@ -69,6 +71,13 @@ class LocalKanbanRepository implements KanbanCardRepository {
     } else if (card.originTaskDoneAt != null) {
       card = card.copyWith(clearOriginTaskDoneAt: true);
     }
+    // "En Proceso" is a system column: entering it stamps the actual start
+    // (fecha de inicio) if not already set. A card that skips it (straight to
+    // Entregado) keeps startDate null → the timeline falls back to createdAt
+    // (fecha de agregado).
+    if (col != null && col.name == 'En Proceso' && card.startDate == null) {
+      card = card.copyWith(startDate: DateTime.now());
+    }
     await _db.kanbanDao.updateCard(
       KanbanCardsCompanion(
         id: Value(card.id),
@@ -78,6 +87,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         priority: Value(card.priority.toDbString()),
         position: Value(card.position),
         dueDate: Value(card.dueDate),
+        startDate: Value(card.startDate),
         sourceNoteId: Value(card.sourceNoteId),
         sourceAnchor: Value(card.sourceAnchor),
         originTaskId: Value(card.originTaskId),
@@ -125,6 +135,19 @@ class LocalKanbanRepository implements KanbanCardRepository {
         ),
       );
       return;
+    } else if (col != null &&
+        col.name == 'En Proceso' &&
+        card.startDate == null) {
+      // Entering "En Proceso" stamps the actual start date (fecha de inicio).
+      await _db.kanbanDao.updateCard(
+        KanbanCardsCompanion(
+          id: Value(cardId),
+          columnId: Value(newColumnId),
+          position: Value(newPosition),
+          startDate: Value(DateTime.now()),
+        ),
+      );
+      return;
     }
     await _db.kanbanDao.moveToColumn(cardId, newColumnId, newPosition);
   }
@@ -152,6 +175,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         priority: CardPriority.fromString(row.priority),
         position: row.position,
         dueDate: row.dueDate,
+        startDate: row.startDate,
         sourceNoteId: row.sourceNoteId,
         sourceAnchor: row.sourceAnchor,
         originTaskId: row.originTaskId,
