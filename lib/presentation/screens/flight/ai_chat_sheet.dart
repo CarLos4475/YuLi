@@ -85,6 +85,41 @@ Future<void> showAiChat(
   );
 }
 
+/// Chat about a LAB space (phase 2). Reuses the chat sheet in "board mode": the
+/// context is the serialized Kanban board ([buildContext]), refreshed via ↻; no
+/// note/canvas UI. Session is namespaced ('lab') so it doesn't collide with
+/// note sessions sharing the same int id.
+Future<void> showLabChat(
+  BuildContext context,
+  WidgetRef ref, {
+  required int spaceId,
+  required String boardLabel,
+  required Color accent,
+  required Future<String> Function() buildContext,
+}) async {
+  final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
+  if (!context.mounted) return;
+  if (!hasKey) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Configura tu API key de DeepSeek en Ajustes'),
+        duration: Duration(seconds: 3)));
+    return;
+  }
+  final session = ref.read(aiLabSessionProvider(spaceId));
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _AiChatSheet(
+      session: session,
+      accent: accent,
+      isBoard: true,
+      boardLabel: boardLabel,
+      onResyncContext: () async => session.setSyncedAnchor(await buildContext()),
+    ),
+  );
+}
+
 enum _CtxAction { add, replace }
 
 Future<_CtxAction?> _chooseContextAction(BuildContext context, Color accent) {
@@ -152,12 +187,23 @@ class _AiChatSheet extends ConsumerStatefulWidget {
   final String? prefillMessage;
   final void Function(String markdown)? onSendToCanvas;
   final void Function(String title)? onApplyTitle;
+
+  /// Board mode (LAB): the context is a serialized Kanban board (not a note).
+  /// Hides note-specific UI (sources/canvas/save-to-note/extract-tasks) and uses
+  /// [onResyncContext] to refresh the anchor from the live board.
+  final bool isBoard;
+  final String? boardLabel;
+  final Future<void> Function()? onResyncContext;
+
   const _AiChatSheet({
     required this.session,
     required this.accent,
     this.prefillMessage,
     this.onSendToCanvas,
     this.onApplyTitle,
+    this.isBoard = false,
+    this.boardLabel,
+    this.onResyncContext,
   });
 
   @override
@@ -189,7 +235,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     final prefill = widget.prefillMessage?.trim();
     if (prefill != null && prefill.isNotEmpty) _input.text = prefill;
     // If this canvas is linked to a source note, resync the context on open.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resyncFromSources());
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => widget.isBoard ? widget.onResyncContext?.call() : _resyncFromSources());
   }
 
   // ─── Canvas context sources (notes + urls) — assembly & sync ──────────────
@@ -362,6 +409,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             child: AnimatedBuilder(
               animation: _s,
               builder: (_, _) {
+                // Board (LAB) mode: always the chat; context is the serialized
+                // board, no note/canvas providers involved.
+                if (widget.isBoard) return _buildChat();
                 final hostKind = ref
                     .watch(noteByIdProvider(_s.noteId))
                     .valueOrNull
@@ -611,6 +661,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   /// Branches: block notes get the implicit "NOTA COMO CONTEXTO" bar; canvases
   /// show the SINCRONIZADA / CONTEXTO bar as before.
   Widget _contextBar() {
+    if (widget.isBoard) return _boardContextBar();
     final hostKind =
         ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
     if (hostKind == NoteKind.block) return _noteContextBar();
@@ -619,6 +670,39 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             const [];
     if (sources.isNotEmpty) return _linkedContextBar(sources.length);
     return _normalContextBar();
+  }
+
+  /// TABLERO ▸ [proyecto] · hace Xmin   ↻ (re-serializa el board)
+  Widget _boardContextBar() {
+    final ago = _syncedAt == null ? '' : ' · ${_agoLabel(_syncedAt!)}';
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
+      child: Row(
+        children: [
+          Container(width: 8, height: 8, color: widget.accent),
+          const SizedBox(width: 8),
+          Text('TABLERO ▸',
+              style: yMono(
+                  size: 10, weight: FontWeight.w700, tracking: 1.2, color: yInk)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('${widget.boardLabel ?? ''}$ago',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+          ),
+          const SizedBox(width: 8),
+          _ghostIcon(Icons.refresh, 'Re-sincronizar tablero', () async {
+            await widget.onResyncContext?.call();
+            if (mounted) setState(() => _syncedAt = DateTime.now());
+          }),
+        ],
+      ),
+    );
   }
 
   /// NOTA COMO CONTEXTO · [N enlaces]   [🔗]
@@ -809,7 +893,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                     overflow: TextOverflow.ellipsis,
                     style: ySans(
                         size: 18, weight: FontWeight.w700, color: yCream)),
-                Text('ASISTENTE DE NOTAS',
+                Text(widget.isBoard ? 'ASISTENTE DE PROYECTO' : 'ASISTENTE DE NOTAS',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: yMono(
@@ -1089,18 +1173,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     final actions = (!streaming && m.text.isNotEmpty)
         ? <Widget>[
             _msgActionBtn('Copiar', () => _copy(m.text)),
-            _msgActionBtn('Guardar en nota', () {
-              final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
-              sendTextToNote(context, ref, m.text,
-                  defaultFolderId: note?.folderId, accent: widget.accent);
-            }),
+            // Note-specific actions are hidden in board (LAB) mode.
+            if (!widget.isBoard)
+              _msgActionBtn('Guardar en nota', () {
+                final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
+                sendTextToNote(context, ref, m.text,
+                    defaultFolderId: note?.folderId, accent: widget.accent);
+              }),
             if (widget.onSendToCanvas != null)
               _msgActionBtn('Enviar a lienzo', () => _sendToCanvas(m.text)),
             _msgActionBtn(
                 'Rehacer',
                 () => _s.regenerate(i, ref.read(aiAssistantProvider),
                     ref.read(aiUsageLimiterProvider))),
-            _msgActionBtn('Extraer tareas', () => _extractTasks(m.text)),
+            if (!widget.isBoard)
+              _msgActionBtn('Extraer tareas', () => _extractTasks(m.text)),
           ]
         : null;
     return _aiMsgFrame(content, actions: actions);
@@ -1282,7 +1369,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _hair('// ACCIONES SOBRE LA NOTA'),
+          _hair(widget.isBoard
+              ? '// ACCIONES SOBRE EL TABLERO'
+              : '// ACCIONES SOBRE LA NOTA'),
           const SizedBox(height: 9),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,

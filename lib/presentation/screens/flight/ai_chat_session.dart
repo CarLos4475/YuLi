@@ -90,11 +90,21 @@ class AiChatMsg {
 /// window over this.
 class AiChatSession extends ChangeNotifier {
   final int noteId;
-  AiChatSession(this.noteId) {
+
+  /// Namespace so different entity kinds (notes vs lab spaces) that share the
+  /// same int id don't collide in the session family or the persisted anchor
+  /// key. 'note' keeps the legacy prefix; other scopes insert `${scope}_`.
+  final String scope;
+
+  AiChatSession(this.noteId, {this.scope = 'note'}) {
     _loadAnchor();
   }
 
   static const _kAnchorPrefix = 'ai_ctx_v1_';
+
+  String get _prefKey => scope == 'note'
+      ? '$_kAnchorPrefix$noteId'
+      : '$_kAnchorPrefix${scope}_$noteId';
 
   String? anchor; // context anchor; null until set
   final List<AiChatMsg> messages = [];
@@ -115,7 +125,7 @@ class AiChatSession extends ChangeNotifier {
 
   Future<void> _loadAnchor() async {
     final p = await SharedPreferences.getInstance();
-    final saved = p.getString('$_kAnchorPrefix$noteId');
+    final saved = p.getString(_prefKey);
     // Don't clobber an anchor that was set meanwhile (e.g. incoming OCR).
     if (saved != null && saved.isNotEmpty && anchor == null) {
       anchor = saved;
@@ -125,11 +135,10 @@ class AiChatSession extends ChangeNotifier {
 
   Future<void> _saveAnchor() async {
     final p = await SharedPreferences.getInstance();
-    final key = '$_kAnchorPrefix$noteId';
     if (anchor == null || anchor!.isEmpty) {
-      await p.remove(key);
+      await p.remove(_prefKey);
     } else {
-      await p.setString(key, anchor!);
+      await p.setString(_prefKey, anchor!);
     }
   }
 

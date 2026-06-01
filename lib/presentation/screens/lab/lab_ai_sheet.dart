@@ -13,11 +13,12 @@ import '../../../domain/models/kanban_column.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
+import '../flight/ai_chat_sheet.dart' show showLabChat;
 
 // ─── YuLi · LAB — one-shot AI actions for a space ──────────────────────────
 // (Chat about the space is phase 2; this same sheet will host it later.)
 
-enum _LabAction { generate, summarize }
+enum _LabAction { generate, summarize, chat }
 
 /// Open the "YuLi · LAB" action panel. One-shot actions run with the caller's
 /// [context]/[ref] (which outlive the sheet) after it pops with a choice.
@@ -42,6 +43,20 @@ Future<void> showLabAiSheet(
       await _generateCards(context, ref, space);
     case _LabAction.summarize:
       await _summarizeBoard(context, ref, space);
+    case _LabAction.chat:
+      await showLabChat(
+        context,
+        ref,
+        spaceId: space.id,
+        boardLabel: space.name,
+        accent: space.accentColor,
+        buildContext: () async {
+          final cols = await ref.read(kanbanColumnsProvider(space.id).future);
+          final cards =
+              await ref.read(kanbanCardsBySpaceProvider(space.id).future);
+          return _serializeBoard(space, cols, cards);
+        },
+      );
   }
 }
 
@@ -95,6 +110,10 @@ class _LabAiSheet extends StatelessWidget {
             _action(Icons.notes, 'Resumir / triage',
                 'Resume el avance y qué sigue',
                 () => Navigator.of(context).pop(_LabAction.summarize)),
+            const SizedBox(height: 8),
+            _action(Icons.forum, 'Chat del proyecto',
+                'Conversa con el board como contexto',
+                () => Navigator.of(context).pop(_LabAction.chat)),
           ],
         ),
       ),

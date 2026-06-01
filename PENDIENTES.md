@@ -15,6 +15,7 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 - **Generar tarjetas:** escribe un objetivo/prompt → la IA propone tarjetas → **vista de revisión**: por tarjeta editas **título**, ciclas **prioridad** (chip), y ajustas **inicio/due** (date-pickers); desmarcas las que no quieras → **CREAR N** → se crean **todas en Backlog** con sus fechas. Verifica que aparezcan en el kanban y, si pusiste fechas, como barras en la timeline.
 - **Resumir / triage:** serializa el board (columnas + tarjetas + prioridad/due/hecha) → **diálogo markdown** (mismo render que el chat) con resumen + atorados + siguientes pasos, con botón **COPIAR**. No debe inventar tarjetas.
 - **Sin key** → avisa ir a Ajustes. **Límite diario** respetado (cada acción cuenta 1 request). **Sin red / error** → aviso claro.
+- **Chat del proyecto (fase 2):** 3ª acción en YuLi·LAB → abre un **chat con el board como contexto** (barra "TABLERO ▸ [proyecto]", ↻ re-serializa). Solo acciones Copiar/Rehacer en las respuestas (sin Guardar-en-nota/Extraer/Enviar-a-lienzo). Verifica: que NO se mezcle con el chat de una nota que tenga el mismo id (sesión namespaced 'lab'); que ↻ refresque el board; que al cambiar el board y dar ↻ resetee el hilo ("Contexto actualizado").
 
 ### Lab — rango de fechas por tarjeta + timeline en barras (base para IA-Lab) — migración schema 17
 
