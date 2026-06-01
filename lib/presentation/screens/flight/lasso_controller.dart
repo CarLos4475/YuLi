@@ -265,22 +265,18 @@ class LassoController {
 
   static const _handleHitScreenRadius = 18.0;
 
-  /// Minimum world-space size for a selection that contains task blocks.
-  /// Prevents the block from shrinking so much that its task rows overflow.
-  static const _kMinBoxW = 220.0;
-  static const _kMinBoxH = 90.0;
+  /// Minimum world-space size for block-like selections (task + text). Both
+  /// types reflow their content and auto-size height, so they can shrink very
+  /// small — the user often zooms in to work, which makes a fixed min feel huge.
+  static const _kMinBoxW = 40.0;
+  static const _kMinBoxH = 24.0;
 
-  /// Text blocks reflow freely, so they can shrink much smaller — the user
-  /// often zooms in to write, which makes a fixed min feel huge in world space.
-  static const _kMinTextBoxW = 40.0;
-  static const _kMinTextBoxH = 24.0;
-
-  /// Min box size implied by the current selection: task blocks force the large
-  /// floor; a pure text-block selection gets the tiny one.
   double get _selMinW =>
-      selectedBlockIndices.isNotEmpty ? _kMinBoxW : _kMinTextBoxW;
+      (selectedBlockIndices.isNotEmpty || selectedTextBlockIndices.isNotEmpty)
+          ? _kMinBoxW : _kMinBoxW;
   double get _selMinH =>
-      selectedBlockIndices.isNotEmpty ? _kMinBoxH : _kMinTextBoxH;
+      (selectedBlockIndices.isNotEmpty || selectedTextBlockIndices.isNotEmpty)
+          ? _kMinBoxH : _kMinBoxH;
 
   /// Hit radius for the rotation handle (constant ~18px on screen).
   double get _handleHitRadius => _handleHitScreenRadius / hitScale;
@@ -374,14 +370,13 @@ class LassoController {
 
   // ─── Side resize (free, one axis) ───────────────────────────────────
 
-  /// True when the selection is purely text blocks (no strokes/images/task
-  /// blocks). Text blocks auto-size their height, so vertical (top/bottom) side
-  /// resize is disabled for them — only corners + horizontal sides.
-  bool get textOnlySelection =>
-      selectedTextBlockIndices.isNotEmpty &&
+  /// True when the selection is purely blocks (text or task, no
+  /// strokes/images). Both types auto-size their height to content, so
+  /// vertical (top/bottom) side resize is disabled — only corners + horizontal.
+  bool get blocksOnlySelection =>
+      (selectedTextBlockIndices.isNotEmpty || selectedBlockIndices.isNotEmpty) &&
       selectedIndices.isEmpty &&
-      selectedImageIndices.isEmpty &&
-      selectedBlockIndices.isEmpty;
+      selectedImageIndices.isEmpty;
 
   int? hitTestSideHandle(Offset worldPos) {
     if (boundingBox == null) return null;
@@ -392,10 +387,10 @@ class LassoController {
       Offset(bb.center.dx, bb.bottom),
       Offset(bb.left, bb.center.dy),
     ];
-    final textOnly = textOnlySelection;
+    final blocksOnly = blocksOnlySelection;
     for (int i = 0; i < sides.length; i++) {
-      // 0 = top, 2 = bottom: skip for text-only selections.
-      if (textOnly && (i == 0 || i == 2)) continue;
+      // 0 = top, 2 = bottom: skip for block-only selections (height auto-sizes).
+      if (blocksOnly && (i == 0 || i == 2)) continue;
       if ((worldPos - sides[i]).distance < _edgeHandleHitRadius) return i;
     }
     return null;

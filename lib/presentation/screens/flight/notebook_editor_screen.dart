@@ -1534,11 +1534,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       for (final i in _lassoCtrl.selectedBlockIndices) {
         if (i >= blocks.length) continue;
         final b = blocks[i];
-        // Corner = uniform scale: grow the block content (text) with the box.
-        // Side = width reflow only (scale unchanged).
-        if (!side) b.scale = (b.scale * cornerScale).clamp(0.3, 8.0);
-        if (b.w < 220) b.w = 220;
-        if (b.h < 90) b.h = 90;
+        if (!side) b.scale = (b.scale * cornerScale).clamp(0.2, 8.0);
+        if (b.w < kCanvasTextBlockMinW) b.w = kCanvasTextBlockMinW;
       }
       for (final i in _lassoCtrl.selectedTextBlockIndices) {
         if (i >= textBlocks.length) continue;

@@ -77,7 +77,8 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
   Widget _markdownWidget(String raw) {
     if (_mdRawCache != raw || _mdWidgetCache == null) {
       _mdRawCache = raw;
-      _mdWidgetCache = NoteMarkdownPreview(data: fixMarkdownTables(raw));
+      _mdWidgetCache = NoteMarkdownPreview(
+          data: fixMarkdownTables(raw), tight: true);
     }
     return _mdWidgetCache!;
   }

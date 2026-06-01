@@ -115,3 +115,9 @@ Botones en cada respuesta de la IA:
 OCR v1 funciona en pizarra, cuaderno y celda de dibujo. Quedan para más adelante:
 - **Elegir idioma del modelo** (hoy fijo español `es`). Sería un selector en Ajustes + pasar el `langTag` a `runOcrFlow`. La base ya soporta varios idiomas.
 - **Modo Matemáticas** (Σ, integrales, etc.): el seam `InkRecognitionMode.math` sigue reservado. Mathpix se **eliminó por completo** (muy caro). Resolver de **otra forma** (por decidir: on-device u otro proveedor). Ver `ONLINE_FEATURES.md`.
+
+### Persistencia de tareas en bloques canvas (sin limpiar IDs huérfanos)
+
+**Idea a explorar luego:** Que los bloques de tareas en canvas (pizarra/cuaderno) conserven sus `taskIds` incluso cuando la tarea se borra de FIGHT (expira, hard delete, etc.). Así el bloque funciona como "registro histórico" de lo que había: las tareas completadas se quedan tachadas, las borradas desaparecen del render actual pero el ID queda como referencia.
+
+**Dificultad:** implica separar el render actual (que depende de `noteLinkedTasksProvider` → solo devuelve tareas vivas) de un render histórico. Haría falta almacenar un snapshot de cada tarea (content, status, doneAt) en el propio bloque al momento del cambio, o consultar la tabla de tareas incluyendo las borradas (que ya no existen tras hard delete de 7 días). Es un cambio de arquitectura — mejor revisarlo con calma.

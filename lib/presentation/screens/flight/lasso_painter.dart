@@ -390,7 +390,7 @@ class LassoPainter extends CustomPainter {
     final ss = 6.0 / s;
     // Text-only selections can't resize vertically → omit the top/bottom side
     // handles (matches hitTestSideHandle).
-    final sideHandles = ctrl.textOnlySelection
+    final sideHandles = ctrl.blocksOnlySelection
         ? [
             Offset(box.right, box.center.dy),
             Offset(box.left, box.center.dy),

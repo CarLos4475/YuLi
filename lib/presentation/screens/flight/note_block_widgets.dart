@@ -1171,7 +1171,8 @@ String fixMarkdownTables(String md) {
 
 class NoteMarkdownPreview extends ConsumerWidget {
   final String data;
-  const NoteMarkdownPreview({required this.data});
+  final bool tight;
+  const NoteMarkdownPreview({required this.data, this.tight = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1182,6 +1183,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
 
     final generator = MarkdownGenerator(
       textGenerator: customTextGenerator,
+      linesMargin: tight ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
       inlineSyntaxList: [_LatexSyntax()],
       blockSyntaxList: [const _DefinitionListSyntax(), const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
       generators: [
