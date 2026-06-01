@@ -2001,6 +2001,65 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     );
   }
 
+  Future<void> _viewSource(CanvasContextSource s) async {
+    String raw;
+    String label;
+    String compactKey;
+    if (s.isNote) {
+      final nid = s.noteId;
+      if (nid == null) return;
+      final note = await ref.read(noteRepositoryProvider).getById(nid);
+      if (note == null) return;
+      final blocks = await ref.read(noteBlocksProvider(nid).future);
+      label = (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
+      raw = _srcExtractContext(blocks);
+      compactKey = 'note:$nid';
+    } else {
+      label = (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim();
+      raw = (await readUrlContent(s.ref)) ?? '';
+      compactKey = 'url:${contextStableHash(s.ref)}';
+    }
+    if (raw.trim().isEmpty) return;
+    if (!mounted) return;
+
+    String? compacted;
+    if (raw.length > kAnchorLongChars) {
+      compacted = await readCompactCache(compactKey, raw);
+    }
+    final display = compacted ?? raw;
+    final wasCompacted = compacted != null && compacted.length < raw.length;
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _SourceViewDialog(
+        label: label,
+        isUrl: s.isUrl,
+        content: display,
+        wasCompacted: wasCompacted,
+        originalLen: wasCompacted ? raw.length : null,
+        compactedLen: wasCompacted ? compacted!.length : null,
+      ),
+    );
+  }
+
+  static String _srcExtractContext(List<NoteBlock> blocks) {
+    final buf = StringBuffer();
+    for (final b in blocks) {
+      if (b is TextBlock) {
+        if (b.markdown.trim().isNotEmpty) buf.writeln('${b.markdown}\n');
+      } else if (b is BulletsBlock) {
+        for (final it in b.items) {
+          if (it.trim().isNotEmpty) buf.writeln('- $it');
+        }
+        buf.writeln();
+      } else if (b is MathBlock) {
+        if (b.latex.trim().isNotEmpty) buf.writeln('\$\$${b.latex}\$\$\n');
+      }
+    }
+    return buf.toString().trim();
+  }
+
   Widget _sourceRow(CanvasContextSource s) {
     final String title;
     if (s.isNote) {
@@ -2009,39 +2068,43 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     } else {
       title = (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim();
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
-      ),
-      child: Row(
-        children: [
-          Icon(s.isNote ? Icons.description_outlined : Icons.link,
-              size: 16, color: yInk),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ySans(size: 14, weight: FontWeight.w700, color: yInk)),
-                if (s.isUrl)
-                  Text('${s.ref}  ·  ${_ago(s.fetchedAt)}',
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _busy ? null : () => _viewSource(s),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
+        ),
+        child: Row(
+          children: [
+            Icon(s.isNote ? Icons.description_outlined : Icons.link,
+                size: 16, color: yInk),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: yMono(size: 9, tracking: 0.3, color: yMuted)),
-              ],
+                      style: ySans(size: 14, weight: FontWeight.w700, color: yInk)),
+                  if (s.isUrl)
+                    Text('${s.ref}  ·  ${_ago(s.fetchedAt)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: yMono(size: 9, tracking: 0.3, color: yMuted)),
+                ],
+              ),
             ),
-          ),
-          if (s.isUrl) ...[
+            if (s.isUrl) ...[
+              const SizedBox(width: 4),
+              _iconBtn(Icons.refresh, 'Actualizar', _busy ? null : () => _refetch(s)),
+            ],
             const SizedBox(width: 4),
-            _iconBtn(Icons.refresh, 'Actualizar', _busy ? null : () => _refetch(s)),
+            _iconBtn(Icons.close, 'Quitar', _busy ? null : () => _remove(s)),
           ],
-          const SizedBox(width: 4),
-          _iconBtn(Icons.close, 'Quitar', _busy ? null : () => _remove(s)),
-        ],
+        ),
       ),
     );
   }
@@ -2238,7 +2301,169 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                     ),
                   ),
                 ),
-              ],
+                  ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceViewDialog extends StatelessWidget {
+  final String label;
+  final bool isUrl;
+  final String content;
+  final bool wasCompacted;
+  final int? originalLen;
+  final int? compactedLen;
+
+  const _SourceViewDialog({
+    required this.label,
+    required this.isUrl,
+    required this.content,
+    required this.wasCompacted,
+    this.originalLen,
+    this.compactedLen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
+    return Dialog(
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      insetPadding: const EdgeInsets.all(20),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: screenW * 0.9,
+          maxHeight: MediaQuery.of(context).size.height * 0.78,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                color: yCream2,
+                border:
+                    Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('CONTEXTO DE FUENTE',
+                      style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yMuted)),
+                  const SizedBox(height: 4),
+                  Text(label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: ySans(
+                          size: 16,
+                          weight: FontWeight.w700,
+                          color: yInk)),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isUrl) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: yAmber.withValues(alpha: 0.12),
+                          border: Border.all(color: yAmber, width: yLineThin),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 1),
+                              child: Icon(Icons.info_outline,
+                                  size: 14, color: yAmber),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Contenido optimizado para la IA. Si es '
+                                'muy largo, la IA puede comprimirlo para '
+                                'ahorrar tokens.',
+                                style: yMono(
+                                    size: 10,
+                                    tracking: 0.4,
+                                    color: yInk),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (wasCompacted) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Compresión aplicada: $originalLen → $compactedLen caracteres',
+                          style: yMono(
+                              size: 9,
+                              tracking: 0.4,
+                              color: yMuted),
+                        ),
+                      ),
+                      Container(
+                        height: yLineThin,
+                        color: yInk.withValues(alpha: 0.14),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    NoteMarkdownPreview(
+                        data: fixMarkdownTables(content)),
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                border:
+                    Border(top: BorderSide(color: yInk, width: yLineThin)),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      height: 38,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: yInk,
+                        border: Border.all(color: yInk, width: yLineMid),
+                      ),
+                      child: Text('CERRAR',
+                          style: yMono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              tracking: 1.2,
+                              color: yCream)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
