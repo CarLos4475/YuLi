@@ -2,37 +2,52 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/lab_space.dart';
 import '../../domain/models/kanban_card.dart';
 import '../../domain/models/kanban_column.dart';
+import '../../domain/models/canvas_context_source.dart';
 import 'database_providers.dart';
 
 final activeLabSpacesProvider = StreamProvider<List<LabSpace>>((ref) {
   return ref.watch(labSpaceRepositoryProvider).watchActive();
 });
 
+/// Unified context sources owned by a lab space (note/folder/url).
+final spaceContextSourcesProvider =
+    StreamProvider.family<List<CanvasContextSource>, int>((ref, spaceId) {
+      return ref.watch(labSpaceRepositoryProvider).watchContextSources(spaceId);
+    });
+
 final labSpaceByIdProvider = FutureProvider.family<LabSpace?, int>((ref, id) {
   return ref.watch(labSpaceRepositoryProvider).getById(id);
 });
 
-final kanbanColumnsProvider =
-    StreamProvider.family<List<KanbanColumn>, int>((ref, labSpaceId) {
+final kanbanColumnsProvider = StreamProvider.family<List<KanbanColumn>, int>((
+  ref,
+  labSpaceId,
+) {
   return ref.watch(labSpaceRepositoryProvider).watchColumns(labSpaceId);
 });
 
 final kanbanCardsByColumnProvider =
     StreamProvider.family<List<KanbanCard>, int>((ref, columnId) {
-  return ref.watch(kanbanCardRepositoryProvider).watchByColumn(columnId);
-});
+      return ref.watch(kanbanCardRepositoryProvider).watchByColumn(columnId);
+    });
 
-final kanbanCardsBySpaceProvider =
-    StreamProvider.family<List<KanbanCard>, int>((ref, labSpaceId) {
-  return ref.watch(kanbanCardRepositoryProvider).watchBySpace(labSpaceId);
-});
+final kanbanCardsBySpaceProvider = StreamProvider.family<List<KanbanCard>, int>(
+  (ref, labSpaceId) {
+    return ref.watch(kanbanCardRepositoryProvider).watchBySpace(labSpaceId);
+  },
+);
 
-final linkedFolderIdsProvider = FutureProvider.family<List<int>, int>((ref, spaceId) {
+final linkedFolderIdsProvider = FutureProvider.family<List<int>, int>((
+  ref,
+  spaceId,
+) {
   return ref.watch(labSpaceRepositoryProvider).getLinkedFolderIds(spaceId);
 });
 
-final kanbanCardsByNoteProvider =
-    StreamProvider.family<List<KanbanCard>, int>((ref, noteId) {
+final kanbanCardsByNoteProvider = StreamProvider.family<List<KanbanCard>, int>((
+  ref,
+  noteId,
+) {
   return ref.watch(kanbanCardRepositoryProvider).watchBySourceNoteId(noteId);
 });
 
@@ -42,8 +57,11 @@ final kanbanCardsByNoteProvider =
 /// non-expired column. Centralized so no UI path can flip a task's done state
 /// without syncing its card (the old scattered markDone + sync pattern missed
 /// a couple of spots and ignored reopening entirely).
-Future<void> setTaskDone(WidgetRef ref, int taskId,
-    {required bool done}) async {
+Future<void> setTaskDone(
+  WidgetRef ref,
+  int taskId, {
+  required bool done,
+}) async {
   final taskRepo = ref.read(taskRepositoryProvider);
   // Flip the task itself first — must happen even with no linked card.
   if (done) {
@@ -56,8 +74,9 @@ Future<void> setTaskDone(WidgetRef ref, int taskId,
   final card = await kanbanRepo.getByOriginTaskId(taskId);
   if (card == null) return;
 
-  final columns =
-      await ref.read(labSpaceRepositoryProvider).getColumns(card.labSpaceId);
+  final columns = await ref
+      .read(labSpaceRepositoryProvider)
+      .getColumns(card.labSpaceId);
   final target = done ? _terminalColumn(columns) : _firstOpenColumn(columns);
   if (target == null || target.id == card.columnId) return;
 
