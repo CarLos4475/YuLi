@@ -13,6 +13,9 @@ abstract class NoteBlockRepository {
       NoteBlockType type,
       {Map<String, dynamic> payload = const {}});
 
+  /// REEMPLAZA el payload completo del bloque (no mergea). Cada caller debe
+  /// pasar el payload ENTERO de su tipo de bloque — una llamada parcial borra
+  /// las demás keys.
   Future<void> updatePayload(int blockId, Map<String, dynamic> payload);
 
   Future<void> delete(int blockId);

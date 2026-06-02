@@ -35,6 +35,13 @@ Future<void> writeCompactCache(
       '$_kCompactPrefix$sourceKey', '${contextStableHash(content)} $compacted');
 }
 
+/// Drops a source's compaction cache entry (call when the source is removed,
+/// so SharedPreferences doesn't keep orphaned entries).
+Future<void> clearCompactCache(String sourceKey) async {
+  final p = await SharedPreferences.getInstance();
+  await p.remove('$_kCompactPrefix$sourceKey');
+}
+
 // ─── Fetched URL content cache ──────────────────────────────────────────────
 // External pages are fetched ONCE (on add / explicit refresh) and frozen here.
 // Resync/re-open reads from this cache and never touches the network.
@@ -49,4 +56,10 @@ Future<String?> readUrlContent(String url) async {
 Future<void> writeUrlContent(String url, String content) async {
   final p = await SharedPreferences.getInstance();
   await p.setString('$_kUrlPrefix${contextStableHash(url)}', content);
+}
+
+/// Drops a fetched URL's cached content (call when its source is removed).
+Future<void> clearUrlContent(String url) async {
+  final p = await SharedPreferences.getInstance();
+  await p.remove('$_kUrlPrefix${contextStableHash(url)}');
 }

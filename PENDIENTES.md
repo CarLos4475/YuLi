@@ -41,6 +41,7 @@ Cambios de esta sesión sin probar en dispositivo (lógica con test headless don
 - **#5 INICIO toggle** "MANUAL" → **"FIJA"** (ya no implica que lo puso el usuario).
 - **#6 Reabrir re-sincroniza el due** de la card desde la tarea (headless ✓): completar (FIN→hoy) → reabrir → FIN vuelve al due original de la tarea.
 - **#7 OCR `_check`** con try/catch (no truena en plataformas sin ML Kit; no ensucia el crash log en desktop).
+- **Flight (auditoría):** quitado código muerto (`parseCells`/`serializeCells`/`NoteCell`/`CellType`); doc en `updatePayload` (reemplaza, no mergea); limpieza de cachés de contexto IA al quitar una fuente.
 
 ## Verificación pendiente (dispositivo)
 

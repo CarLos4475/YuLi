@@ -2026,6 +2026,14 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
 
   Future<void> _remove(CanvasContextSource s) async {
     await ref.read(noteRepositoryProvider).removeContextSource(s.id);
+    // Drop its cached compaction / fetched content so SharedPreferences
+    // doesn't keep orphaned entries.
+    if (s.isUrl) {
+      await clearCompactCache('url:${contextStableHash(s.ref)}');
+      await clearUrlContent(s.ref);
+    } else {
+      await clearCompactCache('note:${s.ref}');
+    }
     await widget.onChanged();
   }
 

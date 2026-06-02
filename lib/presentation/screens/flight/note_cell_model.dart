@@ -1,31 +1,14 @@
-import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect;
 import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/page_background.dart';
 
-enum CellType { markdown, drawing }
-
 enum DrawTool { pen, fountainPen, highlighter, eraser, lasso, text }
 
 /// stroke = erase the whole stroke on touch (object eraser, default).
 /// partial = erase only the touched portion, splitting the stroke.
 enum EraserMode { stroke, partial }
-
-class NoteCell {
-  final String id;
-  final CellType type;
-  String content;
-  DrawingData? drawingData;
-
-  NoteCell({
-    String? id,
-    required this.type,
-    this.content = '',
-    this.drawingData,
-  }) : id = id ?? const Uuid().v4();
-}
 
 class DrawingData {
   double height;
@@ -639,54 +622,8 @@ Rect scribbleBounds(List<List<double>> points) {
 
 // ─── Serialization ───────────────────────────────────────────────────────────
 
-final _cellRe = RegExp(r'<!-- CELL (\w+) (\S+)(?: (.*))? -->');
-
-List<NoteCell> parseCells(String raw) {
-  if (!raw.contains('<!-- CELL ')) {
-    return [NoteCell(type: CellType.markdown, content: raw)];
-  }
-
-  final cells = <NoteCell>[];
-  final matches = _cellRe.allMatches(raw).toList();
-
-  for (int i = 0; i < matches.length; i++) {
-    final m = matches[i];
-    final typeName = m.group(1)!;
-    final id = m.group(2)!;
-    final extra = m.group(3);
-
-    if (typeName == 'markdown') {
-      final start = m.end;
-      final end =
-          i + 1 < matches.length ? matches[i + 1].start : raw.length;
-      var content = raw.substring(start, end);
-      if (content.startsWith('\n')) content = content.substring(1);
-      while (content.endsWith('\n')) {
-        content = content.substring(0, content.length - 1);
-      }
-      cells.add(NoteCell(id: id, type: CellType.markdown, content: content));
-    } else if (typeName == 'drawing') {
-      DrawingData data;
-      if (extra != null && extra.isNotEmpty) {
-        try {
-          data = DrawingData.fromJson(
-              jsonDecode(extra) as Map<String, dynamic>);
-        } catch (_) {
-          data = DrawingData();
-        }
-      } else {
-        data = DrawingData();
-      }
-      cells.add(
-          NoteCell(id: id, type: CellType.drawing, drawingData: data));
-    }
-  }
-
-  return cells.isEmpty
-      ? [NoteCell(type: CellType.markdown, content: raw)]
-      : cells;
-}
-
+/// Strips legacy `<!-- CELL -->` markers + division markers from a note's
+/// rawMarkdown for snippet/preview rendering (e.g. Lab card source preview).
 String cleanCellContent(String raw) {
   var cleaned = raw;
   cleaned = cleaned.replaceAll(RegExp(r'<!-- CELL \w+ \S+.*?-->'), '');
@@ -696,33 +633,3 @@ String cleanCellContent(String raw) {
   return cleaned.trim();
 }
 
-String serializeCells(List<NoteCell> cells) {
-  if (cells.length == 1 && cells[0].type == CellType.markdown) {
-    return cells[0].content;
-  }
-
-  final buf = StringBuffer();
-  for (final cell in cells) {
-    switch (cell.type) {
-      case CellType.markdown:
-        buf.writeln('<!-- CELL markdown ${cell.id} -->');
-        buf.writeln(cell.content);
-      case CellType.drawing:
-        final data = cell.drawingData;
-        if (data != null) {
-          for (final stroke in data.strokes) {
-            stroke.points.removeWhere(
-                (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite);
-          }
-          data.strokes.removeWhere((s) => s.points.isEmpty);
-        }
-        try {
-          final json = jsonEncode(data?.toJson() ?? {});
-          buf.writeln('<!-- CELL drawing ${cell.id} $json -->');
-        } catch (_) {
-          buf.writeln('<!-- CELL drawing ${cell.id} {} -->');
-        }
-    }
-  }
-  return buf.toString();
-}
