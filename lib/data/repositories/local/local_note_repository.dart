@@ -74,10 +74,7 @@ class LocalNoteRepository implements NoteRepository {
   Future<void> restore(int id) => _db.notesDao.restore(id);
 
   @override
-  Future<void> hardDelete(int id) async {
-    await _db.notesDao.hardDelete(id);
-    await _db.notesDao.removeNoteSourceRefs(id);
-  }
+  Future<void> hardDelete(int id) => _db.hardDeleteNoteCascade(id);
 
   @override
   Stream<List<Note>> watchAllActive() =>
@@ -102,6 +99,9 @@ class LocalNoteRepository implements NoteRepository {
     final rows = await _db.notesDao.getImages(noteId);
     return rows.map(_rowToImage).toList();
   }
+
+  @override
+  Future<List<int>> getAllNoteIds() => _db.notesDao.getAllNoteIds();
 
   @override
   Future<NoteImage> addImage(

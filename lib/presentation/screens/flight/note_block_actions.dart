@@ -44,17 +44,10 @@ class NoteBlockActions {
     return task;
   }
 
-  /// Toggle done globally. Propagates to FIGHT/kanban via Task.status.
-  Future<void> toggleDone(Task task) async {
-    final repo = ref.read(taskRepositoryProvider);
-    if (task.status == TaskStatus.done) {
-      // Reopen — push back to pending today.
-      await repo.rescueToday(task.id);
-    } else {
-      await repo.markDone(task.id);
-      await syncTaskCompletionToKanban(ref, task.id);
-    }
-  }
+  /// Toggle done globally. Propagates to FIGHT and the linked kanban card
+  /// (moves it to/from the terminal column) in both directions.
+  Future<void> toggleDone(Task task) =>
+      setTaskDone(ref, task.id, done: task.status != TaskStatus.done);
 
   /// Link the task to a lab space's first non-terminal column (Backlog when
   /// present). Creates a KanbanCard with `originTaskId` so the link is
@@ -69,7 +62,8 @@ class NoteBlockActions {
     if (columns.isEmpty) return null;
     final backlog = columns.firstWhere(
       (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
-      orElse: () => columns.first,
+      orElse: () => columns.firstWhere((c) => !c.isTerminal && !c.isExpired,
+          orElse: () => columns.first),
     );
 
     return ref.read(kanbanCardRepositoryProvider).create(

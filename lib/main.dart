@@ -1,7 +1,13 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'data/services/crash_logger.dart';
 import 'presentation/theme/app_tokens.dart';
 import 'presentation/providers/database_providers.dart';
+import 'presentation/providers/image_storage_providers.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/widgets/app_banner.dart';
 import 'presentation/widgets/yuli_design.dart';
@@ -11,15 +17,36 @@ import 'presentation/screens/lab/lab_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
 import 'presentation/providers/navigation_provider.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final themeOverride = await initThemeModeOverride();
-  runApp(
-    ProviderScope(
-      overrides: [themeOverride],
-      child: const YuLiApp(),
-    ),
-  );
+void main() {
+  // Guarded zone so uncaught async errors are captured too. ensureInitialized
+  // must run INSIDE the zone or runApp/zone mismatch.
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await CrashLogger.instance.init();
+
+    // Framework (build/layout/paint) errors.
+    final prevOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      CrashLogger.instance
+          .record(details.exception, details.stack, context: 'FlutterError');
+      prevOnError?.call(details); // keep default console output in debug
+    };
+    // Uncaught async / platform errors.
+    PlatformDispatcher.instance.onError = (error, stack) {
+      CrashLogger.instance.record(error, stack, context: 'PlatformDispatcher');
+      return true;
+    };
+
+    final themeOverride = await initThemeModeOverride();
+    runApp(
+      ProviderScope(
+        overrides: [themeOverride],
+        child: const YuLiApp(),
+      ),
+    );
+  }, (error, stack) {
+    CrashLogger.instance.record(error, stack, context: 'Zone');
+  });
 }
 
 class YuLiApp extends ConsumerWidget {
@@ -73,7 +100,12 @@ class _AppInit extends ConsumerWidget {
         ),
       ),
       error: (_, _) => const AppShell(archivedTaskCount: 0),
-      data: (archivedCount) => AppShell(archivedTaskCount: archivedCount),
+      data: (archivedCount) {
+        // Reclaim orphaned image folders once the DB is settled. Fire-and-
+        // forget; never blocks the shell.
+        ref.read(imageCleanupProvider);
+        return AppShell(archivedTaskCount: archivedCount);
+      },
     );
   }
 }

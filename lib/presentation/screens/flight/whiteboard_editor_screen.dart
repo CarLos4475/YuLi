@@ -1915,7 +1915,8 @@ class _WhiteboardEditorScreenState
     if (columns.isEmpty) return;
     final backlog = columns.firstWhere(
       (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
-      orElse: () => columns.first,
+      orElse: () => columns.firstWhere((c) => !c.isTerminal && !c.isExpired,
+          orElse: () => columns.first),
     );
     final title = (widget.note.title?.trim().isNotEmpty == true)
         ? widget.note.title!

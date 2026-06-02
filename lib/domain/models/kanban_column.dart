@@ -6,6 +6,7 @@ class KanbanColumn {
   final bool isDefault;
   final bool isTerminal;
   final bool isExpired;
+  final bool isInProgress;
 
   const KanbanColumn({
     required this.id,
@@ -15,6 +16,7 @@ class KanbanColumn {
     required this.isDefault,
     this.isTerminal = false,
     this.isExpired = false,
+    this.isInProgress = false,
   });
 
   bool get isEndState => isTerminal || isExpired;
@@ -27,6 +29,7 @@ class KanbanColumn {
     bool? isDefault,
     bool? isTerminal,
     bool? isExpired,
+    bool? isInProgress,
   }) {
     return KanbanColumn(
       id: id ?? this.id,
@@ -36,6 +39,7 @@ class KanbanColumn {
       isDefault: isDefault ?? this.isDefault,
       isTerminal: isTerminal ?? this.isTerminal,
       isExpired: isExpired ?? this.isExpired,
+      isInProgress: isInProgress ?? this.isInProgress,
     );
   }
 }

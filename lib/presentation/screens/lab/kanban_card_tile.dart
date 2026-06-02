@@ -8,6 +8,7 @@ class KanbanCardTile extends StatelessWidget {
   final VoidCallback onTap;
   final bool isSelected;
   final bool selectionMode;
+  final bool inExpiredColumn;
 
   const KanbanCardTile({
     super.key,
@@ -16,14 +17,15 @@ class KanbanCardTile extends StatelessWidget {
     required this.onTap,
     this.isSelected = false,
     this.selectionMode = false,
+    this.inExpiredColumn = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isEndState = card.originTaskDoneAt != null;
+    final isEndState = card.isDone;
     final folderColor =
         card.originFolderColor != null ? Color(card.originFolderColor!) : null;
-    final overdue = _isOverdue();
+    final overdue = card.isOverdue(inExpiredColumn: inExpiredColumn);
     final pColor = _priorityColor();
 
     return GestureDetector(
@@ -212,15 +214,6 @@ class KanbanCardTile extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  bool _isOverdue() {
-    if (card.dueDate == null) return false;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final due = DateTime(
-        card.dueDate!.year, card.dueDate!.month, card.dueDate!.day);
-    return due.isBefore(today);
   }
 
   String _formatDue() {

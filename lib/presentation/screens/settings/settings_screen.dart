@@ -4,7 +4,11 @@ import '../../theme/app_tokens.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/ink_recognizer_provider.dart';
 import '../../providers/ai_providers.dart';
+import '../../providers/image_storage_providers.dart';
+import '../../../data/services/image_storage.dart';
 import '../../widgets/app_section_divider.dart';
+import 'image_storage_screen.dart';
+import 'crash_log_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -129,6 +133,28 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'ALMACENAMIENTO'),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _ImagesStorageBlock(),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'DIAGNÓSTICO'),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _CrashLogBlock(),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
               child: AppSectionDivider(label: 'INFO'),
             ),
             const SizedBox(height: 12),
@@ -204,6 +230,100 @@ class SettingsScreen extends ConsumerWidget {
 }
 
 // ── WIDGETS PRIVADOS ──
+
+class _CrashLogBlock extends StatelessWidget {
+  const _CrashLogBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CrashLogScreen()),
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.bug_report_outlined, size: 20, color: ink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('CRASH LOGS',
+                      style: labelBold.copyWith(
+                          color: ink, fontSize: 12, letterSpacing: 1)),
+                  const SizedBox(height: 2),
+                  Text('Ver y compartir errores registrados',
+                      style: bodyS.copyWith(color: inkGray)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: inkGray),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImagesStorageBlock extends ConsumerWidget {
+  const _ImagesStorageBlock();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bytesAsync = ref.watch(imageStorageBytesProvider);
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ImageStorageScreen()),
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.image_outlined, size: 20, color: ink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('IMÁGENES',
+                      style: labelBold.copyWith(
+                          color: ink, fontSize: 12, letterSpacing: 1)),
+                  const SizedBox(height: 2),
+                  Text('Ver el espacio ocupado',
+                      style: bodyS.copyWith(color: inkGray)),
+                ],
+              ),
+            ),
+            Text(
+              bytesAsync.maybeWhen(data: humanBytes, orElse: () => '…'),
+              style: labelBold.copyWith(color: ink, fontSize: 13),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right, size: 18, color: inkGray),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _ThemeBlock extends StatelessWidget {
   final String label;
@@ -388,8 +508,14 @@ class _OcrModelBlockState extends ConsumerState<_OcrModelBlock> {
   }
 
   Future<void> _check() async {
-    final r =
-        await ref.read(inkRecognizerProvider).isModelReady(kInkDefaultLang);
+    bool r;
+    try {
+      r = await ref.read(inkRecognizerProvider).isModelReady(kInkDefaultLang);
+    } catch (_) {
+      // El plugin de ML Kit no existe en algunas plataformas (p.ej. Windows
+      // desktop) → degradar a "no disponible" en vez de lanzar error no atrapado.
+      r = false;
+    }
     if (mounted) setState(() => _ready = r);
   }
 

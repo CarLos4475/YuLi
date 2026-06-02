@@ -20,6 +20,7 @@ abstract class NoteRepository {
   Future<void> saveVersion(int noteId, String rawMarkdown);
 
   Future<List<NoteImage>> getImages(int noteId);
+  Future<List<int>> getAllNoteIds();
   Future<NoteImage> addImage(int noteId, String filename, String filePath, int sizeBytes);
   Future<void> deleteImage(int imageId);
 

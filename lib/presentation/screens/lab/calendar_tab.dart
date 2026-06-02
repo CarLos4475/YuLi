@@ -9,6 +9,8 @@ import '../../../domain/models/kanban_card.dart';
 import '../../../domain/repositories/kanban_card_repository.dart';
 import '../../../domain/repositories/task_repository.dart';
 import 'kanban_card_detail.dart';
+import 'kanban_card_tile.dart';
+import 'lab_card_colors.dart';
 
 class CalendarTab extends ConsumerStatefulWidget {
   final LabSpace space;
@@ -103,104 +105,75 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
 
   void _showDayCardsDialog(BuildContext context, DateTime day, List<KanbanCard> dayCards) {
     if (dayCards.isEmpty) return;
+    final count = dayCards.length;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(ctx),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        contentPadding: EdgeInsets.zero,
-        content: Container(
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+        child: Container(
           width: 360,
           decoration: BoxDecoration(
-            border: Border.all(color: inkBlack, width: borderWidth),
+            color: y.yCream,
+            border: Border.all(color: y.yInk, width: 3),
+            boxShadow: [BoxShadow(color: y.yInk, offset: const Offset(4, 4))],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: inkBlack, width: borderWidth),
-                  ),
-                ),
+                color: y.yInk,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 child: Row(
                   children: [
-                    Text(
-                      '${day.day}/${day.month}/${day.year}',
-                      style: labelBold.copyWith(color: inkColor(context)),
+                    Expanded(
+                      child: Text(
+                        '// ${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year} · ${count.toString().padLeft(2, '0')} ${count == 1 ? 'TAREA' : 'TAREAS'}',
+                        style: y.yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: y.yCream,
+                        ),
+                      ),
                     ),
-                    const Spacer(),
                     GestureDetector(
                       onTap: () => Navigator.pop(ctx),
-                      child: Icon(Icons.close, size: 16, color: inkGray),
+                      child: Icon(Icons.close, size: 16, color: y.yCream),
                     ),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: dayCards.map((card) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: GestureDetector(
-                      onTap: () => widget.selectionMode
-                          ? widget.onToggleSelection(card.id)
-                          : _openCardDetail(context, card),
-                      onLongPress: widget.selectionMode
-                          ? null
-                          : () => widget.onToggleSelection(card.id),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: card.originFolderColor != null
-                              ? Color(card.originFolderColor!)
-                              : _cardPriorityColor(card.priority),
-                          border: Border.all(color: inkBlack, width: borderWidth),
-                          boxShadow: shadowM,
+              Container(height: 2, color: y.yInk),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final card in dayCards)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: KanbanCardTile(
+                            card: card,
+                            accentColor: widget.space.accentColor,
+                            selectionMode: widget.selectionMode,
+                            isSelected:
+                                widget.selectedCardIds.contains(card.id),
+                            onTap: () {
+                              if (widget.selectionMode) {
+                                widget.onToggleSelection(card.id);
+                              } else {
+                                Navigator.pop(ctx);
+                                _openCardDetail(context, card);
+                              }
+                            },
+                          ),
                         ),
-                        padding: const EdgeInsets.all(10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              y.cleanMention(card.title),
-                              style: bodyM.copyWith(
-                                color: (card.originFolderColor != null
-                                        ? Color(card.originFolderColor!)
-                                        : _cardPriorityColor(card.priority))
-                                    .computeLuminance() > 0.5
-                                    ? inkBlack
-                                    : paperLight,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (card.dueDate != null) ...[
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: card.dueDate!.isBefore(DateTime.now())
-                                      ? accentFight
-                                      : folderPalette[3],
-                                  border: Border.all(color: inkBlack, width: borderWidth),
-                                  boxShadow: shadowM,
-                                ),
-                                child: Text(
-                                  _dialogFormatDate(card.dueDate!),
-                                  style: labelBold.copyWith(
-                                    color: paperLight,
-                                    fontSize: 9,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  )).toList(),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -209,16 +182,6 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
       ),
     );
   }
-
-  String _dialogFormatDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-
-  Color _cardPriorityColor(CardPriority p) => switch (p) {
-        CardPriority.high => accentError,
-        CardPriority.medium => const Color(0xFFF5A623),
-        CardPriority.low => accentSuccess,
-        CardPriority.none => inkGray,
-      };
 
   @override
   Widget build(BuildContext context) {
@@ -630,23 +593,21 @@ class _DraggableCard extends StatelessWidget {
   }
 
   Widget _cardContent(BuildContext context) {
-    final folderColor = card.originFolderColor != null
-        ? Color(card.originFolderColor!)
-        : null;
-    final hasFolderBorder = folderColor != null && !isSelected;
+    final accent = labCardAccent(card);
+    final done = card.isDone;
     final cardWidget = Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.fromLTRB(6, 6, 8, 6),
       decoration: BoxDecoration(
-        color: isSelected ? accentColor : y.yCream,
-        border: hasFolderBorder
+        color: isSelected ? accentColor : (done ? y.yCream2 : y.yCream),
+        border: !isSelected
             ? Border(
-                left: BorderSide(color: folderColor, width: 6),
+                left: BorderSide(color: accent, width: 6),
                 top: BorderSide(color: y.yInk, width: 2),
                 bottom: BorderSide(color: y.yInk, width: 2),
                 right: BorderSide(color: y.yInk, width: 2),
               )
-            : Border.all(color: y.yInk, width: isSelected ? y.yLineHeavy : 2),
+            : Border.all(color: y.yInk, width: y.yLineHeavy),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,8 +631,10 @@ class _DraggableCard extends StatelessWidget {
               size: 12,
               weight: FontWeight.w600,
               letterSpacing: -0.2,
-              color: isSelected ? y.yCream : y.yInk,
+              color: isSelected ? y.yCream : (done ? y.yMuted : y.yInk),
               height: 1.2,
+            ).copyWith(
+              decoration: done ? TextDecoration.lineThrough : null,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -856,31 +819,23 @@ class _MonthView extends StatelessWidget {
                           ),
                           const Spacer(),
                           if (dayCards.isNotEmpty)
-                            Wrap(
-                              spacing: 3,
-                              runSpacing: 3,
-                              children: dayCards.take(4).map((c) {
-                                final cBg = c.originFolderColor != null
-                                    ? Color(c.originFolderColor!)
-                                    : _dotColor(c.priority);
-                                return Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: cBg,
-                                    border: Border.all(
-                                      color: isToday ? y.yCream : y.yInk,
-                                      width: 1,
-                                    ),
+                            for (final c in dayCards.take(2))
+                              Container(
+                                margin: const EdgeInsets.only(top: 3),
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: labCardAccent(c),
+                                  border: Border.all(
+                                    color: isToday ? y.yCream : y.yInk,
+                                    width: 1,
                                   ),
-                                );
-                              }).toList(),
-                            ),
-                          if (dayCards.length > 3)
+                                ),
+                              ),
+                          if (dayCards.length > 2)
                             Padding(
-                              padding: const EdgeInsets.only(top: 2),
+                              padding: const EdgeInsets.only(top: 3),
                               child: Text(
-                                '+${dayCards.length - 3}',
+                                '+${dayCards.length - 2} más',
                                 style: y.yMono(
                                   size: 8,
                                   weight: FontWeight.w700,
@@ -903,12 +858,6 @@ class _MonthView extends StatelessWidget {
     );
   }
 
-  Color _dotColor(CardPriority p) => switch (p) {
-        CardPriority.high => accentError,
-        CardPriority.medium => const Color(0xFFF5A623),
-        CardPriority.low => accentSuccess,
-        CardPriority.none => inkGray,
-      };
 }
 
 // ─── Sin Fecha Section ───────────────────────────────────────────────────
@@ -967,11 +916,7 @@ class _SinFechaSection extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               itemCount: cards.length,
               itemBuilder: (context, i) {
-                final bg = cards[i].originTaskDoneAt != null
-                    ? accentSuccess
-                    : (cards[i].originFolderColor != null
-                        ? Color(cards[i].originFolderColor!)
-                        : _priorityColor(cards[i].priority));
+                final bg = labCardAccent(cards[i]);
                 final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
@@ -1023,10 +968,4 @@ class _SinFechaSection extends StatelessWidget {
     );
   }
 
-  Color _priorityColor(CardPriority p) => switch (p) {
-        CardPriority.high => accentError,
-        CardPriority.medium => const Color(0xFFF5A623),
-        CardPriority.low => accentSuccess,
-        CardPriority.none => inkGray,
-      };
 }

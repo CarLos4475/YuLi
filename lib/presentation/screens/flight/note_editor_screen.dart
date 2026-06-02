@@ -257,7 +257,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
             scrollController: scrollController,
             onTapTask: (task) async {
               _insertSyntax('\n- [ ] ${task.content}\n');
-              await ref.read(taskRepositoryProvider).markDone(task.id);
+              await setTaskDone(ref, task.id, done: true);
               if (ctx.mounted) Navigator.pop(ctx);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -287,7 +287,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (columns.isEmpty) return;
     final backlog = columns.firstWhere(
       (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
-      orElse: () => columns.first,
+      orElse: () => columns.firstWhere((c) => !c.isTerminal && !c.isExpired,
+          orElse: () => columns.first),
     );
     await kanbanRepo.create(
       labSpaceId: picked.id,

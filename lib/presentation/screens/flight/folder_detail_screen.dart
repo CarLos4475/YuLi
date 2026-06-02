@@ -785,8 +785,7 @@ class _TareaStripRow extends ConsumerWidget {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () async {
-              await ref.read(taskRepositoryProvider).markDone(task.id);
-              await syncTaskCompletionToKanban(ref, task.id);
+              await setTaskDone(ref, task.id, done: true);
             },
             child: Container(
               width: 16,

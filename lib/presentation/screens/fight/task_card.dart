@@ -59,12 +59,10 @@ class _TaskCardState extends ConsumerState<TaskCard>
 
     if (!reducedMotion) {
       HapticFeedback.mediumImpact();
-      await ref.read(taskRepositoryProvider).markDone(widget.task.id);
-      await syncTaskCompletionToKanban(ref, widget.task.id);
+      await setTaskDone(ref, widget.task.id, done: true);
       if (mounted) await _fadeController.forward();
     } else {
-      await ref.read(taskRepositoryProvider).markDone(widget.task.id);
-      await syncTaskCompletionToKanban(ref, widget.task.id);
+      await setTaskDone(ref, widget.task.id, done: true);
     }
   }
 
@@ -488,7 +486,12 @@ class _SpaceRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final columnsAsync = ref.watch(kanbanColumnsProvider(space.id));
-    final columns = columnsAsync.valueOrNull ?? [];
+    // Only offer "open" columns — never drop a task straight into a terminal
+    // (Entregado) or expired (Vencido) column, which would bypass the done/due
+    // stamping that create() doesn't apply.
+    final columns = (columnsAsync.valueOrNull ?? [])
+        .where((c) => !c.isTerminal && !c.isExpired)
+        .toList();
 
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 24),

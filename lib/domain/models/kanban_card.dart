@@ -57,6 +57,30 @@ class KanbanCard {
     required this.createdAt,
   });
 
+  /// A card is "done" once it has entered a terminal column (stamped even when
+  /// there is no linked task).
+  bool get isDone => originTaskDoneAt != null;
+
+  /// Single source of truth for the "vencida" state across the whole Lab UI
+  /// (board tile, timeline, calendar, card detail) and mirrored by the expiry
+  /// sweep in the DB. A card is overdue when it is NOT done and either sits in
+  /// the expired column or its deadline has passed.
+  ///
+  /// Deadline granularity is UX-driven: a [dueDate] with a real time is honored
+  /// exactly, while a date-only deadline (local midnight) means "by the end of
+  /// that day" — it only turns overdue once the next day starts, so a card due
+  /// "today" is not nagged during its own day.
+  bool isOverdue({bool inExpiredColumn = false}) {
+    if (isDone) return false;
+    if (inExpiredColumn) return true;
+    final due = dueDate;
+    if (due == null) return false;
+    final isMidnight = due.hour == 0 && due.minute == 0 && due.second == 0;
+    final deadline =
+        isMidnight ? DateTime(due.year, due.month, due.day + 1) : due;
+    return DateTime.now().isAfter(deadline);
+  }
+
   KanbanCard copyWith({
     int? id,
     int? labSpaceId,

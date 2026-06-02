@@ -18,4 +18,10 @@ class KanbanColumns extends Table {
 
   BoolColumn get isExpired =>
       boolean().withDefault(const Constant(false))();
+
+  /// The "in progress" system column. Entering it stamps the card's actual
+  /// start date (fecha de inicio). Default: "En Proceso". Identified by flag,
+  /// not name, so renaming the column does not break startDate stamping.
+  BoolColumn get isInProgress =>
+      boolean().withDefault(const Constant(false))();
 }

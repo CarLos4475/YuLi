@@ -9,6 +9,7 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/kanban_column.dart';
 import 'kanban_card_detail.dart';
+import 'lab_card_colors.dart';
 
 class TimelineTab extends ConsumerStatefulWidget {
   final LabSpace space;
@@ -296,15 +297,9 @@ class _TimelineViewer extends StatelessWidget {
         final cardWidth = (p.endIdx - p.startIdx + 1) * dayW - 4;
         final cardHeight = 28.0;
         final isSelected = selectedCardIds.contains(card.id);
-        final isDone = card.originTaskDoneAt != null;
-        final isOverdue = columns.any((c) => c.id == card.columnId && c.isExpired);
-        final bg = isOverdue
-            ? y.yFight
-            : isDone
-                ? y.yCream2
-                : (card.originFolderColor != null
-                    ? Color(card.originFolderColor!)
-                    : _cardColor(card));
+        final bg = labCardAccent(card,
+            inExpiredColumn:
+                columns.any((c) => c.id == card.columnId && c.isExpired));
 
         cardWidgets.add(
           Positioned(
@@ -402,16 +397,6 @@ class _TimelineViewer extends StatelessWidget {
     );
   }
 
-  Color _cardColor(KanbanCard card) {
-    if (card.originTaskDoneAt != null) return accentSuccess;
-    if (card.originFolderColor != null) return Color(card.originFolderColor!);
-    return switch (card.priority) {
-      CardPriority.high => accentError,
-      CardPriority.medium => const Color(0xFFF5A623),
-      CardPriority.low => accentSuccess,
-      CardPriority.none => inkGray,
-    };
-  }
 }
 
 /// A card's placement on the timeline: its lane (column), the stacked row it
@@ -702,11 +687,7 @@ class _SinFechaSection extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               itemCount: cards.length,
               itemBuilder: (context, i) {
-                final bg = cards[i].originTaskDoneAt != null
-                    ? accentSuccess
-                    : (cards[i].originFolderColor != null
-                        ? Color(cards[i].originFolderColor!)
-                        : _priorityColor(cards[i].priority));
+                final bg = labCardAccent(cards[i]);
                 final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
@@ -746,10 +727,4 @@ class _SinFechaSection extends StatelessWidget {
     );
   }
 
-  Color _priorityColor(CardPriority p) => switch (p) {
-        CardPriority.high => accentError,
-        CardPriority.medium => const Color(0xFFF5A623),
-        CardPriority.low => accentSuccess,
-        CardPriority.none => inkGray,
-      };
 }

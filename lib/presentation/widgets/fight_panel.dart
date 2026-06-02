@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_tokens.dart';
 import 'yuli_design.dart' show cleanMention;
-import '../providers/database_providers.dart';
 import '../providers/task_providers.dart';
 import '../providers/folder_providers.dart';
+import '../providers/lab_space_providers.dart';
 import 'app_card.dart';
 import '../../domain/models/task.dart';
 import '../../domain/models/folder.dart';
@@ -141,7 +141,7 @@ class PanelTaskTile extends ConsumerWidget {
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => ref.read(taskRepositoryProvider).markDone(task.id),
+            onTap: () => setTaskDone(ref, task.id, done: true),
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: Icon(Icons.check, color: accentFight, size: 18),

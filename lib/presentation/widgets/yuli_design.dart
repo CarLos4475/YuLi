@@ -320,6 +320,11 @@ String cleanMention(String content) {
   return cleaned.isEmpty ? content : cleaned;
 }
 
+/// The "@mention" tokens in [content] (folder tags), space-joined; '' if none.
+/// Lets a cleaned title be edited without dropping its folder tag.
+String extractMentions(String content) =>
+    _mentionRegex.allMatches(content).map((m) => m.group(0)!).join(' ');
+
 Widget buildMentionText({
   required String content,
   required TextStyle style,

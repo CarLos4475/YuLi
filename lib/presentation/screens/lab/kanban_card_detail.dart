@@ -71,9 +71,20 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
     final editedTitle = _titleController.text.trim();
     final originalClean = y.cleanMention(widget.card.title).trim();
     final titleChanged = editedTitle.isNotEmpty && editedTitle != originalClean;
+    String? newTitle;
+    if (titleChanged) {
+      // The title field shows the cleaned text (sin @folder). Re-attach the
+      // original mention(s) so editing the text doesn't drop the folder tag,
+      // unless the user typed their own mention.
+      final mentions = y.extractMentions(widget.card.title);
+      final editedHasMention = y.extractMentions(editedTitle).isNotEmpty;
+      newTitle = (mentions.isEmpty || editedHasMention)
+          ? editedTitle
+          : '$mentions $editedTitle';
+    }
     await _repository.update(
       _card.copyWith(
-        title: titleChanged ? editedTitle : null,
+        title: newTitle,
         description: _descController.text.isEmpty
             ? null
             : _descController.text,
@@ -394,7 +405,7 @@ class _ColumnSelector extends StatelessWidget {
   Color _colColor(KanbanColumn col) {
     if (col.isExpired) return y.yFight;
     if (col.isTerminal) return y.yLab;
-    if (col.name == 'En Proceso' || col.name == 'En proceso') return y.yAmber;
+    if (col.isInProgress) return y.yAmber;
     return y.yMuted;
   }
 
@@ -549,8 +560,11 @@ class _DueDateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final overdue =
-        card.dueDate != null && card.dueDate!.isBefore(DateTime.now());
+    final overdue = card.isOverdue();
+    // Etiqueta contextual del campo de fecha de fin según el estado de la card.
+    final finLabel = card.isDone
+        ? 'ENTREGADO EL'
+        : (overdue ? 'VENCIÓ EL' : 'VENCIMIENTO');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -566,7 +580,7 @@ class _DueDateRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 46,
+              width: 92,
               child: Text('INICIO',
                   style: y.yMono(
                       size: 10,
@@ -598,7 +612,7 @@ class _DueDateRow extends StatelessWidget {
                       onChanged(u);
                     }
                   }),
-                  _startToggleChip('MANUAL', card.startDate != null,
+                  _startToggleChip('FIJA', card.startDate != null,
                       () => _pickStartDate(context)),
                 ],
               ),
@@ -611,8 +625,8 @@ class _DueDateRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 46,
-              child: Text('FIN',
+              width: 92,
+              child: Text(finLabel,
                   style: y.yMono(
                       size: 10,
                       weight: FontWeight.w700,

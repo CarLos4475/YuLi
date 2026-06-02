@@ -57,27 +57,55 @@ class LocalKanbanRepository implements KanbanCardRepository {
     return _rowToCard(row);
   }
 
-  @override
-  Future<void> update(KanbanCard card) async {
-    final col = await _db.labSpacesDao.getColumn(card.columnId);
-    if (col != null && col.name == 'Entregado') {
+  // Single source of truth for system-column side effects. Driven by the
+  // column FLAGS (isTerminal / isInProgress), never by literal names, so the
+  // user can rename or reassign system columns without breaking the cross-mode
+  // (Fight ↔ Lab) automation. Returns the card with its date/done fields
+  // adjusted and performs the matching task-side effect.
+  Future<KanbanCard> _applyColumnTransition(
+      KanbanCard card, KanbanColumnRow targetCol) async {
+    final now = DateTime.now();
+    if (targetCol.isTerminal) {
+      // Entering a terminal column: stamp the real delivery date and mark the
+      // linked task done. dueDate is overwritten on purpose — it records when
+      // the card was actually delivered.
       if (card.originTaskDoneAt == null) {
-        final now = DateTime.now();
         card = card.copyWith(originTaskDoneAt: now, dueDate: now);
         if (card.originTaskId != null) {
           await _db.tasksDao.markDone(card.originTaskId!);
         }
       }
     } else if (card.originTaskDoneAt != null) {
+      // Leaving a terminal column: revert the done state on BOTH sides and
+      // reopen the linked task. The card's dueDate was overwritten to the
+      // delivery time on entering terminal; on reopen, re-sync it from the
+      // linked task (whose original due survives markDone/unmarkDone) so card
+      // and task agree again. With no task, clear it (otherwise the expiry
+      // would later sweep the card to the expired column).
       card = card.copyWith(clearOriginTaskDoneAt: true);
+      if (card.originTaskId != null) {
+        final task = await _db.tasksDao.getById(card.originTaskId!);
+        await _db.tasksDao.unmarkDone(card.originTaskId!);
+        card = task?.dueDate != null
+            ? card.copyWith(dueDate: task!.dueDate)
+            : card.copyWith(clearDueDate: true);
+      } else {
+        card = card.copyWith(clearDueDate: true);
+      }
     }
-    // "En Proceso" is a system column: entering it stamps the actual start
-    // (fecha de inicio) if not already set. A card that skips it (straight to
-    // Entregado) keeps startDate null → the timeline falls back to createdAt
-    // (fecha de agregado).
-    if (col != null && col.name == 'En Proceso' && card.startDate == null) {
-      card = card.copyWith(startDate: DateTime.now());
+    // Entering the "in progress" column stamps the actual start date (fecha de
+    // inicio) if not already set. A card that skips it (straight to a terminal
+    // column) keeps startDate null → the timeline falls back to createdAt.
+    if (targetCol.isInProgress && card.startDate == null) {
+      card = card.copyWith(startDate: now);
     }
+    return card;
+  }
+
+  @override
+  Future<void> update(KanbanCard card) async {
+    final col = await _db.labSpacesDao.getColumn(card.columnId);
+    if (col != null) card = await _applyColumnTransition(card, col);
     await _db.kanbanDao.updateCard(
       KanbanCardsCompanion(
         id: Value(card.id),
@@ -105,51 +133,24 @@ class LocalKanbanRepository implements KanbanCardRepository {
 
   @override
   Future<void> moveToColumn(int cardId, int newColumnId, int newPosition) async {
-    final card = await _db.kanbanDao.getById(cardId);
-    if (card == null) return;
+    final row = await _db.kanbanDao.getById(cardId);
+    if (row == null) return;
+    var card = _rowToCard(row).copyWith(
+      columnId: newColumnId,
+      position: newPosition,
+    );
     final col = await _db.labSpacesDao.getColumn(newColumnId);
-    if (col != null && col.name == 'Entregado') {
-      if (card.originTaskDoneAt == null) {
-        final now = DateTime.now();
-        await _db.kanbanDao.updateCard(
-          KanbanCardsCompanion(
-            id: Value(cardId),
-            columnId: Value(newColumnId),
-            position: Value(newPosition),
-            dueDate: Value(now),
-            originTaskDoneAt: Value(now),
-          ),
-        );
-        if (card.originTaskId != null) {
-          await _db.tasksDao.markDone(card.originTaskId!);
-        }
-        return;
-      }
-    } else if (card.originTaskDoneAt != null) {
-      await _db.kanbanDao.updateCard(
-        KanbanCardsCompanion(
-          id: Value(cardId),
-          columnId: Value(newColumnId),
-          position: Value(newPosition),
-          originTaskDoneAt: Value(null),
-        ),
-      );
-      return;
-    } else if (col != null &&
-        col.name == 'En Proceso' &&
-        card.startDate == null) {
-      // Entering "En Proceso" stamps the actual start date (fecha de inicio).
-      await _db.kanbanDao.updateCard(
-        KanbanCardsCompanion(
-          id: Value(cardId),
-          columnId: Value(newColumnId),
-          position: Value(newPosition),
-          startDate: Value(DateTime.now()),
-        ),
-      );
-      return;
-    }
-    await _db.kanbanDao.moveToColumn(cardId, newColumnId, newPosition);
+    if (col != null) card = await _applyColumnTransition(card, col);
+    await _db.kanbanDao.updateCard(
+      KanbanCardsCompanion(
+        id: Value(card.id),
+        columnId: Value(card.columnId),
+        position: Value(card.position),
+        dueDate: Value(card.dueDate),
+        startDate: Value(card.startDate),
+        originTaskDoneAt: Value(card.originTaskDoneAt),
+      ),
+    );
   }
 
   @override
@@ -161,6 +162,11 @@ class LocalKanbanRepository implements KanbanCardRepository {
     final row = await _db.kanbanDao.getByOriginTaskId(taskId);
     return row != null ? _rowToCard(row) : null;
   }
+
+  @override
+  Stream<KanbanCard?> watchByOriginTaskId(int taskId) => _db.kanbanDao
+      .watchByOriginTaskId(taskId)
+      .map((row) => row != null ? _rowToCard(row) : null);
 
   @override
   Stream<List<KanbanCard>> watchBySourceNoteId(int noteId) =>

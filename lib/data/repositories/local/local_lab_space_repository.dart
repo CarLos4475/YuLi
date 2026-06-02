@@ -45,6 +45,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
           isDefault: const Value(true),
           isTerminal: Value(name == 'Entregado'),
           isExpired: Value(name == 'Vencido'),
+          isInProgress: Value(name == 'En Proceso'),
         ),
       );
     }
@@ -75,7 +76,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
   Future<void> restore(int id) => _db.labSpacesDao.restore(id);
 
   @override
-  Future<void> hardDelete(int id) => _db.labSpacesDao.hardDelete(id);
+  Future<void> hardDelete(int id) => _db.hardDeleteSpaceCascade(id);
 
   @override
   Stream<List<LabSpace>> watchDeleted() =>
@@ -114,6 +115,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         isDefault: Value(column.isDefault),
         isTerminal: Value(column.isTerminal),
         isExpired: Value(column.isExpired),
+        isInProgress: Value(column.isInProgress),
       ),
     );
   }
@@ -165,6 +167,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         isDefault: row.isDefault,
         isTerminal: row.isTerminal,
         isExpired: row.isExpired,
+        isInProgress: row.isInProgress,
       );
 
   Color _hexToColor(String hex) {

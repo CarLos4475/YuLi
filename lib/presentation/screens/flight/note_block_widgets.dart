@@ -997,14 +997,18 @@ class _LinkChip extends StatelessWidget {
 enum _DeleteChoice { unlink, hard }
 
 /// Returns the linked space name for a task (or null if no kanban link).
+/// Reactive: refreshes when the linked card is created/moved/deleted.
 final _kanbanByTaskProvider =
-    FutureProvider.family<String?, int>((ref, taskId) async {
-  final card =
-      await ref.watch(kanbanCardRepositoryProvider).getByOriginTaskId(taskId);
-  if (card == null) return null;
-  final space =
-      await ref.watch(labSpaceRepositoryProvider).getById(card.labSpaceId);
-  return space?.name;
+    StreamProvider.family<String?, int>((ref, taskId) {
+  final labRepo = ref.watch(labSpaceRepositoryProvider);
+  return ref
+      .watch(kanbanCardRepositoryProvider)
+      .watchByOriginTaskId(taskId)
+      .asyncMap((card) async {
+    if (card == null) return null;
+    final space = await labRepo.getById(card.labSpaceId);
+    return space?.name;
+  });
 });
 
 class _SpacePickerDialog extends StatelessWidget {

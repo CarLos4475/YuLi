@@ -67,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -158,6 +158,14 @@ class AppDatabase extends _$AppDatabase {
               await m.addColumn(kanbanCards, kanbanCards.startDate);
             } catch (_) {}
           }
+          if (from <= 17) {
+            try {
+              await m.addColumn(kanbanColumns, kanbanColumns.isInProgress);
+              await customStatement(
+                  "UPDATE kanban_columns SET is_in_progress = 1 "
+                  "WHERE name = 'En Proceso'");
+            } catch (_) {}
+          }
         },
       );
 
@@ -237,17 +245,19 @@ class AppDatabase extends _$AppDatabase {
             NotificationsCompanion.insert(message: 'Tarea a la papelera: $msg'),
           );
         }
-        // Move linked KanbanCards to Vencido when linked task expires
+        // Move linked KanbanCards to the expired column when linked task
+        // expires. Identified by the is_expired flag, not the literal name,
+        // so renaming "Vencido" does not break the automation.
         await customUpdate(
           "UPDATE kanban_cards SET column_id = ("
           "SELECT kc.id FROM kanban_columns kc "
-          "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.name = 'Vencido'"
+          "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.is_expired = 1 LIMIT 1"
           ") WHERE kanban_cards.origin_task_id IN ("
           "SELECT id FROM tasks WHERE status = 'archived_failed'"
           ") AND kanban_cards.origin_task_done_at IS NULL "
           "AND EXISTS ("
           "SELECT 1 FROM kanban_columns kc "
-          "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.name = 'Vencido'"
+          "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.is_expired = 1"
           ")",
           updates: {kanbanCards},
           updateKind: UpdateKind.update,
@@ -276,6 +286,16 @@ class AppDatabase extends _$AppDatabase {
         updates: {kanbanCards},
         updateKind: UpdateKind.update,
       );
+      // Clean up note↔task links pointing at the tasks about to be deleted
+      // (FK is off, so these would otherwise dangle).
+      await customUpdate(
+        "DELETE FROM note_task_links WHERE task_id IN ("
+        "SELECT id FROM tasks WHERE status = 'trash' "
+        "AND date(trashed_at, 'unixepoch') < date('now', '-7 days')"
+        ")",
+        updates: {noteTaskLinks},
+        updateKind: UpdateKind.delete,
+      );
       await customUpdate(
         "DELETE FROM tasks WHERE status = 'trash' "
         "AND date(trashed_at, 'unixepoch') < date('now', '-7 days')",
@@ -283,43 +303,201 @@ class AppDatabase extends _$AppDatabase {
         updateKind: UpdateKind.delete,
       );
 
-      // 5. Kanban cards: move overdue cards to "Vencido" column
-      await customUpdate(
-        "UPDATE kanban_cards SET column_id = ("
-        "SELECT kc.id FROM kanban_columns kc "
-        "WHERE kc.lab_space_id = kanban_cards.lab_space_id AND kc.name = 'Vencido'"
-        ") WHERE kanban_cards.due_date IS NOT NULL "
-        "AND datetime(kanban_cards.due_date, 'unixepoch') < datetime('now') "
-        "AND kanban_cards.column_id NOT IN ("
-        "SELECT kc2.id FROM kanban_columns kc2 "
-        "WHERE kc2.lab_space_id = kanban_cards.lab_space_id AND kc2.name = 'Vencido'"
-        ") AND EXISTS ("
-        "SELECT 1 FROM kanban_columns kc3 "
-        "WHERE kc3.lab_space_id = kanban_cards.lab_space_id AND kc3.name = 'Vencido'"
-        ")",
-        updates: {kanbanCards},
-        updateKind: UpdateKind.update,
-      );
+      // 5. Kanban cards: move overdue, not-done cards to their space's expired
+      // column. Done in Dart (not SQL) for two reasons: SQLite's 'localtime'
+      // modifier returns NULL in this build, and the overdue rule must mirror
+      // KanbanCard.isOverdue EXACTLY (single source of truth) — a date-only
+      // deadline (local midnight) means "end of that day", so a card due "today"
+      // is not swept during its own day; a deadline with a real time is exact.
+      // Cards already done (origin_task_done_at set, incl. cards completed with
+      // no linked task) or sitting in a terminal/expired column are skipped.
+      final now = DateTime.now();
+      bool deadlinePassed(DateTime due) {
+        final midnight = due.hour == 0 && due.minute == 0 && due.second == 0;
+        final deadline =
+            midnight ? DateTime(due.year, due.month, due.day + 1) : due;
+        return now.isAfter(deadline);
+      }
 
-      // 6. Folders permanent delete (7-day grace period)
-      await customUpdate(
-        "DELETE FROM folders WHERE deleted_at IS NOT NULL "
-        "AND date(deleted_at, 'unixepoch') < date('now', '-7 days')",
-        updates: {folders},
-        updateKind: UpdateKind.delete,
-      );
+      final systemCols = await (select(kanbanColumns)
+            ..where((c) => c.isExpired.equals(true) | c.isTerminal.equals(true)))
+          .get();
+      final expiredBySpace = {
+        for (final c in systemCols.where((c) => c.isExpired))
+          c.labSpaceId: c.id
+      };
+      final blockedColIds = systemCols.map((c) => c.id).toSet();
 
-      // 7. Lab spaces permanent delete (7-day grace period)
-      await customUpdate(
-        "DELETE FROM lab_spaces WHERE deleted_at IS NOT NULL "
+      final candidates = await (select(kanbanCards)
+            ..where((c) =>
+                c.dueDate.isNotNull() & c.originTaskDoneAt.isNull()))
+          .get();
+      for (final c in candidates) {
+        final target = expiredBySpace[c.labSpaceId];
+        if (target == null || blockedColIds.contains(c.columnId)) continue;
+        final due = c.dueDate;
+        if (due != null && deadlinePassed(due)) {
+          await (update(kanbanCards)..where((x) => x.id.equals(c.id)))
+              .write(KanbanCardsCompanion(columnId: Value(target)));
+        }
+      }
+
+      // 6. Folders permanent delete (7-day grace period) — cascade to notes
+      // (+ their children) and detach tasks.
+      final folderIdsToPurge = (await customSelect(
+        "SELECT id FROM folders WHERE deleted_at IS NOT NULL "
         "AND date(deleted_at, 'unixepoch') < date('now', '-7 days')",
-        updates: {labSpaces},
+        readsFrom: {folders},
+      ).get())
+          .map((r) => r.read<int>('id'))
+          .toList();
+      for (final id in folderIdsToPurge) {
+        await hardDeleteFolderCascade(id);
+      }
+
+      // 7. Lab spaces permanent delete (7-day grace period) — cascade to
+      // columns, cards, schedule rows and folder links.
+      final spaceIdsToPurge = (await customSelect(
+        "SELECT id FROM lab_spaces WHERE deleted_at IS NOT NULL "
+        "AND date(deleted_at, 'unixepoch') < date('now', '-7 days')",
+        readsFrom: {labSpaces},
+      ).get())
+          .map((r) => r.read<int>('id'))
+          .toList();
+      for (final id in spaceIdsToPurge) {
+        await hardDeleteSpaceCascade(id);
+      }
+
+      // 8. Cap the notifications inbox to the 50 most recent. They are
+      // user-dismissable (dismiss/clearAll), but nothing bounded their growth
+      // if left untouched while tasks keep expiring.
+      await customUpdate(
+        "DELETE FROM notifications WHERE id NOT IN ("
+        "SELECT id FROM notifications ORDER BY created_at DESC LIMIT 50)",
+        updates: {notifications},
         updateKind: UpdateKind.delete,
       );
     });
 
     return archivedCount;
   }
+
+  // ─── Cascading deletes ──────────────────────────────────────────────────
+  // FK enforcement is OFF (no PRAGMA foreign_keys), so child rows are cleaned
+  // explicitly here. Centralized so the manual path (trash screen → repos) and
+  // the automatic path (runExpiryQueries) stay in sync. See KNOWN_ISSUES for
+  // the future "enable FK + onDelete" alternative.
+
+  Future<void> _deleteNoteChildren(int noteId) async {
+    await (delete(noteBlocks)..where((b) => b.noteId.equals(noteId))).go();
+    await (delete(noteVersions)..where((v) => v.noteId.equals(noteId))).go();
+    await (delete(noteImages)..where((i) => i.noteId.equals(noteId))).go();
+    await (delete(noteTaskLinks)..where((l) => l.noteId.equals(noteId))).go();
+    // Canvas context sources: both when this note IS a canvas and when it is
+    // used as a source by another canvas.
+    await (delete(canvasContextSources)
+          ..where((s) => s.canvasNoteId.equals(noteId)))
+        .go();
+    await (delete(canvasContextSources)
+          ..where(
+              (s) => s.kind.equals('note') & s.ref.equals(noteId.toString())))
+        .go();
+    await (delete(noteCanvasLinks)
+          ..where((l) =>
+              l.canvasNoteId.equals(noteId) | l.sourceNoteId.equals(noteId)))
+        .go();
+    // Drop the now-dangling source link on any kanban card.
+    await (update(kanbanCards)..where((c) => c.sourceNoteId.equals(noteId)))
+        .write(const KanbanCardsCompanion(
+            sourceNoteId: Value(null), sourceAnchor: Value(null)));
+  }
+
+  /// Permanently deletes a note and every row that references it.
+  Future<void> hardDeleteNoteCascade(int noteId) => transaction(() async {
+        await _deleteNoteChildren(noteId);
+        await (delete(notes)..where((n) => n.id.equals(noteId))).go();
+      });
+
+  /// Soft-deletes a folder together with its active notes, so they hide and can
+  /// be restored as a unit. Tasks keep showing in FIGHT (their folder badge
+  /// just goes stale until the folder is restored or purged).
+  Future<void> softDeleteFolderCascade(int folderId) => transaction(() async {
+        final now = DateTime.now();
+        await (update(notes)
+              ..where(
+                  (n) => n.folderId.equals(folderId) & n.deletedAt.isNull()))
+            .write(NotesCompanion(deletedAt: Value(now)));
+        await (update(folders)..where((f) => f.id.equals(folderId)))
+            .write(FoldersCompanion(deletedAt: Value(now)));
+      });
+
+  /// Restores a folder and the notes that were hidden with it.
+  Future<void> restoreFolderCascade(int folderId) => transaction(() async {
+        await (update(notes)
+              ..where((n) =>
+                  n.folderId.equals(folderId) & n.deletedAt.isNotNull()))
+            .write(const NotesCompanion(deletedAt: Value(null)));
+        await (update(folders)..where((f) => f.id.equals(folderId)))
+            .write(const FoldersCompanion(deletedAt: Value(null)));
+      });
+
+  /// Permanently deletes a folder and its notes (+ their children); detaches
+  /// its tasks (folder_id → NULL) so the user's tasks survive as folderless.
+  Future<void> hardDeleteFolderCascade(int folderId) => transaction(() async {
+        final noteIds = await (select(notes)
+              ..where((n) => n.folderId.equals(folderId)))
+            .map((n) => n.id)
+            .get();
+        for (final nid in noteIds) {
+          await _deleteNoteChildren(nid);
+        }
+        await (delete(notes)..where((n) => n.folderId.equals(folderId))).go();
+        await (update(tasks)..where((t) => t.folderId.equals(folderId)))
+            .write(const TasksCompanion(folderId: Value(null)));
+        // Detach the folder from any lab space and from schedule blocks that
+        // referenced it (both hold a folder_id with no FK).
+        await (delete(spaceFolderLinks)
+              ..where((l) => l.folderId.equals(folderId)))
+            .go();
+        await (update(scheduleBlocks)
+              ..where((s) => s.folderId.equals(folderId)))
+            .write(const ScheduleBlocksCompanion(folderId: Value(null)));
+        await (delete(folders)..where((f) => f.id.equals(folderId))).go();
+      });
+
+  /// Permanently deletes a lab space and everything scoped to it.
+  Future<void> hardDeleteSpaceCascade(int spaceId) => transaction(() async {
+        await (delete(kanbanCards)..where((c) => c.labSpaceId.equals(spaceId)))
+            .go();
+        await (delete(kanbanColumns)
+              ..where((c) => c.labSpaceId.equals(spaceId)))
+            .go();
+        await (delete(scheduleBlocks)
+              ..where((s) => s.labSpaceId.equals(spaceId)))
+            .go();
+        await (delete(scheduleSettings)
+              ..where((s) => s.labSpaceId.equals(spaceId)))
+            .go();
+        await (delete(scheduleWeekNotes)
+              ..where((s) => s.labSpaceId.equals(spaceId)))
+            .go();
+        await (delete(spaceFolderLinks)
+              ..where((s) => s.labSpaceId.equals(spaceId)))
+            .go();
+        await (delete(labSpaces)..where((s) => s.id.equals(spaceId))).go();
+      });
+
+  /// Re-syncs the snapshot `origin_folder_color` on every kanban card linked to
+  /// a task of [folderId]. Cards copy the folder color at creation; call this
+  /// when the folder's color changes so existing cards don't keep the old one.
+  Future<void> syncFolderColorToCards(int folderId, int colorArgb) =>
+      customUpdate(
+        "UPDATE kanban_cards SET origin_folder_color = ? "
+        "WHERE origin_task_id IN (SELECT id FROM tasks WHERE folder_id = ?)",
+        variables: [Variable.withInt(colorArgb), Variable.withInt(folderId)],
+        updates: {kanbanCards},
+        updateKind: UpdateKind.update,
+      );
 
   Future<bool> hasSeenOnboarding(String key) async {
     final row = await (select(onboardingFlags)

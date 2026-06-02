@@ -658,8 +658,7 @@ class _SwipeableTaskCard extends ConsumerStatefulWidget {
 
 class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
   Future<void> _complete() async {
-    await ref.read(taskRepositoryProvider).markDone(widget.task.id);
-    await syncTaskCompletionToKanban(ref, widget.task.id);
+    await setTaskDone(ref, widget.task.id, done: true);
   }
 
   Future<void> _discard() async {
@@ -1185,8 +1184,11 @@ class _LabSpaceRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final columns =
-        ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [];
+    // Only "open" columns — never send a task straight to a terminal
+    // (Entregado) or expired (Vencido) column.
+    final columns = (ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [])
+        .where((c) => !c.isTerminal && !c.isExpired)
+        .toList();
 
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 24),

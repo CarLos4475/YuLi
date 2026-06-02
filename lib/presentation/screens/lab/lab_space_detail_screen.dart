@@ -982,9 +982,8 @@ class _KanbanColumn extends ConsumerWidget {
   });
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final isProtected = column.name == 'Entregado' ||
-        column.name == 'Vencido' ||
-        column.name == 'En Proceso';
+    final isProtected =
+        column.isTerminal || column.isExpired || column.isInProgress;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1116,6 +1115,7 @@ class _KanbanColumn extends ConsumerWidget {
                                     isSelected:
                                         selectedCardIds.contains(cards[i].id),
                                     selectionMode: true,
+                                    inExpiredColumn: column.isExpired,
                                   ),
                                 )
                               else
@@ -1132,6 +1132,7 @@ class _KanbanColumn extends ConsumerWidget {
                                         card: cards[i],
                                         accentColor: space.accentColor,
                                         onTap: () {},
+                                        inExpiredColumn: column.isExpired,
                                       ),
                                     ),
                                   ),
@@ -1142,6 +1143,7 @@ class _KanbanColumn extends ConsumerWidget {
                                       accentColor: space.accentColor,
                                       onTap: () =>
                                           _openCard(context, cards[i]),
+                                      inExpiredColumn: column.isExpired,
                                     ),
                                   ),
                                   child: KanbanCardTile(
@@ -1149,6 +1151,7 @@ class _KanbanColumn extends ConsumerWidget {
                                     accentColor: space.accentColor,
                                     onTap: () =>
                                         _openCard(context, cards[i]),
+                                    inExpiredColumn: column.isExpired,
                                   ),
                                 ),
                             ],
@@ -1181,7 +1184,7 @@ class _KanbanColumn extends ConsumerWidget {
   Color _columnColor(KanbanColumn col, Color spaceAccent) {
     if (col.isExpired) return y.yFight;
     if (col.isTerminal) return y.yLab;
-    if (col.name == 'En Proceso' || col.name == 'En proceso') return y.yAmber;
+    if (col.isInProgress) return y.yAmber;
     if (col.name == 'Backlog') return y.yMuted;
     return spaceAccent;
   }
@@ -1228,6 +1231,7 @@ class _KanbanColumn extends ConsumerWidget {
                 column.copyWith(
                   isTerminal: willBeTerminal,
                   isExpired: false,
+                  isInProgress: false,
                 ),
               );
           if (ctx.mounted) Navigator.pop(ctx);
@@ -1247,6 +1251,27 @@ class _KanbanColumn extends ConsumerWidget {
                 column.copyWith(
                   isExpired: willBeExpired,
                   isTerminal: false,
+                  isInProgress: false,
+                ),
+              );
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+        onToggleInProgress: () async {
+          final repo = ref.read(labSpaceRepositoryProvider);
+          final willBeInProgress = !column.isInProgress;
+          if (willBeInProgress) {
+            final all = await repo.getColumns(space.id);
+            for (final c in all) {
+              if (c.id != column.id && c.isInProgress) {
+                await repo.updateColumn(c.copyWith(isInProgress: false));
+              }
+            }
+          }
+          await repo.updateColumn(
+                column.copyWith(
+                  isInProgress: willBeInProgress,
+                  isTerminal: false,
+                  isExpired: false,
                 ),
               );
           if (ctx.mounted) Navigator.pop(ctx);
@@ -2153,7 +2178,7 @@ class _ColumnHead extends StatelessWidget {
                   )),
             ),
           ],
-          if (column.name == 'En Proceso') ...[
+          if (column.isInProgress) ...[
             const SizedBox(width: 6),
             Container(
               padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
@@ -2199,6 +2224,7 @@ class _ColumnManagePopover extends StatelessWidget {
   final VoidCallback onMoveRight;
   final VoidCallback onToggleDone;
   final VoidCallback onToggleExpired;
+  final VoidCallback onToggleInProgress;
   final VoidCallback onDelete;
 
   const _ColumnManagePopover({
@@ -2211,6 +2237,7 @@ class _ColumnManagePopover extends StatelessWidget {
     required this.onMoveRight,
     required this.onToggleDone,
     required this.onToggleExpired,
+    required this.onToggleInProgress,
     required this.onDelete,
   });
 
@@ -2257,6 +2284,15 @@ class _ColumnManagePopover extends StatelessWidget {
               icon: column.isExpired ? Icons.warning : Icons.warning_amber_outlined,
               label: column.isExpired ? 'Quitar EXPIRED' : 'Marcar como EXPIRED',
               onTap: onToggleExpired,
+            ),
+            _PopRow(
+              icon: column.isInProgress
+                  ? Icons.play_circle
+                  : Icons.play_circle_outline,
+              label: column.isInProgress
+                  ? 'Quitar EN PROCESO'
+                  : 'Marcar como EN PROCESO',
+              onTap: onToggleInProgress,
             ),
             Container(height: 2, color: y.yInk.withValues(alpha: 0.15)),
             _PopRow(

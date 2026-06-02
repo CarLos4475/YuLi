@@ -44,16 +44,18 @@ class LocalFolderRepository implements FolderRepository {
         deletedAt: Value(folder.deletedAt),
       ),
     );
+    // Propagate the (possibly changed) color to linked kanban cards.
+    await _db.syncFolderColorToCards(folder.id, folder.color.toARGB32());
   }
 
   @override
-  Future<void> softDelete(int id) => _db.foldersDao.softDelete(id);
+  Future<void> softDelete(int id) => _db.softDeleteFolderCascade(id);
 
   @override
-  Future<void> restore(int id) => _db.foldersDao.restore(id);
+  Future<void> restore(int id) => _db.restoreFolderCascade(id);
 
   @override
-  Future<void> hardDelete(int id) => _db.foldersDao.hardDelete(id);
+  Future<void> hardDelete(int id) => _db.hardDeleteFolderCascade(id);
 
   @override
   Stream<List<Folder>> watchDeleted() =>

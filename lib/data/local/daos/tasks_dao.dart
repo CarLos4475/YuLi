@@ -72,6 +72,16 @@ class TasksDao extends DatabaseAccessor<AppDatabase> with _$TasksDaoMixin {
         ),
       );
 
+  /// Reverse of [markDone]: reopen a task as pending and clear its completion.
+  /// Used when a linked kanban card leaves a terminal column.
+  Future<void> unmarkDone(int id) =>
+      (update(tasks)..where((t) => t.id.equals(id))).write(
+        const TasksCompanion(
+          status: Value('pending'),
+          completedAt: Value(null),
+        ),
+      );
+
   Future<void> rescueToday(int id) =>
       (update(tasks)..where((t) => t.id.equals(id)))
           .write(const TasksCompanion(status: Value('pending')));

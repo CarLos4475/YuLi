@@ -495,12 +495,9 @@ class _SpaceCard extends ConsumerWidget {
       colCounts[c.columnId] = (colCounts[c.columnId] ?? 0) + 1;
     }
     final total = cards.length;
-    final terminalCols = columns
-        .where((c) =>
-            _terminalNames.contains(c.name) || _terminalNames.contains(c.name.toLowerCase()))
-        .toList();
+    final terminalCols = columns.where((c) => c.isTerminal).toList();
     final vencidoCol = columns.firstWhere(
-      (c) => c.name == 'Vencido',
+      (c) => c.isExpired,
       orElse: () => KanbanColumn(
           id: -1, labSpaceId: space.id, name: '', position: 0, isDefault: false),
     );
@@ -713,18 +710,6 @@ class _SpaceCard extends ConsumerWidget {
     );
   }
 
-  static const _terminalNames = {
-    'Entregado',
-    'Hecho',
-    'Listo',
-    'Done',
-    'entregado',
-    'hecho',
-    'listo',
-    'done',
-    'Notas',
-    'notas',
-  };
 }
 
 class _StatPill extends StatelessWidget {
@@ -804,13 +789,9 @@ class _StackedBar extends StatelessWidget {
   }
 
   Color _colorForColumn(KanbanColumn c) {
-    if (c.name == 'Vencido') return yFight;
-    if (c.name == 'Entregado' ||
-        c.name == 'Hecho' ||
-        c.name == 'Listo') {
-      return yLab;
-    }
-    if (c.name == 'En Proceso' || c.name == 'En proceso') return yAmber;
+    if (c.isExpired) return yFight;
+    if (c.isTerminal) return yLab;
+    if (c.isInProgress) return yAmber;
     if (c.name == 'Backlog') return yMuted;
     return yInk;
   }
@@ -885,9 +866,9 @@ class _ColumnLegend extends StatelessWidget {
   }
 
   Color _colorFor(KanbanColumn c) {
-    if (c.name == 'Vencido') return yFight;
-    if (c.name == 'Entregado' || c.name == 'Hecho' || c.name == 'Listo') return yLab;
-    if (c.name == 'En Proceso' || c.name == 'En proceso') return yAmber;
+    if (c.isExpired) return yFight;
+    if (c.isTerminal) return yLab;
+    if (c.isInProgress) return yAmber;
     if (c.name == 'Backlog') return yMuted;
     return yInk;
   }

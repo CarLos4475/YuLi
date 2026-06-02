@@ -1,5 +1,20 @@
 # KNOWN_ISSUES — YuLi
 
+## SQLite: el modificador `'localtime'` devuelve NULL en este build (NO usarlo)
+
+`datetime(x, 'unixepoch', 'localtime')` y `datetime('now', 'localtime')` devuelven **NULL** en el SQLite que usa drift aquí (verificado con un test headless). Cualquier comparación que dependa de `'localtime'` falla en silencio (NULL → el WHERE nunca matchea). Por eso el **barrido de cards vencidas a "Vencido" (paso 5 del expiry) se hace en Dart**, no en SQL: además de evitar `localtime`, reusa exactamente la regla `KanbanCard.isOverdue` (medianoche = fin de día). Las comparaciones de fecha en SQL deben usar `datetime(x,'unixepoch')` **en UTC** (sin `localtime`), como el resto del expiry. Si necesitas lógica de fecha local (p.ej. detectar medianoche local), hazla en Dart (drift devuelve `DateTime` en hora local). Cubierto por `test/audit_test.dart`.
+
+
+
+## Diseño: FK desactivadas → cascadas a nivel app (no reintroducir borrados "tontos")
+
+SQLite corre con **`foreign_keys` OFF** (no hay `beforeOpen`/PRAGMA). Por eso la única regla `onDelete: cascade` (en `note_blocks`) es **inerte**, y los hijos se limpian **explícitamente** en `AppDatabase`: `hardDeleteNoteCascade`, `hardDeleteFolderCascade`, `hardDeleteSpaceCascade`, `softDeleteFolderCascade`, `restoreFolderCascade`. Los repos (papelera manual) y `runExpiryQueries` (pasos 4/6/7) llaman a estos métodos — **no** uses `foldersDao/notesDao/labSpacesDao.hardDelete` "pelados" para borrar (dejan huérfanos). Si agregas una tabla hija nueva (referencia a notes/folders/lab_spaces/tasks), súmala a la cascada correspondiente.
+
+**Archivos de imagen:** la cascada de BD solo borra filas `note_images`; los **.jpg en disco** (`{appDocs}/note_images/{noteId}/`) los limpia una pasada de reconciliación al arranque (`cleanupOrphanedImages` en `data/services/image_storage.dart`, vía `imageCleanupProvider` en `main.dart`), que borra carpetas sin nota viva. No intentes borrar archivos dentro de la cascada de BD (la capa de datos no hace I/O de archivos).
+
+**Futuro (enfoque b, NO hacer ahora):** activar `PRAGMA foreign_keys = ON` + declarar `onDelete` (cascade/setNull) por relación, y alinear con el futuro Postgres/Supabase. Es una migración delicada: con FK ON, cualquier borrado que no maneje TODOS los hijos empieza a **fallar**. Proyecto aparte.
+
+
 ## Resolved: Fountain pen "drags" behind the stylus on notebook/whiteboard (2026-05-30)
 
 **Symptom:** With the fountain pen, the wet stroke trailed a few frames behind the tip in notebook + whiteboard (clean in the drawing cell). Not a geometric offset — `downsample`/`chaikinSmooth` keep the last point on the tip — it was render latency.

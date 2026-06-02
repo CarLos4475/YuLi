@@ -760,10 +760,12 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
         CardPriority.high => 'alta',
       };
 
+  // Matches labPriorityColor (board/timeline/calendar). "none" stays cream so
+  // the empty-priority chip reads as neutral.
   Color _priorityColor(CardPriority p) => switch (p) {
         CardPriority.none => yCream,
-        CardPriority.low => yFlight,
-        CardPriority.medium => yLab,
+        CardPriority.low => yLab,
+        CardPriority.medium => yAmber,
         CardPriority.high => yFight,
       };
 

@@ -23,14 +23,19 @@ import 'note_cell_model.dart';
 /// while side-resize reflows the text at the same font size.
 const double kCanvasTaskBlockDefaultW = 320.0;
 
+// Reactive: refreshes when the linked card is created/moved/deleted (was a
+// one-shot read, so the badge could go stale).
 final _kanbanByTaskProvider =
-    FutureProvider.family<String?, int>((ref, taskId) async {
-  final card =
-      await ref.watch(kanbanCardRepositoryProvider).getByOriginTaskId(taskId);
-  if (card == null) return null;
-  final space =
-      await ref.watch(labSpaceRepositoryProvider).getById(card.labSpaceId);
-  return space?.name;
+    StreamProvider.family<String?, int>((ref, taskId) {
+  final labRepo = ref.watch(labSpaceRepositoryProvider);
+  return ref
+      .watch(kanbanCardRepositoryProvider)
+      .watchByOriginTaskId(taskId)
+      .asyncMap((card) async {
+    if (card == null) return null;
+    final space = await labRepo.getById(card.labSpaceId);
+    return space?.name;
+  });
 });
 
 enum _DeleteChoice { unlink, hard }

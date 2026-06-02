@@ -88,6 +88,9 @@ class NotesDao extends DatabaseAccessor<AppDatabase> with _$NotesDaoMixin {
     }
   }
 
+  /// All note ids (active + soft-deleted), for image garbage-collection.
+  Future<List<int>> getAllNoteIds() => select(notes).map((n) => n.id).get();
+
   // Images
   Future<List<NoteImageRow>> getImages(int noteId) =>
       (select(noteImages)..where((i) => i.noteId.equals(noteId))).get();
