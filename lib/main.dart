@@ -73,6 +73,10 @@ class YuLiApp extends ConsumerWidget {
   }
 }
 
+final _splashDelayProvider = FutureProvider<void>((ref) {
+  return Future<void>.delayed(const Duration(milliseconds: 800));
+});
+
 /// Runs expiry queries before rendering the main shell.
 class _AppInit extends ConsumerWidget {
   const _AppInit();
@@ -80,6 +84,9 @@ class _AppInit extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final expiryAsync = ref.watch(expiryResultProvider);
+    final splashDelayAsync = ref.watch(_splashDelayProvider);
+
+    if (splashDelayAsync.isLoading) return const YuliSplashScreen();
 
     return expiryAsync.when(
       loading: () => const YuliSplashScreen(),
@@ -166,7 +173,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       backgroundColor: paperColor(context),
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: currentMode != AppMode.home,
       body: SafeArea(
         bottom: false,
         child: Column(

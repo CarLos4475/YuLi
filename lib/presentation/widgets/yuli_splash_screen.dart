@@ -12,21 +12,15 @@ class YuliSplashScreen extends StatefulWidget {
   State<YuliSplashScreen> createState() => _YuliSplashScreenState();
 }
 
-class _YuliSplashScreenState extends State<YuliSplashScreen>
-    with SingleTickerProviderStateMixin {
+class _YuliSplashScreenState extends State<YuliSplashScreen> {
   static const _accentKey = 'yuli_splash_accent_index_v1';
   static const _accents = [yFight, yFlight, yLab];
 
-  late final AnimationController _ctrl;
   Color _accent = yFight;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1300),
-    )..repeat();
     _loadAccent();
   }
 
@@ -39,12 +33,6 @@ class _YuliSplashScreenState extends State<YuliSplashScreen>
   }
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: yCream,
@@ -52,25 +40,7 @@ class _YuliSplashScreenState extends State<YuliSplashScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AnimatedBuilder(
-              animation: _ctrl,
-              builder: (_, _) {
-                final t = _ctrl.value;
-                final build = Curves.easeOutCubic.transform(
-                  (t / 0.42).clamp(0.0, 1.0),
-                );
-                final spin = Curves.easeInOutCubic.transform(
-                  ((t - 0.18) / 0.82).clamp(0.0, 1.0),
-                );
-                return _SplashCube(
-                  accent: _accent,
-                  yaw: spin * math.pi * 1.5,
-                  pitch: 0.26 + build * 0.62,
-                  roll: (1 - build) * -0.35,
-                  depth: build,
-                );
-              },
-            ),
+            YuliAnimatedCube(accent: _accent, size: 76),
             const SizedBox(height: 22),
             Text(
               'YuLi',
@@ -91,8 +61,99 @@ class _YuliSplashScreenState extends State<YuliSplashScreen>
   }
 }
 
+class YuliAnimatedCube extends StatefulWidget {
+  final Color accent;
+  final List<Color>? accents;
+  final double size;
+
+  const YuliAnimatedCube({
+    super.key,
+    required this.accent,
+    this.accents,
+    this.size = 54,
+  });
+
+  @override
+  State<YuliAnimatedCube> createState() => _YuliAnimatedCubeState();
+}
+
+class _YuliAnimatedCubeState extends State<YuliAnimatedCube>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  static const _cycleMs = 2800;
+  @override
+  void initState() {
+    super.initState();
+    final colorCount = widget.accents?.length ?? 1;
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: _cycleMs * colorCount),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, _) {
+        final cycleT = _cycleProgress();
+        final accent = _currentAccent();
+        final yawOut = _segment(cycleT, 0.00, 0.33);
+        final pitchOut = _segment(cycleT, 0.33, 0.66);
+        final yawBack = _segment(cycleT, 0.66, 1.00);
+        final pitchBack = _segment(cycleT, 0.66, 1.00);
+        final yaw = (yawOut - yawBack) * math.pi / 2;
+        final pitch = 0.78 + (pitchOut - pitchBack) * math.pi / 2;
+        final roll = -0.08 + math.sin(cycleT * math.pi * 2) * 0.08;
+        return _SplashCube(
+          accent: accent,
+          size: widget.size,
+          yaw: yaw,
+          pitch: pitch,
+          roll: roll,
+          depth: 1,
+        );
+      },
+    );
+  }
+
+  double _cycleProgress() {
+    final colorCount = widget.accents?.length ?? 1;
+    return (_ctrl.value * colorCount) % 1;
+  }
+
+  double _segment(double t, double start, double end) {
+    final local = ((t - start) / (end - start)).clamp(0.0, 1.0);
+    return Curves.easeInOutCubic.transform(local);
+  }
+
+  Color _currentAccent() {
+    final accents = widget.accents;
+    if (accents == null || accents.isEmpty) return widget.accent;
+    if (accents.length == 1) return accents.first;
+
+    final scaled = _ctrl.value * accents.length;
+    final index = scaled.floor() % accents.length;
+    final nextIndex = (index + 1) % accents.length;
+    final local = scaled - scaled.floor();
+    const transitionStart = 0.72;
+    if (local < transitionStart) return accents[index];
+
+    final transition = (local - transitionStart) / (1 - transitionStart);
+    final eased = Curves.easeInOutCubic.transform(transition);
+    return Color.lerp(accents[index], accents[nextIndex], eased)!;
+  }
+}
+
 class _SplashCube extends StatelessWidget {
   final Color accent;
+  final double size;
   final double yaw;
   final double pitch;
   final double roll;
@@ -100,6 +161,7 @@ class _SplashCube extends StatelessWidget {
 
   const _SplashCube({
     required this.accent,
+    this.size = 76,
     required this.yaw,
     required this.pitch,
     required this.roll,
@@ -109,8 +171,8 @@ class _SplashCube extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 76,
-      height: 76,
+      width: size,
+      height: size,
       child: CustomPaint(
         painter: _SplashCubePainter(
           accent: accent,
@@ -175,7 +237,7 @@ class _SplashCubePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 3
           ..strokeJoin = StrokeJoin.bevel
-          ..color = yInk;
+          ..color = yInk.withValues(alpha: 0.46);
 
     for (final face in faces) {
       final path =

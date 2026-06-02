@@ -1309,7 +1309,7 @@ class _MentionPopup extends StatelessWidget {
                         style: yBody(
                           size: 14,
                           weight: FontWeight.w700,
-                          color: Color(0xFF8E2D4B),
+                          color: yInk,
                         ),
                       ),
                     ],

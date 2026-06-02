@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/yuli_splash_screen.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
@@ -22,19 +23,23 @@ const Color _yFight = Color(0xFFC8332C);
 const Color _yFlight = Color(0xFF2D3F8C);
 const Color _yLab = Color(0xFF3F6E3E);
 const Color _yAmber = Color(0xFFE29A3A);
+const Color _ySoftBorder = Color(0xCC0A0A0A);
 
 const double _hLine = 3.0;
 const double _mLine = 2.5;
 
-TextStyle _mono({double size = 11, Color color = _yMuted, double tracking = 1.4}) =>
-    TextStyle(
-      fontFamily: 'monospace',
-      fontSize: size,
-      letterSpacing: tracking,
-      color: color,
-      fontWeight: FontWeight.w500,
-      height: 1.2,
-    );
+TextStyle _mono({
+  double size = 11,
+  Color color = _yMuted,
+  double tracking = 1.4,
+}) => TextStyle(
+  fontFamily: 'monospace',
+  fontSize: size,
+  letterSpacing: tracking,
+  color: color,
+  fontWeight: FontWeight.w500,
+  height: 1.2,
+);
 
 // ─── All-schedule-blocks provider for "próxima clase" aggregation ─────────
 
@@ -85,7 +90,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final expires = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     int? folderId;
-    final mentionMatch = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)').firstMatch(raw);
+    final mentionMatch = RegExp(
+      r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)',
+    ).firstMatch(raw);
     if (mentionMatch != null) {
       final folders = ref.read(activeFoldersProvider).valueOrNull ?? [];
       final name = mentionMatch.group(1)!;
@@ -96,7 +103,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (match.isNotEmpty) folderId = match.first.id;
     }
 
-    ref.read(taskRepositoryProvider).save(
+    ref
+        .read(taskRepositoryProvider)
+        .save(
           domain_task.Task(
             id: 0,
             content: raw,
@@ -118,7 +127,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final before = cursor > 0 ? text.substring(0, cursor) : '';
     final atIndex = before.lastIndexOf('@');
-    final hasSpaceAfterAt = atIndex >= 0 &&
+    final hasSpaceAfterAt =
+        atIndex >= 0 &&
         !before.substring(atIndex).contains(' ') &&
         !before.substring(atIndex).contains('\n');
 
@@ -135,9 +145,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _showMentionPopup(String query) {
     final folders = ref.read(activeFoldersProvider).valueOrNull ?? [];
     final cleanQuery = removeAccents(query.toLowerCase());
-    final filtered = folders
-        .where((f) => removeAccents(f.name.toLowerCase()).contains(cleanQuery))
-        .toList();
+    final filtered =
+        folders
+            .where(
+              (f) => removeAccents(f.name.toLowerCase()).contains(cleanQuery),
+            )
+            .toList();
 
     if (filtered.isEmpty) {
       _removeOverlay();
@@ -152,24 +165,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     _overlayEntry = OverlayEntry(
-      builder: (ctx) => Positioned(
-        width: 240,
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 56),
-          child: Material(
-            color: Colors.transparent,
-            child: _MentionPopup(
-              folders: _mentionFolders,
-              onSelect: _onMentionSelect,
+      builder:
+          (ctx) => Positioned(
+            width: 240,
+            child: CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              offset: _mentionPopupOffset(ctx),
+              child: Material(
+                color: Colors.transparent,
+                child: _MentionPopup(
+                  folders: _mentionFolders,
+                  onSelect: _onMentionSelect,
+                ),
+              ),
             ),
           ),
-        ),
-      ),
     );
 
     Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  Offset _mentionPopupOffset(BuildContext context) {
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (!keyboardVisible) return const Offset(0, 56);
+
+    final visibleItems = _mentionFolders.length.clamp(1, 4);
+    final popupHeight = visibleItems * 42.0;
+    return Offset(0, -popupHeight - 8);
   }
 
   void _removeOverlay() {
@@ -188,8 +211,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         text.substring(0, _mentionStart) + replacement + text.substring(cursor);
     _taskController.value = TextEditingValue(
       text: newText,
-      selection:
-          TextSelection.collapsed(offset: _mentionStart! + replacement.length),
+      selection: TextSelection.collapsed(
+        offset: _mentionStart! + replacement.length,
+      ),
     );
     _mentionStart = null;
     _focusNode.requestFocus();
@@ -209,40 +233,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       backgroundColor: _yCream,
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (ctx, constraints) {
-            final isWide = constraints.maxWidth >= 900;
             return Column(
               children: [
-                _HeaderStrip(
-                  greeting: greeting,
-                  timeStr: timeStr,
-                  dateLong: dateLong,
-                  onSettings: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                  child: _HeaderStrip(
+                    greeting: greeting,
+                    timeStr: timeStr,
+                    dateLong: dateLong,
+                    onSettings:
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        ),
                   ),
                 ),
                 Expanded(
-                  child: isWide
-                      ? _ThreePillarsRow(
-                          fight: _buildFightPillar(),
-                          flight: _buildFlightPillar(),
-                          lab: _buildLabPillar(),
-                        )
-                      : SingleChildScrollView(
-                          child: Column(
-                            children: [
-                              SizedBox(
-                                  height: 560, child: _buildFightPillar()),
-                              SizedBox(
-                                  height: 560, child: _buildFlightPillar()),
-                              SizedBox(
-                                  height: 700, child: _buildLabPillar()),
-                            ],
-                          ),
-                        ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child:
+                        constraints.maxWidth >= 900
+                            ? _ThreePillarsRow(
+                              fight: _buildFightPillar(),
+                              flight: _buildFlightPillar(),
+                              lab: _buildLabPillar(),
+                            )
+                            : SingleChildScrollView(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    height: 560,
+                                    child: _buildFightPillar(),
+                                  ),
+                                  SizedBox(
+                                    height: 560,
+                                    child: _buildFlightPillar(),
+                                  ),
+                                  SizedBox(
+                                    height: 700,
+                                    child: _buildLabPillar(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                  ),
                 ),
               ],
             );
@@ -326,17 +366,31 @@ class _HeaderStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 96,
+      height: 120,
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _yInk, width: _hLine)),
+        color: _yCream,
+        border: Border.fromBorderSide(
+          BorderSide(color: _ySoftBorder, width: 1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x660A0A0A),
+            offset: Offset(0, 2),
+            blurRadius: 0,
+          ),
+        ],
       ),
       child: Row(
         children: [
+          Container(width: 12, color: _yAmber),
           Expanded(
+            flex: 8,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              padding: const EdgeInsets.fromLTRB(44, 22, 34, 18),
               decoration: const BoxDecoration(
-                border: Border(right: BorderSide(color: _yInk, width: _hLine)),
+                border: Border(
+                  right: BorderSide(color: _ySoftBorder, width: 2),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,14 +409,16 @@ class _HeaderStrip extends StatelessWidget {
                         timeStr,
                         style: const TextStyle(
                           fontFamily: 'SpaceGrotesk',
-                          fontSize: 38,
+                          fontSize: 54,
                           fontWeight: FontWeight.w700,
-                          letterSpacing: -1.4,
+                          letterSpacing: -2.2,
                           height: 1.0,
                           color: _yInk,
                         ),
                       ),
-                      const SizedBox(width: 18),
+                      const SizedBox(width: 24),
+                      Container(width: 2, height: 44, color: _ySoftBorder),
+                      const SizedBox(width: 24),
                       Flexible(
                         child: Text(
                           dateLong,
@@ -384,29 +440,61 @@ class _HeaderStrip extends StatelessWidget {
             ),
           ),
           Flexible(
-            flex: 1,
+            flex: 6,
             child: Container(
-              color: _yInk,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(34, 12, 32, 12),
               child: Stack(
                 children: [
                   Center(
-                    child: RichText(
-                      text: const TextSpan(
-                        style: TextStyle(
-                          fontFamily: 'SpaceGrotesk',
-                          fontSize: 64,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -2.5,
-                          height: 1.0,
-                          color: _yCream,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const YuliAnimatedCube(
+                          accent: _yFight,
+                          accents: [_yFight, _yFlight, _yLab],
+                          size: 54,
                         ),
-                        children: [
-                          TextSpan(text: 'Yu'),
-                          TextSpan(
-                              text: 'Li', style: TextStyle(color: _yAmber)),
-                        ],
-                      ),
+                        const SizedBox(width: 18),
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            RichText(
+                              text: const TextSpan(
+                                style: TextStyle(
+                                  fontFamily: 'SpaceGrotesk',
+                                  fontSize: 74,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -4.2,
+                                  height: 0.92,
+                                  color: _yInk,
+                                ),
+                                children: [
+                                  TextSpan(text: 'Yu'),
+                                  TextSpan(
+                                    text: 'Li',
+                                    style: TextStyle(color: _yAmber),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(width: 34, height: 4, color: _yFight),
+                                const SizedBox(width: 10),
+                                Container(
+                                  width: 34,
+                                  height: 4,
+                                  color: _yFlight,
+                                ),
+                                const SizedBox(width: 10),
+                                Container(width: 34, height: 4, color: _yLab),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   Align(
@@ -415,14 +503,14 @@ class _HeaderStrip extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       onTap: onSettings,
                       child: Container(
-                        width: 38,
-                        height: 38,
+                        width: 68,
+                        height: 68,
                         alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: _yCream, width: 2.5),
+                        child: const Icon(
+                          Icons.settings,
+                          color: _yInk,
+                          size: 38,
                         ),
-                        child: const Icon(Icons.settings,
-                            color: _yCream, size: 20),
                       ),
                     ),
                   ),
@@ -454,9 +542,9 @@ class _ThreePillarsRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: fight),
-        Container(width: _hLine, color: _yInk),
+        const SizedBox(width: 8),
         Expanded(child: flight),
-        Container(width: _hLine, color: _yInk),
+        const SizedBox(width: 8),
         Expanded(child: lab),
       ],
     );
@@ -489,12 +577,15 @@ class _PillarShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: color,
+      decoration: BoxDecoration(
+        color: color,
+        border: Border.all(color: _ySoftBorder, width: _mLine),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            padding: const EdgeInsets.fromLTRB(26, 28, 26, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -502,7 +593,7 @@ class _PillarShell extends StatelessWidget {
                   mode,
                   style: const TextStyle(
                     fontFamily: 'SpaceGrotesk',
-                    fontSize: 56,
+                    fontSize: 62,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -1.8,
                     height: 0.92,
@@ -513,10 +604,13 @@ class _PillarShell extends StatelessWidget {
                 Text(
                   subtitle,
                   style: _mono(
-                      size: 11,
-                      color: _yCream.withValues(alpha: 0.7),
-                      tracking: 1.4),
+                    size: 11,
+                    color: _yCream.withValues(alpha: 0.7),
+                    tracking: 1.4,
+                  ),
                 ),
+                const SizedBox(height: 10),
+                Container(height: 2, color: _yCream.withValues(alpha: 0.42)),
                 if (bigNumber != null) ...[
                   const SizedBox(height: 14),
                   Row(
@@ -526,7 +620,7 @@ class _PillarShell extends StatelessWidget {
                         bigNumber!,
                         style: const TextStyle(
                           fontFamily: 'SpaceGrotesk',
-                          fontSize: 92,
+                          fontSize: 96,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -2.0,
                           height: 0.9,
@@ -539,8 +633,9 @@ class _PillarShell extends StatelessWidget {
                         child: Text(
                           bigNumberUnit ?? '',
                           style: _mono(
-                              size: 11,
-                              color: _yCream.withValues(alpha: 0.75)),
+                            size: 11,
+                            color: _yCream.withValues(alpha: 0.75),
+                          ),
                         ),
                       ),
                     ],
@@ -551,7 +646,7 @@ class _PillarShell extends StatelessWidget {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+              padding: const EdgeInsets.fromLTRB(26, 18, 26, 0),
               child: child,
             ),
           ),
@@ -559,11 +654,9 @@ class _PillarShell extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onTap: onEnter,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 18),
               decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: _yCream, width: _mLine),
-                ),
+                border: Border(top: BorderSide(color: _yCream, width: _hLine)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -630,7 +723,7 @@ class _FightPillar extends ConsumerWidget {
       footerLabel: 'ENTRAR EN FIGHT',
       onEnter: onEnter,
       bigNumber: '${pending.length}',
-      bigNumberUnit: 'pendientes',
+      bigNumberUnit: 'Pendientes',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -642,15 +735,18 @@ class _FightPillar extends ConsumerWidget {
               child: ValueListenableBuilder(
                 valueListenable: controller,
                 builder: (context, value, _) {
-                  final contentLen = value.text.replaceAll(RegExp(r'@\S+'), '').length;
+                  final contentLen =
+                      value.text.replaceAll(RegExp(r'@\S+'), '').length;
                   final overLimit = contentLen > _HomeScreenState._maxChars;
                   return Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
-          Expanded(
-            flex: 1,
+                        Expanded(
+                          flex: 1,
                           child: TextField(
                             controller: controller,
                             focusNode: focusNode,
@@ -663,8 +759,9 @@ class _FightPillar extends ConsumerWidget {
                             cursorColor: _yInk,
                             decoration: InputDecoration(
                               isCollapsed: true,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 14),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                              ),
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
@@ -689,9 +786,10 @@ class _FightPillar extends ConsumerWidget {
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
-                              color: overLimit
-                                  ? _yFight
-                                  : contentLen > 260
+                              color:
+                                  overLimit
+                                      ? _yFight
+                                      : contentLen > 260
                                       ? const Color(0xFFC7822F)
                                       : _yMuted,
                             ),
@@ -700,18 +798,20 @@ class _FightPillar extends ConsumerWidget {
                         const SizedBox(width: 8),
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: (value.text.trim().isEmpty || overLimit)
-                              ? null
-                              : onSubmit,
+                          onTap:
+                              (value.text.trim().isEmpty || overLimit)
+                                  ? null
+                                  : onSubmit,
                           child: Container(
                             width: 30,
                             height: 30,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: (value.text.trim().isEmpty || overLimit)
-                                  ? _yMuted.withValues(alpha: 0.3)
-                                  : _yFight,
-                              border: Border.all(color: _yInk, width: 2),
+                              color:
+                                  (value.text.trim().isEmpty || overLimit)
+                                      ? _yMuted.withValues(alpha: 0.3)
+                                      : _yFight,
+                              border: Border.all(color: _ySoftBorder, width: 2),
                             ),
                             child: const Text(
                               '+',
@@ -734,35 +834,42 @@ class _FightPillar extends ConsumerWidget {
           ),
           const SizedBox(height: 22),
           Text(
-            '── completadas hoy ──',
+            '── Completadas hoy ──',
             style: _mono(color: _yCream.withValues(alpha: 0.65)),
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: done.isEmpty
-                ? _PillarEmpty(text: 'NADA TODAVÍA')
-                : ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemBuilder: (ctx, i) {
-                      final t = done[i];
-                      final folder = t.folderId == null
-                          ? null
-                          : folders.firstWhere(
-                              (f) => f.id == t.folderId,
-                              orElse: () => folders.isEmpty
-                                  ? Folder(
-                                      id: -1,
-                                      name: '',
-                                      color: _yMuted,
-                                      createdAt: DateTime.now(),
-                                    )
-                                  : folders.first,
-                            );
-                      return _DoneTaskRow(task: t, folder: folder);
-                    },
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemCount: done.length,
-                  ),
+            child:
+                done.isEmpty
+                    ? const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: _PillarEmpty(text: 'NADA TODAVÍA'),
+                    )
+                    : ListView.separated(
+                      padding: EdgeInsets.zero,
+                      itemBuilder: (ctx, i) {
+                        final t = done[i];
+                        final folder =
+                            t.folderId == null
+                                ? null
+                                : folders.firstWhere(
+                                  (f) => f.id == t.folderId,
+                                  orElse:
+                                      () =>
+                                          folders.isEmpty
+                                              ? Folder(
+                                                id: -1,
+                                                name: '',
+                                                color: _yMuted,
+                                                createdAt: DateTime.now(),
+                                              )
+                                              : folders.first,
+                                );
+                        return _DoneTaskRow(task: t, folder: folder);
+                      },
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemCount: done.length,
+                    ),
           ),
           const SizedBox(height: 12),
         ],
@@ -783,7 +890,7 @@ class _DoneTaskRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: _yCream,
-        border: Border.all(color: yInk, width: 2),
+        border: Border.all(color: _ySoftBorder, width: 2),
       ),
       child: Row(
         children: [
@@ -836,36 +943,34 @@ class _FlightPillar extends ConsumerWidget {
       footerLabel: 'ENTRAR EN FLIGHT',
       onEnter: onEnter,
       bigNumber: '${folders.length}',
-      bigNumberUnit: 'carpetas',
+      bigNumberUnit: 'Carpetas',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '── carpetas ──',
+            '── Carpetas ──',
             style: _mono(color: _yCream.withValues(alpha: 0.65)),
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: folders.isEmpty
-                ? _PillarEmpty(text: 'SIN CARPETAS')
-                : GridView.builder(
-                    padding: EdgeInsets.zero,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      mainAxisExtent: 60,
+            child:
+                folders.isEmpty
+                    ? _PillarEmpty(text: 'SIN CARPETAS')
+                    : GridView.builder(
+                      padding: EdgeInsets.zero,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                            mainAxisExtent: 60,
+                          ),
+                      itemBuilder: (ctx, i) {
+                        final f = folders[i];
+                        return _FolderCard(folder: f, count: counts[f.id] ?? 0);
+                      },
+                      itemCount: folders.length,
                     ),
-                    itemBuilder: (ctx, i) {
-                      final f = folders[i];
-                      return _FolderCard(
-                        folder: f,
-                        count: counts[f.id] ?? 0,
-                      );
-                    },
-                    itemCount: folders.length,
-                  ),
           ),
           const SizedBox(height: 12),
         ],
@@ -886,7 +991,7 @@ class _FolderCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: folder.color,
-        border: Border.all(color: _yInk, width: 2.5),
+        border: Border.all(color: _ySoftBorder, width: 2.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -931,9 +1036,10 @@ class _LabPillar extends ConsumerWidget {
     final spacesAsync = ref.watch(activeLabSpacesProvider);
     final blocksAsync = ref.watch(_allScheduleBlocksProvider);
 
-    final spaces = (spacesAsync.valueOrNull ?? [])
-        .where((s) => s.status == LabSpaceStatus.active)
-        .toList();
+    final spaces =
+        (spacesAsync.valueOrNull ?? [])
+            .where((s) => s.status == LabSpaceStatus.active)
+            .toList();
     final allBlocks = blocksAsync.valueOrNull ?? [];
 
     final activeSpaceIds = spaces.map((s) => s.id).toSet();
@@ -949,13 +1055,13 @@ class _LabPillar extends ConsumerWidget {
       footerLabel: 'ENTRAR EN LAB',
       onEnter: onEnter,
       bigNumber: '${spaces.length}',
-      bigNumberUnit: 'en proceso',
+      bigNumberUnit: 'En proceso',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (nextClass != null) ...[
             Text(
-              '── próxima clase ──',
+              '── Próxima clase ──',
               style: _mono(color: _yCream.withValues(alpha: 0.65)),
             ),
             const SizedBox(height: 8),
@@ -963,19 +1069,20 @@ class _LabPillar extends ConsumerWidget {
             const SizedBox(height: 18),
           ],
           Text(
-            '── spaces activos ──',
+            '── Spaces activos ──',
             style: _mono(color: _yCream.withValues(alpha: 0.65)),
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: spaces.isEmpty
-                ? _PillarEmpty(text: 'SIN SPACES ACTIVOS')
-                : ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemBuilder: (ctx, i) => _SpaceCard(space: spaces[i]),
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemCount: spaces.length,
-                  ),
+            child:
+                spaces.isEmpty
+                    ? _PillarEmpty(text: 'SIN SPACES ACTIVOS')
+                    : ListView.separated(
+                      padding: EdgeInsets.zero,
+                      itemBuilder: (ctx, i) => _SpaceCard(space: spaces[i]),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemCount: spaces.length,
+                    ),
           ),
           const SizedBox(height: 12),
         ],
@@ -1011,12 +1118,12 @@ _NextOccurrence? _findNextClass(List<ScheduleBlock> blocks, DateTime now) {
       final todayIdx = now.weekday - 1;
       if (day == todayKey && b.startMinutes > nowMinutes) {
         delta = b.startMinutes - nowMinutes;
-        label = 'hoy';
+        label = 'Hoy';
       } else {
         final dayDiff = (dayIdx - todayIdx + 7) % 7;
         final effectiveDiff = dayDiff == 0 ? 7 : dayDiff;
         delta = effectiveDiff * 24 * 60 + (b.startMinutes - nowMinutes);
-        label = effectiveDiff == 1 ? 'mañana' : day.toLowerCase();
+        label = effectiveDiff == 1 ? 'Mañana' : day;
       }
       if (delta < bestDelta) {
         bestDelta = delta;
@@ -1041,8 +1148,8 @@ class _NextClassCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: _yCream.withValues(alpha: 0.08),
-        border: Border.all(color: _yCream, width: 2),
+        color: _yCream,
+        border: Border.all(color: _ySoftBorder, width: _hLine),
       ),
       child: Row(
         children: [
@@ -1058,7 +1165,7 @@ class _NextClassCard extends StatelessWidget {
                     fontFamily: 'SpaceGrotesk',
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: _yCream,
+                    color: _yInk,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1068,7 +1175,7 @@ class _NextClassCard extends StatelessWidget {
                   style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 10,
-                    color: _yCream.withValues(alpha: 0.85),
+                    color: _yMuted,
                     height: 1.2,
                   ),
                 ),
@@ -1077,9 +1184,10 @@ class _NextClassCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           _Badge(
-            label: block.title.length > 12
-                ? block.title.substring(0, 12)
-                : block.title,
+            label:
+                block.title.length > 12
+                    ? block.title.substring(0, 12)
+                    : block.title,
             bg: color,
             fg: _yCream,
           ),
@@ -1112,7 +1220,7 @@ class _SpaceCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: _yCream,
-        border: Border.all(color: _yInk, width: _hLine),
+        border: Border.all(color: _ySoftBorder, width: _hLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1143,7 +1251,7 @@ class _SpaceCard extends StatelessWidget {
           if (progress != null) ...[
             const SizedBox(height: 12),
             Text(
-              'progreso · ${(progress * 100).round()}%',
+              'Progreso · ${(progress * 100).round()}%',
               style: _mono(size: 10, color: _yMuted, tracking: 1.2),
             ),
             const SizedBox(height: 4),
@@ -1189,7 +1297,7 @@ class _ProgressBar extends StatelessWidget {
       height: 14,
       decoration: BoxDecoration(
         color: const Color(0xFFEBE6D9),
-        border: Border.all(color: _yInk, width: 2),
+        border: Border.all(color: _ySoftBorder, width: 2),
       ),
       child: Stack(
         children: [
@@ -1198,8 +1306,8 @@ class _ProgressBar extends StatelessWidget {
             child: FractionallySizedBox(
               widthFactor: value,
               heightFactor: 1.0,
-              child: CustomPaint(
-                painter: _HatchedFillPainter(color: color),
+              child: ClipRect(
+                child: CustomPaint(painter: _HatchedFillPainter(color: color)),
               ),
             ),
           ),
@@ -1215,12 +1323,15 @@ class _HatchedFillPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.clipRect(Offset.zero & size);
+
     final bgPaint = Paint()..color = color;
     canvas.drawRect(Offset.zero & size, bgPaint);
 
-    final hatchPaint = Paint()
-      ..color = const Color(0x2E000000)
-      ..strokeWidth = 1.2;
+    final hatchPaint =
+        Paint()
+          ..color = const Color(0x2E000000)
+          ..strokeWidth = 1.2;
     const step = 7.0;
     for (double x = -size.height; x < size.width; x += step) {
       canvas.drawLine(
@@ -1248,7 +1359,7 @@ class _BrutalSlab extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: _yInk, width: _hLine),
+        border: Border.all(color: _ySoftBorder, width: _hLine),
       ),
       child: child,
     );
@@ -1268,7 +1379,7 @@ class _Badge extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 4, 10, 5),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: _yInk, width: 2.5),
+        border: Border.all(color: _ySoftBorder, width: 2.5),
       ),
       child: Text(
         label,
@@ -1328,30 +1439,30 @@ class _MentionPopup extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: folders.map((f) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onSelect(f),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    color: f.color,
+        children:
+            folders.map((f) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onSelect(f),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    f.name,
-                    style: labelBold.copyWith(color: inkColor(context)),
+                  child: Row(
+                    children: [
+                      Container(width: 10, height: 10, color: f.color),
+                      const SizedBox(width: 8),
+                      Text(
+                        f.name,
+                        style: labelBold.copyWith(color: inkColor(context)),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+                ),
+              );
+            }).toList(),
       ),
     );
   }
