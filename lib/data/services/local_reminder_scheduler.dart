@@ -52,6 +52,15 @@ class LocalReminderScheduler implements ReminderScheduler {
         if (payload != null && payload.isNotEmpty) _tapController.add(payload);
       },
     );
+    // Re-establece la capacidad de alarmas exactas en cada arranque: el flag
+    // vivía solo en memoria (se perdía al reiniciar) y caía a inexacto.
+    final androidPlugin =
+        _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+    _exactEnabled =
+        await androidPlugin?.canScheduleExactNotifications() ?? false;
     final launchDetails = await _plugin.getNotificationAppLaunchDetails();
     final payload = launchDetails?.notificationResponse?.payload;
     if (payload != null && payload.isNotEmpty) _tapController.add(payload);
@@ -101,13 +110,19 @@ class LocalReminderScheduler implements ReminderScheduler {
       title: request.title,
       body: request.body,
       scheduledDate: tz.TZDateTime.from(at, tz.local),
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
           channelDescription: _channelDescription,
           importance: Importance.high,
           priority: Priority.high,
+          subText: request.subText,
+          styleInformation: BigTextStyleInformation(
+            request.body,
+            contentTitle: request.title,
+            summaryText: request.subText,
+          ),
         ),
       ),
       androidScheduleMode: mode,

@@ -55,8 +55,9 @@ void main() {
     expect(scheduler.scheduled, hasLength(1));
     final request = scheduler.scheduled.single;
     expect(request.id, ReminderCoordinator.taskId(taskId));
-    expect(request.title, 'YuLi · Fight');
-    expect(request.body, 'Entrega de proyecto final');
+    expect(request.title, 'Entrega de proyecto final');
+    expect(request.subText, 'YuLi · Fight');
+    expect(request.body, 'Toca para abrir tu recordatorio');
     expect(request.scheduledAt, remindAt);
     expect(request.payload, 'task:$taskId');
     expect(request.exact, isTrue);

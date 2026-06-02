@@ -5,6 +5,7 @@ class ReminderRequest {
   final DateTime scheduledAt;
   final String payload;
   final bool exact;
+  final String? subText;
 
   const ReminderRequest({
     required this.id,
@@ -13,6 +14,7 @@ class ReminderRequest {
     required this.scheduledAt,
     required this.payload,
     this.exact = false,
+    this.subText,
   });
 }
 

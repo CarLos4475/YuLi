@@ -168,8 +168,9 @@ class ReminderCoordinator {
     await _scheduler.schedule(
       ReminderRequest(
         id: id,
-        title: 'YuLi · Fight',
-        body: _trim(row.content),
+        title: _trim(row.content),
+        body: _dueLine(row.dueDate),
+        subText: 'YuLi · Fight',
         scheduledAt: at,
         payload: 'task:${row.id}',
         exact: await _prefs.exactRemindersEnabled(),
@@ -193,8 +194,9 @@ class ReminderCoordinator {
     await _scheduler.schedule(
       ReminderRequest(
         id: id,
-        title: 'YuLi · Lab',
-        body: _trim(row.title),
+        title: _trim(row.title),
+        body: _dueLine(row.dueDate),
+        subText: 'YuLi · Lab',
         scheduledAt: at,
         payload: 'card:${row.labSpaceId}:${row.id}',
         exact: await _prefs.exactRemindersEnabled(),
@@ -204,8 +206,15 @@ class ReminderCoordinator {
   }
 
   Future<void> syncDailySummary() async {
-    for (var i = 0; i < _summaryCancelWindow; i++) {
-      await _scheduler.cancel(summaryBase + i);
+    // Cancela solo los resúmenes PENDIENTES (futuros), no los ya entregados:
+    // cancel(id) en el plugin también borra la notificación mostrada, así que
+    // un cancel ciego del rango quitaba de la bandeja el resumen recién disparado
+    // al abrir la app o al editar cualquier task/card.
+    final pending = await _scheduler.pendingIds();
+    for (final id in pending) {
+      if (id >= summaryBase && id < summaryBase + _summaryCancelWindow) {
+        await _scheduler.cancel(id);
+      }
     }
     if (!await _prefs.dailySummaryEnabled()) return;
     final time = await _prefs.dailySummaryTime();
@@ -282,6 +291,29 @@ class ReminderCoordinator {
   String _trim(String text) {
     final clean = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return clean.length > 96 ? '${clean.substring(0, 96)}...' : clean;
+  }
+
+  // Cuerpo de la notificación: contexto de vencimiento legible.
+  // due de solo-fecha (medianoche) → "Vence hoy"; con hora → "Vence hoy a las HH:MM".
+  String _dueLine(DateTime? due) {
+    if (due == null) return 'Toca para abrir tu recordatorio';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(due.year, due.month, due.day);
+    final diff = day.difference(today).inDays;
+    final when =
+        diff == 0
+            ? 'hoy'
+            : diff == 1
+            ? 'mañana'
+            : 'el ${due.day.toString().padLeft(2, '0')}/'
+                '${due.month.toString().padLeft(2, '0')}';
+    final midnight = due.hour == 0 && due.minute == 0 && due.second == 0;
+    if (midnight) return 'Vence $when';
+    final time =
+        '${due.hour.toString().padLeft(2, '0')}:'
+        '${due.minute.toString().padLeft(2, '0')}';
+    return 'Vence $when a las $time';
   }
 
   static int taskId(int id) => taskBase + id;

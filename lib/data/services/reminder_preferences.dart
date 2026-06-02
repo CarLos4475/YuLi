@@ -32,7 +32,7 @@ class ReminderPreferences {
 
   Future<bool> exactRemindersEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_exact) ?? false;
+    return prefs.getBool(_exact) ?? true;
   }
 
   Future<void> setExactRemindersEnabled(bool value) async {
