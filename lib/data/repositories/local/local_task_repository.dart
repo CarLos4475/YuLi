@@ -1,20 +1,25 @@
 import 'package:drift/drift.dart';
+import '../../../domain/models/reminder_preset.dart';
 import '../../../domain/models/task.dart';
 import '../../../domain/repositories/task_repository.dart';
 import '../../local/database.dart';
+import '../../services/reminder_coordinator.dart';
 
 class LocalTaskRepository implements TaskRepository {
   final AppDatabase _db;
+  final ReminderCoordinator? _reminders;
 
-  LocalTaskRepository(this._db);
+  LocalTaskRepository(this._db, {ReminderCoordinator? reminders})
+    : _reminders = reminders;
 
   @override
   Stream<List<Task>> watchPending() =>
       _db.tasksDao.watchPending().map((rows) => rows.map(_rowToTask).toList());
 
   @override
-  Stream<List<Task>> watchYesterday() =>
-      _db.tasksDao.watchYesterday().map((rows) => rows.map(_rowToTask).toList());
+  Stream<List<Task>> watchYesterday() => _db.tasksDao.watchYesterday().map(
+    (rows) => rows.map(_rowToTask).toList(),
+  );
 
   @override
   Stream<List<Task>> watchVencidas() =>
@@ -31,8 +36,9 @@ class LocalTaskRepository implements TaskRepository {
   }
 
   @override
-  Stream<List<Task>> watchDoneToday() =>
-      _db.tasksDao.watchDoneToday().map((rows) => rows.map(_rowToTask).toList());
+  Stream<List<Task>> watchDoneToday() => _db.tasksDao.watchDoneToday().map(
+    (rows) => rows.map(_rowToTask).toList(),
+  );
 
   @override
   Future<List<Task>> getPendingForFolder(int folderId) async {
@@ -58,14 +64,18 @@ class LocalTaskRepository implements TaskRepository {
         expiresAt: task.expiresAt,
         trashedAt: Value(task.trashedAt),
         dueDate: Value(task.dueDate),
+        remindAt: Value(task.remindAt),
+        reminderPreset: Value(task.reminderPreset?.toDbString()),
         completedAt: Value(task.completedAt),
       ),
     );
+    await _reminders?.syncTask(row.id);
     return _rowToTask(row);
   }
 
   @override
   Future<void> update(Task task) async {
+    final previous = await _db.tasksDao.getById(task.id);
     await _db.tasksDao.updateTask(
       TasksCompanion(
         id: Value(task.id),
@@ -75,22 +85,41 @@ class LocalTaskRepository implements TaskRepository {
         expiresAt: Value(task.expiresAt),
         trashedAt: Value(task.trashedAt),
         dueDate: Value(task.dueDate),
+        remindAt: Value(task.remindAt),
+        reminderPreset: Value(task.reminderPreset?.toDbString()),
         completedAt: Value(task.completedAt),
       ),
     );
+    if (previous?.dueDate != task.dueDate) {
+      await _reminders?.taskDueDateChanged(task.id, task.dueDate);
+    } else {
+      await _reminders?.syncTask(task.id);
+    }
   }
 
   @override
-  Future<void> markDone(int id) => _db.tasksDao.markDone(id);
+  Future<void> markDone(int id) async {
+    await _db.tasksDao.markDone(id);
+    await _reminders?.syncTask(id);
+  }
 
   @override
-  Future<void> rescueToday(int id) => _db.tasksDao.rescueToday(id);
+  Future<void> rescueToday(int id) async {
+    await _db.tasksDao.rescueToday(id);
+    await _reminders?.syncTask(id);
+  }
 
   @override
-  Future<void> moveToTrash(int id) => _db.tasksDao.moveToTrash(id);
+  Future<void> moveToTrash(int id) async {
+    await _db.tasksDao.moveToTrash(id);
+    await _reminders?.syncTask(id);
+  }
 
   @override
-  Future<void> deleteFromTrash(int id) => _db.tasksDao.deleteFromTrash(id);
+  Future<void> deleteFromTrash(int id) async {
+    await _db.tasksDao.deleteFromTrash(id);
+    await _reminders?.syncTask(id);
+  }
 
   @override
   Stream<List<Task>> watchTrashed() =>
@@ -100,18 +129,32 @@ class LocalTaskRepository implements TaskRepository {
   Future<int> runExpiryQueries() => _db.runExpiryQueries();
 
   @override
-  Future<void> updateDueDate(int id, DateTime? dueDate) =>
-      _db.tasksDao.updateDueDate(id, dueDate);
+  Future<void> updateDueDate(int id, DateTime? dueDate) async {
+    await _db.tasksDao.updateDueDate(id, dueDate);
+    await _reminders?.taskDueDateChanged(id, dueDate);
+  }
+
+  @override
+  Future<void> updateReminder(
+    int id,
+    DateTime? remindAt,
+    ReminderPreset? preset,
+  ) async {
+    await _db.tasksDao.updateReminder(id, remindAt, preset?.toDbString());
+    await _reminders?.syncTask(id);
+  }
 
   Task _rowToTask(TaskRow row) => Task(
-        id: row.id,
-        content: row.content,
-        status: TaskStatus.fromString(row.status),
-        folderId: row.folderId,
-        createdAt: row.createdAt,
-        expiresAt: row.expiresAt,
-        trashedAt: row.trashedAt,
-        dueDate: row.dueDate,
-        completedAt: row.completedAt,
-      );
+    id: row.id,
+    content: row.content,
+    status: TaskStatus.fromString(row.status),
+    folderId: row.folderId,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+    trashedAt: row.trashedAt,
+    dueDate: row.dueDate,
+    remindAt: row.remindAt,
+    reminderPreset: ReminderPreset.fromDb(row.reminderPreset),
+    completedAt: row.completedAt,
+  );
 }

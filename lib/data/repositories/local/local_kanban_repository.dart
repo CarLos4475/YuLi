@@ -1,21 +1,27 @@
 import 'package:drift/drift.dart';
 
 import '../../../domain/models/kanban_card.dart';
+import '../../../domain/models/reminder_preset.dart';
 import '../../../domain/repositories/kanban_card_repository.dart';
 import '../../local/database.dart';
+import '../../services/reminder_coordinator.dart';
 
 class LocalKanbanRepository implements KanbanCardRepository {
   final AppDatabase _db;
+  final ReminderCoordinator? _reminders;
 
-  LocalKanbanRepository(this._db);
-
-  @override
-  Stream<List<KanbanCard>> watchByColumn(int columnId) =>
-      _db.kanbanDao.watchByColumn(columnId).map((rows) => rows.map(_rowToCard).toList());
+  LocalKanbanRepository(this._db, {ReminderCoordinator? reminders})
+    : _reminders = reminders;
 
   @override
-  Stream<List<KanbanCard>> watchBySpace(int labSpaceId) =>
-      _db.kanbanDao.watchBySpace(labSpaceId).map((rows) => rows.map(_rowToCard).toList());
+  Stream<List<KanbanCard>> watchByColumn(int columnId) => _db.kanbanDao
+      .watchByColumn(columnId)
+      .map((rows) => rows.map(_rowToCard).toList());
+
+  @override
+  Stream<List<KanbanCard>> watchBySpace(int labSpaceId) => _db.kanbanDao
+      .watchBySpace(labSpaceId)
+      .map((rows) => rows.map(_rowToCard).toList());
 
   @override
   Future<KanbanCard?> getById(int id) async {
@@ -31,6 +37,8 @@ class LocalKanbanRepository implements KanbanCardRepository {
     String? description,
     CardPriority priority = CardPriority.none,
     DateTime? dueDate,
+    DateTime? remindAt,
+    ReminderPreset? reminderPreset,
     DateTime? startDate,
     int? sourceNoteId,
     String? sourceAnchor,
@@ -47,6 +55,8 @@ class LocalKanbanRepository implements KanbanCardRepository {
         priority: Value(priority.toDbString()),
         position: position,
         dueDate: Value(dueDate),
+        remindAt: Value(remindAt),
+        reminderPreset: Value(reminderPreset?.toDbString()),
         startDate: Value(startDate),
         sourceNoteId: Value(sourceNoteId),
         sourceAnchor: Value(sourceAnchor),
@@ -54,6 +64,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         originFolderColor: Value(originFolderColor),
       ),
     );
+    await _reminders?.syncCard(row.id);
     return _rowToCard(row);
   }
 
@@ -63,7 +74,9 @@ class LocalKanbanRepository implements KanbanCardRepository {
   // (Fight ↔ Lab) automation. Returns the card with its date/done fields
   // adjusted and performs the matching task-side effect.
   Future<KanbanCard> _applyColumnTransition(
-      KanbanCard card, KanbanColumnRow targetCol) async {
+    KanbanCard card,
+    KanbanColumnRow targetCol,
+  ) async {
     final now = DateTime.now();
     if (targetCol.isTerminal) {
       // Entering a terminal column: stamp the real delivery date and mark the
@@ -86,9 +99,10 @@ class LocalKanbanRepository implements KanbanCardRepository {
       if (card.originTaskId != null) {
         final task = await _db.tasksDao.getById(card.originTaskId!);
         await _db.tasksDao.unmarkDone(card.originTaskId!);
-        card = task?.dueDate != null
-            ? card.copyWith(dueDate: task!.dueDate)
-            : card.copyWith(clearDueDate: true);
+        card =
+            task?.dueDate != null
+                ? card.copyWith(dueDate: task!.dueDate)
+                : card.copyWith(clearDueDate: true);
       } else {
         card = card.copyWith(clearDueDate: true);
       }
@@ -104,6 +118,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
 
   @override
   Future<void> update(KanbanCard card) async {
+    final previous = await _db.kanbanDao.getById(card.id);
     final col = await _db.labSpacesDao.getColumn(card.columnId);
     if (col != null) card = await _applyColumnTransition(card, col);
     await _db.kanbanDao.updateCard(
@@ -115,6 +130,8 @@ class LocalKanbanRepository implements KanbanCardRepository {
         priority: Value(card.priority.toDbString()),
         position: Value(card.position),
         dueDate: Value(card.dueDate),
+        remindAt: Value(card.remindAt),
+        reminderPreset: Value(card.reminderPreset?.toDbString()),
         startDate: Value(card.startDate),
         sourceNoteId: Value(card.sourceNoteId),
         sourceAnchor: Value(card.sourceAnchor),
@@ -123,22 +140,52 @@ class LocalKanbanRepository implements KanbanCardRepository {
         originTaskDoneAt: Value(card.originTaskDoneAt),
       ),
     );
+    if (previous?.dueDate != card.dueDate) {
+      await _reminders?.cardDueDateChanged(card.id, card.dueDate);
+    } else {
+      await _reminders?.syncCard(card.id);
+    }
+    if (card.originTaskId != null) {
+      await _reminders?.syncTask(card.originTaskId!);
+    }
   }
 
   @override
-  Future<void> delete(int id) => _db.kanbanDao.deleteCard(id);
+  Future<void> delete(int id) async {
+    await _db.kanbanDao.deleteCard(id);
+    await _reminders?.syncCard(id);
+  }
 
   @override
-  Future<void> deleteMultiple(List<int> ids) => _db.kanbanDao.deleteCards(ids);
+  Future<void> deleteMultiple(List<int> ids) async {
+    await _db.kanbanDao.deleteCards(ids);
+    for (final id in ids) {
+      await _reminders?.syncCard(id);
+    }
+  }
 
   @override
-  Future<void> moveToColumn(int cardId, int newColumnId, int newPosition) async {
+  Future<void> updateReminder(
+    int id,
+    DateTime? remindAt,
+    ReminderPreset? preset,
+  ) async {
+    await _db.kanbanDao.updateReminder(id, remindAt, preset?.toDbString());
+    await _reminders?.syncCard(id);
+  }
+
+  @override
+  Future<void> moveToColumn(
+    int cardId,
+    int newColumnId,
+    int newPosition,
+  ) async {
     final row = await _db.kanbanDao.getById(cardId);
     if (row == null) return;
-    var card = _rowToCard(row).copyWith(
-      columnId: newColumnId,
-      position: newPosition,
-    );
+    final previousDue = row.dueDate;
+    var card = _rowToCard(
+      row,
+    ).copyWith(columnId: newColumnId, position: newPosition);
     final col = await _db.labSpacesDao.getColumn(newColumnId);
     if (col != null) card = await _applyColumnTransition(card, col);
     await _db.kanbanDao.updateCard(
@@ -147,10 +194,20 @@ class LocalKanbanRepository implements KanbanCardRepository {
         columnId: Value(card.columnId),
         position: Value(card.position),
         dueDate: Value(card.dueDate),
+        remindAt: Value(card.remindAt),
+        reminderPreset: Value(card.reminderPreset?.toDbString()),
         startDate: Value(card.startDate),
         originTaskDoneAt: Value(card.originTaskDoneAt),
       ),
     );
+    if (previousDue != card.dueDate) {
+      await _reminders?.cardDueDateChanged(card.id, card.dueDate);
+    } else {
+      await _reminders?.syncCard(card.id);
+    }
+    if (card.originTaskId != null) {
+      await _reminders?.syncTask(card.originTaskId!);
+    }
   }
 
   @override
@@ -169,24 +226,27 @@ class LocalKanbanRepository implements KanbanCardRepository {
       .map((row) => row != null ? _rowToCard(row) : null);
 
   @override
-  Stream<List<KanbanCard>> watchBySourceNoteId(int noteId) =>
-      _db.kanbanDao.watchBySourceNoteId(noteId).map((rows) => rows.map(_rowToCard).toList());
+  Stream<List<KanbanCard>> watchBySourceNoteId(int noteId) => _db.kanbanDao
+      .watchBySourceNoteId(noteId)
+      .map((rows) => rows.map(_rowToCard).toList());
 
   KanbanCard _rowToCard(KanbanCardRow row) => KanbanCard(
-        id: row.id,
-        labSpaceId: row.labSpaceId,
-        columnId: row.columnId,
-        title: row.title,
-        description: row.description,
-        priority: CardPriority.fromString(row.priority),
-        position: row.position,
-        dueDate: row.dueDate,
-        startDate: row.startDate,
-        sourceNoteId: row.sourceNoteId,
-        sourceAnchor: row.sourceAnchor,
-        originTaskId: row.originTaskId,
-        originFolderColor: row.originFolderColor,
-        originTaskDoneAt: row.originTaskDoneAt,
-        createdAt: row.createdAt,
-      );
+    id: row.id,
+    labSpaceId: row.labSpaceId,
+    columnId: row.columnId,
+    title: row.title,
+    description: row.description,
+    priority: CardPriority.fromString(row.priority),
+    position: row.position,
+    dueDate: row.dueDate,
+    remindAt: row.remindAt,
+    reminderPreset: ReminderPreset.fromDb(row.reminderPreset),
+    startDate: row.startDate,
+    sourceNoteId: row.sourceNoteId,
+    sourceAnchor: row.sourceAnchor,
+    originTaskId: row.originTaskId,
+    originFolderColor: row.originFolderColor,
+    originTaskDoneAt: row.originTaskDoneAt,
+    createdAt: row.createdAt,
+  );
 }

@@ -5,6 +5,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/ink_recognizer_provider.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/image_storage_providers.dart';
+import '../../providers/database_providers.dart';
 import '../../../data/services/image_storage.dart';
 import '../../widgets/app_section_divider.dart';
 import 'image_storage_screen.dart';
@@ -56,10 +57,7 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            Container(
-              height: borderWidthHeavy,
-              color: inkColor(context),
-            ),
+            Container(height: borderWidthHeavy, color: inkColor(context)),
 
             const SizedBox(height: 20),
             const Padding(
@@ -79,7 +77,10 @@ class SettingsScreen extends ConsumerWidget {
                       color: paperLight,
                       textColor: inkBlack,
                       selected: themeMode == ThemeMode.light,
-                      onTap: () => ref.read(themeModeProvider.notifier).set(ThemeMode.light),
+                      onTap:
+                          () => ref
+                              .read(themeModeProvider.notifier)
+                              .set(ThemeMode.light),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -89,18 +90,35 @@ class SettingsScreen extends ConsumerWidget {
                       color: paperDark,
                       textColor: paperLight,
                       selected: themeMode == ThemeMode.dark,
-                      onTap: () => ref.read(themeModeProvider.notifier).set(ThemeMode.dark),
+                      onTap:
+                          () => ref
+                              .read(themeModeProvider.notifier)
+                              .set(ThemeMode.dark),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: _SplitThemeBlock(
                       selected: themeMode == ThemeMode.system,
-                      onTap: () => ref.read(themeModeProvider.notifier).set(ThemeMode.system),
+                      onTap:
+                          () => ref
+                              .read(themeModeProvider.notifier)
+                              .set(ThemeMode.system),
                     ),
                   ),
                 ],
               ),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'RECORDATORIOS'),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _ReminderSettingsBlock(),
             ),
 
             const SizedBox(height: 24),
@@ -239,10 +257,11 @@ class _CrashLogBlock extends StatelessWidget {
     final ink = inkColor(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const CrashLogScreen()),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CrashLogScreen()),
+          ),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -258,12 +277,19 @@ class _CrashLogBlock extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('CRASH LOGS',
-                      style: labelBold.copyWith(
-                          color: ink, fontSize: 12, letterSpacing: 1)),
+                  Text(
+                    'CRASH LOGS',
+                    style: labelBold.copyWith(
+                      color: ink,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Ver y compartir errores registrados',
-                      style: bodyS.copyWith(color: inkGray)),
+                  Text(
+                    'Ver y compartir errores registrados',
+                    style: bodyS.copyWith(color: inkGray),
+                  ),
                 ],
               ),
             ),
@@ -284,10 +310,11 @@ class _ImagesStorageBlock extends ConsumerWidget {
     final ink = inkColor(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ImageStorageScreen()),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ImageStorageScreen()),
+          ),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -303,12 +330,19 @@ class _ImagesStorageBlock extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('IMÁGENES',
-                      style: labelBold.copyWith(
-                          color: ink, fontSize: 12, letterSpacing: 1)),
+                  Text(
+                    'IMÁGENES',
+                    style: labelBold.copyWith(
+                      color: ink,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text('Ver el espacio ocupado',
-                      style: bodyS.copyWith(color: inkGray)),
+                  Text(
+                    'Ver el espacio ocupado',
+                    style: bodyS.copyWith(color: inkGray),
+                  ),
                 ],
               ),
             ),
@@ -376,12 +410,13 @@ class _ThemeBlock extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border.all(color: textColor, width: borderWidth),
               ),
-              child: selected
-                  ? Container(
-                      margin: const EdgeInsets.all(2),
-                      color: accentFight,
-                    )
-                  : null,
+              child:
+                  selected
+                      ? Container(
+                        margin: const EdgeInsets.all(2),
+                        color: accentFight,
+                      )
+                      : null,
             ),
           ],
         ),
@@ -394,10 +429,7 @@ class _SplitThemeBlock extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _SplitThemeBlock({
-    required this.selected,
-    required this.onTap,
-  });
+  const _SplitThemeBlock({required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -445,12 +477,13 @@ class _SplitThemeBlock extends StatelessWidget {
                     decoration: BoxDecoration(
                       border: Border.all(color: inkBlack, width: borderWidth),
                     ),
-                    child: selected
-                        ? Container(
-                            margin: const EdgeInsets.all(2),
-                            color: accentFight,
-                          )
-                        : null,
+                    child:
+                        selected
+                            ? Container(
+                              margin: const EdgeInsets.all(2),
+                              color: accentFight,
+                            )
+                            : null,
                   ),
                 ],
               ),
@@ -470,17 +503,19 @@ class _DiagonalSplitPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final pathA = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(0, size.height)
-      ..close();
+    final pathA =
+        Path()
+          ..moveTo(0, 0)
+          ..lineTo(size.width, 0)
+          ..lineTo(0, size.height)
+          ..close();
 
-    final pathB = Path()
-      ..moveTo(size.width, 0)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
+    final pathB =
+        Path()
+          ..moveTo(size.width, 0)
+          ..lineTo(size.width, size.height)
+          ..lineTo(0, size.height)
+          ..close();
 
     canvas.drawPath(pathA, Paint()..color = colorA);
     canvas.drawPath(pathB, Paint()..color = colorB);
@@ -488,6 +523,260 @@ class _DiagonalSplitPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ReminderSettingsBlock extends ConsumerStatefulWidget {
+  const _ReminderSettingsBlock();
+
+  @override
+  ConsumerState<_ReminderSettingsBlock> createState() =>
+      _ReminderSettingsBlockState();
+}
+
+class _ReminderSettingsBlockState
+    extends ConsumerState<_ReminderSettingsBlock> {
+  bool? _daily;
+  bool? _exact;
+  bool _notifsEnabled = true;
+  int _hour = 8;
+  int _minute = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = ref.read(reminderPreferencesProvider);
+    final time = await prefs.dailySummaryTime();
+    final daily = await prefs.dailySummaryEnabled();
+    final exact = await prefs.exactRemindersEnabled();
+    final notifs =
+        await ref.read(reminderCoordinatorProvider).areNotificationsEnabled();
+    if (!mounted) return;
+    setState(() {
+      _daily = daily;
+      _exact = exact;
+      _notifsEnabled = notifs;
+      _hour = time.hour;
+      _minute = time.minute;
+    });
+  }
+
+  Future<void> _toggleDaily() async {
+    final next = !(_daily ?? true);
+    if (next) {
+      await ref
+          .read(reminderCoordinatorProvider)
+          .requestNotificationPermission();
+    }
+    await ref.read(reminderCoordinatorProvider).setDailySummaryEnabled(next);
+    final notifs =
+        await ref.read(reminderCoordinatorProvider).areNotificationsEnabled();
+    if (!mounted) return;
+    setState(() {
+      _daily = next;
+      _notifsEnabled = notifs;
+    });
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _hour, minute: _minute),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              timePickerTheme: const TimePickerThemeData(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+            ),
+            child: child!,
+          ),
+    );
+    if (picked == null) return;
+    await ref
+        .read(reminderCoordinatorProvider)
+        .setDailySummaryTime(picked.hour, picked.minute);
+    if (!mounted) return;
+    setState(() {
+      _hour = picked.hour;
+      _minute = picked.minute;
+    });
+  }
+
+  Future<void> _toggleExact() async {
+    final next = !(_exact ?? false);
+    await ref.read(reminderCoordinatorProvider).setExactRemindersEnabled(next);
+    final exact =
+        await ref.read(reminderPreferencesProvider).exactRemindersEnabled();
+    if (!mounted) return;
+    setState(() => _exact = exact);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    final paper = paperColor(context);
+    final daily = _daily ?? true;
+    final exact = _exact ?? false;
+    final time =
+        '${_hour.toString().padLeft(2, '0')}:${_minute.toString().padLeft(2, '0')}';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: paper,
+        border: Border.all(color: ink, width: borderWidth),
+        boxShadow: const [
+          BoxShadow(
+            color: inkBlack,
+            offset: shadowOffset,
+            blurRadius: shadowBlurRadius,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!_notifsEnabled) ...[
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                await ref
+                    .read(reminderCoordinatorProvider)
+                    .openNotificationSettings();
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: accentFight,
+                  border: Border.all(color: ink, width: borderWidth),
+                ),
+                child: Text(
+                  'NOTIFICACIONES DESACTIVADAS. Los recordatorios no se '
+                  'mostrarán. Toca para activarlas.',
+                  style: labelBold.copyWith(
+                    color: paper,
+                    fontSize: 11,
+                    letterSpacing: 0.6,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _SettingsToggleRow(
+            label: 'RESUMEN DIARIO',
+            value: daily,
+            onTap: _toggleDaily,
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _pickTime,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: paper,
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    'HORA',
+                    style: labelBold.copyWith(
+                      color: ink,
+                      fontSize: 11,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    time,
+                    style: mono.copyWith(
+                      color: ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _SettingsToggleRow(
+            label: 'RECORDATORIOS EXACTOS',
+            value: exact,
+            onTap: _toggleExact,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'YuLi puede avisar fuera de la app. Exactos usa permiso especial de Android.',
+            style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsToggleRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final VoidCallback onTap;
+
+  const _SettingsToggleRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: value ? accentFight.withAlpha(35) : paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+        ),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: labelBold.copyWith(
+                color: ink,
+                fontSize: 11,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              width: 34,
+              height: 20,
+              decoration: BoxDecoration(
+                color: value ? accentFight : paperColor(context),
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              padding: const EdgeInsets.all(2),
+              child: Container(width: 10, height: 10, color: ink),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _OcrModelBlock extends ConsumerStatefulWidget {
@@ -537,9 +826,10 @@ class _OcrModelBlockState extends ConsumerState<_OcrModelBlock> {
   @override
   Widget build(BuildContext context) {
     final ready = _ready;
-    final status = ready == null
-        ? 'Comprobando…'
-        : (ready ? 'Descargado' : 'No descargado');
+    final status =
+        ready == null
+            ? 'Comprobando…'
+            : (ready ? 'Descargado' : 'No descargado');
     final actionLabel = ready == true ? 'BORRAR' : 'DESCARGAR';
     return Container(
       width: double.infinity,
@@ -572,7 +862,9 @@ class _OcrModelBlockState extends ConsumerState<_OcrModelBlock> {
                 const SizedBox(height: 4),
                 Text(
                   status,
-                  style: bodyS.copyWith(color: inkColor(context).withAlpha(180)),
+                  style: bodyS.copyWith(
+                    color: inkColor(context).withAlpha(180),
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -593,23 +885,29 @@ class _OcrModelBlockState extends ConsumerState<_OcrModelBlock> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: ready == true ? paperColor(context) : accentJournal,
-                border: Border.all(color: inkColor(context), width: borderWidth),
+                border: Border.all(
+                  color: inkColor(context),
+                  width: borderWidth,
+                ),
               ),
-              child: _busy
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: inkColor(context)),
-                    )
-                  : Text(
-                      actionLabel,
-                      style: labelBold.copyWith(
-                        color: ready == true ? inkColor(context) : paperLight,
-                        fontSize: 11,
-                        letterSpacing: 1.2,
+              child:
+                  _busy
+                      ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: inkColor(context),
+                        ),
+                      )
+                      : Text(
+                        actionLabel,
+                        style: labelBold.copyWith(
+                          color: ready == true ? inkColor(context) : paperLight,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                        ),
                       ),
-                    ),
             ),
           ),
         ],
@@ -644,9 +942,9 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
     ref.invalidate(aiHasKeyProvider);
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API key guardada')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('API key guardada')));
   }
 
   Future<void> _clearKey() async {
@@ -656,9 +954,9 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
     ref.invalidate(aiHasKeyProvider);
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API key borrada')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('API key borrada')));
   }
 
   @override
@@ -688,13 +986,17 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
               Text(
                 'DEEPSEEK API KEY',
                 style: labelBold.copyWith(
-                    color: ink, fontSize: 11, letterSpacing: 1.2),
+                  color: ink,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
               ),
               const Spacer(),
               Text(
                 hasKey ? 'Configurada ✓' : 'No configurada',
                 style: bodyS.copyWith(
-                    color: hasKey ? accentLab : ink.withAlpha(150)),
+                  color: hasKey ? accentLab : ink.withAlpha(150),
+                ),
               ),
             ],
           ),
@@ -708,7 +1010,10 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
             decoration: InputDecoration(
               isDense: true,
               contentPadding: const EdgeInsets.all(10),
-              hintText: hasKey ? 'Pega una nueva key para reemplazar…' : 'Pega tu API key…',
+              hintText:
+                  hasKey
+                      ? 'Pega una nueva key para reemplazar…'
+                      : 'Pega tu API key…',
               hintStyle: bodyS.copyWith(color: ink.withAlpha(120)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.zero,
@@ -738,17 +1043,24 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
                       color: accentJournal,
                       border: Border.all(color: ink, width: borderWidth),
                     ),
-                    child: _busy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: paperLight))
-                        : Text('GUARDAR',
-                            style: labelBold.copyWith(
+                    child:
+                        _busy
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: paperLight,
+                              ),
+                            )
+                            : Text(
+                              'GUARDAR',
+                              style: labelBold.copyWith(
                                 color: paperLight,
                                 fontSize: 11,
-                                letterSpacing: 1.2)),
+                                letterSpacing: 1.2,
+                              ),
+                            ),
                   ),
                 ),
               ),
@@ -765,9 +1077,14 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
                       color: paper,
                       border: Border.all(color: ink, width: borderWidth),
                     ),
-                    child: Text('BORRAR',
-                        style: labelBold.copyWith(
-                            color: ink, fontSize: 11, letterSpacing: 1.2)),
+                    child: Text(
+                      'BORRAR',
+                      style: labelBold.copyWith(
+                        color: ink,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -812,9 +1129,9 @@ class _JinaKeyBlockState extends ConsumerState<_JinaKeyBlock> {
     ref.invalidate(jinaHasKeyProvider);
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Jina key guardada')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Jina key guardada')));
   }
 
   Future<void> _clearKey() async {
@@ -824,9 +1141,9 @@ class _JinaKeyBlockState extends ConsumerState<_JinaKeyBlock> {
     ref.invalidate(jinaHasKeyProvider);
     if (!mounted) return;
     setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Jina key borrada')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Jina key borrada')));
   }
 
   @override
@@ -856,13 +1173,17 @@ class _JinaKeyBlockState extends ConsumerState<_JinaKeyBlock> {
               Text(
                 'JINA READER KEY (OPCIONAL)',
                 style: labelBold.copyWith(
-                    color: ink, fontSize: 11, letterSpacing: 1.2),
+                  color: ink,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
               ),
               const Spacer(),
               Text(
                 hasKey ? 'Configurada ✓' : 'Sin key (free)',
                 style: bodyS.copyWith(
-                    color: hasKey ? accentLab : ink.withAlpha(150)),
+                  color: hasKey ? accentLab : ink.withAlpha(150),
+                ),
               ),
             ],
           ),
@@ -906,17 +1227,24 @@ class _JinaKeyBlockState extends ConsumerState<_JinaKeyBlock> {
                       color: accentJournal,
                       border: Border.all(color: ink, width: borderWidth),
                     ),
-                    child: _busy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: paperLight))
-                        : Text('GUARDAR',
-                            style: labelBold.copyWith(
+                    child:
+                        _busy
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: paperLight,
+                              ),
+                            )
+                            : Text(
+                              'GUARDAR',
+                              style: labelBold.copyWith(
                                 color: paperLight,
                                 fontSize: 11,
-                                letterSpacing: 1.2)),
+                                letterSpacing: 1.2,
+                              ),
+                            ),
                   ),
                 ),
               ),
@@ -933,9 +1261,14 @@ class _JinaKeyBlockState extends ConsumerState<_JinaKeyBlock> {
                       color: paper,
                       border: Border.all(color: ink, width: borderWidth),
                     ),
-                    child: Text('BORRAR',
-                        style: labelBold.copyWith(
-                            color: ink, fontSize: 11, letterSpacing: 1.2)),
+                    child: Text(
+                      'BORRAR',
+                      style: labelBold.copyWith(
+                        color: ink,
+                        fontSize: 11,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -991,10 +1324,7 @@ class _InfoBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: displayM.copyWith(color: paperLight, height: 1.0),
-          ),
+          Text(value, style: displayM.copyWith(color: paperLight, height: 1.0)),
         ],
       ),
     );

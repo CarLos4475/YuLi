@@ -445,6 +445,28 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _remindAtMeta = const VerificationMeta(
+    'remindAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> remindAt = GeneratedColumn<DateTime>(
+    'remind_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reminderPresetMeta = const VerificationMeta(
+    'reminderPreset',
+  );
+  @override
+  late final GeneratedColumn<String> reminderPreset = GeneratedColumn<String>(
+    'reminder_preset',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _completedAtMeta = const VerificationMeta(
     'completedAt',
   );
@@ -466,6 +488,8 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
     expiresAt,
     trashedAt,
     dueDate,
+    remindAt,
+    reminderPreset,
     completedAt,
   ];
   @override
@@ -531,6 +555,21 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
         dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
       );
     }
+    if (data.containsKey('remind_at')) {
+      context.handle(
+        _remindAtMeta,
+        remindAt.isAcceptableOrUnknown(data['remind_at']!, _remindAtMeta),
+      );
+    }
+    if (data.containsKey('reminder_preset')) {
+      context.handle(
+        _reminderPresetMeta,
+        reminderPreset.isAcceptableOrUnknown(
+          data['reminder_preset']!,
+          _reminderPresetMeta,
+        ),
+      );
+    }
     if (data.containsKey('completed_at')) {
       context.handle(
         _completedAtMeta,
@@ -586,6 +625,14 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, TaskRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}due_date'],
       ),
+      remindAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}remind_at'],
+      ),
+      reminderPreset: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reminder_preset'],
+      ),
       completedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}completed_at'],
@@ -608,6 +655,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
   final DateTime expiresAt;
   final DateTime? trashedAt;
   final DateTime? dueDate;
+  final DateTime? remindAt;
+  final String? reminderPreset;
   final DateTime? completedAt;
   const TaskRow({
     required this.id,
@@ -618,6 +667,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     required this.expiresAt,
     this.trashedAt,
     this.dueDate,
+    this.remindAt,
+    this.reminderPreset,
     this.completedAt,
   });
   @override
@@ -636,6 +687,12 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     }
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<DateTime>(dueDate);
+    }
+    if (!nullToAbsent || remindAt != null) {
+      map['remind_at'] = Variable<DateTime>(remindAt);
+    }
+    if (!nullToAbsent || reminderPreset != null) {
+      map['reminder_preset'] = Variable<String>(reminderPreset);
     }
     if (!nullToAbsent || completedAt != null) {
       map['completed_at'] = Variable<DateTime>(completedAt);
@@ -662,6 +719,14 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           dueDate == null && nullToAbsent
               ? const Value.absent()
               : Value(dueDate),
+      remindAt:
+          remindAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(remindAt),
+      reminderPreset:
+          reminderPreset == null && nullToAbsent
+              ? const Value.absent()
+              : Value(reminderPreset),
       completedAt:
           completedAt == null && nullToAbsent
               ? const Value.absent()
@@ -683,6 +748,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
       trashedAt: serializer.fromJson<DateTime?>(json['trashedAt']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      remindAt: serializer.fromJson<DateTime?>(json['remindAt']),
+      reminderPreset: serializer.fromJson<String?>(json['reminderPreset']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
     );
   }
@@ -698,6 +765,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       'expiresAt': serializer.toJson<DateTime>(expiresAt),
       'trashedAt': serializer.toJson<DateTime?>(trashedAt),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'remindAt': serializer.toJson<DateTime?>(remindAt),
+      'reminderPreset': serializer.toJson<String?>(reminderPreset),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
     };
   }
@@ -711,6 +780,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     DateTime? expiresAt,
     Value<DateTime?> trashedAt = const Value.absent(),
     Value<DateTime?> dueDate = const Value.absent(),
+    Value<DateTime?> remindAt = const Value.absent(),
+    Value<String?> reminderPreset = const Value.absent(),
     Value<DateTime?> completedAt = const Value.absent(),
   }) => TaskRow(
     id: id ?? this.id,
@@ -721,6 +792,9 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     expiresAt: expiresAt ?? this.expiresAt,
     trashedAt: trashedAt.present ? trashedAt.value : this.trashedAt,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    remindAt: remindAt.present ? remindAt.value : this.remindAt,
+    reminderPreset:
+        reminderPreset.present ? reminderPreset.value : this.reminderPreset,
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
   );
   TaskRow copyWithCompanion(TasksCompanion data) {
@@ -733,6 +807,11 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
       expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
       trashedAt: data.trashedAt.present ? data.trashedAt.value : this.trashedAt,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      remindAt: data.remindAt.present ? data.remindAt.value : this.remindAt,
+      reminderPreset:
+          data.reminderPreset.present
+              ? data.reminderPreset.value
+              : this.reminderPreset,
       completedAt:
           data.completedAt.present ? data.completedAt.value : this.completedAt,
     );
@@ -749,6 +828,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           ..write('expiresAt: $expiresAt, ')
           ..write('trashedAt: $trashedAt, ')
           ..write('dueDate: $dueDate, ')
+          ..write('remindAt: $remindAt, ')
+          ..write('reminderPreset: $reminderPreset, ')
           ..write('completedAt: $completedAt')
           ..write(')'))
         .toString();
@@ -764,6 +845,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
     expiresAt,
     trashedAt,
     dueDate,
+    remindAt,
+    reminderPreset,
     completedAt,
   );
   @override
@@ -778,6 +861,8 @@ class TaskRow extends DataClass implements Insertable<TaskRow> {
           other.expiresAt == this.expiresAt &&
           other.trashedAt == this.trashedAt &&
           other.dueDate == this.dueDate &&
+          other.remindAt == this.remindAt &&
+          other.reminderPreset == this.reminderPreset &&
           other.completedAt == this.completedAt);
 }
 
@@ -790,6 +875,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
   final Value<DateTime> expiresAt;
   final Value<DateTime?> trashedAt;
   final Value<DateTime?> dueDate;
+  final Value<DateTime?> remindAt;
+  final Value<String?> reminderPreset;
   final Value<DateTime?> completedAt;
   const TasksCompanion({
     this.id = const Value.absent(),
@@ -800,6 +887,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     this.expiresAt = const Value.absent(),
     this.trashedAt = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.remindAt = const Value.absent(),
+    this.reminderPreset = const Value.absent(),
     this.completedAt = const Value.absent(),
   });
   TasksCompanion.insert({
@@ -811,6 +900,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     required DateTime expiresAt,
     this.trashedAt = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.remindAt = const Value.absent(),
+    this.reminderPreset = const Value.absent(),
     this.completedAt = const Value.absent(),
   }) : content = Value(content),
        status = Value(status),
@@ -824,6 +915,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     Expression<DateTime>? expiresAt,
     Expression<DateTime>? trashedAt,
     Expression<DateTime>? dueDate,
+    Expression<DateTime>? remindAt,
+    Expression<String>? reminderPreset,
     Expression<DateTime>? completedAt,
   }) {
     return RawValuesInsertable({
@@ -835,6 +928,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
       if (expiresAt != null) 'expires_at': expiresAt,
       if (trashedAt != null) 'trashed_at': trashedAt,
       if (dueDate != null) 'due_date': dueDate,
+      if (remindAt != null) 'remind_at': remindAt,
+      if (reminderPreset != null) 'reminder_preset': reminderPreset,
       if (completedAt != null) 'completed_at': completedAt,
     });
   }
@@ -848,6 +943,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     Value<DateTime>? expiresAt,
     Value<DateTime?>? trashedAt,
     Value<DateTime?>? dueDate,
+    Value<DateTime?>? remindAt,
+    Value<String?>? reminderPreset,
     Value<DateTime?>? completedAt,
   }) {
     return TasksCompanion(
@@ -859,6 +956,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
       expiresAt: expiresAt ?? this.expiresAt,
       trashedAt: trashedAt ?? this.trashedAt,
       dueDate: dueDate ?? this.dueDate,
+      remindAt: remindAt ?? this.remindAt,
+      reminderPreset: reminderPreset ?? this.reminderPreset,
       completedAt: completedAt ?? this.completedAt,
     );
   }
@@ -890,6 +989,12 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
     if (dueDate.present) {
       map['due_date'] = Variable<DateTime>(dueDate.value);
     }
+    if (remindAt.present) {
+      map['remind_at'] = Variable<DateTime>(remindAt.value);
+    }
+    if (reminderPreset.present) {
+      map['reminder_preset'] = Variable<String>(reminderPreset.value);
+    }
     if (completedAt.present) {
       map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
@@ -907,6 +1012,8 @@ class TasksCompanion extends UpdateCompanion<TaskRow> {
           ..write('expiresAt: $expiresAt, ')
           ..write('trashedAt: $trashedAt, ')
           ..write('dueDate: $dueDate, ')
+          ..write('remindAt: $remindAt, ')
+          ..write('reminderPreset: $reminderPreset, ')
           ..write('completedAt: $completedAt')
           ..write(')'))
         .toString();
@@ -4034,6 +4141,28 @@ class $KanbanCardsTable extends KanbanCards
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _remindAtMeta = const VerificationMeta(
+    'remindAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> remindAt = GeneratedColumn<DateTime>(
+    'remind_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _reminderPresetMeta = const VerificationMeta(
+    'reminderPreset',
+  );
+  @override
+  late final GeneratedColumn<String> reminderPreset = GeneratedColumn<String>(
+    'reminder_preset',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _startDateMeta = const VerificationMeta(
     'startDate',
   );
@@ -4129,6 +4258,8 @@ class $KanbanCardsTable extends KanbanCards
     priority,
     position,
     dueDate,
+    remindAt,
+    reminderPreset,
     startDate,
     sourceNoteId,
     sourceAnchor,
@@ -4206,6 +4337,21 @@ class $KanbanCardsTable extends KanbanCards
       context.handle(
         _dueDateMeta,
         dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
+    if (data.containsKey('remind_at')) {
+      context.handle(
+        _remindAtMeta,
+        remindAt.isAcceptableOrUnknown(data['remind_at']!, _remindAtMeta),
+      );
+    }
+    if (data.containsKey('reminder_preset')) {
+      context.handle(
+        _reminderPresetMeta,
+        reminderPreset.isAcceptableOrUnknown(
+          data['reminder_preset']!,
+          _reminderPresetMeta,
+        ),
       );
     }
     if (data.containsKey('start_date')) {
@@ -4312,6 +4458,14 @@ class $KanbanCardsTable extends KanbanCards
         DriftSqlType.dateTime,
         data['${effectivePrefix}due_date'],
       ),
+      remindAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}remind_at'],
+      ),
+      reminderPreset: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reminder_preset'],
+      ),
       startDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}start_date'],
@@ -4359,6 +4513,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
   final String priority;
   final int position;
   final DateTime? dueDate;
+  final DateTime? remindAt;
+  final String? reminderPreset;
   final DateTime? startDate;
   final int? sourceNoteId;
   final String? sourceAnchor;
@@ -4375,6 +4531,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     required this.priority,
     required this.position,
     this.dueDate,
+    this.remindAt,
+    this.reminderPreset,
     this.startDate,
     this.sourceNoteId,
     this.sourceAnchor,
@@ -4397,6 +4555,12 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     map['position'] = Variable<int>(position);
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<DateTime>(dueDate);
+    }
+    if (!nullToAbsent || remindAt != null) {
+      map['remind_at'] = Variable<DateTime>(remindAt);
+    }
+    if (!nullToAbsent || reminderPreset != null) {
+      map['reminder_preset'] = Variable<String>(reminderPreset);
     }
     if (!nullToAbsent || startDate != null) {
       map['start_date'] = Variable<DateTime>(startDate);
@@ -4436,6 +4600,14 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           dueDate == null && nullToAbsent
               ? const Value.absent()
               : Value(dueDate),
+      remindAt:
+          remindAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(remindAt),
+      reminderPreset:
+          reminderPreset == null && nullToAbsent
+              ? const Value.absent()
+              : Value(reminderPreset),
       startDate:
           startDate == null && nullToAbsent
               ? const Value.absent()
@@ -4478,6 +4650,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       priority: serializer.fromJson<String>(json['priority']),
       position: serializer.fromJson<int>(json['position']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      remindAt: serializer.fromJson<DateTime?>(json['remindAt']),
+      reminderPreset: serializer.fromJson<String?>(json['reminderPreset']),
       startDate: serializer.fromJson<DateTime?>(json['startDate']),
       sourceNoteId: serializer.fromJson<int?>(json['sourceNoteId']),
       sourceAnchor: serializer.fromJson<String?>(json['sourceAnchor']),
@@ -4501,6 +4675,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       'priority': serializer.toJson<String>(priority),
       'position': serializer.toJson<int>(position),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'remindAt': serializer.toJson<DateTime?>(remindAt),
+      'reminderPreset': serializer.toJson<String?>(reminderPreset),
       'startDate': serializer.toJson<DateTime?>(startDate),
       'sourceNoteId': serializer.toJson<int?>(sourceNoteId),
       'sourceAnchor': serializer.toJson<String?>(sourceAnchor),
@@ -4520,6 +4696,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     String? priority,
     int? position,
     Value<DateTime?> dueDate = const Value.absent(),
+    Value<DateTime?> remindAt = const Value.absent(),
+    Value<String?> reminderPreset = const Value.absent(),
     Value<DateTime?> startDate = const Value.absent(),
     Value<int?> sourceNoteId = const Value.absent(),
     Value<String?> sourceAnchor = const Value.absent(),
@@ -4536,6 +4714,9 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     priority: priority ?? this.priority,
     position: position ?? this.position,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    remindAt: remindAt.present ? remindAt.value : this.remindAt,
+    reminderPreset:
+        reminderPreset.present ? reminderPreset.value : this.reminderPreset,
     startDate: startDate.present ? startDate.value : this.startDate,
     sourceNoteId: sourceNoteId.present ? sourceNoteId.value : this.sourceNoteId,
     sourceAnchor: sourceAnchor.present ? sourceAnchor.value : this.sourceAnchor,
@@ -4562,6 +4743,11 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
       priority: data.priority.present ? data.priority.value : this.priority,
       position: data.position.present ? data.position.value : this.position,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      remindAt: data.remindAt.present ? data.remindAt.value : this.remindAt,
+      reminderPreset:
+          data.reminderPreset.present
+              ? data.reminderPreset.value
+              : this.reminderPreset,
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
       sourceNoteId:
           data.sourceNoteId.present
@@ -4598,6 +4784,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           ..write('priority: $priority, ')
           ..write('position: $position, ')
           ..write('dueDate: $dueDate, ')
+          ..write('remindAt: $remindAt, ')
+          ..write('reminderPreset: $reminderPreset, ')
           ..write('startDate: $startDate, ')
           ..write('sourceNoteId: $sourceNoteId, ')
           ..write('sourceAnchor: $sourceAnchor, ')
@@ -4619,6 +4807,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
     priority,
     position,
     dueDate,
+    remindAt,
+    reminderPreset,
     startDate,
     sourceNoteId,
     sourceAnchor,
@@ -4639,6 +4829,8 @@ class KanbanCardRow extends DataClass implements Insertable<KanbanCardRow> {
           other.priority == this.priority &&
           other.position == this.position &&
           other.dueDate == this.dueDate &&
+          other.remindAt == this.remindAt &&
+          other.reminderPreset == this.reminderPreset &&
           other.startDate == this.startDate &&
           other.sourceNoteId == this.sourceNoteId &&
           other.sourceAnchor == this.sourceAnchor &&
@@ -4657,6 +4849,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
   final Value<String> priority;
   final Value<int> position;
   final Value<DateTime?> dueDate;
+  final Value<DateTime?> remindAt;
+  final Value<String?> reminderPreset;
   final Value<DateTime?> startDate;
   final Value<int?> sourceNoteId;
   final Value<String?> sourceAnchor;
@@ -4673,6 +4867,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     this.priority = const Value.absent(),
     this.position = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.remindAt = const Value.absent(),
+    this.reminderPreset = const Value.absent(),
     this.startDate = const Value.absent(),
     this.sourceNoteId = const Value.absent(),
     this.sourceAnchor = const Value.absent(),
@@ -4690,6 +4886,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     this.priority = const Value.absent(),
     required int position,
     this.dueDate = const Value.absent(),
+    this.remindAt = const Value.absent(),
+    this.reminderPreset = const Value.absent(),
     this.startDate = const Value.absent(),
     this.sourceNoteId = const Value.absent(),
     this.sourceAnchor = const Value.absent(),
@@ -4710,6 +4908,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     Expression<String>? priority,
     Expression<int>? position,
     Expression<DateTime>? dueDate,
+    Expression<DateTime>? remindAt,
+    Expression<String>? reminderPreset,
     Expression<DateTime>? startDate,
     Expression<int>? sourceNoteId,
     Expression<String>? sourceAnchor,
@@ -4727,6 +4927,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
       if (priority != null) 'priority': priority,
       if (position != null) 'position': position,
       if (dueDate != null) 'due_date': dueDate,
+      if (remindAt != null) 'remind_at': remindAt,
+      if (reminderPreset != null) 'reminder_preset': reminderPreset,
       if (startDate != null) 'start_date': startDate,
       if (sourceNoteId != null) 'source_note_id': sourceNoteId,
       if (sourceAnchor != null) 'source_anchor': sourceAnchor,
@@ -4746,6 +4948,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     Value<String>? priority,
     Value<int>? position,
     Value<DateTime?>? dueDate,
+    Value<DateTime?>? remindAt,
+    Value<String?>? reminderPreset,
     Value<DateTime?>? startDate,
     Value<int?>? sourceNoteId,
     Value<String?>? sourceAnchor,
@@ -4763,6 +4967,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
       priority: priority ?? this.priority,
       position: position ?? this.position,
       dueDate: dueDate ?? this.dueDate,
+      remindAt: remindAt ?? this.remindAt,
+      reminderPreset: reminderPreset ?? this.reminderPreset,
       startDate: startDate ?? this.startDate,
       sourceNoteId: sourceNoteId ?? this.sourceNoteId,
       sourceAnchor: sourceAnchor ?? this.sourceAnchor,
@@ -4800,6 +5006,12 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
     if (dueDate.present) {
       map['due_date'] = Variable<DateTime>(dueDate.value);
     }
+    if (remindAt.present) {
+      map['remind_at'] = Variable<DateTime>(remindAt.value);
+    }
+    if (reminderPreset.present) {
+      map['reminder_preset'] = Variable<String>(reminderPreset.value);
+    }
     if (startDate.present) {
       map['start_date'] = Variable<DateTime>(startDate.value);
     }
@@ -4835,6 +5047,8 @@ class KanbanCardsCompanion extends UpdateCompanion<KanbanCardRow> {
           ..write('priority: $priority, ')
           ..write('position: $position, ')
           ..write('dueDate: $dueDate, ')
+          ..write('remindAt: $remindAt, ')
+          ..write('reminderPreset: $reminderPreset, ')
           ..write('startDate: $startDate, ')
           ..write('sourceNoteId: $sourceNoteId, ')
           ..write('sourceAnchor: $sourceAnchor, ')
@@ -8228,6 +8442,8 @@ typedef $$TasksTableCreateCompanionBuilder =
       required DateTime expiresAt,
       Value<DateTime?> trashedAt,
       Value<DateTime?> dueDate,
+      Value<DateTime?> remindAt,
+      Value<String?> reminderPreset,
       Value<DateTime?> completedAt,
     });
 typedef $$TasksTableUpdateCompanionBuilder =
@@ -8240,6 +8456,8 @@ typedef $$TasksTableUpdateCompanionBuilder =
       Value<DateTime> expiresAt,
       Value<DateTime?> trashedAt,
       Value<DateTime?> dueDate,
+      Value<DateTime?> remindAt,
+      Value<String?> reminderPreset,
       Value<DateTime?> completedAt,
     });
 
@@ -8341,6 +8559,16 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<DateTime> get dueDate => $composableBuilder(
     column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reminderPreset => $composableBuilder(
+    column: $table.reminderPreset,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8467,6 +8695,16 @@ class $$TasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reminderPreset => $composableBuilder(
+    column: $table.reminderPreset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
     builder: (column) => ColumnOrderings(column),
@@ -8525,6 +8763,14 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<DateTime> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get remindAt =>
+      $composableBuilder(column: $table.remindAt, builder: (column) => column);
+
+  GeneratedColumn<String> get reminderPreset => $composableBuilder(
+    column: $table.reminderPreset,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
@@ -8645,6 +8891,8 @@ class $$TasksTableTableManager
                 Value<DateTime> expiresAt = const Value.absent(),
                 Value<DateTime?> trashedAt = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> remindAt = const Value.absent(),
+                Value<String?> reminderPreset = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
@@ -8655,6 +8903,8 @@ class $$TasksTableTableManager
                 expiresAt: expiresAt,
                 trashedAt: trashedAt,
                 dueDate: dueDate,
+                remindAt: remindAt,
+                reminderPreset: reminderPreset,
                 completedAt: completedAt,
               ),
           createCompanionCallback:
@@ -8667,6 +8917,8 @@ class $$TasksTableTableManager
                 required DateTime expiresAt,
                 Value<DateTime?> trashedAt = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> remindAt = const Value.absent(),
+                Value<String?> reminderPreset = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
@@ -8677,6 +8929,8 @@ class $$TasksTableTableManager
                 expiresAt: expiresAt,
                 trashedAt: trashedAt,
                 dueDate: dueDate,
+                remindAt: remindAt,
+                reminderPreset: reminderPreset,
                 completedAt: completedAt,
               ),
           withReferenceMapper:
@@ -12478,6 +12732,8 @@ typedef $$KanbanCardsTableCreateCompanionBuilder =
       Value<String> priority,
       required int position,
       Value<DateTime?> dueDate,
+      Value<DateTime?> remindAt,
+      Value<String?> reminderPreset,
       Value<DateTime?> startDate,
       Value<int?> sourceNoteId,
       Value<String?> sourceAnchor,
@@ -12496,6 +12752,8 @@ typedef $$KanbanCardsTableUpdateCompanionBuilder =
       Value<String> priority,
       Value<int> position,
       Value<DateTime?> dueDate,
+      Value<DateTime?> remindAt,
+      Value<String?> reminderPreset,
       Value<DateTime?> startDate,
       Value<int?> sourceNoteId,
       Value<String?> sourceAnchor,
@@ -12622,6 +12880,16 @@ class $$KanbanCardsTableFilterComposer
 
   ColumnFilters<DateTime> get dueDate => $composableBuilder(
     column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reminderPreset => $composableBuilder(
+    column: $table.reminderPreset,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12782,6 +13050,16 @@ class $$KanbanCardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reminderPreset => $composableBuilder(
+    column: $table.reminderPreset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get startDate => $composableBuilder(
     column: $table.startDate,
     builder: (column) => ColumnOrderings(column),
@@ -12928,6 +13206,14 @@ class $$KanbanCardsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get remindAt =>
+      $composableBuilder(column: $table.remindAt, builder: (column) => column);
+
+  GeneratedColumn<String> get reminderPreset => $composableBuilder(
+    column: $table.reminderPreset,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get startDate =>
       $composableBuilder(column: $table.startDate, builder: (column) => column);
@@ -13085,6 +13371,8 @@ class $$KanbanCardsTableTableManager
                 Value<String> priority = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> remindAt = const Value.absent(),
+                Value<String?> reminderPreset = const Value.absent(),
                 Value<DateTime?> startDate = const Value.absent(),
                 Value<int?> sourceNoteId = const Value.absent(),
                 Value<String?> sourceAnchor = const Value.absent(),
@@ -13101,6 +13389,8 @@ class $$KanbanCardsTableTableManager
                 priority: priority,
                 position: position,
                 dueDate: dueDate,
+                remindAt: remindAt,
+                reminderPreset: reminderPreset,
                 startDate: startDate,
                 sourceNoteId: sourceNoteId,
                 sourceAnchor: sourceAnchor,
@@ -13119,6 +13409,8 @@ class $$KanbanCardsTableTableManager
                 Value<String> priority = const Value.absent(),
                 required int position,
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<DateTime?> remindAt = const Value.absent(),
+                Value<String?> reminderPreset = const Value.absent(),
                 Value<DateTime?> startDate = const Value.absent(),
                 Value<int?> sourceNoteId = const Value.absent(),
                 Value<String?> sourceAnchor = const Value.absent(),
@@ -13135,6 +13427,8 @@ class $$KanbanCardsTableTableManager
                 priority: priority,
                 position: position,
                 dueDate: dueDate,
+                remindAt: remindAt,
+                reminderPreset: reminderPreset,
                 startDate: startDate,
                 sourceNoteId: sourceNoteId,
                 sourceAnchor: sourceAnchor,

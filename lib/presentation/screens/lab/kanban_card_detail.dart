@@ -6,6 +6,7 @@ import '../../theme/app_tokens.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../widgets/reminder_picker.dart';
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
@@ -40,12 +41,15 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
     super.initState();
     _repository = ref.read(kanbanCardRepositoryProvider);
     _card = widget.card;
-    _isPreview = widget.card.sourceNoteId != null &&
+    _isPreview =
+        widget.card.sourceNoteId != null &&
         (widget.card.description?.isNotEmpty ?? false);
-    _titleController =
-        TextEditingController(text: y.cleanMention(widget.card.title));
-    _descController =
-        TextEditingController(text: widget.card.description ?? '');
+    _titleController = TextEditingController(
+      text: y.cleanMention(widget.card.title),
+    );
+    _descController = TextEditingController(
+      text: widget.card.description ?? '',
+    );
     _titleController.addListener(_markDirty);
     _descController.addListener(_markDirty);
   }
@@ -78,16 +82,15 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
       // unless the user typed their own mention.
       final mentions = y.extractMentions(widget.card.title);
       final editedHasMention = y.extractMentions(editedTitle).isNotEmpty;
-      newTitle = (mentions.isEmpty || editedHasMention)
-          ? editedTitle
-          : '$mentions $editedTitle';
+      newTitle =
+          (mentions.isEmpty || editedHasMention)
+              ? editedTitle
+              : '$mentions $editedTitle';
     }
     await _repository.update(
       _card.copyWith(
         title: newTitle,
-        description: _descController.text.isEmpty
-            ? null
-            : _descController.text,
+        description: _descController.text.isEmpty ? null : _descController.text,
         clearDescription: _descController.text.isEmpty,
       ),
     );
@@ -96,19 +99,15 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
 
   @override
   Widget build(BuildContext context) {
-    final columnsAsync =
-        ref.watch(kanbanColumnsProvider(widget.space.id));
+    final columnsAsync = ref.watch(kanbanColumnsProvider(widget.space.id));
     final columns = columnsAsync.valueOrNull ?? [];
-    final currentColumn = columns
-        .where((c) => c.id == _card.columnId)
-        .firstOrNull;
+    final currentColumn =
+        columns.where((c) => c.id == _card.columnId).firstOrNull;
 
     return Container(
       decoration: BoxDecoration(
         color: y.yCream,
-        border: Border(
-          top: BorderSide(color: y.yInk, width: 3),
-        ),
+        border: Border(top: BorderSide(color: y.yInk, width: 3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -184,9 +183,10 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                     ),
                     const SizedBox(width: 6),
                     _SheetIcon(
-                      icon: _isPreview
-                          ? Icons.edit_outlined
-                          : Icons.visibility_outlined,
+                      icon:
+                          _isPreview
+                              ? Icons.edit_outlined
+                              : Icons.visibility_outlined,
                       active: _isPreview,
                       color: y.yFlight,
                       onTap: () => setState(() => _isPreview = !_isPreview),
@@ -201,184 +201,229 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                   ],
                 ),
                 const SizedBox(height: 16),
-          // Column selector
-          if (columns.isNotEmpty)
-            _ColumnSelector(
-              card: _card,
-              currentColumn: columns.where((c) => c.id == _card.columnId).firstOrNull ?? columns.first,
-              columns: columns,
-              repo: _repository,
-              onChanged: (c) => _onCardChanged(c),
-            ),
-          const SizedBox(height: 16),
-          // Priority
-          _PrioritySelector(
-            card: _card,
-            repo: _repository,
-            onChanged: (c) => _onCardChanged(c),
-          ),
-          const SizedBox(height: 16),
-          // Due date
-          _DueDateRow(
-            card: _card,
-            repo: _repository,
-            onChanged: (c) => _onCardChanged(c),
-          ),
-          const SizedBox(height: 20),
-          // Description
-          Text('// DESCRIPCION . MARKDOWN . LATEX . CODIGO',
-              style: y.yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: y.yMuted)),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: y.yCream2,
-              border: Border.all(color: y.yInk, width: y.yLineMid),
-            ),
-            padding: const EdgeInsets.all(14),
-            constraints: const BoxConstraints(minHeight: 160),
-            child: _isPreview && _descController.text.isNotEmpty
-                ? MarkdownWidget(
-                    data: _descController.text,
-                    shrinkWrap: true,
-                    config: MarkdownConfig(configs: [
-                      PConfig(textStyle: y.yBody(size: 13, color: y.yInk, height: 1.55)),
-                    ]),
-                  )
-                : TextField(
-                    controller: _descController,
-                    style: y.yBody(size: 13, color: y.yInk, height: 1.55),
-                    maxLines: null,
-                    decoration: InputDecoration(
-                      hintText:
-                          'Descripcion (Markdown, LaTeX inline, codigo)',
-                      hintStyle: y.yBody(size: 13, color: y.yMuted, height: 1.55),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
+                // Column selector
+                if (columns.isNotEmpty)
+                  _ColumnSelector(
+                    card: _card,
+                    currentColumn:
+                        columns
+                            .where((c) => c.id == _card.columnId)
+                            .firstOrNull ??
+                        columns.first,
+                    columns: columns,
+                    repo: _repository,
+                    onChanged: (c) => _onCardChanged(c),
                   ),
-          ),
-          if (widget.card.sourceNoteId != null) ...[
-            const SizedBox(height: 20),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                ref.read(pendingNoteNavigationProvider.notifier).state =
-                    widget.card.sourceNoteId;
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: y.yFlight.withAlpha(20),
-                  border: Border.all(color: y.yFlight, width: 2),
+                const SizedBox(height: 16),
+                // Priority
+                _PrioritySelector(
+                  card: _card,
+                  repo: _repository,
+                  onChanged: (c) => _onCardChanged(c),
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.description_outlined,
-                        size: 16, color: y.yFlight),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Ver nota de origen',
-                        style: y.ySans(
-                            size: 13,
-                            weight: FontWeight.w700,
-                            color: y.yFlight),
+                const SizedBox(height: 16),
+                // Due date
+                _DueDateRow(
+                  ref: ref,
+                  card: _card,
+                  repo: _repository,
+                  onChanged: (c) => _onCardChanged(c),
+                ),
+                const SizedBox(height: 20),
+                // Description
+                Text(
+                  '// DESCRIPCION . MARKDOWN . LATEX . CODIGO',
+                  style: y.yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: y.yMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: y.yCream2,
+                    border: Border.all(color: y.yInk, width: y.yLineMid),
+                  ),
+                  padding: const EdgeInsets.all(14),
+                  constraints: const BoxConstraints(minHeight: 160),
+                  child:
+                      _isPreview && _descController.text.isNotEmpty
+                          ? MarkdownWidget(
+                            data: _descController.text,
+                            shrinkWrap: true,
+                            config: MarkdownConfig(
+                              configs: [
+                                PConfig(
+                                  textStyle: y.yBody(
+                                    size: 13,
+                                    color: y.yInk,
+                                    height: 1.55,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                          : TextField(
+                            controller: _descController,
+                            style: y.yBody(
+                              size: 13,
+                              color: y.yInk,
+                              height: 1.55,
+                            ),
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Descripcion (Markdown, LaTeX inline, codigo)',
+                              hintStyle: y.yBody(
+                                size: 13,
+                                color: y.yMuted,
+                                height: 1.55,
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                ),
+                if (widget.card.sourceNoteId != null) ...[
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      ref.read(pendingNoteNavigationProvider.notifier).state =
+                          widget.card.sourceNoteId;
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: y.yFlight.withAlpha(20),
+                        border: Border.all(color: y.yFlight, width: 2),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.description_outlined,
+                            size: 16,
+                            color: y.yFlight,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Ver nota de origen',
+                              style: y.ySans(
+                                size: 13,
+                                weight: FontWeight.w700,
+                                color: y.yFlight,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.arrow_forward, size: 14, color: y.yFlight),
+                        ],
                       ),
                     ),
-                    Icon(Icons.arrow_forward, size: 14, color: y.yFlight),
-                  ],
+                  ),
+                ],
+                const SizedBox(height: 20),
+                // Aparece en
+                Text(
+                  '// ESTA TAREA APARECE EN',
+                  style: y.yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: y.yMuted,
+                  ),
                 ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-          // Aparece en
-          Text('// ESTA TAREA APARECE EN',
-              style: y.yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: y.yMuted,
-              )),
-          const SizedBox(height: 8),
-          _AppearChips(card: _card, currentColumn: currentColumn),
-          const SizedBox(height: 24),
-        ],
-      ),
-    ),
-    Container(
-      decoration: const BoxDecoration(
-        color: y.yCream2,
-        border: Border(top: BorderSide(color: y.yInk, width: 2)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _confirmDelete(context),
-            child: Text(
-              '✕ Eliminar tarjeta',
-              style: y.yBody(
-                size: 13,
-                weight: FontWeight.w700,
-                color: y.yFight,
-              ).copyWith(
-                decoration: TextDecoration.underline,
-                decorationColor: y.yFight,
-              ),
+                const SizedBox(height: 8),
+                _AppearChips(card: _card, currentColumn: currentColumn),
+                const SizedBox(height: 24),
+              ],
             ),
           ),
-          Text(
-            _isDirty ? 'editando · sin guardar' : 'autoguardado',
-            style: y.yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: y.yMuted,
+          Container(
+            decoration: const BoxDecoration(
+              color: y.yCream2,
+              border: Border(top: BorderSide(color: y.yInk, width: 2)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _confirmDelete(context),
+                  child: Text(
+                    '✕ Eliminar tarjeta',
+                    style: y
+                        .yBody(
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: y.yFight,
+                        )
+                        .copyWith(
+                          decoration: TextDecoration.underline,
+                          decorationColor: y.yFight,
+                        ),
+                  ),
+                ),
+                Text(
+                  _isDirty ? 'editando · sin guardar' : 'autoguardado',
+                  style: y.yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: y.yMuted,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
-    ),
-  ],
-)
-);
+    );
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: y.yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Eliminar tarjeta',
-            style: y.ySans(size: 18, weight: FontWeight.w700, color: y.yInk)),
-        content: Text('Esta accion no se puede deshacer.',
-            style: y.yBody(size: 14, color: y.yInk)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: y.yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Eliminar tarjeta',
+              style: y.ySans(size: 18, weight: FontWeight.w700, color: y.yInk),
+            ),
+            content: Text(
+              'Esta accion no se puede deshacer.',
+              style: y.yBody(size: 14, color: y.yInk),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'Eliminar',
+                  style: TextStyle(
+                    color: y.yFight,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Eliminar',
-                style: TextStyle(color: y.yFight, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
     );
     if (confirmed == true && context.mounted) {
       await _repository.delete(widget.card.id);
@@ -453,40 +498,43 @@ class _ColumnSelector extends StatelessWidget {
       context: context,
       backgroundColor: paperColor(context),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...columns.map((col) => GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  await repo.moveToColumn(
-                        card.id,
-                        col.id,
-                        0,
-                      );
-                  onChanged(card.copyWith(columnId: col.id));
-                  if (context.mounted) Navigator.pop(context);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 24, vertical: 14),
-                  width: double.infinity,
-                  child: Text(
-                    col.name,
-                    style: bodyM.copyWith(
-                      color: col.id == currentColumn.id
-                          ? inkColor(context)
-                          : inkGray,
-                      fontWeight: col.id == currentColumn.id
-                          ? FontWeight.w700
-                          : FontWeight.w400,
+      builder:
+          (_) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...columns.map(
+                (col) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () async {
+                    await repo.moveToColumn(card.id, col.id, 0);
+                    onChanged(card.copyWith(columnId: col.id));
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
+                    ),
+                    width: double.infinity,
+                    child: Text(
+                      col.name,
+                      style: bodyM.copyWith(
+                        color:
+                            col.id == currentColumn.id
+                                ? inkColor(context)
+                                : inkGray,
+                        fontWeight:
+                            col.id == currentColumn.id
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                      ),
                     ),
                   ),
                 ),
-              )),
-          SizedBox(height: MediaQuery.of(context).padding.bottom),
-        ],
-      ),
+              ),
+              SizedBox(height: MediaQuery.of(context).padding.bottom),
+            ],
+          ),
     );
   }
 }
@@ -505,54 +553,57 @@ class _PrioritySelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: CardPriority.values.map((p) {
-        final isSelected = card.priority == p;
-        return Expanded(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              final updated = card.copyWith(priority: p);
-              repo.update(updated);
-              onChanged(updated);
-            },
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? y.yInk : y.yCream,
-                border: Border.all(color: y.yInk, width: y.yLineMid),
-              ),
-              child: Text(
-                _label(p),
-                style: y.yMono(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: isSelected ? y.yCream : y.yInk,
+      children:
+          CardPriority.values.map((p) {
+            final isSelected = card.priority == p;
+            return Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  final updated = card.copyWith(priority: p);
+                  repo.update(updated);
+                  onChanged(updated);
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected ? y.yInk : y.yCream,
+                    border: Border.all(color: y.yInk, width: y.yLineMid),
+                  ),
+                  child: Text(
+                    _label(p),
+                    style: y.yMono(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: isSelected ? y.yCream : y.yInk,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        );
-      }).toList(),
+            );
+          }).toList(),
     );
   }
 
   String _label(CardPriority p) => switch (p) {
-        CardPriority.none => 'Sin prioridad',
-        CardPriority.low => 'Baja',
-        CardPriority.medium => 'Media',
-        CardPriority.high => 'Alta',
-      };
+    CardPriority.none => 'Sin prioridad',
+    CardPriority.low => 'Baja',
+    CardPriority.medium => 'Media',
+    CardPriority.high => 'Alta',
+  };
 }
 
 class _DueDateRow extends StatelessWidget {
+  final WidgetRef ref;
   final KanbanCard card;
   final KanbanCardRepository repo;
   final ValueChanged<KanbanCard> onChanged;
 
   const _DueDateRow({
+    required this.ref,
     required this.card,
     required this.repo,
     required this.onChanged,
@@ -562,18 +613,20 @@ class _DueDateRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final overdue = card.isOverdue();
     // Etiqueta contextual del campo de fecha de fin según el estado de la card.
-    final finLabel = card.isDone
-        ? 'ENTREGADO EL'
-        : (overdue ? 'VENCIÓ EL' : 'VENCIMIENTO');
+    final finLabel =
+        card.isDone ? 'ENTREGADO EL' : (overdue ? 'VENCIÓ EL' : 'VENCIMIENTO');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('// FECHAS',
-            style: y.yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: y.yMuted)),
+        Text(
+          '// FECHAS',
+          style: y.yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 1.4,
+            color: y.yMuted,
+          ),
+        ),
         const SizedBox(height: 10),
         // INICIO (fecha de inicio real / agregado como fallback)
         Row(
@@ -581,12 +634,15 @@ class _DueDateRow extends StatelessWidget {
           children: [
             SizedBox(
               width: 92,
-              child: Text('INICIO',
-                  style: y.yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1,
-                      color: y.yInk)),
+              child: Text(
+                'INICIO',
+                style: y.yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: y.yInk,
+                ),
+              ),
             ),
             const SizedBox(width: 6),
             Expanded(
@@ -612,8 +668,11 @@ class _DueDateRow extends StatelessWidget {
                       onChanged(u);
                     }
                   }),
-                  _startToggleChip('FIJA', card.startDate != null,
-                      () => _pickStartDate(context)),
+                  _startToggleChip(
+                    'FIJA',
+                    card.startDate != null,
+                    () => _pickStartDate(context),
+                  ),
                 ],
               ),
             ),
@@ -626,12 +685,15 @@ class _DueDateRow extends StatelessWidget {
           children: [
             SizedBox(
               width: 92,
-              child: Text(finLabel,
-                  style: y.yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1,
-                      color: y.yInk)),
+              child: Text(
+                finLabel,
+                style: y.yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: y.yInk,
+                ),
+              ),
             ),
             const SizedBox(width: 6),
             Expanded(
@@ -639,7 +701,9 @@ class _DueDateRow extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _pickDate(context),
                 child: _dateChip(
-                  card.dueDate != null ? _formatDate(card.dueDate!) : 'sin fecha',
+                  card.dueDate != null
+                      ? _formatDate(card.dueDate!)
+                      : 'sin fecha',
                   card.dueDate != null
                       ? (overdue ? y.yFight : y.yFlight)
                       : y.yCream,
@@ -651,9 +715,41 @@ class _DueDateRow extends StatelessWidget {
         if (card.dueDate != null) ...[
           const SizedBox(height: 8),
           Text(
-              'rango timeline:  ${_short(card.startDate ?? card.createdAt)} → ${_short(card.dueDate!)}',
-              style: y.yMono(size: 10, tracking: 0.5, color: y.yMuted)),
+            'rango timeline:  ${_short(card.startDate ?? card.createdAt)} → ${_short(card.dueDate!)}',
+            style: y.yMono(size: 10, tracking: 0.5, color: y.yMuted),
+          ),
         ],
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 92,
+              child: Text(
+                'RECORDAR',
+                style: y.yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: y.yInk,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _pickReminder(context),
+                child: _dateChip(
+                  card.remindAt != null
+                      ? formatReminderTime(card.remindAt!)
+                      : 'SIN RECORDATORIO',
+                  card.remindAt != null ? y.yInk : y.yCream,
+                ),
+              ),
+            ),
+          ],
+        ),
         if (card.originFolderColor != null &&
             RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').hasMatch(card.title)) ...[
           const SizedBox(height: 10),
@@ -666,10 +762,11 @@ class _DueDateRow extends StatelessWidget {
             child: Text(
               '@${RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').firstMatch(card.title)!.group(1)!}',
               style: y.yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  color: y.yCream,
-                  tracking: 0.5),
+                size: 10,
+                weight: FontWeight.w700,
+                color: y.yCream,
+                tracking: 0.5,
+              ),
             ),
           ),
         ],
@@ -685,13 +782,48 @@ class _DueDateRow extends StatelessWidget {
         color: bg,
         border: Border.all(color: y.yInk, width: 1.5),
       ),
-      child: Text(label,
-          style: y.yMono(
-              size: 12,
-              weight: FontWeight.w700,
-              color: dark ? y.yCream : y.yInk,
-              tracking: 0.3)),
+      child: Text(
+        label,
+        style: y.yMono(
+          size: 12,
+          weight: FontWeight.w700,
+          color: dark ? y.yCream : y.yInk,
+          tracking: 0.3,
+        ),
+      ),
     );
+  }
+
+  Future<void> _pickReminder(BuildContext context) async {
+    final selected = await showReminderPicker(
+      context,
+      accent: y.yLab,
+      dueDate: card.dueDate,
+      currentRemindAt: card.remindAt,
+    );
+    if (selected == null) return;
+    final coordinator = ref.read(reminderCoordinatorProvider);
+    if (selected.remindAt != null) {
+      await coordinator.requestNotificationPermission();
+    }
+    await repo.updateReminder(card.id, selected.remindAt, selected.preset);
+    onChanged(
+      card.copyWith(
+        remindAt: selected.remindAt,
+        reminderPreset: selected.preset,
+        clearRemindAt: selected.remindAt == null,
+        clearReminderPreset: selected.preset == null,
+      ),
+    );
+    if (selected.remindAt != null && context.mounted) {
+      final enabled = await coordinator.areNotificationsEnabled();
+      if (!enabled && context.mounted) {
+        showNotificationsDisabledSnack(
+          context,
+          onOpenSettings: coordinator.openNotificationSettings,
+        );
+      }
+    }
   }
 
   String _short(DateTime d) =>
@@ -707,12 +839,15 @@ class _DueDateRow extends StatelessWidget {
           color: active ? y.yInk : y.yCream,
           border: Border.all(color: y.yInk, width: 2),
         ),
-        child: Text(label,
-            style: y.yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 1.2,
-                color: active ? y.yCream : y.yInk)),
+        child: Text(
+          label,
+          style: y.yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 1.2,
+            color: active ? y.yCream : y.yInk,
+          ),
+        ),
       ),
     );
   }
@@ -723,16 +858,17 @@ class _DueDateRow extends StatelessWidget {
       initialDate: card.startDate ?? card.createdAt,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
-          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
+              colorScheme: Theme.of(ctx).colorScheme.copyWith(
                 primary: inkColor(ctx),
                 onPrimary: paperColor(ctx),
               ),
-        ),
-        child: child!,
-      ),
+            ),
+            child: child!,
+          ),
     );
     if (date == null) return;
     final dt = DateTime(date.year, date.month, date.day);
@@ -747,40 +883,48 @@ class _DueDateRow extends StatelessWidget {
       initialDate: card.dueDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
-          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
+              colorScheme: Theme.of(ctx).colorScheme.copyWith(
                 primary: inkColor(ctx),
                 onPrimary: paperColor(ctx),
               ),
-          inputDecorationTheme: const InputDecorationTheme(
-            border:
-                OutlineInputBorder(borderRadius: BorderRadius.zero),
+              inputDecorationTheme: const InputDecorationTheme(
+                border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+              ),
+            ),
+            child: child!,
           ),
-        ),
-        child: child!,
-      ),
     );
     if (date == null || !context.mounted) return;
     final time = await showTimePicker(
       context: context,
-      initialTime: card.dueDate != null
-          ? TimeOfDay.fromDateTime(card.dueDate!)
-          : const TimeOfDay(hour: 12, minute: 0),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
-          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+      initialTime:
+          card.dueDate != null
+              ? TimeOfDay.fromDateTime(card.dueDate!)
+              : const TimeOfDay(hour: 12, minute: 0),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
+              colorScheme: Theme.of(ctx).colorScheme.copyWith(
                 primary: inkColor(ctx),
                 onPrimary: paperColor(ctx),
               ),
-        ),
-        child: child!,
-      ),
+            ),
+            child: child!,
+          ),
     );
     if (time == null) return;
-    final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final dt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
     final updated = card.copyWith(dueDate: dt);
     await repo.update(updated);
     onChanged(updated);
@@ -816,11 +960,7 @@ class _SheetIcon extends StatelessWidget {
           color: active ? color : y.yCream,
           border: Border.all(color: y.yInk, width: y.yLineMid),
         ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: active ? y.yCream : y.yInk,
-        ),
+        child: Icon(icon, size: 16, color: active ? y.yCream : y.yInk),
       ),
     );
   }
@@ -836,20 +976,23 @@ class _AppearChips extends StatelessWidget {
   Widget build(BuildContext context) {
     final chips = <Widget>[];
     if (currentColumn != null) {
-      chips.add(_AppearChip(
-        glyph: '▣',
-        label: 'Kanban / ${currentColumn!.name}',
-      ));
+      chips.add(
+        _AppearChip(glyph: '▣', label: 'Kanban / ${currentColumn!.name}'),
+      );
     }
     if (card.dueDate != null) {
-      chips.add(_AppearChip(
-        glyph: '▦',
-        label: 'Calendario / ${_fmtShort(card.dueDate!)}',
-      ));
-      chips.add(_AppearChip(
-        glyph: '═',
-        label: 'Timeline · ${_fmtShort(card.dueDate!)}',
-      ));
+      chips.add(
+        _AppearChip(
+          glyph: '▦',
+          label: 'Calendario / ${_fmtShort(card.dueDate!)}',
+        ),
+      );
+      chips.add(
+        _AppearChip(
+          glyph: '═',
+          label: 'Timeline · ${_fmtShort(card.dueDate!)}',
+        ),
+      );
     }
     if (card.originTaskId != null) {
       chips.add(const _AppearChip(glyph: '⚔', label: 'FIGHT / origen task'));
@@ -880,17 +1023,20 @@ class _AppearChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(glyph,
-              style: const TextStyle(
-                  fontSize: 11, color: y.yInk, height: 1.0)),
+          Text(
+            glyph,
+            style: const TextStyle(fontSize: 11, color: y.yInk, height: 1.0),
+          ),
           const SizedBox(width: 6),
-          Text(label.toUpperCase(),
-              style: y.yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 1.2,
-                color: y.yInk,
-              )),
+          Text(
+            label.toUpperCase(),
+            style: y.yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.2,
+              color: y.yInk,
+            ),
+          ),
         ],
       ),
     );

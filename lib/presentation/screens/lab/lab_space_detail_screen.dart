@@ -39,6 +39,41 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
 
   bool get _selectionMode => _selectionActive || _selectedCardIds.isNotEmpty;
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingCard());
+  }
+
+  Future<void> _openPendingCard() async {
+    final cardId = ref.read(pendingKanbanCardNavigationProvider);
+    if (cardId == null) return;
+    ref.read(pendingKanbanCardNavigationProvider.notifier).state = null;
+    final card = await ref.read(kanbanCardRepositoryProvider).getById(cardId);
+    if (card == null || card.labSpaceId != widget.space.id || !mounted) return;
+    _showCardDetail(card);
+  }
+
+  void _showCardDetail(KanbanCard card) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.8,
+            minChildSize: 0.4,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, sc) => KanbanCardDetail(
+                  card: card,
+                  space: widget.space,
+                  scrollController: sc,
+                ),
+          ),
+    );
+  }
+
   void _toggleSelection(int cardId) {
     setState(() {
       _selectionActive = true;
@@ -51,36 +86,45 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
   }
 
   void _clearSelection() => setState(() {
-        _selectedCardIds.clear();
-        _selectionActive = false;
-      });
+    _selectedCardIds.clear();
+    _selectionActive = false;
+  });
 
   Future<void> _deleteSelected() async {
     if (_selectedCardIds.isEmpty) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Eliminar tarjetas',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: Text(
-          'Se eliminarán ${_selectedCardIds.length} tarjeta(s). Esta acción no se puede deshacer.',
-          style: bodyM.copyWith(color: inkColor(context)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: paperColor(context),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Eliminar tarjetas',
+              style: displayM.copyWith(color: inkColor(context)),
+            ),
+            content: Text(
+              'Se eliminarán ${_selectedCardIds.length} tarjeta(s). Esta acción no se puede deshacer.',
+              style: bodyM.copyWith(color: inkColor(context)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  'Cancelar',
+                  style: labelBold.copyWith(color: inkGray),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'Eliminar',
+                  style: labelBold.copyWith(color: accentFight),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Eliminar',
-                style: labelBold.copyWith(color: accentFight)),
-          ),
-        ],
-      ),
     );
     if (confirmed == true && context.mounted) {
       final repo = ref.read(kanbanCardRepositoryProvider);
@@ -95,14 +139,19 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _AddTabSheet(
-        available: tabsNotifier.available,
-        onSelect: (tab) {
-          tabsNotifier.addTab(tab);
-          setState(() => _tabIndex = ref.read(labTabsProvider(widget.space.id)).length - 1);
-          Navigator.pop(context);
-        },
-      ),
+      builder:
+          (_) => _AddTabSheet(
+            available: tabsNotifier.available,
+            onSelect: (tab) {
+              tabsNotifier.addTab(tab);
+              setState(
+                () =>
+                    _tabIndex =
+                        ref.read(labTabsProvider(widget.space.id)).length - 1,
+              );
+              Navigator.pop(context);
+            },
+          ),
     );
   }
 
@@ -115,13 +164,14 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
         return columnsAsync.when(
           loading: () => const SizedBox.shrink(),
           error: (_, _) => const SizedBox.shrink(),
-          data: (columns) => _KanbanBoard(
-            space: widget.space,
-            columns: columns,
-            selectedCardIds: _selectedCardIds,
-            onToggleSelection: _toggleSelection,
-            selectionMode: _selectionMode,
-          ),
+          data:
+              (columns) => _KanbanBoard(
+                space: widget.space,
+                columns: columns,
+                selectedCardIds: _selectedCardIds,
+                onToggleSelection: _toggleSelection,
+                selectionMode: _selectionMode,
+              ),
         );
       case 'Calendario':
         return CalendarTab(
@@ -160,16 +210,15 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
             _KanbanHeader(
               space: widget.space,
               selectionMode: _selectionMode,
-              onToggleSelectionMode: _selectionMode
-                  ? _clearSelection
-                  : () => setState(() => _selectionActive = true),
+              onToggleSelectionMode:
+                  _selectionMode
+                      ? _clearSelection
+                      : () => setState(() => _selectionActive = true),
             ),
             Container(
               decoration: const BoxDecoration(
                 color: y.yCream,
-                border: Border(
-                  bottom: BorderSide(color: y.yInk, width: 2),
-                ),
+                border: Border(bottom: BorderSide(color: y.yInk, width: 2)),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -180,22 +229,31 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                       onTap: _clearSelection,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 12),
-                        child: const Icon(Icons.clear,
-                            size: 16, color: y.yMuted),
+                          horizontal: 8,
+                          vertical: 12,
+                        ),
+                        child: const Icon(
+                          Icons.clear,
+                          size: 16,
+                          color: y.yMuted,
+                        ),
                       ),
                     ),
-                  ...tabs.asMap().entries.map((e) => _TabButton(
-                        label: e.value,
-                        isActive: _tabIndex == e.key,
-                        onTap: _selectionMode
-                            ? null
-                            : () => setState(() => _tabIndex = e.key),
-                        onClose: e.value == 'Kanban'
-                            ? null
-                            : () {
+                  ...tabs.asMap().entries.map(
+                    (e) => _TabButton(
+                      label: e.value,
+                      isActive: _tabIndex == e.key,
+                      onTap:
+                          _selectionMode
+                              ? null
+                              : () => setState(() => _tabIndex = e.key),
+                      onClose:
+                          e.value == 'Kanban'
+                              ? null
+                              : () {
                                 final notifier = ref.read(
-                                    labTabsProvider(widget.space.id).notifier);
+                                  labTabsProvider(widget.space.id).notifier,
+                                );
                                 final wasActive = _tabIndex == e.key;
                                 notifier.removeTab(e.value);
                                 if (wasActive) {
@@ -204,26 +262,30 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                                   setState(() => _tabIndex--);
                                 }
                               },
-                      )),
+                    ),
+                  ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _selectionMode ? null : _showAddTabSheet,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      child: const Text('+',
-                          style: TextStyle(
-                              fontSize: 20,
-                              color: y.yMuted,
-                              height: 1.0)),
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      child: const Text(
+                        '+',
+                        style: TextStyle(
+                          fontSize: 20,
+                          color: y.yMuted,
+                          height: 1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            Expanded(
-              child: _buildTabContent(),
-            ),
+            Expanded(child: _buildTabContent()),
             if (_selectedCardIds.isNotEmpty)
               _SelectionBar(
                 count: _selectedCardIds.length,
@@ -260,37 +322,42 @@ class _AddTabSheet extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Text('Agregar vista',
-                  style: labelBold.copyWith(color: inkGray)),
+              child: Text(
+                'Agregar vista',
+                style: labelBold.copyWith(color: inkGray),
+              ),
             ),
             if (available.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: Text('No hay más vistas disponibles.',
-                    style: bodyS.copyWith(color: inkGray)),
+                child: Text(
+                  'No hay más vistas disponibles.',
+                  style: bodyS.copyWith(color: inkGray),
+                ),
               )
             else
-              ...available.map((tab) => GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onSelect(tab),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            color: accentLab,
+              ...available.map(
+                (tab) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => onSelect(tab),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                    child: Row(
+                      children: [
+                        Container(width: 10, height: 10, color: accentLab),
+                        const SizedBox(width: 12),
+                        Text(
+                          tab,
+                          style: bodyM.copyWith(
+                            color: inkColor(context),
+                            fontWeight: FontWeight.w700,
                           ),
-                          const SizedBox(width: 12),
-                          Text(tab,
-                              style: bodyM.copyWith(
-                                  color: inkColor(context),
-                                  fontWeight: FontWeight.w700)),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  )),
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -415,8 +482,9 @@ class _KanbanHeader extends ConsumerWidget {
     final linkedIds = linkedFolderIdsAsync.valueOrNull ?? [];
     final foldersAsync = ref.watch(activeFoldersProvider);
     final folders = foldersAsync.valueOrNull ?? [];
-    
-    final linkedFolders = folders.where((f) => linkedIds.contains(f.id)).toList();
+
+    final linkedFolders =
+        folders.where((f) => linkedIds.contains(f.id)).toList();
 
     return Container(
       color: y.yCream,
@@ -467,14 +535,17 @@ class _KanbanHeader extends ConsumerWidget {
                         child: Wrap(
                           spacing: 4,
                           runSpacing: 4,
-                          children: linkedFolders
-                              .map((f) => y.YBadge(
-                                    label: f.name.toUpperCase(),
-                                    bg: f.color,
-                                    fg: y.yCream,
-                                    fontSize: 10,
-                                  ))
-                              .toList(),
+                          children:
+                              linkedFolders
+                                  .map(
+                                    (f) => y.YBadge(
+                                      label: f.name.toUpperCase(),
+                                      bg: f.color,
+                                      fg: y.yCream,
+                                      fontSize: 10,
+                                    ),
+                                  )
+                                  .toList(),
                         ),
                       ),
                     ],
@@ -540,15 +611,17 @@ class _KanbanHeader extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) => _LinkedNotesSheet(
-          space: space,
-          scrollController: scrollController,
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            minChildSize: 0.3,
+            maxChildSize: 0.9,
+            builder:
+                (context, scrollController) => _LinkedNotesSheet(
+                  space: space,
+                  scrollController: scrollController,
+                ),
+          ),
     );
   }
 
@@ -582,185 +655,196 @@ class _KanbanHeader extends ConsumerWidget {
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            contentPadding: EdgeInsets.zero,
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-            content: Container(
-              width: 320,
-              decoration: BoxDecoration(
-                border: Border.all(color: ink, width: borderWidth),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: ink, width: borderWidth),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'FECHAS DEL PROYECTO',
-                            style: labelBold.copyWith(color: ink),
+      builder:
+          (ctx) => StatefulBuilder(
+            builder: (ctx, setDialogState) {
+              return AlertDialog(
+                contentPadding: EdgeInsets.zero,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
+                content: Container(
+                  width: 320,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: ink, width: borderWidth),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: ink, width: borderWidth),
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () => Navigator.pop(ctx),
-                          child: Icon(Icons.close, size: 18, color: inkGray),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _DateRow(
-                          label: 'INICIO',
-                          date: tempStart,
-                          ink: ink,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: ctx,
-                              initialDate: tempStart ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                              builder: (context, child) {
-                                return Theme(
-                                  data: Theme.of(context).copyWith(
-                                    dialogTheme: const DialogThemeData(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.zero,
-                                      ),
-                                    ),
-                                  ),
-                                  child: child!,
-                                );
-                              },
-                            );
-                            if (picked != null) {
-                              setDialogState(() => tempStart = picked);
-                            }
-                          },
-                          onClear: () => setDialogState(() => tempStart = null),
-                        ),
-                        const SizedBox(height: 12),
-                        _DateRow(
-                          label: 'FIN',
-                          date: tempEnd,
-                          ink: ink,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: ctx,
-                              initialDate: tempEnd ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2030),
-                              builder: (context, child) {
-                                return Theme(
-                                  data: Theme.of(context).copyWith(
-                                    dialogTheme: const DialogThemeData(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.zero,
-                                      ),
-                                    ),
-                                  ),
-                                  child: child!,
-                                );
-                              },
-                            );
-                            if (picked != null) {
-                              setDialogState(() => tempEnd = picked);
-                            }
-                          },
-                          onClear: () => setDialogState(() => tempEnd = null),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(color: ink, width: borderWidth),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(ctx),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: ink,
-                                width: borderWidth,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'FECHAS DEL PROYECTO',
+                                style: labelBold.copyWith(color: ink),
                               ),
                             ),
-                            child: Text(
-                              'CANCELAR',
-                              style: labelBold.copyWith(
+                            GestureDetector(
+                              onTap: () => Navigator.pop(ctx),
+                              child: Icon(
+                                Icons.close,
+                                size: 18,
                                 color: inkGray,
-                                fontSize: 12,
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _DateRow(
+                              label: 'INICIO',
+                              date: tempStart,
+                              ink: ink,
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: tempStart ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  builder: (context, child) {
+                                    return Theme(
+                                      data: Theme.of(context).copyWith(
+                                        dialogTheme: const DialogThemeData(
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.zero,
+                                          ),
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+                                if (picked != null) {
+                                  setDialogState(() => tempStart = picked);
+                                }
+                              },
+                              onClear:
+                                  () => setDialogState(() => tempStart = null),
+                            ),
+                            const SizedBox(height: 12),
+                            _DateRow(
+                              label: 'FIN',
+                              date: tempEnd,
+                              ink: ink,
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: tempEnd ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  builder: (context, child) {
+                                    return Theme(
+                                      data: Theme.of(context).copyWith(
+                                        dialogTheme: const DialogThemeData(
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.zero,
+                                          ),
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+                                if (picked != null) {
+                                  setDialogState(() => tempEnd = picked);
+                                }
+                              },
+                              onClear:
+                                  () => setDialogState(() => tempEnd = null),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(color: ink, width: borderWidth),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () async {
-                            await ref
-                                .read(labSpaceRepositoryProvider)
-                                .update(space.copyWith(
-                                  startDate: tempStart,
-                                  clearStartDate: tempStart == null,
-                                  dueDate: tempEnd,
-                                  clearDueDate: tempEnd == null,
-                                ));
-                            if (ctx.mounted) Navigator.pop(ctx);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: space.accentColor,
-                              border: Border.all(
-                                color: space.accentColor,
-                                width: borderWidth,
-                              ),
-                              boxShadow: shadowM,
-                            ),
-                            child: Text(
-                              'GUARDAR',
-                              style: labelBold.copyWith(
-                                color: paperLight,
-                                fontSize: 12,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(ctx),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: ink,
+                                    width: borderWidth,
+                                  ),
+                                ),
+                                child: Text(
+                                  'CANCELAR',
+                                  style: labelBold.copyWith(
+                                    color: inkGray,
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () async {
+                                await ref
+                                    .read(labSpaceRepositoryProvider)
+                                    .update(
+                                      space.copyWith(
+                                        startDate: tempStart,
+                                        clearStartDate: tempStart == null,
+                                        dueDate: tempEnd,
+                                        clearDueDate: tempEnd == null,
+                                      ),
+                                    );
+                                if (ctx.mounted) Navigator.pop(ctx);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: space.accentColor,
+                                  border: Border.all(
+                                    color: space.accentColor,
+                                    width: borderWidth,
+                                  ),
+                                  boxShadow: shadowM,
+                                ),
+                                child: Text(
+                                  'GUARDAR',
+                                  style: labelBold.copyWith(
+                                    color: paperLight,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+                ),
+              );
+            },
+          ),
     );
   }
 }
@@ -843,7 +927,8 @@ class _KanbanBoard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final allCards = ref.watch(kanbanCardsBySpaceProvider(space.id)).valueOrNull ?? [];
+    final allCards =
+        ref.watch(kanbanCardsBySpaceProvider(space.id)).valueOrNull ?? [];
     return Column(
       children: [
         y.ViewHead(
@@ -860,59 +945,59 @@ class _KanbanBoard extends ConsumerWidget {
         ),
         Expanded(
           child: Stack(
-      children: [
-        ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
-          itemCount: columns.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(width: 12),
-          itemBuilder: (_, i) {
-            if (i < columns.length) {
-              return _KanbanColumn(
-                space: space,
-                column: columns[i],
-                selectedCardIds: selectedCardIds,
-                onToggleSelection: onToggleSelection,
-                selectionMode: selectionMode,
-              );
-            }
-            return _AddColumnButton(spaceId: space.id);
-          },
-        ),
-        // Tablet: show overflow indicator when more columns exist
-        if (columns.length > 3)
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: IgnorePointer(
-              child: Container(
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      paperColor(context).withAlpha(0),
-                      paperColor(context),
-                    ],
-                  ),
-                ),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Text(
-                      'más →',
-                      style: labelBold.copyWith(color: inkGray),
+            children: [
+              ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
+                itemCount: columns.length + 1,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (_, i) {
+                  if (i < columns.length) {
+                    return _KanbanColumn(
+                      space: space,
+                      column: columns[i],
+                      selectedCardIds: selectedCardIds,
+                      onToggleSelection: onToggleSelection,
+                      selectionMode: selectionMode,
+                    );
+                  }
+                  return _AddColumnButton(spaceId: space.id);
+                },
+              ),
+              // Tablet: show overflow indicator when more columns exist
+              if (columns.length > 3)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: Container(
+                      width: 48,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            paperColor(context).withAlpha(0),
+                            paperColor(context),
+                          ],
+                        ),
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text(
+                            'más →',
+                            style: labelBold.copyWith(color: inkGray),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
         ),
       ],
     );
@@ -923,45 +1008,56 @@ class _KanbanBoard extends ConsumerWidget {
     final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: y.yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Nueva tarea',
-            style: y.ySans(size: 18, weight: FontWeight.w700, color: y.yInk)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Titulo'),
-          onSubmitted: (t) async {
-            if (t.trim().isNotEmpty) {
-              await ref.read(kanbanCardRepositoryProvider).create(
-                    labSpaceId: space.id,
-                    columnId: columns.first.id,
-                    title: t.trim(),
-                  );
-            }
-            if (ctx.mounted) Navigator.pop(ctx);
-          },
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () async {
-                final t = ctrl.text.trim();
-                if (t.isNotEmpty) {
-                  await ref.read(kanbanCardRepositoryProvider).create(
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: y.yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Nueva tarea',
+              style: y.ySans(size: 18, weight: FontWeight.w700, color: y.yInk),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'Titulo'),
+              onSubmitted: (t) async {
+                if (t.trim().isNotEmpty) {
+                  await ref
+                      .read(kanbanCardRepositoryProvider)
+                      .create(
                         labSpaceId: space.id,
                         columnId: columns.first.id,
-                        title: t,
+                        title: t.trim(),
                       );
                 }
                 if (ctx.mounted) Navigator.pop(ctx);
               },
-              child: const Text('Crear')),
-        ],
-      ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final t = ctrl.text.trim();
+                  if (t.isNotEmpty) {
+                    await ref
+                        .read(kanbanCardRepositoryProvider)
+                        .create(
+                          labSpaceId: space.id,
+                          columnId: columns.first.id,
+                          title: t,
+                        );
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: const Text('Crear'),
+              ),
+            ],
+          ),
     );
   }
 }
@@ -986,43 +1082,52 @@ class _KanbanColumn extends ConsumerWidget {
         column.isTerminal || column.isExpired || column.isInProgress;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.zero,
-          side: BorderSide(color: inkColor(context), width: borderWidth),
-        ),
-        title: Text('Eliminar columna',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Se eliminará la columna y todas sus cards.',
-                style: bodyM.copyWith(color: inkColor(context))),
-            if (isProtected) ...[
-              const SizedBox(height: 12),
-              Text(
-                '${column.name} es una columna automática del sistema. '
-                'Si la eliminas, las cards no se moverán automáticamente.',
-                style: bodyS.copyWith(color: accentFight),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: paperColor(context),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: inkColor(context), width: borderWidth),
+            ),
+            title: Text(
+              'Eliminar columna',
+              style: displayM.copyWith(color: inkColor(context)),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Se eliminará la columna y todas sus cards.',
+                  style: bodyM.copyWith(color: inkColor(context)),
+                ),
+                if (isProtected) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${column.name} es una columna automática del sistema. '
+                    'Si la eliminas, las cards no se moverán automáticamente.',
+                    style: bodyS.copyWith(color: accentFight),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  'Cancelar',
+                  style: labelBold.copyWith(color: inkGray),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'Eliminar',
+                  style: labelBold.copyWith(color: accentFight),
+                ),
               ),
             ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Eliminar',
-                style: labelBold.copyWith(color: accentFight)),
-          ),
-        ],
-      ),
     );
     if (confirmed == true && context.mounted) {
       await ref.read(labSpaceRepositoryProvider).deleteColumn(column.id);
@@ -1056,118 +1161,134 @@ class _KanbanColumn extends ConsumerWidget {
             ),
             Expanded(
               child: DragTarget<_DragData>(
-              onAcceptWithDetails: (details) async {
-                if (details.data.card.columnId != column.id) {
-                  await _moveCardToColumn(ref, details.data, cards.length);
-                }
-              },
-              builder: (context, candidateData, rejectedData) {
-                final hasCrossCandidate = candidateData
-                    .any((d) => d?.card.columnId != column.id);
-                return Container(
-                  color: hasCrossCandidate
-                      ? space.accentColor.withAlpha(20)
-                      : Colors.transparent,
-                  child: cards.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: y.yMuted,
-                                width: 2,
-                                style: BorderStyle.solid,
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 20),
-                            child: Center(
-                              child: Text('vacio',
-                                  style: y.yMono(
-                                    size: 10,
-                                    tracking: 1.2,
+                onAcceptWithDetails: (details) async {
+                  if (details.data.card.columnId != column.id) {
+                    await _moveCardToColumn(ref, details.data, cards.length);
+                  }
+                },
+                builder: (context, candidateData, rejectedData) {
+                  final hasCrossCandidate = candidateData.any(
+                    (d) => d?.card.columnId != column.id,
+                  );
+                  return Container(
+                    color:
+                        hasCrossCandidate
+                            ? space.accentColor.withAlpha(20)
+                            : Colors.transparent,
+                    child:
+                        cards.isEmpty
+                            ? Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
                                     color: y.yMuted,
-                                  )),
-                            ),
-                          ),
-                        )
-                      : ListView(
-                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-                          children: [
-                            for (int i = 0; i < cards.length; i++) ...[
-                              _CardDropZone(
-                                column: column,
-                                accentColor: space.accentColor,
-                                position: i,
-                                onDrop: (_DragData data) =>
-                                    _handleDrop(ref, data, cards, i),
-                              ),
-                              if (selectionMode)
-                                GestureDetector(
-                                  key: ValueKey('sel_${cards[i].id}'),
-                                  onTap: () =>
-                                      onToggleSelection(cards[i].id),
-                                  child: KanbanCardTile(
-                                    card: cards[i],
-                                    accentColor: space.accentColor,
-                                    onTap: () =>
-                                        onToggleSelection(cards[i].id),
-                                    isSelected:
-                                        selectedCardIds.contains(cards[i].id),
-                                    selectionMode: true,
-                                    inExpiredColumn: column.isExpired,
+                                    width: 2,
+                                    style: BorderStyle.solid,
                                   ),
-                                )
-                              else
-                                LongPressDraggable<_DragData>(
-                                  key: ValueKey(cards[i].id),
-                                  data: _DragData(cards[i]),
-                                  feedback: Material(
-                                    elevation: 4,
-                                    color: Colors.transparent,
-                                    borderRadius: BorderRadius.zero,
-                                    child: SizedBox(
-                                      width: 260,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 20,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'vacio',
+                                    style: y.yMono(
+                                      size: 10,
+                                      tracking: 1.2,
+                                      color: y.yMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                            : ListView(
+                              padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+                              children: [
+                                for (int i = 0; i < cards.length; i++) ...[
+                                  _CardDropZone(
+                                    column: column,
+                                    accentColor: space.accentColor,
+                                    position: i,
+                                    onDrop:
+                                        (_DragData data) =>
+                                            _handleDrop(ref, data, cards, i),
+                                  ),
+                                  if (selectionMode)
+                                    GestureDetector(
+                                      key: ValueKey('sel_${cards[i].id}'),
+                                      onTap:
+                                          () => onToggleSelection(cards[i].id),
                                       child: KanbanCardTile(
                                         card: cards[i],
                                         accentColor: space.accentColor,
-                                        onTap: () {},
+                                        onTap:
+                                            () =>
+                                                onToggleSelection(cards[i].id),
+                                        isSelected: selectedCardIds.contains(
+                                          cards[i].id,
+                                        ),
+                                        selectionMode: true,
+                                        inExpiredColumn: column.isExpired,
+                                      ),
+                                    )
+                                  else
+                                    LongPressDraggable<_DragData>(
+                                      key: ValueKey(cards[i].id),
+                                      data: _DragData(cards[i]),
+                                      feedback: Material(
+                                        elevation: 4,
+                                        color: Colors.transparent,
+                                        borderRadius: BorderRadius.zero,
+                                        child: SizedBox(
+                                          width: 260,
+                                          child: KanbanCardTile(
+                                            card: cards[i],
+                                            accentColor: space.accentColor,
+                                            onTap: () {},
+                                            inExpiredColumn: column.isExpired,
+                                          ),
+                                        ),
+                                      ),
+                                      childWhenDragging: Opacity(
+                                        opacity: 0.3,
+                                        child: KanbanCardTile(
+                                          card: cards[i],
+                                          accentColor: space.accentColor,
+                                          onTap:
+                                              () =>
+                                                  _openCard(context, cards[i]),
+                                          inExpiredColumn: column.isExpired,
+                                        ),
+                                      ),
+                                      child: KanbanCardTile(
+                                        card: cards[i],
+                                        accentColor: space.accentColor,
+                                        onTap:
+                                            () => _openCard(context, cards[i]),
                                         inExpiredColumn: column.isExpired,
                                       ),
                                     ),
-                                  ),
-                                  childWhenDragging: Opacity(
-                                    opacity: 0.3,
-                                    child: KanbanCardTile(
-                                      card: cards[i],
-                                      accentColor: space.accentColor,
-                                      onTap: () =>
-                                          _openCard(context, cards[i]),
-                                      inExpiredColumn: column.isExpired,
-                                    ),
-                                  ),
-                                  child: KanbanCardTile(
-                                    card: cards[i],
-                                    accentColor: space.accentColor,
-                                    onTap: () =>
-                                        _openCard(context, cards[i]),
-                                    inExpiredColumn: column.isExpired,
-                                  ),
+                                ],
+                                _CardDropZone(
+                                  column: column,
+                                  accentColor: space.accentColor,
+                                  position: cards.length,
+                                  onDrop:
+                                      (_DragData data) => _handleDrop(
+                                        ref,
+                                        data,
+                                        cards,
+                                        cards.length,
+                                      ),
                                 ),
-                            ],
-                            _CardDropZone(
-                              column: column,
-                              accentColor: space.accentColor,
-                              position: cards.length,
-                              onDrop: (_DragData data) => _handleDrop(
-                                  ref, data, cards, cards.length),
+                                const SizedBox(height: 8),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                          ],
-                        ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
             ),
             Container(height: 1, color: y.yInk),
             _AddCardButton(
@@ -1189,98 +1310,98 @@ class _KanbanColumn extends ConsumerWidget {
     return spaceAccent;
   }
 
-  void _showManagePopover(
-      BuildContext context, WidgetRef ref, Color colColor) {
+  void _showManagePopover(BuildContext context, WidgetRef ref, Color colColor) {
     showDialog(
       context: context,
       barrierColor: Colors.black54,
-      builder: (ctx) => _ColumnManagePopover(
-        column: column,
-        spaceId: space.id,
-        currentColor: colColor,
-        onRename: () {
-          Navigator.pop(ctx);
-          _showRenameDialog(context, ref);
-        },
-        onColorChange: (c) async {
-          await ref.read(labSpaceRepositoryProvider).updateColumn(
-                column.copyWith(),
-              );
-          if (ctx.mounted) Navigator.pop(ctx);
-        },
-        onMoveLeft: () async {
-          Navigator.pop(ctx);
-          await _moveColumn(ref, -1);
-        },
-        onMoveRight: () async {
-          Navigator.pop(ctx);
-          await _moveColumn(ref, 1);
-        },
-        onToggleDone: () async {
-          final repo = ref.read(labSpaceRepositoryProvider);
-          final willBeTerminal = !column.isTerminal;
-          if (willBeTerminal) {
-            final all = await repo.getColumns(space.id);
-            for (final c in all) {
-              if (c.id != column.id && c.isTerminal) {
-                await repo.updateColumn(c.copyWith(isTerminal: false));
+      builder:
+          (ctx) => _ColumnManagePopover(
+            column: column,
+            spaceId: space.id,
+            currentColor: colColor,
+            onRename: () {
+              Navigator.pop(ctx);
+              _showRenameDialog(context, ref);
+            },
+            onColorChange: (c) async {
+              await ref
+                  .read(labSpaceRepositoryProvider)
+                  .updateColumn(column.copyWith());
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            onMoveLeft: () async {
+              Navigator.pop(ctx);
+              await _moveColumn(ref, -1);
+            },
+            onMoveRight: () async {
+              Navigator.pop(ctx);
+              await _moveColumn(ref, 1);
+            },
+            onToggleDone: () async {
+              final repo = ref.read(labSpaceRepositoryProvider);
+              final willBeTerminal = !column.isTerminal;
+              if (willBeTerminal) {
+                final all = await repo.getColumns(space.id);
+                for (final c in all) {
+                  if (c.id != column.id && c.isTerminal) {
+                    await repo.updateColumn(c.copyWith(isTerminal: false));
+                  }
+                }
               }
-            }
-          }
-          await repo.updateColumn(
+              await repo.updateColumn(
                 column.copyWith(
                   isTerminal: willBeTerminal,
                   isExpired: false,
                   isInProgress: false,
                 ),
               );
-          if (ctx.mounted) Navigator.pop(ctx);
-        },
-        onToggleExpired: () async {
-          final repo = ref.read(labSpaceRepositoryProvider);
-          final willBeExpired = !column.isExpired;
-          if (willBeExpired) {
-            final all = await repo.getColumns(space.id);
-            for (final c in all) {
-              if (c.id != column.id && c.isExpired) {
-                await repo.updateColumn(c.copyWith(isExpired: false));
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            onToggleExpired: () async {
+              final repo = ref.read(labSpaceRepositoryProvider);
+              final willBeExpired = !column.isExpired;
+              if (willBeExpired) {
+                final all = await repo.getColumns(space.id);
+                for (final c in all) {
+                  if (c.id != column.id && c.isExpired) {
+                    await repo.updateColumn(c.copyWith(isExpired: false));
+                  }
+                }
               }
-            }
-          }
-          await repo.updateColumn(
+              await repo.updateColumn(
                 column.copyWith(
                   isExpired: willBeExpired,
                   isTerminal: false,
                   isInProgress: false,
                 ),
               );
-          if (ctx.mounted) Navigator.pop(ctx);
-        },
-        onToggleInProgress: () async {
-          final repo = ref.read(labSpaceRepositoryProvider);
-          final willBeInProgress = !column.isInProgress;
-          if (willBeInProgress) {
-            final all = await repo.getColumns(space.id);
-            for (final c in all) {
-              if (c.id != column.id && c.isInProgress) {
-                await repo.updateColumn(c.copyWith(isInProgress: false));
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            onToggleInProgress: () async {
+              final repo = ref.read(labSpaceRepositoryProvider);
+              final willBeInProgress = !column.isInProgress;
+              if (willBeInProgress) {
+                final all = await repo.getColumns(space.id);
+                for (final c in all) {
+                  if (c.id != column.id && c.isInProgress) {
+                    await repo.updateColumn(c.copyWith(isInProgress: false));
+                  }
+                }
               }
-            }
-          }
-          await repo.updateColumn(
+              await repo.updateColumn(
                 column.copyWith(
                   isInProgress: willBeInProgress,
                   isTerminal: false,
                   isExpired: false,
                 ),
               );
-          if (ctx.mounted) Navigator.pop(ctx);
-        },
-        onDelete: () {
-          Navigator.pop(ctx);
-          _confirmDelete(context, ref);
-        },
-      ),
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            onDelete: () {
+              Navigator.pop(ctx);
+              _confirmDelete(context, ref);
+            },
+          ),
     );
   }
 
@@ -1288,26 +1409,33 @@ class _KanbanColumn extends ConsumerWidget {
     final ctrl = TextEditingController(text: column.name);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: y.yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Renombrar columna',
-            style: y.ySans(size: 18, weight: FontWeight.w700)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Nombre'),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Guardar')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: y.yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Renombrar columna',
+              style: y.ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'Nombre'),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                child: const Text('Guardar'),
+              ),
+            ],
+          ),
     );
     if (newName != null && newName.isNotEmpty && newName != column.name) {
       await ref
@@ -1340,12 +1468,14 @@ class _KanbanColumn extends ConsumerWidget {
     }
   }
 
-  Future<void> _moveCardToColumn(WidgetRef ref, _DragData data, int position) async {
-    await ref.read(kanbanCardRepositoryProvider).moveToColumn(
-          data.card.id,
-          column.id,
-          position,
-        );
+  Future<void> _moveCardToColumn(
+    WidgetRef ref,
+    _DragData data,
+    int position,
+  ) async {
+    await ref
+        .read(kanbanCardRepositoryProvider)
+        .moveToColumn(data.card.id, column.id, position);
   }
 
   Future<void> _reorderInColumn(
@@ -1360,7 +1490,9 @@ class _KanbanColumn extends ConsumerWidget {
     ids.removeAt(oldIndex);
     if (newPosition > oldIndex) newPosition--;
     ids.insert(newPosition, cardId);
-    await ref.read(kanbanCardRepositoryProvider).reorderInColumn(column.id, ids);
+    await ref
+        .read(kanbanCardRepositoryProvider)
+        .reorderInColumn(column.id, ids);
   }
 
   void _openCard(BuildContext context, KanbanCard card) {
@@ -1368,16 +1500,18 @@ class _KanbanColumn extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.8,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (ctx, sc) => KanbanCardDetail(
-          card: card,
-          space: space,
-          scrollController: sc,
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.8,
+            minChildSize: 0.4,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, sc) => KanbanCardDetail(
+                  card: card,
+                  space: space,
+                  scrollController: sc,
+                ),
+          ),
     );
   }
 }
@@ -1406,12 +1540,13 @@ class _CardDropZone extends StatelessWidget {
           margin: EdgeInsets.only(bottom: isActive ? 6 : 0),
           decoration: BoxDecoration(
             color: isActive ? accentColor.withAlpha(40) : Colors.transparent,
-            border: isActive
-                ? Border(
-                    top: BorderSide(color: accentColor, width: 2),
-                    bottom: BorderSide(color: accentColor, width: 2),
-                  )
-                : null,
+            border:
+                isActive
+                    ? Border(
+                      top: BorderSide(color: accentColor, width: 2),
+                      bottom: BorderSide(color: accentColor, width: 2),
+                    )
+                    : null,
           ),
         );
       },
@@ -1451,30 +1586,37 @@ class _AddColumnButton extends ConsumerWidget {
                   color: y.yCream,
                   border: Border.all(color: y.yInk, width: 3),
                 ),
-                child: const Text('+',
-                    style: TextStyle(
-                        fontSize: 28,
-                        color: y.yInk,
-                        fontWeight: FontWeight.w700,
-                        height: 1.0)),
+                child: const Text(
+                  '+',
+                  style: TextStyle(
+                    fontSize: 28,
+                    color: y.yInk,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
               ),
               const SizedBox(height: 10),
-              Text('Columna',
-                  style: y.ySans(
-                    size: 14,
-                    weight: FontWeight.w700,
-                    letterSpacing: -0.3,
-                    color: y.yInk,
-                  )),
+              Text(
+                'Columna',
+                style: y.ySans(
+                  size: 14,
+                  weight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: y.yInk,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('NOMBRE + COLOR',
-                  textAlign: TextAlign.center,
-                  style: y.yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.2,
-                    color: y.yMuted,
-                  )),
+              Text(
+                'NOMBRE + COLOR',
+                textAlign: TextAlign.center,
+                style: y.yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: y.yMuted,
+                ),
+              ),
             ],
           ),
         ),
@@ -1486,49 +1628,58 @@ class _AddColumnButton extends ConsumerWidget {
     final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Nueva columna',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: bodyL.copyWith(color: inkColor(context)),
-          decoration: InputDecoration(
-            hintText: 'Nombre',
-            hintStyle: bodyL.copyWith(color: inkGray),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: paperColor(context),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Nueva columna',
+              style: displayM.copyWith(color: inkColor(context)),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              style: bodyL.copyWith(color: inkColor(context)),
+              decoration: InputDecoration(
+                hintText: 'Nombre',
+                hintStyle: bodyL.copyWith(color: inkGray),
+              ),
+              onSubmitted: (name) async {
+                if (name.trim().isNotEmpty) {
+                  await ref
+                      .read(labSpaceRepositoryProvider)
+                      .createColumn(spaceId, name.trim());
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  'Cancelar',
+                  style: labelBold.copyWith(color: inkGray),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final name = ctrl.text.trim();
+                  if (name.isNotEmpty) {
+                    await ref
+                        .read(labSpaceRepositoryProvider)
+                        .createColumn(spaceId, name);
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Text(
+                  'Crear',
+                  style: labelBold.copyWith(color: inkColor(context)),
+                ),
+              ),
+            ],
           ),
-          onSubmitted: (name) async {
-            if (name.trim().isNotEmpty) {
-              await ref
-                  .read(labSpaceRepositoryProvider)
-                  .createColumn(spaceId, name.trim());
-            }
-            if (ctx.mounted) Navigator.pop(ctx);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final name = ctrl.text.trim();
-              if (name.isNotEmpty) {
-                await ref
-                    .read(labSpaceRepositoryProvider)
-                    .createColumn(spaceId, name);
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text('Crear',
-                style: labelBold.copyWith(color: inkColor(context))),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1554,17 +1705,20 @@ class _AddCardButton extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-            const Text('+',
-                style: TextStyle(
-                    fontSize: 14, color: y.yMuted, height: 1.0)),
+            const Text(
+              '+',
+              style: TextStyle(fontSize: 14, color: y.yMuted, height: 1.0),
+            ),
             const SizedBox(width: 8),
-            Text('AÑADIR TAREA',
-                style: y.yMono(
-                  size: 11,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: y.yMuted,
-                )),
+            Text(
+              'AÑADIR TAREA',
+              style: y.yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: y.yMuted,
+              ),
+            ),
           ],
         ),
       ),
@@ -1575,53 +1729,66 @@ class _AddCardButton extends ConsumerWidget {
     final ctrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Nueva tarjeta',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: bodyL.copyWith(color: inkColor(context)),
-          decoration: InputDecoration(
-            hintText: 'Título',
-            hintStyle: bodyL.copyWith(color: inkGray),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: paperColor(context),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Nueva tarjeta',
+              style: displayM.copyWith(color: inkColor(context)),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              style: bodyL.copyWith(color: inkColor(context)),
+              decoration: InputDecoration(
+                hintText: 'Título',
+                hintStyle: bodyL.copyWith(color: inkGray),
+              ),
+              onSubmitted: (title) async {
+                if (title.trim().isNotEmpty) {
+                  await ref
+                      .read(kanbanCardRepositoryProvider)
+                      .create(
+                        labSpaceId: spaceId,
+                        columnId: columnId,
+                        title: title.trim(),
+                      );
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  'Cancelar',
+                  style: labelBold.copyWith(color: inkGray),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final title = ctrl.text.trim();
+                  if (title.isNotEmpty) {
+                    await ref
+                        .read(kanbanCardRepositoryProvider)
+                        .create(
+                          labSpaceId: spaceId,
+                          columnId: columnId,
+                          title: title,
+                        );
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Text(
+                  'Crear',
+                  style: labelBold.copyWith(color: inkColor(context)),
+                ),
+              ),
+            ],
           ),
-          onSubmitted: (title) async {
-            if (title.trim().isNotEmpty) {
-              await ref.read(kanbanCardRepositoryProvider).create(
-                    labSpaceId: spaceId,
-                    columnId: columnId,
-                    title: title.trim(),
-                  );
-            }
-            if (ctx.mounted) Navigator.pop(ctx);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancelar',
-                style: labelBold.copyWith(color: inkGray)),
-          ),
-          TextButton(
-            onPressed: () async {
-              final title = ctrl.text.trim();
-              if (title.isNotEmpty) {
-                await ref.read(kanbanCardRepositoryProvider).create(
-                      labSpaceId: spaceId,
-                      columnId: columnId,
-                      title: title,
-                    );
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text('Crear',
-                style: labelBold.copyWith(color: inkColor(context))),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1678,12 +1845,13 @@ class _LinkFoldersSheet extends ConsumerWidget {
                   shrinkWrap: true,
                   padding: const EdgeInsets.fromLTRB(0, 0, 0, 16),
                   itemCount: folders.length,
-                  separatorBuilder: (_, _) => Divider(
-                    height: 1,
-                    color: inkGray.withAlpha(40),
-                    indent: 24,
-                    endIndent: 24,
-                  ),
+                  separatorBuilder:
+                      (_, _) => Divider(
+                        height: 1,
+                        color: inkGray.withAlpha(40),
+                        indent: 24,
+                        endIndent: 24,
+                      ),
                   itemBuilder: (_, i) {
                     final folder = folders[i];
                     final isLinked = linkedIds.contains(folder.id);
@@ -1701,7 +1869,9 @@ class _LinkFoldersSheet extends ConsumerWidget {
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 14),
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
                         child: Row(
                           children: [
                             Container(
@@ -1713,22 +1883,26 @@ class _LinkFoldersSheet extends ConsumerWidget {
                                   width: borderWidth,
                                 ),
                               ),
-                              child: isLinked
-                                  ? Center(
-                                      child: Container(
-                                        width: 8,
-                                        height: 8,
-                                        color: folder.color,
-                                      ),
-                                    )
-                                  : null,
+                              child:
+                                  isLinked
+                                      ? Center(
+                                        child: Container(
+                                          width: 8,
+                                          height: 8,
+                                          color: folder.color,
+                                        ),
+                                      )
+                                      : null,
                             ),
                             const SizedBox(width: 16),
                             Text(
                               folder.name,
                               style: bodyM.copyWith(
                                 color: folder.color,
-                                fontWeight: isLinked ? FontWeight.bold : FontWeight.normal,
+                                fontWeight:
+                                    isLinked
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
                               ),
                             ),
                           ],
@@ -1771,37 +1945,38 @@ class _LinkedNotesSheet extends ConsumerWidget {
           top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
         ),
       ),
-      child: linkedFolders.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Vincula carpetas primero desde el botón de carpetas.',
-                style: bodyS.copyWith(color: inkGray),
+      child:
+          linkedFolders.isEmpty
+              ? Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Vincula carpetas primero desde el botón de carpetas.',
+                  style: bodyS.copyWith(color: inkGray),
+                ),
+              )
+              : ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: inkGray.withAlpha(60),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, bottom: 16),
+                    child: Text(
+                      'NOTAS VINCULADAS',
+                      style: labelBold.copyWith(color: inkGray),
+                    ),
+                  ),
+                  for (final folder in linkedFolders)
+                    _FolderNoteSection(folder: folder, space: space),
+                ],
               ),
-            )
-          : ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    color: inkGray.withAlpha(60),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 8, bottom: 16),
-                  child: Text(
-                    'NOTAS VINCULADAS',
-                    style: labelBold.copyWith(color: inkGray),
-                  ),
-                ),
-                for (final folder in linkedFolders)
-                  _FolderNoteSection(folder: folder, space: space),
-              ],
-            ),
     );
   }
 }
@@ -1815,9 +1990,8 @@ class _FolderNoteSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notesAsync = ref.watch(notesByFolderProvider(folder.id));
-    final notes = (notesAsync.valueOrNull ?? [])
-        .where((n) => n.isActive)
-        .toList();
+    final notes =
+        (notesAsync.valueOrNull ?? []).where((n) => n.isActive).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1828,23 +2002,22 @@ class _FolderNoteSection extends ConsumerWidget {
             children: [
               Container(width: 4, height: 16, color: folder.color),
               const SizedBox(width: 8),
-              Text(folder.name,
-                  style: labelBold.copyWith(color: folder.color)),
+              Text(folder.name, style: labelBold.copyWith(color: folder.color)),
               const Spacer(),
-              Text('${notes.length}',
-                  style: mono.copyWith(color: inkGray, fontSize: 12)),
+              Text(
+                '${notes.length}',
+                style: mono.copyWith(color: inkGray, fontSize: 12),
+              ),
             ],
           ),
         ),
         if (notes.isEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 12, bottom: 16),
-            child: Text('Sin notas',
-                style: bodyS.copyWith(color: inkGray)),
+            child: Text('Sin notas', style: bodyS.copyWith(color: inkGray)),
           )
         else
-          for (final note in notes)
-            _NoteRow(note: note, space: space),
+          for (final note in notes) _NoteRow(note: note, space: space),
         const SizedBox(height: 12),
       ],
     );
@@ -1863,9 +2036,10 @@ class _NoteRow extends ConsumerWidget {
     final linkedCards = cardsAsync.valueOrNull ?? [];
     final isLinked = linkedCards.any((c) => c.labSpaceId == space.id);
 
-    final snippet = cleanCellContent(note.rawMarkdown)
-        .replaceAll(RegExp(r'[#*_`\[\]>\-]'), '')
-        .trim();
+    final snippet =
+        cleanCellContent(
+          note.rawMarkdown,
+        ).replaceAll(RegExp(r'[#*_`\[\]>\-]'), '').trim();
     final preview = snippet.length > 60 ? snippet.substring(0, 60) : snippet;
 
     return Padding(
@@ -1889,19 +2063,23 @@ class _NoteRow extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(note.displayTitle,
-                        style: bodyM.copyWith(
-                          color: inkColor(context),
-                          fontWeight: FontWeight.w700,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      note.displayTitle,
+                      style: bodyM.copyWith(
+                        color: inkColor(context),
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     if (preview.isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(preview,
-                          style: bodyS.copyWith(color: inkGray),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                      Text(
+                        preview,
+                        style: bodyS.copyWith(color: inkGray),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ],
                 ),
@@ -1933,10 +2111,7 @@ class _NoteRow extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ColumnPickerSheet(
-        space: space,
-        note: note,
-      ),
+      builder: (_) => _ColumnPickerSheet(space: space, note: note),
     );
   }
 }
@@ -1958,9 +2133,7 @@ class _SelectionBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: paperColor(context),
-        border: Border(
-          top: BorderSide(color: ink, width: borderWidthHeavy),
-        ),
+        border: Border(top: BorderSide(color: ink, width: borderWidthHeavy)),
       ),
       child: SafeArea(
         top: false,
@@ -1973,16 +2146,15 @@ class _SelectionBar extends StatelessWidget {
                 onTap: onCancel,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     border: Border.all(color: inkGray, width: borderWidth),
                   ),
                   child: Text(
                     'Cancelar',
-                    style: labelBold.copyWith(
-                      color: inkGray,
-                      fontSize: 12,
-                    ),
+                    style: labelBold.copyWith(color: inkGray, fontSize: 12),
                   ),
                 ),
               ),
@@ -1998,21 +2170,17 @@ class _SelectionBar extends StatelessWidget {
                 onTap: onDelete,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: accentFight,
-                    border: Border.all(
-                      color: accentFight,
-                      width: borderWidth,
-                    ),
+                    border: Border.all(color: accentFight, width: borderWidth),
                     boxShadow: shadowM,
                   ),
                   child: Text(
                     'Eliminar',
-                    style: labelBold.copyWith(
-                      color: paperLight,
-                      fontSize: 12,
-                    ),
+                    style: labelBold.copyWith(color: paperLight, fontSize: 12),
                   ),
                 ),
               ),
@@ -2050,48 +2218,60 @@ class _ColumnPickerSheet extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Text('Enviar a columna',
-                  style: labelBold.copyWith(color: inkGray)),
+              child: Text(
+                'Enviar a columna',
+                style: labelBold.copyWith(color: inkGray),
+              ),
             ),
             if (columns.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: Text('No hay columnas.',
-                    style: bodyS.copyWith(color: inkGray)),
+                child: Text(
+                  'No hay columnas.',
+                  style: bodyS.copyWith(color: inkGray),
+                ),
               )
             else
-              ...columns.map((col) => GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () async {
-                      final cleaned = cleanCellContent(note.rawMarkdown);
-                      final snippet = cleaned.length > 200
-                          ? cleaned.substring(0, 200)
-                          : cleaned;
-                      await ref.read(kanbanCardRepositoryProvider).create(
-                            labSpaceId: space.id,
-                            columnId: col.id,
-                            title: note.displayTitle,
-                            description:
-                                snippet.isNotEmpty ? snippet : null,
-                            sourceNoteId: note.id,
-                          );
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Card creada en ${col.name}'),
-                            duration: const Duration(seconds: 2),
-                          ),
+              ...columns.map(
+                (col) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () async {
+                    final cleaned = cleanCellContent(note.rawMarkdown);
+                    final snippet =
+                        cleaned.length > 200
+                            ? cleaned.substring(0, 200)
+                            : cleaned;
+                    await ref
+                        .read(kanbanCardRepositoryProvider)
+                        .create(
+                          labSpaceId: space.id,
+                          columnId: col.id,
+                          title: note.displayTitle,
+                          description: snippet.isNotEmpty ? snippet : null,
+                          sourceNoteId: note.id,
                         );
-                      }
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 14),
-                      child: Text(col.name,
-                          style: bodyM.copyWith(color: inkColor(context))),
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Card creada en ${col.name}'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 14,
                     ),
-                  )),
+                    child: Text(
+                      col.name,
+                      style: bodyM.copyWith(color: inkColor(context)),
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -2152,13 +2332,15 @@ class _ColumnHead extends StatelessWidget {
                 color: y.yCream2,
                 border: Border.all(color: y.yLab, width: 1.5),
               ),
-              child: Text('DONE',
-                  style: y.yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1,
-                    color: y.yLab,
-                  )),
+              child: Text(
+                'DONE',
+                style: y.yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: y.yLab,
+                ),
+              ),
             ),
           ],
           if (column.isExpired) ...[
@@ -2169,13 +2351,15 @@ class _ColumnHead extends StatelessWidget {
                 color: y.yCream2,
                 border: Border.all(color: y.yFight, width: 1.5),
               ),
-              child: Text('EXPIRED',
-                  style: y.yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1,
-                    color: y.yFight,
-                  )),
+              child: Text(
+                'EXPIRED',
+                style: y.yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: y.yFight,
+                ),
+              ),
             ),
           ],
           if (column.isInProgress) ...[
@@ -2186,13 +2370,15 @@ class _ColumnHead extends StatelessWidget {
                 color: y.yCream2,
                 border: Border.all(color: y.yFlight, width: 1.5),
               ),
-              child: Text('INICIO',
-                  style: y.yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1,
-                    color: y.yFlight,
-                  )),
+              child: Text(
+                'INICIO',
+                style: y.yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: y.yFlight,
+                ),
+              ),
             ),
           ],
           const Spacer(),
@@ -2201,11 +2387,10 @@ class _ColumnHead extends StatelessWidget {
             onTap: onMenu,
             child: const Padding(
               padding: EdgeInsets.all(4),
-              child: Text('⋯',
-                  style: TextStyle(
-                      fontSize: 16,
-                      color: y.yMuted,
-                      height: 1.0)),
+              child: Text(
+                '⋯',
+                style: TextStyle(fontSize: 16, color: y.yMuted, height: 1.0),
+              ),
             ),
           ),
         ],
@@ -2259,8 +2444,7 @@ class _ColumnManagePopover extends StatelessWidget {
           children: [
             Container(
               color: y.yInk,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Text(
                 '// COLUMNA · ${column.name.toUpperCase()}',
                 style: y.yMono(
@@ -2272,26 +2456,47 @@ class _ColumnManagePopover extends StatelessWidget {
               ),
             ),
             Container(height: 2, color: y.yInk),
-            _PopRow(icon: Icons.edit_outlined, label: 'Renombrar', onTap: onRename),
-            _PopRow(icon: Icons.chevron_left, label: 'Mover a la izquierda', onTap: onMoveLeft),
-            _PopRow(icon: Icons.chevron_right, label: 'Mover a la derecha', onTap: onMoveRight),
             _PopRow(
-              icon: column.isTerminal ? Icons.check_box : Icons.check_box_outline_blank,
+              icon: Icons.edit_outlined,
+              label: 'Renombrar',
+              onTap: onRename,
+            ),
+            _PopRow(
+              icon: Icons.chevron_left,
+              label: 'Mover a la izquierda',
+              onTap: onMoveLeft,
+            ),
+            _PopRow(
+              icon: Icons.chevron_right,
+              label: 'Mover a la derecha',
+              onTap: onMoveRight,
+            ),
+            _PopRow(
+              icon:
+                  column.isTerminal
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
               label: column.isTerminal ? 'Quitar DONE' : 'Marcar como DONE',
               onTap: onToggleDone,
             ),
             _PopRow(
-              icon: column.isExpired ? Icons.warning : Icons.warning_amber_outlined,
-              label: column.isExpired ? 'Quitar EXPIRED' : 'Marcar como EXPIRED',
+              icon:
+                  column.isExpired
+                      ? Icons.warning
+                      : Icons.warning_amber_outlined,
+              label:
+                  column.isExpired ? 'Quitar EXPIRED' : 'Marcar como EXPIRED',
               onTap: onToggleExpired,
             ),
             _PopRow(
-              icon: column.isInProgress
-                  ? Icons.play_circle
-                  : Icons.play_circle_outline,
-              label: column.isInProgress
-                  ? 'Quitar EN PROCESO'
-                  : 'Marcar como EN PROCESO',
+              icon:
+                  column.isInProgress
+                      ? Icons.play_circle
+                      : Icons.play_circle_outline,
+              label:
+                  column.isInProgress
+                      ? 'Quitar EN PROCESO'
+                      : 'Marcar como EN PROCESO',
               onTap: onToggleInProgress,
             ),
             Container(height: 2, color: y.yInk.withValues(alpha: 0.15)),
@@ -2330,16 +2535,16 @@ class _PopRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
         child: Row(
           children: [
-            Icon(icon,
-                size: 16,
-                color: danger ? y.yFight : y.yMuted),
+            Icon(icon, size: 16, color: danger ? y.yFight : y.yMuted),
             const SizedBox(width: 10),
-            Text(label,
-                style: y.yBody(
-                  size: 13,
-                  weight: FontWeight.w500,
-                  color: danger ? y.yFight : y.yInk,
-                )),
+            Text(
+              label,
+              style: y.yBody(
+                size: 13,
+                weight: FontWeight.w500,
+                color: danger ? y.yFight : y.yInk,
+              ),
+            ),
           ],
         ),
       ),

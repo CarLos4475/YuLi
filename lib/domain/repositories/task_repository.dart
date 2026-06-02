@@ -1,4 +1,5 @@
 import '../models/task.dart';
+import '../models/reminder_preset.dart';
 
 abstract class TaskRepository {
   Stream<List<Task>> watchPending();
@@ -18,4 +19,9 @@ abstract class TaskRepository {
   Future<int> runExpiryQueries();
   Stream<List<Task>> watchTrashed();
   Future<void> updateDueDate(int id, DateTime? dueDate);
+  Future<void> updateReminder(
+    int id,
+    DateTime? remindAt,
+    ReminderPreset? preset,
+  );
 }

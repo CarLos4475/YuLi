@@ -24,6 +24,21 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 **Fix aplicado:** `ref.watch(aiLabSessionProvider(widget.space.id))` en `LabSpaceDetailScreen.build` (ancla la sesión a la vida de la pantalla, igual que los editores con las notas).
 **Verificar:** relanzar → abrir Chat del proyecto → ya NO debe salir el error rojo; abrir/cerrar varias veces; que el chat de proyecto y el de una nota con el mismo id sigan separados.
 
+### 🔔 Recordatorios (notificaciones locales) — branch `feature/reminders`, schema 19 — *lógica validada headless, falta verificar en la TGR*
+
+Feature nueva: notificaciones para tasks (Fight) y cards (Lab) + resumen diario. Instalada y corriendo en la TGR (2026-06-02). `reminder_coordinator_test.dart` cubre programar/cancelar/huérfanos contra BD en memoria. **Falta probar en vivo (mañana):**
+
+- **#1 Disparo con app CERRADA:** pon un recordatorio a +2-3 min (task o card), **cierra la app** (no force-stop), espera → debe llegar la notificación. Tócala → abre la task (Fight) o la card correcta (Lab→espacio→detalle).
+- **#2 Recordatorios EXACTOS:** Ajustes → activar "RECORDATORIOS EXACTOS" → debe pedir el permiso especial de Android (Alarmas y recordatorios). Con esto, dispara a la hora exacta aun en reposo (Doze). Sin él, modo inexacto (puede atrasarse).
+- **#3 Resumen diario:** activar + fijar hora → a esa hora llega el resumen "Fight: N pendientes… Lab: N cards…".
+- **#4 Notificaciones DESACTIVADAS (gotcha Android 12):** la TGR es API 31, no hay diálogo de permiso (es de Android 13+) y vienen **apagadas por defecto**. Verifica: con notifs off, Ajustes muestra **banner rojo "NOTIFICACIONES DESACTIVADAS"** (toca → abre Ajustes del sistema); y al fijar un recordatorio sale **snackbar "ACTIVAR"**. Tras activarlas (ya lo hice por adb una vez), el banner desaparece.
+- **#5 Persistencia tras REINICIO:** programa uno futuro, reinicia la tablet → debe seguir disparando (boot receiver reprograma).
+- **#6 Optimización de batería (TGR/OEM):** desactivar optimización de batería para YuLi (Ajustes → Batería) y confirmar que la alarma no la mata el sistema.
+- **#7 Huérfanos (no truena):** borrar un espacio/folder con cards/tasks que tenían recordatorio → no debe quedar notificación fantasma (cancela en `reconcileAll` al arrancar). Lógica headless ✓, solo confirmar que no truena.
+- **#8 Sync con due:** cambiar el due de una task/card con preset (a la hora / 30m antes / 1 día antes) reprograma el recordatorio; completar/mandar a terminal lo cancela; reabrir lo restaura.
+
+⚠️ **Build Android:** requiere `coreLibraryDesugaring` (ya configurado en `android/app/build.gradle.kts`). Sin eso `assembleRelease` falla — `flutter analyze` NO lo detecta.
+
 ## Por hacer (NO implementado)
 
 1. **Papelera para cards.** Se borran en duro (tareas/folders/espacios sí tienen soft-delete de 7 días). Feature: esquema (`deleted_at`/`trashed_at` en `kanban_cards`) + UI de recuperación.
@@ -173,6 +188,7 @@ Que los bloques de tareas en canvas conserven sus `taskIds` aunque la tarea se b
 | 2 | Imágenes: GC limpia + visor muestra tamaño | Ajustes → ALMACENAMIENTO → borrar nota con imgs → relanzar | Fuga de disco |
 | 3 | Cascadas UI: papelera folder/nota/espacio y restore | Flight/LAB → borrar → papelera → restaurar/purgar | Huérfanos / crash |
 | 5 | Notificaciones no se acumulan >50 | Usar app varios días / forzar expiry | OOM de notificaciones |
+| 🔔 | Recordatorios: disparo app cerrada, exactos, resumen, banner notifs-off, reboot, batería, huérfanos | Fight/Lab → fijar recordatorio; Ajustes → toggles | No dispara / fantasma / crash |
 | 6 | Editar título no pierde @folder | LAB → card con @folder → editar título | Badge desaparece |
 | 9 | Columnas por flag: **renombrar** no rompe (resto verificado en vivo) | LAB → renombrar Entregado/Vencido/En Proceso → probar flujos | Automatización muerta |
 | 16 | Pendientes implementados hoy (#1 color folder, #2 backlog fallback, #4/#5 labels, #6 reabrir due, #7 OCR) | ver sección "Implementado hoy" | Regresión |

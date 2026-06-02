@@ -12,20 +12,21 @@ class KanbanCards extends Table {
   TextColumn get title => text()();
   TextColumn get description => text().nullable()();
   TextColumn get priority =>
-      text().withDefault(const Constant('none'))(); // none | low | medium | high
+      text().withDefault(
+        const Constant('none'),
+      )(); // none | low | medium | high
   IntColumn get position => integer()();
   DateTimeColumn get dueDate => dateTime().nullable()();
+  DateTimeColumn get remindAt => dateTime().nullable()();
+  TextColumn get reminderPreset => text().nullable()();
   // Lab-only: optional planned start ("fecha de agregado/inicio"). Null = auto
   // (the timeline uses [createdAt] as the range start). [dueDate] is the range
   // end and keeps its existing cross-mode behavior (untouched).
   DateTimeColumn get startDate => dateTime().nullable()();
-  IntColumn get sourceNoteId =>
-      integer().nullable().references(Notes, #id)();
+  IntColumn get sourceNoteId => integer().nullable().references(Notes, #id)();
   TextColumn get sourceAnchor => text().nullable()();
-  IntColumn get originTaskId =>
-      integer().nullable().references(Tasks, #id)();
+  IntColumn get originTaskId => integer().nullable().references(Tasks, #id)();
   IntColumn get originFolderColor => integer().nullable()();
   DateTimeColumn get originTaskDoneAt => dateTime().nullable()();
-  DateTimeColumn get createdAt =>
-      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }

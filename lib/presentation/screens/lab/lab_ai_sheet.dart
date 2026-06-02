@@ -6,6 +6,7 @@ import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../theme/app_tokens.dart';
+import '../../widgets/ai_working_dialog.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_card.dart';
@@ -23,13 +24,19 @@ enum _LabAction { generate, summarize, chat }
 /// Open the "YuLi · LAB" action panel. One-shot actions run with the caller's
 /// [context]/[ref] (which outlive the sheet) after it pops with a choice.
 Future<void> showLabAiSheet(
-    BuildContext context, WidgetRef ref, LabSpace space) async {
+  BuildContext context,
+  WidgetRef ref,
+  LabSpace space,
+) async {
   final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
   if (!context.mounted) return;
   if (!hasKey) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text('Configura tu API key de DeepSeek en Ajustes'),
-        duration: Duration(seconds: 3)));
+        duration: Duration(seconds: 3),
+      ),
+    );
     return;
   }
   final action = await showModalBottomSheet<_LabAction>(
@@ -52,8 +59,9 @@ Future<void> showLabAiSheet(
         accent: space.accentColor,
         buildContext: () async {
           final cols = await ref.read(kanbanColumnsProvider(space.id).future);
-          final cards =
-              await ref.read(kanbanCardsBySpaceProvider(space.id).future);
+          final cards = await ref.read(
+            kanbanCardsBySpaceProvider(space.id).future,
+          );
           return _serializeBoard(space, cols, cards);
         },
       );
@@ -78,50 +86,68 @@ class _LabAiSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(children: [
-              Container(width: 10, height: 10, color: space.accentColor),
-              const SizedBox(width: 8),
-              Text('YuLi · LAB',
+            Row(
+              children: [
+                Container(width: 10, height: 10, color: space.accentColor),
+                const SizedBox(width: 8),
+                Text(
+                  'YuLi · LAB',
                   style: yMono(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      tracking: 1.6,
-                      color: yInk)),
-              const Spacer(),
-              Flexible(
-                child: Text(space.name.toUpperCase(),
+                    size: 12,
+                    weight: FontWeight.w700,
+                    tracking: 1.6,
+                    color: yInk,
+                  ),
+                ),
+                const Spacer(),
+                Flexible(
+                  child: Text(
+                    space.name.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: yMono(size: 10, color: yMuted, tracking: 1)),
-              ),
-            ]),
+                    style: yMono(size: 10, color: yMuted, tracking: 1),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 10),
-            Text('// ACCIONES SOBRE EL PROYECTO',
-                style: yMono(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted)),
+            Text(
+              '// ACCIONES SOBRE EL PROYECTO',
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yMuted,
+              ),
+            ),
             const SizedBox(height: 12),
-            _action(Icons.auto_awesome, 'Generar tarjetas',
-                'Desglosa un objetivo en tarjetas (a Backlog)',
-                () => Navigator.of(context).pop(_LabAction.generate)),
+            _action(
+              Icons.auto_awesome,
+              'Generar tarjetas',
+              'Desglosa un objetivo en tarjetas (a Backlog)',
+              () => Navigator.of(context).pop(_LabAction.generate),
+            ),
             const SizedBox(height: 8),
-            _action(Icons.notes, 'Resumir / triage',
-                'Resume el avance y qué sigue',
-                () => Navigator.of(context).pop(_LabAction.summarize)),
+            _action(
+              Icons.notes,
+              'Resumir / triage',
+              'Resume el avance y qué sigue',
+              () => Navigator.of(context).pop(_LabAction.summarize),
+            ),
             const SizedBox(height: 8),
-            _action(Icons.forum, 'Chat del proyecto',
-                'Conversa con el board como contexto',
-                () => Navigator.of(context).pop(_LabAction.chat)),
+            _action(
+              Icons.forum,
+              'Chat del proyecto',
+              'Conversa con el board como contexto',
+              () => Navigator.of(context).pop(_LabAction.chat),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _action(
-      IconData icon, String label, String sub, VoidCallback onTap) {
+  Widget _action(IconData icon, String label, String sub, VoidCallback onTap) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -149,9 +175,14 @@ class _LabAiSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style:
-                          ySans(size: 15, weight: FontWeight.w700, color: yInk)),
+                  Text(
+                    label,
+                    style: ySans(
+                      size: 15,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                    ),
+                  ),
                   Text(sub, style: yBody(size: 12, color: yMuted)),
                 ],
               ),
@@ -166,41 +197,53 @@ class _LabAiSheet extends StatelessWidget {
 // ─── Generate cards ─────────────────────────────────────────────────────────
 
 Future<void> _generateCards(
-    BuildContext context, WidgetRef ref, LabSpace space) async {
+  BuildContext context,
+  WidgetRef ref,
+  LabSpace space,
+) async {
   final ctrl = TextEditingController();
   final prompt = await showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: yCream,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      title: Text('Generar tarjetas',
-          style: ySans(size: 18, weight: FontWeight.w700)),
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        maxLines: 4,
-        minLines: 2,
-        decoration: const InputDecoration(
-            hintText: '¿Qué proyecto/objetivo desgloso en tarjetas?'),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar')),
-        TextButton(
-            onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-            child: const Text('Generar')),
-      ],
-    ),
+    builder:
+        (ctx) => AlertDialog(
+          backgroundColor: yCream,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: Text(
+            'Generar tarjetas',
+            style: ySans(size: 18, weight: FontWeight.w700),
+          ),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 4,
+            minLines: 2,
+            decoration: const InputDecoration(
+              hintText: '¿Qué proyecto/objetivo desgloso en tarjetas?',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+              child: const Text('Generar'),
+            ),
+          ],
+        ),
   );
   if (prompt == null || prompt.trim().isEmpty || !context.mounted) return;
 
   final limiter = ref.read(aiUsageLimiterProvider);
   if (!await limiter.canSend()) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text('Límite diario de IA alcanzado.'),
-        duration: Duration(seconds: 2)));
+        duration: Duration(seconds: 2),
+      ),
+    );
     return;
   }
   if (!context.mounted) return;
@@ -209,29 +252,35 @@ Future<void> _generateCards(
   showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
+    builder:
+        (_) => aiWorkingDialog(
+          accent: space.accentColor,
+          label: 'Generando tarjetas',
+        ),
   );
   await limiter.record();
   final today = DateTime.now();
   final todayStr = _iso(today);
-  final window = (space.startDate != null && space.dueDate != null)
-      ? ' El proyecto va del ${_iso(space.startDate!)} al ${_iso(space.dueDate!)}.'
-      : '';
+  final window =
+      (space.startDate != null && space.dueDate != null)
+          ? ' El proyecto va del ${_iso(space.startDate!)} al ${_iso(space.dueDate!)}.'
+          : '';
   final buf = StringBuffer();
   String? err;
   try {
     await for (final tok in ref.read(aiAssistantProvider).streamReply([
       AiMessage(
-          AiRole.system,
-          'Eres un planificador de proyectos. Desglosa lo que pida el usuario '
-          'en tarjetas accionables de un tablero Kanban. Responde SOLO con una '
-          'tarjeta por línea, con este formato EXACTO:\n'
-          'título :: prioridad :: inicio :: fin\n'
-          '- prioridad ∈ {none, low, medium, high}\n'
-          '- inicio y fin en formato AAAA-MM-DD (deja el campo vacío si no '
-          'aplica, pero conserva los ::)\n'
-          '- sin numerar, sin viñetas, sin texto adicional, máximo 12 tarjetas.\n'
-          'Hoy es $todayStr.$window'),
+        AiRole.system,
+        'Eres un planificador de proyectos. Desglosa lo que pida el usuario '
+        'en tarjetas accionables de un tablero Kanban. Responde SOLO con una '
+        'tarjeta por línea, con este formato EXACTO:\n'
+        'título :: prioridad :: inicio :: fin\n'
+        '- prioridad ∈ {none, low, medium, high}\n'
+        '- inicio y fin en formato AAAA-MM-DD (deja el campo vacío si no '
+        'aplica, pero conserva los ::)\n'
+        '- sin numerar, sin viñetas, sin texto adicional, máximo 12 tarjetas.\n'
+        'Hoy es $todayStr.$window',
+      ),
       AiMessage(AiRole.user, prompt.trim()),
     ], model: AiModel.flash)) {
       buf.write(tok);
@@ -243,14 +292,18 @@ Future<void> _generateCards(
   if (!context.mounted) return;
   if (err != null) {
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err), duration: const Duration(seconds: 3)));
+      SnackBar(content: Text(err), duration: const Duration(seconds: 3)),
+    );
     return;
   }
   final proposals = _parseProposals(buf.toString());
   if (proposals.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text('No pude generar tarjetas.'),
-        duration: Duration(seconds: 2)));
+        duration: Duration(seconds: 2),
+      ),
+    );
     return;
   }
   final columns = await ref.read(kanbanColumnsProvider(space.id).future);
@@ -259,8 +312,12 @@ Future<void> _generateCards(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _LabCardReviewSheet(
-        space: space, columns: columns, proposals: proposals),
+    builder:
+        (_) => _LabCardReviewSheet(
+          space: space,
+          columns: columns,
+          proposals: proposals,
+        ),
   );
 }
 
@@ -276,8 +333,9 @@ List<_CardProposal> _parseProposals(String raw) {
     final pr = parts.length > 1 ? _parsePriority(parts[1]) : CardPriority.none;
     final start = parts.length > 2 ? DateTime.tryParse(parts[2]) : null;
     final due = parts.length > 3 ? DateTime.tryParse(parts[3]) : null;
-    out.add(_CardProposal(
-        title: title, priority: pr, startDate: start, dueDate: due));
+    out.add(
+      _CardProposal(title: title, priority: pr, startDate: start, dueDate: due),
+    );
     if (out.length >= 12) break;
   }
   return out;
@@ -302,13 +360,19 @@ CardPriority _parsePriority(String s) {
 // ─── Summarize / triage ─────────────────────────────────────────────────────
 
 Future<void> _summarizeBoard(
-    BuildContext context, WidgetRef ref, LabSpace space) async {
+  BuildContext context,
+  WidgetRef ref,
+  LabSpace space,
+) async {
   final limiter = ref.read(aiUsageLimiterProvider);
   if (!await limiter.canSend()) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text('Límite diario de IA alcanzado.'),
-        duration: Duration(seconds: 2)));
+        duration: Duration(seconds: 2),
+      ),
+    );
     return;
   }
   final columns = await ref.read(kanbanColumnsProvider(space.id).future);
@@ -316,9 +380,12 @@ Future<void> _summarizeBoard(
   if (!context.mounted) return;
   final board = _serializeBoard(space, columns, cards);
   if (board.trim().isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text('El tablero está vacío.'),
-        duration: Duration(seconds: 2)));
+        duration: Duration(seconds: 2),
+      ),
+    );
     return;
   }
   if (!context.mounted) return;
@@ -327,7 +394,11 @@ Future<void> _summarizeBoard(
   showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
+    builder:
+        (_) => aiWorkingDialog(
+          accent: space.accentColor,
+          label: 'Analizando tablero',
+        ),
   );
   await limiter.record();
   final buf = StringBuffer();
@@ -335,12 +406,13 @@ Future<void> _summarizeBoard(
   try {
     await for (final tok in ref.read(aiAssistantProvider).streamReply([
       const AiMessage(
-          AiRole.system,
-          'Eres un asistente de gestión de proyectos. Te paso el estado de un '
-          'tablero Kanban. Devuelve en markdown: un resumen breve del avance, '
-          'qué está atorado o vencido, y 2-4 sugerencias de qué hacer a '
-          'continuación. Sé conciso y directo. No inventes tarjetas que no '
-          'estén en el tablero.'),
+        AiRole.system,
+        'Eres un asistente de gestión de proyectos. Te paso el estado de un '
+        'tablero Kanban. Devuelve en markdown: un resumen breve del avance, '
+        'qué está atorado o vencido, y 2-4 sugerencias de qué hacer a '
+        'continuación. Sé conciso y directo. No inventes tarjetas que no '
+        'estén en el tablero.',
+      ),
       AiMessage(AiRole.user, board),
     ], model: AiModel.flash)) {
       buf.write(tok);
@@ -352,7 +424,8 @@ Future<void> _summarizeBoard(
   if (!context.mounted) return;
   if (err != null) {
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err), duration: const Duration(seconds: 3)));
+      SnackBar(content: Text(err), duration: const Duration(seconds: 3)),
+    );
     return;
   }
   final summary = buf.toString().trim();
@@ -364,18 +437,23 @@ Future<void> _summarizeBoard(
 }
 
 String _serializeBoard(
-    LabSpace space, List<KanbanColumn> columns, List<KanbanCard> cards) {
+  LabSpace space,
+  List<KanbanColumn> columns,
+  List<KanbanCard> cards,
+) {
   final buf = StringBuffer();
   buf.writeln('# Proyecto: ${space.name}');
   if (space.startDate != null || space.dueDate != null) {
     buf.writeln(
-        'Rango: ${space.startDate != null ? _iso(space.startDate!) : '—'} → '
-        '${space.dueDate != null ? _iso(space.dueDate!) : '—'}');
+      'Rango: ${space.startDate != null ? _iso(space.startDate!) : '—'} → '
+      '${space.dueDate != null ? _iso(space.dueDate!) : '—'}',
+    );
   }
   buf.writeln('Hoy: ${_iso(DateTime.now())}\n');
   for (final col in columns) {
-    final colCards = cards.where((c) => c.columnId == col.id).toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+    final colCards =
+        cards.where((c) => c.columnId == col.id).toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
     buf.writeln('## ${col.name} (${colCards.length})');
     if (colCards.isEmpty) {
       buf.writeln('(vacía)');
@@ -427,29 +505,35 @@ class _SummaryDialog extends StatelessWidget {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
-        decoration:
-            BoxDecoration(border: Border.all(color: yInk, width: yLineHeavy)),
+        decoration: BoxDecoration(
+          border: Border.all(color: yInk, width: yLineHeavy),
+        ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(children: [
-              Container(width: 8, height: 8, color: accent),
-              const SizedBox(width: 8),
-              Text('RESUMEN / TRIAGE',
+            Row(
+              children: [
+                Container(width: 8, height: 8, color: accent),
+                const SizedBox(width: 8),
+                Text(
+                  'RESUMEN / TRIAGE',
                   style: yMono(
-                      size: 11,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk)),
-              const Spacer(),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pop(),
-                child: const Icon(Icons.close, size: 18, color: yInk),
-              ),
-            ]),
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Icon(Icons.close, size: 18, color: yInk),
+                ),
+              ],
+            ),
             const SizedBox(height: 10),
             Flexible(
               child: SingleChildScrollView(
@@ -470,12 +554,15 @@ class _SummaryDialog extends StatelessWidget {
                   color: accent,
                   border: Border.all(color: yInk, width: yLineMid),
                 ),
-                child: Text('COPIAR',
-                    style: yMono(
-                        size: 12,
-                        weight: FontWeight.w700,
-                        tracking: 1.2,
-                        color: yCream)),
+                child: Text(
+                  'COPIAR',
+                  style: yMono(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: yCream,
+                  ),
+                ),
               ),
             ),
           ],
@@ -511,8 +598,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
   void initState() {
     super.initState();
     _items = widget.proposals;
-    _ctrls =
-        _items.map((p) => TextEditingController(text: p.title)).toList();
+    _ctrls = _items.map((p) => TextEditingController(text: p.title)).toList();
   }
 
   @override
@@ -524,9 +610,9 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
   }
 
   KanbanColumn get _backlog => widget.columns.firstWhere(
-        (c) => c.name.toLowerCase() == 'backlog',
-        orElse: () => widget.columns.first,
-      );
+    (c) => c.name.toLowerCase() == 'backlog',
+    orElse: () => widget.columns.first,
+  );
 
   Future<void> _create() async {
     if (_busy) return;
@@ -551,9 +637,12 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
     }
     if (!mounted) return;
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
         content: Text('$created tarjeta(s) creada(s) en ${col.name}'),
-        duration: const Duration(seconds: 2)));
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _pickDate(int i, {required bool start}) async {
@@ -564,15 +653,17 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
       initialDate: initial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
-          colorScheme: Theme.of(ctx)
-              .colorScheme
-              .copyWith(primary: inkColor(ctx), onPrimary: paperColor(ctx)),
-        ),
-        child: child!,
-      ),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              dialogTheme: DialogThemeData(backgroundColor: paperColor(ctx)),
+              colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary: inkColor(ctx),
+                onPrimary: paperColor(ctx),
+              ),
+            ),
+            child: child!,
+          ),
     );
     if (date == null) return;
     setState(() {
@@ -589,7 +680,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
       CardPriority.none,
       CardPriority.low,
       CardPriority.medium,
-      CardPriority.high
+      CardPriority.high,
     ];
     setState(() {
       final cur = order.indexOf(_items[i].priority);
@@ -612,15 +703,20 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('REVISAR TARJETAS → ${_backlog.name.toUpperCase()}',
-                style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk)),
+            Text(
+              'REVISAR TARJETAS → ${_backlog.name.toUpperCase()}',
+              style: yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yInk,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('Edita, ajusta fechas/prioridad y desmarca las que no quieras.',
-                style: yBody(size: 12, color: yMuted)),
+            Text(
+              'Edita, ajusta fechas/prioridad y desmarca las que no quieras.',
+              style: yBody(size: 12, color: yMuted),
+            ),
             const SizedBox(height: 10),
             Flexible(
               child: ListView.builder(
@@ -640,18 +736,25 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
                   color: n == 0 ? yCream2 : widget.space.accentColor,
                   border: Border.all(color: yInk, width: yLineMid),
                 ),
-                child: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: yCream))
-                    : Text('CREAR $n',
-                        style: yMono(
+                child:
+                    _busy
+                        ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: yCream,
+                          ),
+                        )
+                        : Text(
+                          'CREAR $n',
+                          style: yMono(
                             size: 12,
                             weight: FontWeight.w700,
                             tracking: 1.2,
-                            color: n == 0 ? yMuted : yCream)),
+                            color: n == 0 ? yMuted : yCream,
+                          ),
+                        ),
               ),
             ),
           ],
@@ -685,14 +788,18 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
                     color: p.include ? yInk : yCream,
                     border: Border.all(color: yInk, width: yLineThin),
                   ),
-                  child: p.include
-                      ? const Text('✓',
-                          style: TextStyle(
+                  child:
+                      p.include
+                          ? const Text(
+                            '✓',
+                            style: TextStyle(
                               fontSize: 12,
                               color: yCream,
                               height: 1.0,
-                              fontWeight: FontWeight.w700))
-                      : null,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                          : null,
                 ),
               ),
               const SizedBox(width: 8),
@@ -713,18 +820,23 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _chip(_priorityLabel(p.priority), _priorityColor(p.priority),
-                  () => _cyclePriority(i)),
               _chip(
-                  p.startDate == null
-                      ? '+ inicio'
-                      : 'inicio ${_short(p.startDate!)}',
-                  yCream,
-                  () => _pickDate(i, start: true)),
+                _priorityLabel(p.priority),
+                _priorityColor(p.priority),
+                () => _cyclePriority(i),
+              ),
               _chip(
-                  p.dueDate == null ? '+ due' : 'due ${_short(p.dueDate!)}',
-                  yCream,
-                  () => _pickDate(i, start: false)),
+                p.startDate == null
+                    ? '+ inicio'
+                    : 'inicio ${_short(p.startDate!)}',
+                yCream,
+                () => _pickDate(i, start: true),
+              ),
+              _chip(
+                p.dueDate == null ? '+ due' : 'due ${_short(p.dueDate!)}',
+                yCream,
+                () => _pickDate(i, start: false),
+              ),
             ],
           ),
         ],
@@ -743,31 +855,34 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
           color: bg,
           border: Border.all(color: yInk, width: 1.5),
         ),
-        child: Text(label,
-            style: yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 0.8,
-                color: dark ? yCream : yInk)),
+        child: Text(
+          label,
+          style: yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 0.8,
+            color: dark ? yCream : yInk,
+          ),
+        ),
       ),
     );
   }
 
   String _priorityLabel(CardPriority p) => switch (p) {
-        CardPriority.none => 'prioridad —',
-        CardPriority.low => 'baja',
-        CardPriority.medium => 'media',
-        CardPriority.high => 'alta',
-      };
+    CardPriority.none => 'prioridad —',
+    CardPriority.low => 'baja',
+    CardPriority.medium => 'media',
+    CardPriority.high => 'alta',
+  };
 
   // Matches labPriorityColor (board/timeline/calendar). "none" stays cream so
   // the empty-priority chip reads as neutral.
   Color _priorityColor(CardPriority p) => switch (p) {
-        CardPriority.none => yCream,
-        CardPriority.low => yLab,
-        CardPriority.medium => yAmber,
-        CardPriority.high => yFight,
-      };
+    CardPriority.none => yCream,
+    CardPriority.low => yLab,
+    CardPriority.medium => yAmber,
+    CardPriority.high => yFight,
+  };
 
   String _short(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';

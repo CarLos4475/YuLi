@@ -6,4 +6,6 @@ final pendingNoteNavigationProvider = StateProvider<int?>((ref) => null);
 
 final pendingLabSpaceNavigationProvider = StateProvider<int?>((ref) => null);
 
+final pendingKanbanCardNavigationProvider = StateProvider<int?>((ref) => null);
+
 final pendingFolderNavigationProvider = StateProvider<int?>((ref) => null);

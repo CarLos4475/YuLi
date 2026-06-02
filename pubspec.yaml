@@ -43,6 +43,9 @@ dependencies:
   path: ^1.9.0
   uuid: ^4.5.1
   intl: ^0.19.0
+  flutter_local_notifications: ^21.0.0
+  flutter_timezone: ^5.0.2
+  timezone: ^0.11.0
 
   # PDF export
   pdf: ^3.10.8

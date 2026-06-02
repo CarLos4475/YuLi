@@ -21,8 +21,7 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
           .watch();
 
   Future<KanbanCardRow?> getById(int id) =>
-      (select(kanbanCards)..where((c) => c.id.equals(id)))
-          .getSingleOrNull();
+      (select(kanbanCards)..where((c) => c.id.equals(id))).getSingleOrNull();
 
   Future<KanbanCardRow> insertCard(KanbanCardsCompanion row) async {
     final id = await into(kanbanCards).insert(row);
@@ -30,8 +29,18 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
   }
 
   Future<void> updateCard(KanbanCardsCompanion row) =>
-      (update(kanbanCards)..where((c) => c.id.equals(row.id.value)))
-          .write(row);
+      (update(kanbanCards)..where((c) => c.id.equals(row.id.value))).write(row);
+
+  Future<void> updateReminder(
+    int id,
+    DateTime? remindAt,
+    String? reminderPreset,
+  ) => (update(kanbanCards)..where((c) => c.id.equals(id))).write(
+    KanbanCardsCompanion(
+      remindAt: Value(remindAt),
+      reminderPreset: Value(reminderPreset),
+    ),
+  );
 
   Future<void> deleteCard(int id) =>
       (delete(kanbanCards)..where((c) => c.id.equals(id))).go();
@@ -40,7 +49,10 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
       (delete(kanbanCards)..where((c) => c.id.isIn(ids))).go();
 
   Future<void> moveToColumn(
-      int cardId, int newColumnId, int newPosition) async {
+    int cardId,
+    int newColumnId,
+    int newPosition,
+  ) async {
     await (update(kanbanCards)..where((c) => c.id.equals(cardId))).write(
       KanbanCardsCompanion(
         columnId: Value(newColumnId),
@@ -52,30 +64,29 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
   Future<void> reorderInColumn(int columnId, List<int> orderedIds) async {
     await transaction(() async {
       for (var i = 0; i < orderedIds.length; i++) {
-        await (update(kanbanCards)
-              ..where((c) => c.id.equals(orderedIds[i])))
-            .write(KanbanCardsCompanion(position: Value(i)));
+        await (update(kanbanCards)..where(
+          (c) => c.id.equals(orderedIds[i]),
+        )).write(KanbanCardsCompanion(position: Value(i)));
       }
     });
   }
 
   Future<int> getNextPositionInColumn(int columnId) async {
-    final count = await (select(kanbanCards)
-          ..where((c) => c.columnId.equals(columnId)))
-        .get();
+    final count =
+        await (select(kanbanCards)
+          ..where((c) => c.columnId.equals(columnId))).get();
     return count.length;
   }
 
   Stream<List<KanbanCardRow>> watchBySourceNoteId(int noteId) =>
       (select(kanbanCards)
-            ..where((c) => c.sourceNoteId.equals(noteId)))
-          .watch();
+        ..where((c) => c.sourceNoteId.equals(noteId))).watch();
 
   Future<KanbanCardRow?> getByOriginTaskId(int taskId) =>
-      (select(kanbanCards)..where((c) => c.originTaskId.equals(taskId)))
-          .getSingleOrNull();
+      (select(kanbanCards)
+        ..where((c) => c.originTaskId.equals(taskId))).getSingleOrNull();
 
   Stream<KanbanCardRow?> watchByOriginTaskId(int taskId) =>
-      (select(kanbanCards)..where((c) => c.originTaskId.equals(taskId)))
-          .watchSingleOrNull();
+      (select(kanbanCards)
+        ..where((c) => c.originTaskId.equals(taskId))).watchSingleOrNull();
 }

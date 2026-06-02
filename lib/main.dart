@@ -11,6 +11,7 @@ import 'presentation/providers/image_storage_providers.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/widgets/app_banner.dart';
 import 'presentation/widgets/yuli_design.dart';
+import 'presentation/widgets/yuli_splash_screen.dart';
 import 'presentation/screens/fight/fight_screen.dart';
 import 'presentation/screens/flight/flight_screen.dart';
 import 'presentation/screens/lab/lab_screen.dart';
@@ -20,33 +21,38 @@ import 'presentation/providers/navigation_provider.dart';
 void main() {
   // Guarded zone so uncaught async errors are captured too. ensureInitialized
   // must run INSIDE the zone or runApp/zone mismatch.
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await CrashLogger.instance.init();
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      await CrashLogger.instance.init();
 
-    // Framework (build/layout/paint) errors.
-    final prevOnError = FlutterError.onError;
-    FlutterError.onError = (details) {
-      CrashLogger.instance
-          .record(details.exception, details.stack, context: 'FlutterError');
-      prevOnError?.call(details); // keep default console output in debug
-    };
-    // Uncaught async / platform errors.
-    PlatformDispatcher.instance.onError = (error, stack) {
-      CrashLogger.instance.record(error, stack, context: 'PlatformDispatcher');
-      return true;
-    };
+      // Framework (build/layout/paint) errors.
+      final prevOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        CrashLogger.instance.record(
+          details.exception,
+          details.stack,
+          context: 'FlutterError',
+        );
+        prevOnError?.call(details); // keep default console output in debug
+      };
+      // Uncaught async / platform errors.
+      PlatformDispatcher.instance.onError = (error, stack) {
+        CrashLogger.instance.record(
+          error,
+          stack,
+          context: 'PlatformDispatcher',
+        );
+        return true;
+      };
 
-    final themeOverride = await initThemeModeOverride();
-    runApp(
-      ProviderScope(
-        overrides: [themeOverride],
-        child: const YuLiApp(),
-      ),
-    );
-  }, (error, stack) {
-    CrashLogger.instance.record(error, stack, context: 'Zone');
-  });
+      final themeOverride = await initThemeModeOverride();
+      runApp(ProviderScope(overrides: [themeOverride], child: const YuLiApp()));
+    },
+    (error, stack) {
+      CrashLogger.instance.record(error, stack, context: 'Zone');
+    },
+  );
 }
 
 class YuLiApp extends ConsumerWidget {
@@ -76,29 +82,7 @@ class _AppInit extends ConsumerWidget {
     final expiryAsync = ref.watch(expiryResultProvider);
 
     return expiryAsync.when(
-      loading: () => Scaffold(
-        backgroundColor: paperColor(context),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('YuLi', style: displayXL.copyWith(color: inkColor(context))),
-              const SizedBox(height: 24),
-              Container(
-                width: 24,
-                height: borderWidthHeavy,
-                color: inkColor(context),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 16,
-                height: borderWidth,
-                color: inkGray.withAlpha(80),
-              ),
-            ],
-          ),
-        ),
-      ),
+      loading: () => const YuliSplashScreen(),
       error: (_, _) => const AppShell(archivedTaskCount: 0),
       data: (archivedCount) {
         // Reclaim orphaned image folders once the DB is settled. Fire-and-
@@ -121,6 +105,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _bannerDismissed = false;
+  StreamSubscription<String>? _reminderSub;
 
   @override
   void initState() {
@@ -142,13 +127,40 @@ class _AppShellState extends ConsumerState<AppShell> {
           ref.read(currentModeProvider.notifier).state = AppMode.flight;
         }
       });
+      final reminders = ref.read(reminderCoordinatorProvider);
+      reminders.initialize();
+      _reminderSub = reminders.taps.listen(_handleReminderPayload);
     });
+  }
+
+  void _handleReminderPayload(String payload) {
+    if (!mounted) return;
+    final parts = payload.split(':');
+    if (payload == 'summary' || parts.first == 'task') {
+      ref.read(currentModeProvider.notifier).state = AppMode.fight;
+      return;
+    }
+    if (parts.length >= 3 && parts.first == 'card') {
+      final spaceId = int.tryParse(parts[1]);
+      final cardId = int.tryParse(parts[2]);
+      if (spaceId == null || cardId == null) return;
+      ref.read(pendingKanbanCardNavigationProvider.notifier).state = cardId;
+      ref.read(pendingLabSpaceNavigationProvider.notifier).state = spaceId;
+      ref.read(currentModeProvider.notifier).state = AppMode.lab;
+    }
+  }
+
+  @override
+  void dispose() {
+    _reminderSub?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final currentMode = ref.watch(currentModeProvider);
-    final showBanner = widget.archivedTaskCount > 0 &&
+    final showBanner =
+        widget.archivedTaskCount > 0 &&
         !_bannerDismissed &&
         currentMode == AppMode.fight;
 
@@ -168,9 +180,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 onAction: () {},
                 onDismiss: () => setState(() => _bannerDismissed = true),
               ),
-            Expanded(
-              child: _ModeContent(currentMode: currentMode),
-            ),
+            Expanded(child: _ModeContent(currentMode: currentMode)),
           ],
         ),
       ),
@@ -192,25 +202,29 @@ class _ModeContent extends StatefulWidget {
 class _ModeContentState extends State<_ModeContent>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  Animation<Offset> _enterAnim = const AlwaysStoppedAnimation<Offset>(Offset.zero);
-  Animation<Offset> _leaveAnim = const AlwaysStoppedAnimation<Offset>(Offset.zero);
+  Animation<Offset> _enterAnim = const AlwaysStoppedAnimation<Offset>(
+    Offset.zero,
+  );
+  Animation<Offset> _leaveAnim = const AlwaysStoppedAnimation<Offset>(
+    Offset.zero,
+  );
   Widget _enteringChild = const SizedBox.shrink();
   Widget? _leavingChild;
   int _prevIndex = 0;
 
   int _modeIndex(AppMode m) => switch (m) {
-        AppMode.home => 0,
-        AppMode.fight => 1,
-        AppMode.flight => 2,
-        AppMode.lab => 3,
-      };
+    AppMode.home => 0,
+    AppMode.fight => 1,
+    AppMode.flight => 2,
+    AppMode.lab => 3,
+  };
 
   Widget _buildChild(AppMode m) => switch (m) {
-        AppMode.home => const HomeScreen(),
-        AppMode.fight => const FightScreen(),
-        AppMode.flight => const FlightScreen(),
-        AppMode.lab => const LabScreen(),
-      };
+    AppMode.home => const HomeScreen(),
+    AppMode.fight => const FightScreen(),
+    AppMode.flight => const FlightScreen(),
+    AppMode.lab => const LabScreen(),
+  };
 
   @override
   void initState() {
@@ -220,8 +234,8 @@ class _ModeContentState extends State<_ModeContent>
       vsync: this,
       duration: const Duration(milliseconds: 250),
     )..addStatusListener((s) {
-        if (s == AnimationStatus.completed) setState(() => _leavingChild = null);
-      });
+      if (s == AnimationStatus.completed) setState(() => _leavingChild = null);
+    });
     _enteringChild = _buildChild(widget.currentMode);
     _enterAnim = Tween<Offset>(
       begin: Offset.zero,

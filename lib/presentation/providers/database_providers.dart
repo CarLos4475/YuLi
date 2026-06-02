@@ -8,6 +8,9 @@ import '../../data/repositories/local/local_lab_space_repository.dart';
 import '../../data/repositories/local/local_kanban_repository.dart';
 import '../../data/repositories/local/local_notification_repository.dart';
 import '../../data/repositories/local/local_schedule_repository.dart';
+import '../../data/services/local_reminder_scheduler.dart';
+import '../../data/services/reminder_coordinator.dart';
+import '../../data/services/reminder_preferences.dart';
 import '../../domain/repositories/notification_repository.dart';
 import '../../domain/repositories/schedule_repository.dart';
 import '../../domain/repositories/task_repository.dart';
@@ -17,6 +20,7 @@ import '../../domain/repositories/note_block_repository.dart';
 import '../../domain/repositories/lab_space_repository.dart';
 import '../../domain/repositories/kanban_card_repository.dart';
 import '../../domain/models/notification_item.dart';
+import '../../domain/services/reminder_scheduler.dart';
 import '../../domain/models/task.dart' as domain_task;
 import '../../domain/models/folder.dart';
 import '../../domain/models/note.dart' as domain_note;
@@ -39,7 +43,10 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 // ─── Repositories ─────────────────────────────────────────────────────────────
 
 final taskRepositoryProvider = Provider<TaskRepository>((ref) {
-  return LocalTaskRepository(ref.watch(databaseProvider));
+  return LocalTaskRepository(
+    ref.watch(databaseProvider),
+    reminders: ref.watch(reminderCoordinatorProvider),
+  );
 });
 
 final folderRepositoryProvider = Provider<FolderRepository>((ref) {
@@ -59,7 +66,26 @@ final labSpaceRepositoryProvider = Provider<LabSpaceRepository>((ref) {
 });
 
 final kanbanCardRepositoryProvider = Provider<KanbanCardRepository>((ref) {
-  return LocalKanbanRepository(ref.watch(databaseProvider));
+  return LocalKanbanRepository(
+    ref.watch(databaseProvider),
+    reminders: ref.watch(reminderCoordinatorProvider),
+  );
+});
+
+final reminderPreferencesProvider = Provider<ReminderPreferences>((ref) {
+  return ReminderPreferences();
+});
+
+final reminderSchedulerProvider = Provider<ReminderScheduler>((ref) {
+  return LocalReminderScheduler();
+});
+
+final reminderCoordinatorProvider = Provider<ReminderCoordinator>((ref) {
+  return ReminderCoordinator(
+    ref.watch(databaseProvider),
+    ref.watch(reminderSchedulerProvider),
+    ref.watch(reminderPreferencesProvider),
+  );
 });
 
 // ─── Trash ────────────────────────────────────────────────────────────────────
@@ -109,6 +135,7 @@ final expiryResultProvider = FutureProvider<int>((ref) async {
       await db.cleanKanbanAnchors();
       await db.markOnboardingSeen('kanban_anchor_cleanup');
     }
+    await ref.read(reminderCoordinatorProvider).reconcileAll();
     return result;
   } catch (_) {
     return 0;

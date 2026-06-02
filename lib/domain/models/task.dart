@@ -1,3 +1,5 @@
+import 'reminder_preset.dart';
+
 enum TaskStatus {
   pending,
   yesterday,
@@ -6,21 +8,21 @@ enum TaskStatus {
   trash;
 
   static TaskStatus fromString(String value) => switch (value) {
-        'pending' => pending,
-        'yesterday' => yesterday,
-        'archived_failed' => archivedFailed,
-        'done' => done,
-        'trash' => trash,
-        _ => throw ArgumentError('Unknown TaskStatus: $value'),
-      };
+    'pending' => pending,
+    'yesterday' => yesterday,
+    'archived_failed' => archivedFailed,
+    'done' => done,
+    'trash' => trash,
+    _ => throw ArgumentError('Unknown TaskStatus: $value'),
+  };
 
   String toDbString() => switch (this) {
-        pending => 'pending',
-        yesterday => 'yesterday',
-        archivedFailed => 'archived_failed',
-        done => 'done',
-        trash => 'trash',
-      };
+    pending => 'pending',
+    yesterday => 'yesterday',
+    archivedFailed => 'archived_failed',
+    done => 'done',
+    trash => 'trash',
+  };
 }
 
 class Task {
@@ -32,6 +34,8 @@ class Task {
   final DateTime expiresAt;
   final DateTime? trashedAt;
   final DateTime? dueDate;
+  final DateTime? remindAt;
+  final ReminderPreset? reminderPreset;
   final DateTime? completedAt;
 
   const Task({
@@ -43,6 +47,8 @@ class Task {
     required this.expiresAt,
     this.trashedAt,
     this.dueDate,
+    this.remindAt,
+    this.reminderPreset,
     this.completedAt,
   });
 
@@ -58,6 +64,10 @@ class Task {
     bool clearTrashedAt = false,
     DateTime? dueDate,
     bool clearDueDate = false,
+    DateTime? remindAt,
+    bool clearRemindAt = false,
+    ReminderPreset? reminderPreset,
+    bool clearReminderPreset = false,
     DateTime? completedAt,
     bool clearCompletedAt = false,
   }) {
@@ -70,6 +80,9 @@ class Task {
       expiresAt: expiresAt ?? this.expiresAt,
       trashedAt: clearTrashedAt ? null : (trashedAt ?? this.trashedAt),
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+      remindAt: clearRemindAt ? null : (remindAt ?? this.remindAt),
+      reminderPreset:
+          clearReminderPreset ? null : (reminderPreset ?? this.reminderPreset),
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
     );
   }

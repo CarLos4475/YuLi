@@ -8,6 +8,7 @@ import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
+import '../../widgets/ai_working_dialog.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../../../domain/models/note.dart' show NoteKind;
@@ -34,10 +35,12 @@ Future<void> showAiChat(
   String? newContext,
   String? prefillMessage,
   required Color accent,
+
   /// When non-null, AI replies show an "Enviar a lienzo" action that drops the
   /// reply (raw markdown) onto the host canvas as a [CanvasTextBlock]. Only the
   /// whiteboard/notebook editors pass this; a plain note leaves it null.
   void Function(String markdown)? onSendToCanvas,
+
   /// When non-null, the "Título" action suggests titles and applies the chosen
   /// one here (the note editor wires its title field). Null → no title action.
   void Function(String title)? onApplyTitle,
@@ -45,10 +48,12 @@ Future<void> showAiChat(
   final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
   if (!context.mounted) return;
   if (!hasKey) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Configura tu API key de DeepSeek en Ajustes'),
-      duration: Duration(seconds: 3),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Configura tu API key de DeepSeek en Ajustes'),
+        duration: Duration(seconds: 3),
+      ),
+    );
     return;
   }
 
@@ -75,13 +80,14 @@ Future<void> showAiChat(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _AiChatSheet(
-      session: session,
-      accent: accent,
-      prefillMessage: prefillMessage,
-      onSendToCanvas: onSendToCanvas,
-      onApplyTitle: onApplyTitle,
-    ),
+    builder:
+        (_) => _AiChatSheet(
+          session: session,
+          accent: accent,
+          prefillMessage: prefillMessage,
+          onSendToCanvas: onSendToCanvas,
+          onApplyTitle: onApplyTitle,
+        ),
   );
 }
 
@@ -100,9 +106,12 @@ Future<void> showLabChat(
   final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
   if (!context.mounted) return;
   if (!hasKey) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
         content: Text('Configura tu API key de DeepSeek en Ajustes'),
-        duration: Duration(seconds: 3)));
+        duration: Duration(seconds: 3),
+      ),
+    );
     return;
   }
   final session = ref.read(aiLabSessionProvider(spaceId));
@@ -110,13 +119,15 @@ Future<void> showLabChat(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _AiChatSheet(
-      session: session,
-      accent: accent,
-      isBoard: true,
-      boardLabel: boardLabel,
-      onResyncContext: () async => session.setSyncedAnchor(await buildContext()),
-    ),
+    builder:
+        (_) => _AiChatSheet(
+          session: session,
+          accent: accent,
+          isBoard: true,
+          boardLabel: boardLabel,
+          onResyncContext:
+              () async => session.setSyncedAnchor(await buildContext()),
+        ),
   );
 }
 
@@ -126,37 +137,51 @@ Future<_CtxAction?> _chooseContextAction(BuildContext context, Color accent) {
   return showModalBottomSheet<_CtxAction>(
     context: context,
     backgroundColor: Colors.transparent,
-    builder: (_) => Container(
-      decoration: const BoxDecoration(
-        color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('YA HAY CONTEXTO',
-                style: yMono(
+    builder:
+        (_) => Container(
+          decoration: const BoxDecoration(
+            color: yCream,
+            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'YA HAY CONTEXTO',
+                  style: yMono(
                     size: 11,
                     weight: FontWeight.w700,
                     tracking: 1.4,
-                    color: yInk)),
-            const SizedBox(height: 4),
-            Text('¿Qué hago con el contexto nuevo?',
-                style: yBody(size: 13, color: yMuted)),
-            const SizedBox(height: 14),
-            _bigChoice('AÑADIR AL CONTEXTO', accent, true,
-                () => Navigator.pop(context, _CtxAction.add)),
-            const SizedBox(height: 8),
-            _bigChoice('REEMPLAZAR CONTEXTO', accent, false,
-                () => Navigator.pop(context, _CtxAction.replace)),
-          ],
+                    color: yInk,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '¿Qué hago con el contexto nuevo?',
+                  style: yBody(size: 13, color: yMuted),
+                ),
+                const SizedBox(height: 14),
+                _bigChoice(
+                  'AÑADIR AL CONTEXTO',
+                  accent,
+                  true,
+                  () => Navigator.pop(context, _CtxAction.add),
+                ),
+                const SizedBox(height: 8),
+                _bigChoice(
+                  'REEMPLAZAR CONTEXTO',
+                  accent,
+                  false,
+                  () => Navigator.pop(context, _CtxAction.replace),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-    ),
   );
 }
 
@@ -171,12 +196,15 @@ Widget _bigChoice(String label, Color accent, bool filled, VoidCallback onTap) {
         color: filled ? accent : yCream,
         border: Border.all(color: filled ? yInk : accent, width: yLineMid),
       ),
-      child: Text(label,
-          style: yMono(
-              size: 12,
-              weight: FontWeight.w700,
-              tracking: 1.2,
-              color: filled ? yCream : yInk)),
+      child: Text(
+        label,
+        style: yMono(
+          size: 12,
+          weight: FontWeight.w700,
+          tracking: 1.2,
+          color: filled ? yCream : yInk,
+        ),
+      ),
     ),
   );
 }
@@ -236,7 +264,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     if (prefill != null && prefill.isNotEmpty) _input.text = prefill;
     // If this canvas is linked to a source note, resync the context on open.
     WidgetsBinding.instance.addPostFrameCallback(
-        (_) => widget.isBoard ? widget.onResyncContext?.call() : _resyncFromSources());
+      (_) =>
+          widget.isBoard
+              ? widget.onResyncContext?.call()
+              : _resyncFromSources(),
+    );
   }
 
   // ─── Canvas context sources (notes + urls) — assembly & sync ──────────────
@@ -258,9 +290,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     // Block note: own content is always the first (implicit) source.
     if (isBlock) {
       final blocks = await ref.read(noteBlocksProvider(_s.noteId).future);
-      final label = (note.title?.trim().isEmpty ?? true)
-          ? 'Nota'
-          : note.title!.trim();
+      final label =
+          (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
       final raw = _extractNoteContext(blocks);
       if (raw.trim().isNotEmpty) {
         final piece = await _compactPiece('note:${note.id}', raw);
@@ -288,7 +319,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         }
         final blocks = await ref.read(noteBlocksProvider(nid).future);
         label =
-            (srcNote.title?.trim().isEmpty ?? true) ? 'Nota' : srcNote.title!.trim();
+            (srcNote.title?.trim().isEmpty ?? true)
+                ? 'Nota'
+                : srcNote.title!.trim();
         raw = _extractNoteContext(blocks);
         key = 'note:$nid';
       } else {
@@ -320,13 +353,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     await limiter.record();
     final buf = StringBuffer();
     try {
-      final prompt = raw.length > kLongDocThreshold
-          ? kSynthesizePrompt
-          : kCompactPrompt;
-      await for (final tok in ref.read(aiAssistantProvider).streamReply([
-        AiMessage(AiRole.system, prompt),
-        AiMessage(AiRole.user, raw),
-      ], model: AiModel.flash, maxTokens: 4096, temperature: 0.2)) {
+      final prompt =
+          raw.length > kLongDocThreshold ? kSynthesizePrompt : kCompactPrompt;
+      await for (final tok in ref
+          .read(aiAssistantProvider)
+          .streamReply(
+            [AiMessage(AiRole.system, prompt), AiMessage(AiRole.user, raw)],
+            model: AiModel.flash,
+            maxTokens: 4096,
+            temperature: 0.2,
+          )) {
         buf.write(tok);
       }
     } catch (_) {
@@ -346,12 +382,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _SourcesSheet(
-        canvasNoteId: _s.noteId,
-        folderId: note.folderId,
-        accent: widget.accent,
-        onChanged: _resyncFromSources,
-      ),
+      builder:
+          (_) => _SourcesSheet(
+            canvasNoteId: _s.noteId,
+            folderId: note.folderId,
+            accent: widget.accent,
+            onChanged: _resyncFromSources,
+          ),
     );
   }
 
@@ -378,8 +415,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -387,9 +427,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   void _send(String text, {bool quickAction = false}) {
     if (text.trim().isEmpty || _s.streaming || !_s.hasAnchor) return;
     if (!quickAction) _input.clear();
-    _s.send(ref.read(aiAssistantProvider), ref.read(aiUsageLimiterProvider),
-        text,
-        quickAction: quickAction);
+    _s.send(
+      ref.read(aiAssistantProvider),
+      ref.read(aiUsageLimiterProvider),
+      text,
+      quickAction: quickAction,
+    );
   }
 
   @override
@@ -412,14 +455,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 // Board (LAB) mode: always the chat; context is the serialized
                 // board, no note/canvas providers involved.
                 if (widget.isBoard) return _buildChat();
-                final hostKind = ref
-                    .watch(noteByIdProvider(_s.noteId))
-                    .valueOrNull
-                    ?.kind;
+                final hostKind =
+                    ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
                 final isBlock = hostKind == NoteKind.block;
                 // Block notes: show the chat only when there's actual content
                 // (hasAnchor set by _resyncFromSources). Empty → gate.
-                final linked = (ref
+                final linked =
+                    (ref
                         .watch(canvasContextSourcesProvider(_s.noteId))
                         .valueOrNull
                         ?.isNotEmpty) ??
@@ -447,81 +489,96 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (isBlock) ...[
-                Text('ESTA NOTA ESTÁ VACÍA',
-                style: yMono(
+                Text(
+                  'ESTA NOTA ESTÁ VACÍA',
+                  style: yMono(
                     size: 11,
                     weight: FontWeight.w700,
                     tracking: 1.4,
-                    color: yInk)),
-            const SizedBox(height: 6),
-            Text(
-              'Importa otra nota o agrega un enlace para darle contexto a la IA.',
-              style: yMono(size: 10, tracking: 0.4, color: yMuted),
-            ),
+                    color: yInk,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Importa otra nota o agrega un enlace para darle contexto a la IA.',
+                  style: yMono(size: 10, tracking: 0.4, color: yMuted),
+                ),
               ] else ...[
-                Text('¿DE QUÉ ES ESTO?',
-                style: yMono(
+                Text(
+                  '¿DE QUÉ ES ESTO?',
+                  style: yMono(
                     size: 11,
                     weight: FontWeight.w700,
                     tracking: 1.4,
-                    color: yInk)),
-            const SizedBox(height: 6),
-            Text(
-              'Dale un punto de partida (ej. "Proceso de Markov"). Queda como '
-              'contexto de la conversación; puedes editarlo luego.',
-              style: yMono(size: 10, tracking: 0.4, color: yMuted),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _anchorInput,
-              autofocus: true,
-              maxLines: 3,
-              minLines: 1,
-              style: yBody(size: 15, color: yInk),
-              onSubmitted: (v) => _s.setAnchor(v),
-              decoration: _fieldDeco('¿Sobre qué quieres hablar?'),
-            ),
-            const SizedBox(height: 12),
-            _primaryButton('EMPEZAR', () => _s.setAnchor(_anchorInput.text)),
-            const SizedBox(height: 10),
+                    color: yInk,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Dale un punto de partida (ej. "Proceso de Markov"). Queda como '
+                  'contexto de la conversación; puedes editarlo luego.',
+                  style: yMono(size: 10, tracking: 0.4, color: yMuted),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _anchorInput,
+                  autofocus: true,
+                  maxLines: 3,
+                  minLines: 1,
+                  style: yBody(size: 15, color: yInk),
+                  onSubmitted: (v) => _s.setAnchor(v),
+                  decoration: _fieldDeco('¿Sobre qué quieres hablar?'),
+                ),
+                const SizedBox(height: 12),
+                _primaryButton(
+                  'EMPEZAR',
+                  () => _s.setAnchor(_anchorInput.text),
+                ),
+                const SizedBox(height: 10),
               ],
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _showNotePicker,
-            child: Container(
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
-              ),
-              child: Text('IMPORTAR NOTA',
-                  style: yMono(
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _showNotePicker,
+                child: Container(
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: yCream,
+                    border: Border.all(color: yInk, width: yLineMid),
+                  ),
+                  child: Text(
+                    'IMPORTAR NOTA',
+                    style: yMono(
                       size: 12,
                       weight: FontWeight.w700,
                       tracking: 1.4,
-                      color: yInk)),
-            ),
-          ),
-          const SizedBox(height: 8),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _showSourcesSheet,
-            child: Container(
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: widget.accent, width: yLineMid),
+                      color: yInk,
+                    ),
+                  ),
+                ),
               ),
-              child: Text('FUENTES DE CONTEXTO',
-                  style: yMono(
+              const SizedBox(height: 8),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _showSourcesSheet,
+                child: Container(
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: yCream,
+                    border: Border.all(color: widget.accent, width: yLineMid),
+                  ),
+                  child: Text(
+                    'FUENTES DE CONTEXTO',
+                    style: yMono(
                       size: 12,
                       weight: FontWeight.w700,
                       tracking: 1.4,
-                      color: yInk)),
-            ),
-          ),
+                      color: yInk,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -559,16 +616,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('IMPORTAR NOTA',
-                    style: yMono(
-                        size: 11,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yInk)),
+                Text(
+                  'IMPORTAR NOTA',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 if (others.isEmpty)
-                  Text('No hay otras notas en esta carpeta.',
-                      style: yBody(size: 13, color: yMuted))
+                  Text(
+                    'No hay otras notas en esta carpeta.',
+                    style: yBody(size: 13, color: yMuted),
+                  )
                 else
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 300),
@@ -581,8 +643,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                           behavior: HitTestBehavior.opaque,
                           onTap: () async {
                             Navigator.of(ctx).pop();
-                            final blocksAsync =
-                                await ref.read(noteBlocksProvider(n.id).future);
+                            final blocksAsync = await ref.read(
+                              noteBlocksProvider(n.id).future,
+                            );
                             final ctxText = _extractNoteContext(blocksAsync);
                             if (ctxText.isNotEmpty) {
                               _s.setAnchor(ctxText);
@@ -592,15 +655,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             decoration: const BoxDecoration(
                               border: Border(
-                                  bottom: BorderSide(
-                                      color: yInk, width: yLineThin)),
+                                bottom: BorderSide(
+                                  color: yInk,
+                                  width: yLineThin,
+                                ),
+                              ),
                             ),
                             child: Text(
-                              (n.title?.isEmpty ?? true) ? 'Sin título' : n.title!,
+                              (n.title?.isEmpty ?? true)
+                                  ? 'Sin título'
+                                  : n.title!,
                               style: ySans(
-                                  size: 14,
-                                  weight: FontWeight.w700,
-                                  color: yInk),
+                                size: 14,
+                                weight: FontWeight.w700,
+                                color: yInk,
+                              ),
                             ),
                           ),
                         );
@@ -662,12 +731,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   /// show the SINCRONIZADA / CONTEXTO bar as before.
   Widget _contextBar() {
     if (widget.isBoard) return _boardContextBar();
-    final hostKind =
-        ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
+    final hostKind = ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
     if (hostKind == NoteKind.block) return _noteContextBar();
     final sources =
         ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
-            const [];
+        const [];
     if (sources.isNotEmpty) return _linkedContextBar(sources.length);
     return _normalContextBar();
   }
@@ -685,15 +753,23 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         children: [
           Container(width: 8, height: 8, color: widget.accent),
           const SizedBox(width: 8),
-          Text('TABLERO ▸',
-              style: yMono(
-                  size: 10, weight: FontWeight.w700, tracking: 1.2, color: yInk)),
+          Text(
+            'TABLERO ▸',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.2,
+              color: yInk,
+            ),
+          ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('${widget.boardLabel ?? ''}$ago',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+            child: Text(
+              '${widget.boardLabel ?? ''}$ago',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
+            ),
           ),
           const SizedBox(width: 8),
           _ghostIcon(Icons.refresh, 'Re-sincronizar tablero', () async {
@@ -707,12 +783,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   /// NOTA COMO CONTEXTO · [N enlaces]   [🔗]
   Widget _noteContextBar() {
-    final urls = (ref
-                .watch(canvasContextSourcesProvider(_s.noteId))
-                .valueOrNull ??
-            const [])
-        .where((s) => s.isUrl)
-        .length;
+    final urls =
+        (ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
+                const [])
+            .where((s) => s.isUrl)
+            .length;
     final urlLabel = urls == 0 ? '' : ' · $urls enlaces';
     return Container(
       decoration: const BoxDecoration(
@@ -724,9 +799,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         children: [
           Container(width: 8, height: 8, color: widget.accent),
           const SizedBox(width: 8),
-          Text('NOTA COMO CONTEXTO$urlLabel',
-              style: yMono(
-                  size: 10, weight: FontWeight.w700, tracking: 1.2, color: yInk)),
+          Text(
+            'NOTA COMO CONTEXTO$urlLabel',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.2,
+              color: yInk,
+            ),
+          ),
           const Spacer(),
           _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
         ],
@@ -744,16 +825,25 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
         children: [
-          Text('CONTEXTO ▸',
-              style: yMono(
-                  size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted)),
+          Text(
+            'CONTEXTO ▸',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yMuted,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _editContext,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: yCream,
                   border: Border.all(color: yInk, width: yLineMid),
@@ -792,18 +882,26 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         children: [
           Container(width: 8, height: 8, color: widget.accent),
           const SizedBox(width: 8),
-          Text('SINCRONIZADA ▸',
-              style: yMono(
-                  size: 10, weight: FontWeight.w700, tracking: 1.2, color: yInk)),
+          Text(
+            'SINCRONIZADA ▸',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.2,
+              color: yInk,
+            ),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _showSourcesSheet,
-              child: Text('$label$ago',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+              child: Text(
+                '$label$ago',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -847,11 +945,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   /// UI-only greeting bubble shown when the conversation is empty.
   Widget _greeting() => _aiMsgFrame(
-        const Text(
-          'Hola. Tengo tu contexto cargado, ¿qué hacemos con él?',
-          style: TextStyle(fontSize: 15, height: 1.5, color: yInk),
-        ),
-      );
+    const Text(
+      'Hola. Tengo tu contexto cargado, ¿qué hacemos con él?',
+      style: TextStyle(fontSize: 15, height: 1.5, color: yInk),
+    ),
+  );
 
   static const _kDailyCap = 150;
 
@@ -859,7 +957,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   /// + usage meter + close. Accent = the note's accent (everything is accent).
   Widget _header() {
     final used =
-        _remaining == null ? null : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
+        _remaining == null
+            ? null
+            : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
     return Container(
       decoration: const BoxDecoration(
         color: yInk,
@@ -888,32 +988,53 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('YuLi · IA',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ySans(
-                        size: 18, weight: FontWeight.w700, color: yCream)),
-                Text(widget.isBoard ? 'ASISTENTE DE PROYECTO' : 'ASISTENTE DE NOTAS',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: yMono(
-                        size: 8,
-                        tracking: 1.6,
-                        color: yCream.withValues(alpha: 0.6))),
+                Text(
+                  'YuLi · IA',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ySans(
+                    size: 18,
+                    weight: FontWeight.w700,
+                    color: yCream,
+                  ),
+                ),
+                Text(
+                  widget.isBoard
+                      ? 'ASISTENTE DE PROYECTO'
+                      : 'ASISTENTE DE NOTAS',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: yMono(
+                    size: 8,
+                    tracking: 1.6,
+                    color: yCream.withValues(alpha: 0.6),
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(width: 10),
           // FLASH | PRO segmented control.
           Container(
-            decoration: BoxDecoration(border: Border.all(color: yCream, width: yLineMid)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              _seg('FLASH', _s.model == AiModel.flash,
-                  () => _s.setModel(AiModel.flash)),
-              Container(width: yLineThin, height: 24, color: yCream),
-              _seg('PRO', _s.model == AiModel.pro,
-                  () => _s.setModel(AiModel.pro)),
-            ]),
+            decoration: BoxDecoration(
+              border: Border.all(color: yCream, width: yLineMid),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _seg(
+                  'FLASH',
+                  _s.model == AiModel.flash,
+                  () => _s.setModel(AiModel.flash),
+                ),
+                Container(width: yLineThin, height: 24, color: yCream),
+                _seg(
+                  'PRO',
+                  _s.model == AiModel.pro,
+                  () => _s.setModel(AiModel.pro),
+                ),
+              ],
+            ),
           ),
           if (used != null) ...[
             const SizedBox(width: 10),
@@ -923,15 +1044,17 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('$used/$_kDailyCap',
-                      textAlign: TextAlign.right,
-                      style: yMono(
-                          size: 9, tracking: 0.6, color: yCream)),
+                  Text(
+                    '$used/$_kDailyCap',
+                    textAlign: TextAlign.right,
+                    style: yMono(size: 9, tracking: 0.6, color: yCream),
+                  ),
                   const SizedBox(height: 4),
                   Container(
                     height: 5,
-                    decoration:
-                        BoxDecoration(border: Border.all(color: yCream, width: 1)),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: yCream, width: 1),
+                    ),
                     child: FractionallySizedBox(
                       alignment: Alignment.centerLeft,
                       widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
@@ -950,8 +1073,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               width: 34,
               height: 34,
               alignment: Alignment.center,
-              decoration:
-                  BoxDecoration(border: Border.all(color: yCream, width: yLineMid)),
+              decoration: BoxDecoration(
+                border: Border.all(color: yCream, width: yLineMid),
+              ),
               child: const Icon(Icons.close, size: 16, color: yCream),
             ),
           ),
@@ -967,59 +1091,49 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         color: active ? widget.accent : Colors.transparent,
-        child: Text(label,
-            style: yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 1.0,
-                color: yCream)),
+        child: Text(
+          label,
+          style: yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 1.0,
+            color: yCream,
+          ),
+        ),
       ),
     );
   }
 
-  /// AI avatar: rotating accent square (no background), same size as the old
-  /// ink square (32×32). Erratic spin.
   Widget _aiAvatar() {
-    final erratic = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: 0.4)
-              .chain(CurveTween(curve: Curves.easeInOut)),
-          weight: 12),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.4, end: -0.6)
-              .chain(CurveTween(curve: Curves.easeInOutBack)),
-          weight: 18),
-      TweenSequenceItem(
-          tween: Tween(begin: -0.6, end: 0.8)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 18),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.8, end: -0.3)
-              .chain(CurveTween(curve: Curves.easeInOutExpo)),
-          weight: 22),
-      TweenSequenceItem(
-          tween: Tween(begin: -0.3, end: 0.5)
-              .chain(CurveTween(curve: Curves.bounceInOut)),
-          weight: 15),
-      TweenSequenceItem(
-          tween: Tween(begin: 0.5, end: 0.0)
-              .chain(CurveTween(curve: Curves.elasticOut)),
-          weight: 15),
-    ]).animate(_aiSpinCtrl);
-
     return AnimatedBuilder(
-      animation: erratic,
-      builder: (_, _) => Transform.rotate(
-        angle: math.pi / 4 + erratic.value,
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: widget.accent,
-            border: Border.all(color: yInk, width: 2.5),
-          ),
-        ),
-      ),
+      animation: _aiSpinCtrl,
+      builder: (_, _) {
+        final poses = [
+          [-0.72, 0.34, -0.10],
+          [-0.26, -0.92, 0.12],
+          [0.72, 0.34, 0.10],
+          [0.26, 0.92, -0.12],
+        ];
+        final step = _aiSpinCtrl.value * poses.length;
+        final i = step.floor() % poses.length;
+        final next = (i + 1) % poses.length;
+        final local = step - step.floor();
+        final jump =
+            local < 0.16
+                ? 0.0
+                : Curves.easeInOutCubic.transform(
+                  ((local - 0.16) / 0.84).clamp(0, 1),
+                );
+        final yaw = poses[i][0] + (poses[next][0] - poses[i][0]) * jump;
+        final pitch = poses[i][1] + (poses[next][1] - poses[i][1]) * jump;
+        final roll = poses[i][2] + (poses[next][2] - poses[i][2]) * jump;
+        return _AiCubeMark(
+          accent: widget.accent,
+          yaw: yaw,
+          pitch: pitch,
+          roll: roll,
+        );
+      },
     );
   }
 
@@ -1039,12 +1153,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               children: [
                 Padding(
                   padding: const EdgeInsets.only(left: 2, bottom: 6),
-                  child: Text('YULI · IA',
-                      style: yMono(
-                          size: 9,
-                          weight: FontWeight.w700,
-                          tracking: 1.6,
-                          color: yMuted)),
+                  child: Text(
+                    'YULI · IA',
+                    style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      tracking: 1.6,
+                      color: yMuted,
+                    ),
+                  ),
                 ),
                 Container(
                   width: double.infinity,
@@ -1052,7 +1169,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   decoration: BoxDecoration(
                     color: yCream,
                     border: Border.all(color: yInk, width: yLineMid),
-                    boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
+                    boxShadow: const [
+                      BoxShadow(color: yInk, offset: Offset(4, 4)),
+                    ],
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -1062,8 +1181,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       if (actions != null && actions.isNotEmpty) ...[
                         const SizedBox(height: 11),
                         Container(
-                            height: yLineThin,
-                            color: yInk.withValues(alpha: 0.25)),
+                          height: yLineThin,
+                          color: yInk.withValues(alpha: 0.25),
+                        ),
                         const SizedBox(height: 11),
                         Wrap(spacing: 6, runSpacing: 6, children: actions),
                       ],
@@ -1084,10 +1204,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(border: Border.all(color: yInk, width: yLineThin)),
-        child: Text(label.toUpperCase(),
-            style: yMono(
-                size: 9, weight: FontWeight.w700, tracking: 0.8, color: yInk)),
+        decoration: BoxDecoration(
+          border: Border.all(color: yInk, width: yLineThin),
+        ),
+        child: Text(
+          label.toUpperCase(),
+          style: yMono(
+            size: 9,
+            weight: FontWeight.w700,
+            tracking: 0.8,
+            color: yInk,
+          ),
+        ),
       ),
     );
   }
@@ -1095,8 +1223,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   void _copy(String text) {
     Clipboard.setData(ClipboardData(text: text));
     HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Copiado'), duration: Duration(milliseconds: 700)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Copiado'),
+        duration: Duration(milliseconds: 700),
+      ),
+    );
   }
 
   /// Drop this reply (raw markdown) onto the host canvas as a text block, then
@@ -1130,9 +1262,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       if (a.isNotEmpty) all.add(a);
     }
     final src = bulleted.isNotEmpty ? bulleted : all;
-    return src
-        .map((s) => s.length > 280 ? s.substring(0, 280) : s)
-        .toList();
+    return src.map((s) => s.length > 280 ? s.substring(0, 280) : s).toList();
   }
 
   /// Extract tasks from [text] → review checklist → create them in FIGHT,
@@ -1140,9 +1270,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   Future<void> _extractTasks(String text) async {
     final candidates = _parseTaskLines(text);
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text('No encontré tareas en esa respuesta'),
-          duration: Duration(seconds: 2)));
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
     final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
@@ -1150,12 +1283,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _TaskReviewSheet(
-        candidates: candidates,
-        noteId: _s.noteId,
-        folderId: note?.folderId,
-        accent: widget.accent,
-      ),
+      builder:
+          (_) => _TaskReviewSheet(
+            candidates: candidates,
+            noteId: _s.noteId,
+            folderId: note?.folderId,
+            accent: widget.accent,
+          ),
     );
   }
 
@@ -1165,31 +1299,43 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
     // Assistant.
     final streaming = _s.streaming && i == _s.messages.length - 1;
-    final Widget content = (m.text.isEmpty && streaming)
-        ? Text('…', style: yBody(size: 14, color: yInk))
-        : streaming
+    final Widget content =
+        (m.text.isEmpty && streaming)
+            ? Text('…', style: yBody(size: 14, color: yInk))
+            : streaming
             ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
             : NoteMarkdownPreview(data: fixMarkdownTables(m.text));
-    final actions = (!streaming && m.text.isNotEmpty)
-        ? <Widget>[
-            _msgActionBtn('Copiar', () => _copy(m.text)),
-            // Note-specific actions are hidden in board (LAB) mode.
-            if (!widget.isBoard)
-              _msgActionBtn('Guardar en nota', () {
-                final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
-                sendTextToNote(context, ref, m.text,
-                    defaultFolderId: note?.folderId, accent: widget.accent);
-              }),
-            if (widget.onSendToCanvas != null)
-              _msgActionBtn('Enviar a lienzo', () => _sendToCanvas(m.text)),
-            _msgActionBtn(
+    final actions =
+        (!streaming && m.text.isNotEmpty)
+            ? <Widget>[
+              _msgActionBtn('Copiar', () => _copy(m.text)),
+              // Note-specific actions are hidden in board (LAB) mode.
+              if (!widget.isBoard)
+                _msgActionBtn('Guardar en nota', () {
+                  final note =
+                      ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
+                  sendTextToNote(
+                    context,
+                    ref,
+                    m.text,
+                    defaultFolderId: note?.folderId,
+                    accent: widget.accent,
+                  );
+                }),
+              if (widget.onSendToCanvas != null)
+                _msgActionBtn('Enviar a lienzo', () => _sendToCanvas(m.text)),
+              _msgActionBtn(
                 'Rehacer',
-                () => _s.regenerate(i, ref.read(aiAssistantProvider),
-                    ref.read(aiUsageLimiterProvider))),
-            if (!widget.isBoard)
-              _msgActionBtn('Extraer tareas', () => _extractTasks(m.text)),
-          ]
-        : null;
+                () => _s.regenerate(
+                  i,
+                  ref.read(aiAssistantProvider),
+                  ref.read(aiUsageLimiterProvider),
+                ),
+              ),
+              if (!widget.isBoard)
+                _msgActionBtn('Extraer tareas', () => _extractTasks(m.text)),
+            ]
+            : null;
     return _aiMsgFrame(content, actions: actions);
   }
 
@@ -1201,16 +1347,20 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         children: [
           Padding(
             padding: const EdgeInsets.only(right: 2, bottom: 6),
-            child: Text('TÚ',
-                style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.6,
-                    color: yMuted)),
+            child: Text(
+              'TÚ',
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.6,
+                color: yMuted,
+              ),
+            ),
           ),
           ConstrainedBox(
             constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.78),
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
+            ),
             child: Container(
               padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
               decoration: BoxDecoration(
@@ -1218,8 +1368,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 border: Border.all(color: yInk, width: yLineMid),
                 boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
               ),
-              child: SelectableText(text,
-                  style: yBody(size: 15, weight: FontWeight.w500, color: yCream)),
+              child: SelectableText(
+                text,
+                style: yBody(size: 15, weight: FontWeight.w500, color: yCream),
+              ),
             ),
           ),
         ],
@@ -1235,21 +1387,31 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(m.text,
-                textAlign: TextAlign.center,
-                style: yMono(size: 10, tracking: 0.5, color: yMuted)
-                    .copyWith(fontStyle: FontStyle.italic)),
+            Text(
+              m.text,
+              textAlign: TextAlign.center,
+              style: yMono(
+                size: 10,
+                tracking: 0.5,
+                color: yMuted,
+              ).copyWith(fontStyle: FontStyle.italic),
+            ),
             if (canUndo) ...[
               const SizedBox(height: 6),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _s.undoCompact(),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.undo, size: 11, color: yMuted),
-                  const SizedBox(width: 3),
-                  Text('DESHACER',
-                      style: yMono(size: 8, tracking: 0.8, color: yMuted)),
-                ]),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.undo, size: 11, color: yMuted),
+                    const SizedBox(width: 3),
+                    Text(
+                      'DESHACER',
+                      style: yMono(size: 8, tracking: 0.8, color: yMuted),
+                    ),
+                  ],
+                ),
               ),
             ],
           ],
@@ -1264,24 +1426,32 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     final apply = widget.onApplyTitle;
     if (apply == null) return;
     if (!_s.hasAnchor) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text('No hay contexto para titular.'),
-          duration: Duration(seconds: 2)));
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
     final limiter = ref.read(aiUsageLimiterProvider);
     if (!await limiter.canSend()) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text('Límite diario de IA alcanzado.'),
-          duration: Duration(seconds: 2)));
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
-    final navigator = Navigator.of(context);
+    if (!mounted) return;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder:
+          (_) =>
+              aiWorkingDialog(accent: widget.accent, label: 'Generando título'),
     );
     await limiter.record();
     final buf = StringBuffer();
@@ -1289,12 +1459,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     try {
       await for (final tok in ref.read(aiAssistantProvider).streamReply([
         const AiMessage(
-            AiRole.system,
-            'Sugiere títulos cortos. Responde SOLO con 3 títulos, uno por '
-            'línea, máximo 6 palabras cada uno, sin numerar, sin comillas, '
-            'sin explicación.'),
-        AiMessage(AiRole.user,
-            '<context_documents>\n${_s.anchor}\n</context_documents>'),
+          AiRole.system,
+          'Sugiere títulos cortos. Responde SOLO con 3 títulos, uno por '
+          'línea, máximo 6 palabras cada uno, sin numerar, sin comillas, '
+          'sin explicación.',
+        ),
+        AiMessage(
+          AiRole.user,
+          '<context_documents>\n${_s.anchor}\n</context_documents>',
+        ),
         const AiMessage(AiRole.user, 'Dame 3 títulos para este contenido.'),
       ], model: AiModel.flash)) {
         buf.write(tok);
@@ -1302,30 +1475,39 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     } catch (e) {
       err = '$e';
     }
-    if (navigator.canPop()) navigator.pop(); // close spinner
     if (!mounted) return;
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) navigator.pop(); // close spinner
     if (err != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(err), duration: const Duration(seconds: 3)));
+        SnackBar(content: Text(err), duration: const Duration(seconds: 3)),
+      );
       return;
     }
     final options = _parseTitles(buf.toString());
     if (options.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text('No pude sugerir títulos.'),
-          duration: Duration(seconds: 2)));
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
     final chosen = await showDialog<String>(
       context: context,
-      builder: (_) =>
-          _TitlePickerDialog(options: options, accent: widget.accent),
+      builder:
+          (_) => _TitlePickerDialog(options: options, accent: widget.accent),
     );
     if (chosen == null || chosen.trim().isEmpty) return;
     apply(chosen.trim());
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Título aplicado'), duration: Duration(seconds: 2)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Título aplicado'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   List<String> _parseTitles(String raw) {
@@ -1346,18 +1528,28 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     // (glyph, label, prompt, sendWithHistory)
     final items = <(String, String, String, bool)>[
       ('≡', 'Resumir', 'Resume el contexto en pocas líneas.', false),
-      ('☐', 'Extraer tareas',
-          'Lista las tareas accionables del contexto, una por línea, sin numerar.',
-          false),
+      (
+        '☐',
+        'Extraer tareas',
+        'Lista las tareas accionables del contexto, una por línea, sin numerar.',
+        false,
+      ),
       ('A', 'Título', 'Sugiere 3 títulos cortos para el contexto.', false),
       ('⇄', 'Traducir', 'Traduce el contexto al inglés.', false),
-      ('⌫', 'Limpiar',
-          'Reescribe y limpia el contexto: corrige ortografía y redacción, '
-              'mantén el significado.',
-          false),
+      (
+        '⌫',
+        'Limpiar',
+        'Reescribe y limpia el contexto: corrige ortografía y redacción, '
+            'mantén el significado.',
+        false,
+      ),
       // Uses full chat history (not a one-shot quick action).
-      ('❝', 'Resumir chat',
-          'Resume nuestra conversación hasta ahora en 3-4 puntos clave.', true),
+      (
+        '❝',
+        'Resumir chat',
+        'Resume nuestra conversación hasta ahora en 3-4 puntos clave.',
+        true,
+      ),
     ];
     return Container(
       decoration: const BoxDecoration(
@@ -1369,9 +1561,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _hair(widget.isBoard
-              ? '// ACCIONES SOBRE EL TABLERO'
-              : '// ACCIONES SOBRE LA NOTA'),
+          _hair(
+            widget.isBoard
+                ? '// ACCIONES SOBRE EL TABLERO'
+                : '// ACCIONES SOBRE LA NOTA',
+          ),
           const SizedBox(height: 9),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -1393,26 +1587,38 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   Widget _hair(String label) {
     return Row(
       children: [
-        Text(label,
-            style: yMono(
-                size: 10, weight: FontWeight.w700, tracking: 1.6, color: yMuted)),
+        Text(
+          label,
+          style: yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 1.6,
+            color: yMuted,
+          ),
+        ),
         const SizedBox(width: 10),
         Expanded(
-            child: Container(height: 2, color: yInk.withValues(alpha: 0.14))),
+          child: Container(height: 2, color: yInk.withValues(alpha: 0.14)),
+        ),
       ],
     );
   }
 
-  Widget _qaChip(String glyph, String label, String prompt,
-      {required bool withHistory}) {
+  Widget _qaChip(
+    String glyph,
+    String label,
+    String prompt, {
+    required bool withHistory,
+  }) {
     // "Título" with an apply target → suggest+pick popup; otherwise the normal
     // one-shot that streams the answer into the chat.
     final isTitleApply = label == 'Título' && widget.onApplyTitle != null;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _s.streaming
-          ? null
-          : isTitleApply
+      onTap:
+          _s.streaming
+              ? null
+              : isTitleApply
               ? _suggestTitle
               : () => _send(prompt, quickAction: !withHistory),
       child: Container(
@@ -1424,13 +1630,24 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(glyph,
-                style: yMono(
-                    size: 12, weight: FontWeight.w700, color: widget.accent)),
+            Text(
+              glyph,
+              style: yMono(
+                size: 12,
+                weight: FontWeight.w700,
+                color: widget.accent,
+              ),
+            ),
             const SizedBox(width: 7),
-            Text(label.toUpperCase(),
-                style: yMono(
-                    size: 10, weight: FontWeight.w700, tracking: 0.8, color: yInk)),
+            Text(
+              label.toUpperCase(),
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 0.8,
+                color: yInk,
+              ),
+            ),
           ],
         ),
       ),
@@ -1470,17 +1687,22 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               decoration: BoxDecoration(
                 color: _s.streaming ? yMuted : widget.accent,
                 border: Border.all(color: yInk, width: yLineMid),
-                boxShadow: _s.streaming
-                    ? null
-                    : const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+                boxShadow:
+                    _s.streaming
+                        ? null
+                        : const [BoxShadow(color: yInk, offset: Offset(3, 3))],
               ),
-              child: _s.streaming
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: yCream))
-                  : const Icon(Icons.arrow_upward, color: yCream, size: 22),
+              child:
+                  _s.streaming
+                      ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: yCream,
+                        ),
+                      )
+                      : const Icon(Icons.arrow_upward, color: yCream, size: 22),
             ),
           ),
         ],
@@ -1510,12 +1732,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('CONTEXTO',
-                      style: yMono(
-                          size: 11,
-                          weight: FontWeight.w700,
-                          tracking: 1.4,
-                          color: yInk)),
+                  Text(
+                    'CONTEXTO',
+                    style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 240),
@@ -1550,12 +1775,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                             color: yCream,
                             border: Border.all(color: yInk, width: yLineMid),
                           ),
-                          child: Text('LIMPIAR',
-                              style: yMono(
-                                  size: 11,
-                                  weight: FontWeight.w700,
-                                  tracking: 1.2,
-                                  color: yInk)),
+                          child: Text(
+                            'LIMPIAR',
+                            style: yMono(
+                              size: 11,
+                              weight: FontWeight.w700,
+                              tracking: 1.2,
+                              color: yInk,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -1570,23 +1798,23 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   InputDecoration _fieldDeco(String hint) => InputDecoration(
-        isDense: true,
-        contentPadding: const EdgeInsets.all(10),
-        hintText: hint,
-        hintStyle: yBody(size: 14, color: yMuted),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.zero,
-          borderSide: BorderSide(color: yInk, width: yLineMid),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.zero,
-          borderSide: BorderSide(color: yInk, width: yLineMid),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.zero,
-          borderSide: BorderSide(color: yInk, width: yLineMid),
-        ),
-      );
+    isDense: true,
+    contentPadding: const EdgeInsets.all(10),
+    hintText: hint,
+    hintStyle: yBody(size: 14, color: yMuted),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: yInk, width: yLineMid),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: yInk, width: yLineMid),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: yInk, width: yLineMid),
+    ),
+  );
 
   Widget _primaryButton(String label, VoidCallback onTap) {
     return GestureDetector(
@@ -1599,14 +1827,179 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           color: widget.accent,
           border: Border.all(color: yInk, width: yLineMid),
         ),
-        child: Text(label,
-            style: yMono(
-                size: 12,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: yCream)),
+        child: Text(
+          label,
+          style: yMono(
+            size: 12,
+            weight: FontWeight.w700,
+            tracking: 1.4,
+            color: yCream,
+          ),
+        ),
       ),
     );
+  }
+}
+
+class _AiCubeMark extends StatelessWidget {
+  final Color accent;
+  final double yaw;
+  final double pitch;
+  final double roll;
+
+  const _AiCubeMark({
+    required this.accent,
+    required this.yaw,
+    required this.pitch,
+    required this.roll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: CustomPaint(
+        painter: _AiCubePainter(
+          accent: accent,
+          yaw: yaw,
+          pitch: pitch,
+          roll: roll,
+        ),
+      ),
+    );
+  }
+}
+
+class _AiCubePainter extends CustomPainter {
+  final Color accent;
+  final double yaw;
+  final double pitch;
+  final double roll;
+
+  const _AiCubePainter({
+    required this.accent,
+    required this.yaw,
+    required this.pitch,
+    required this.roll,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const r = 10.5;
+    const camera = 48.0;
+    final verts = <_CubePoint>[
+      for (final x in [-r, r])
+        for (final y in [-r, r])
+          for (final z in [-r, r]) _rotate(x, y, z),
+    ];
+    final points =
+        verts
+            .map(
+              (p) => Offset(
+                size.width / 2 + p.x * camera / (camera - p.z),
+                size.height / 2 + p.y * camera / (camera - p.z),
+              ),
+            )
+            .toList();
+    final faces =
+        <_CubeFace>[
+            _CubeFace([0, 1, 3, 2], _shade(0.88)),
+            _CubeFace([4, 6, 7, 5], _shade(1.04)),
+            _CubeFace([0, 4, 5, 1], _shade(0.72)),
+            _CubeFace([2, 3, 7, 6], _shade(1.12)),
+            _CubeFace([0, 2, 6, 4], _shade(0.8)),
+            _CubeFace([1, 5, 7, 3], _shade(0.96)),
+          ].where((face) => face.visibleFromCamera(verts)).toList()
+          ..sort((a, b) => a.depth(verts).compareTo(b.depth(verts)));
+
+    final fill = Paint()..style = PaintingStyle.fill;
+    final stroke =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.1
+          ..strokeJoin = StrokeJoin.bevel
+          ..color = yInk;
+
+    for (final face in faces) {
+      final path =
+          Path()..moveTo(
+            points[face.indexes.first].dx,
+            points[face.indexes.first].dy,
+          );
+      for (final i in face.indexes.skip(1)) {
+        path.lineTo(points[i].dx, points[i].dy);
+      }
+      path.close();
+      fill.color = face.color;
+      canvas.drawPath(path, fill);
+      canvas.drawPath(path, stroke);
+    }
+  }
+
+  _CubePoint _rotate(double x, double y, double z) {
+    final cy = math.cos(yaw);
+    final sy = math.sin(yaw);
+    final cx = math.cos(pitch);
+    final sx = math.sin(pitch);
+    final cz = math.cos(roll);
+    final sz = math.sin(roll);
+
+    final x1 = x * cy + z * sy;
+    final z1 = -x * sy + z * cy;
+    final y2 = y * cx - z1 * sx;
+    final z2 = y * sx + z1 * cx;
+    final x3 = x1 * cz - y2 * sz;
+    final y3 = x1 * sz + y2 * cz;
+    return _CubePoint(x3, y3, z2);
+  }
+
+  Color _shade(double amount) {
+    final argb = accent.toARGB32();
+    final a = (argb >> 24) & 0xFF;
+    final r = (((argb >> 16) & 0xFF) * amount).clamp(0, 255).round();
+    final g = (((argb >> 8) & 0xFF) * amount).clamp(0, 255).round();
+    final b = ((argb & 0xFF) * amount).clamp(0, 255).round();
+    return Color.fromARGB(a, r, g, b);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AiCubePainter oldDelegate) {
+    return oldDelegate.accent != accent ||
+        oldDelegate.yaw != yaw ||
+        oldDelegate.pitch != pitch ||
+        oldDelegate.roll != roll;
+  }
+}
+
+class _CubePoint {
+  final double x;
+  final double y;
+  final double z;
+
+  const _CubePoint(this.x, this.y, this.z);
+}
+
+class _CubeFace {
+  final List<int> indexes;
+  final Color color;
+
+  const _CubeFace(this.indexes, this.color);
+
+  double depth(List<_CubePoint> verts) {
+    return indexes.fold<double>(0, (sum, i) => sum + verts[i].z) /
+        indexes.length;
+  }
+
+  bool visibleFromCamera(List<_CubePoint> verts) {
+    final a = verts[indexes[0]];
+    final b = verts[indexes[1]];
+    final c = verts[indexes[2]];
+    final ux = b.x - a.x;
+    final uy = b.y - a.y;
+    final vx = c.x - a.x;
+    final vy = c.y - a.y;
+    return ux * vy - uy * vx > 0;
   }
 }
 
@@ -1637,9 +2030,8 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
   @override
   void initState() {
     super.initState();
-    _ctrls = widget.candidates
-        .map((c) => TextEditingController(text: c))
-        .toList();
+    _ctrls =
+        widget.candidates.map((c) => TextEditingController(text: c)).toList();
     _sel = List<bool>.filled(widget.candidates.length, true);
   }
 
@@ -1673,26 +2065,32 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
       final content = _ctrls[i].text.trim();
       if (content.isEmpty) continue;
       try {
-        final task = await taskRepo.save(Task(
-          id: 0,
-          content: content,
-          status: TaskStatus.pending,
-          folderId: widget.folderId,
-          createdAt: now,
-          expiresAt: DateTime(now.year, now.month, now.day, 23, 59, 59),
-        ));
+        final task = await taskRepo.save(
+          Task(
+            id: 0,
+            content: content,
+            status: TaskStatus.pending,
+            folderId: widget.folderId,
+            createdAt: now,
+            expiresAt: DateTime(now.year, now.month, now.day, 23, 59, 59),
+          ),
+        );
         await noteRepo.linkTask(widget.noteId, task.id);
         created++;
       } catch (_) {}
     }
     if (!mounted) return;
     navigator.pop();
-    messenger.showSnackBar(SnackBar(
-      content: Text(created == 1
-          ? '1 tarea creada en FIGHT'
-          : '$created tareas creadas en FIGHT'),
-      duration: const Duration(seconds: 2),
-    ));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          created == 1
+              ? '1 tarea creada en FIGHT'
+              : '$created tareas creadas en FIGHT',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
@@ -1712,20 +2110,29 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(children: [
-                Text('REVISAR TAREAS',
+              Row(
+                children: [
+                  Text(
+                    'REVISAR TAREAS',
                     style: yMono(
-                        size: 11,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yInk)),
-                const Spacer(),
-                Text('→ @FIGHT',
-                    style: yMono(size: 9, tracking: 1, color: yMuted)),
-              ]),
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '→ @FIGHT',
+                    style: yMono(size: 9, tracking: 1, color: yMuted),
+                  ),
+                ],
+              ),
               const SizedBox(height: 4),
-              Text('Marca/edita las que quieras crear.',
-                  style: yBody(size: 12, color: yMuted)),
+              Text(
+                'Marca/edita las que quieras crear.',
+                style: yBody(size: 12, color: yMuted),
+              ),
               const SizedBox(height: 12),
               Flexible(
                 child: ConstrainedBox(
@@ -1733,107 +2140,136 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
                   child: ListView.builder(
                     shrinkWrap: true,
                     itemCount: _ctrls.length,
-                    itemBuilder: (_, i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => setState(() => _sel[i] = !_sel[i]),
-                            child: Container(
-                              width: 22,
-                              height: 22,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: _sel[i] ? widget.accent : yCream,
-                                border:
-                                    Border.all(color: yInk, width: yLineMid),
+                    itemBuilder:
+                        (_, i) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => setState(() => _sel[i] = !_sel[i]),
+                                child: Container(
+                                  width: 22,
+                                  height: 22,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _sel[i] ? widget.accent : yCream,
+                                    border: Border.all(
+                                      color: yInk,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child:
+                                      _sel[i]
+                                          ? const Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: yCream,
+                                          )
+                                          : null,
+                                ),
                               ),
-                              child: _sel[i]
-                                  ? const Icon(Icons.check,
-                                      size: 14, color: yCream)
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: _ctrls[i],
-                              maxLines: null,
-                              style: yBody(size: 14, color: yInk),
-                              onChanged: (_) => setState(() {}),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                contentPadding:
-                                    const EdgeInsets.symmetric(vertical: 6),
-                                border: const UnderlineInputBorder(
-                                    borderSide:
-                                        BorderSide(color: yInk, width: yLineThin)),
-                                enabledBorder: const UnderlineInputBorder(
-                                    borderSide:
-                                        BorderSide(color: yInk, width: yLineThin)),
-                                focusedBorder: UnderlineInputBorder(
-                                    borderSide: BorderSide(
-                                        color: widget.accent, width: yLineMid)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  controller: _ctrls[i],
+                                  maxLines: null,
+                                  style: yBody(size: 14, color: yInk),
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: 6,
+                                    ),
+                                    border: const UnderlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: yInk,
+                                        width: yLineThin,
+                                      ),
+                                    ),
+                                    enabledBorder: const UnderlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: yInk,
+                                        width: yLineThin,
+                                      ),
+                                    ),
+                                    focusedBorder: UnderlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: widget.accent,
+                                        width: yLineMid,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(
-                  child: GestureDetector(
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _count == 0 || _creating ? null : _create,
+                      child: Container(
+                        height: 46,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _count == 0 ? yMuted : widget.accent,
+                          border: Border.all(color: yInk, width: yLineMid),
+                        ),
+                        child:
+                            _creating
+                                ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: yCream,
+                                  ),
+                                )
+                                : Text(
+                                  'CREAR $_count',
+                                  style: yMono(
+                                    size: 12,
+                                    weight: FontWeight.w700,
+                                    tracking: 1.2,
+                                    color: yCream,
+                                  ),
+                                ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: _count == 0 || _creating ? null : _create,
+                    onTap: () => Navigator.of(context).pop(),
                     child: Container(
                       height: 46,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: _count == 0 ? yMuted : widget.accent,
+                        color: yCream,
                         border: Border.all(color: yInk, width: yLineMid),
                       ),
-                      child: _creating
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: yCream))
-                          : Text('CREAR $_count',
-                              style: yMono(
-                                  size: 12,
-                                  weight: FontWeight.w700,
-                                  tracking: 1.2,
-                                  color: yCream)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: yCream,
-                      border: Border.all(color: yInk, width: yLineMid),
-                    ),
-                    child: Text('CANCELAR',
+                      child: Text(
+                        'CANCELAR',
                         style: yMono(
-                            size: 11,
-                            weight: FontWeight.w700,
-                            tracking: 1.2,
-                            color: yInk)),
+                          size: 11,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yInk,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ],
           ),
         ),
@@ -1867,7 +2303,8 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
   void _snack(String m) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(m), duration: const Duration(seconds: 3)));
+      SnackBar(content: Text(m), duration: const Duration(seconds: 3)),
+    );
   }
 
   String _ago(DateTime? t) {
@@ -1880,20 +2317,26 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
   }
 
   Future<void> _addNote() async {
-    final notes = ref.read(notesByFolderProvider(widget.folderId)).valueOrNull ??
+    final notes =
+        ref.read(notesByFolderProvider(widget.folderId)).valueOrNull ??
         const [];
     final existing =
-        (ref.read(canvasContextSourcesProvider(widget.canvasNoteId)).valueOrNull ??
+        (ref
+                    .read(canvasContextSourcesProvider(widget.canvasNoteId))
+                    .valueOrNull ??
                 const [])
             .where((s) => s.isNote)
             .map((s) => s.ref)
             .toSet();
-    final candidates = notes
-        .where((n) =>
-            n.id != widget.canvasNoteId &&
-            n.kind == NoteKind.block &&
-            !existing.contains(n.id.toString()))
-        .toList();
+    final candidates =
+        notes
+            .where(
+              (n) =>
+                  n.id != widget.canvasNoteId &&
+                  n.kind == NoteKind.block &&
+                  !existing.contains(n.id.toString()),
+            )
+            .toList();
     if (candidates.isEmpty) {
       _snack('No hay más notas en esta carpeta para agregar.');
       return;
@@ -1901,63 +2344,79 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     final picked = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: yCream,
-          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('AGREGAR NOTA',
-                  style: yMono(
+      builder:
+          (ctx) => Container(
+            decoration: const BoxDecoration(
+              color: yCream,
+              border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'AGREGAR NOTA',
+                    style: yMono(
                       size: 11,
                       weight: FontWeight.w700,
                       tracking: 1.4,
-                      color: yInk)),
-              const SizedBox(height: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: candidates.length,
-                  itemBuilder: (_, i) {
-                    final n = candidates[i];
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => Navigator.of(ctx).pop(n.id),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                              bottom:
-                                  BorderSide(color: yInk, width: yLineThin)),
-                        ),
-                        child: Text(
-                          (n.title?.isEmpty ?? true) ? 'Sin título' : n.title!,
-                          style: ySans(
-                              size: 14, weight: FontWeight.w700, color: yInk),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                      color: yInk,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 320),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: candidates.length,
+                      itemBuilder: (_, i) {
+                        final n = candidates[i];
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Navigator.of(ctx).pop(n.id),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: yInk,
+                                  width: yLineThin,
+                                ),
+                              ),
+                            ),
+                            child: Text(
+                              (n.title?.isEmpty ?? true)
+                                  ? 'Sin título'
+                                  : n.title!,
+                              style: ySans(
+                                size: 14,
+                                weight: FontWeight.w700,
+                                color: yInk,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
     if (picked == null) return;
-    final title =
-        candidates.firstWhere((n) => n.id == picked).title;
-    await ref.read(noteRepositoryProvider).addContextSource(
-        widget.canvasNoteId, CanvasSourceKind.note, picked.toString(),
-        label: title);
+    final title = candidates.firstWhere((n) => n.id == picked).title;
+    await ref
+        .read(noteRepositoryProvider)
+        .addContextSource(
+          widget.canvasNoteId,
+          CanvasSourceKind.note,
+          picked.toString(),
+          label: title,
+        );
     await widget.onChanged();
   }
 
@@ -1965,27 +2424,34 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     final ctrl = TextEditingController();
     final url = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Agregar enlace',
-            style: ySans(size: 18, weight: FontWeight.w700)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(hintText: 'https://…'),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
-              child: const Text('Agregar')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Agregar enlace',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(hintText: 'https://…'),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+                child: const Text('Agregar'),
+              ),
+            ],
+          ),
     );
     if (url == null || url.trim().isEmpty) return;
     final clean = url.trim();
@@ -1993,9 +2459,15 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     try {
       final doc = await ref.read(webReaderProvider).fetch(clean);
       await writeUrlContent(clean, doc.content);
-      await ref.read(noteRepositoryProvider).addContextSource(
-          widget.canvasNoteId, CanvasSourceKind.url, clean,
-          label: doc.title, fetchedAt: DateTime.now());
+      await ref
+          .read(noteRepositoryProvider)
+          .addContextSource(
+            widget.canvasNoteId,
+            CanvasSourceKind.url,
+            clean,
+            label: doc.title,
+            fetchedAt: DateTime.now(),
+          );
       await widget.onChanged();
     } on WebReaderException catch (e) {
       _snack(e.message);
@@ -2013,7 +2485,11 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
       await writeUrlContent(s.ref, doc.content);
       await ref
           .read(noteRepositoryProvider)
-          .updateContextSourceFetch(s.id, label: doc.title, fetchedAt: DateTime.now());
+          .updateContextSourceFetch(
+            s.id,
+            label: doc.title,
+            fetchedAt: DateTime.now(),
+          );
       await widget.onChanged();
     } on WebReaderException catch (e) {
       _snack(e.message);
@@ -2040,8 +2516,10 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
   @override
   Widget build(BuildContext context) {
     final sources =
-        ref.watch(canvasContextSourcesProvider(widget.canvasNoteId)).valueOrNull ??
-            const [];
+        ref
+            .watch(canvasContextSourcesProvider(widget.canvasNoteId))
+            .valueOrNull ??
+        const [];
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
@@ -2054,32 +2532,41 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(children: [
-              Text('FUENTES DE CONTEXTO',
+            Row(
+              children: [
+                Text(
+                  'FUENTES DE CONTEXTO',
                   style: yMono(
-                      size: 11,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk)),
-              const Spacer(),
-              if (_busy)
-                const SizedBox(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ),
+                ),
+                const Spacer(),
+                if (_busy)
+                  const SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-            ]),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
-                'El chat usa estas fuentes como contexto. Las notas se '
-                'sincronizan al abrir; los enlaces se leen una vez y se '
-                'actualizan solo con su ↻.',
-                style: yBody(size: 12, color: yMuted)),
+              'El chat usa estas fuentes como contexto. Las notas se '
+              'sincronizan al abrir; los enlaces se leen una vez y se '
+              'actualizan solo con su ↻.',
+              style: yBody(size: 12, color: yMuted),
+            ),
             const SizedBox(height: 12),
             if (sources.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text('Sin fuentes. Agrega una nota o un enlace.',
-                    style: yBody(size: 13, color: yMuted)),
+                child: Text(
+                  'Sin fuentes. Agrega una nota o un enlace.',
+                  style: yBody(size: 13, color: yMuted),
+                ),
               )
             else
               ConstrainedBox(
@@ -2090,11 +2577,15 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
                 ),
               ),
             const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: _addBtn(Icons.description_outlined, 'Nota', _addNote)),
-              const SizedBox(width: 8),
-              Expanded(child: _addBtn(Icons.link, 'Enlace', _addUrl)),
-            ]),
+            Row(
+              children: [
+                Expanded(
+                  child: _addBtn(Icons.description_outlined, 'Nota', _addNote),
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: _addBtn(Icons.link, 'Enlace', _addUrl)),
+              ],
+            ),
           ],
         ),
       ),
@@ -2111,7 +2602,8 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
       final note = await ref.read(noteRepositoryProvider).getById(nid);
       if (note == null) return;
       final blocks = await ref.read(noteBlocksProvider(nid).future);
-      label = (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
+      label =
+          (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
       raw = _srcExtractContext(blocks);
       compactKey = 'note:$nid';
     } else {
@@ -2132,15 +2624,16 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (_) => _SourceViewDialog(
-        label: label,
-        isUrl: s.isUrl,
-        content: display,
-        wasCompacted: wasCompacted,
-        originalLen: wasCompacted ? raw.length : null,
-        compactedLen: wasCompacted ? compacted!.length : null,
-        url: s.isUrl ? s.ref : null,
-      ),
+      builder:
+          (_) => _SourceViewDialog(
+            label: label,
+            isUrl: s.isUrl,
+            content: display,
+            wasCompacted: wasCompacted,
+            originalLen: wasCompacted ? raw.length : null,
+            compactedLen: wasCompacted ? compacted!.length : null,
+            url: s.isUrl ? s.ref : null,
+          ),
     );
   }
 
@@ -2165,7 +2658,8 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     final String title;
     if (s.isNote) {
       final n = ref.watch(noteByIdProvider(s.noteId ?? -1)).valueOrNull;
-      title = (n?.title?.trim().isEmpty ?? true) ? 'Sin título' : n!.title!.trim();
+      title =
+          (n?.title?.trim().isEmpty ?? true) ? 'Sin título' : n!.title!.trim();
     } else {
       title = (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim();
     }
@@ -2179,28 +2673,43 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
         ),
         child: Row(
           children: [
-            Icon(s.isNote ? Icons.description_outlined : Icons.link,
-                size: 16, color: yInk),
+            Icon(
+              s.isNote ? Icons.description_outlined : Icons.link,
+              size: 16,
+              color: yInk,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ySans(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                    ),
+                  ),
+                  if (s.isUrl)
+                    Text(
+                      '${s.ref}  ·  ${_ago(s.fetchedAt)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ySans(size: 14, weight: FontWeight.w700, color: yInk)),
-                  if (s.isUrl)
-                    Text('${s.ref}  ·  ${_ago(s.fetchedAt)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: yMono(size: 9, tracking: 0.3, color: yMuted)),
+                      style: yMono(size: 9, tracking: 0.3, color: yMuted),
+                    ),
                 ],
               ),
             ),
             if (s.isUrl) ...[
               const SizedBox(width: 4),
-              _iconBtn(Icons.refresh, 'Actualizar', _busy ? null : () => _refetch(s)),
+              _iconBtn(
+                Icons.refresh,
+                'Actualizar',
+                _busy ? null : () => _refetch(s),
+              ),
             ],
             const SizedBox(width: 4),
             _iconBtn(Icons.close, 'Quitar', _busy ? null : () => _remove(s)),
@@ -2211,17 +2720,16 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
   }
 
   Widget _iconBtn(IconData icon, String tip, VoidCallback? onTap) => Tooltip(
-        message: tip,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Icon(icon,
-                size: 16, color: onTap == null ? yMuted : yInk),
-          ),
-        ),
-      );
+    message: tip,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, size: 16, color: onTap == null ? yMuted : yInk),
+      ),
+    ),
+  );
 
   Widget _addBtn(IconData icon, String label, VoidCallback onTap) =>
       GestureDetector(
@@ -2239,12 +2747,15 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
             children: [
               Icon(icon, size: 16, color: yInk),
               const SizedBox(width: 8),
-              Text(label.toUpperCase(),
-                  style: yMono(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      tracking: 1.2,
-                      color: yInk)),
+              Text(
+                label.toUpperCase(),
+                style: yMono(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: yInk,
+                ),
+              ),
             ],
           ),
         ),
@@ -2279,11 +2790,10 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
   }
 
   void _pick(int i) => setState(() {
-        _sel = i;
-        _ctrl.text = widget.options[i];
-        _ctrl.selection =
-            TextSelection.collapsed(offset: _ctrl.text.length);
-      });
+    _sel = i;
+    _ctrl.text = widget.options[i];
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2292,18 +2802,23 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
-        decoration: BoxDecoration(border: Border.all(color: yInk, width: yLineHeavy)),
+        decoration: BoxDecoration(
+          border: Border.all(color: yInk, width: yLineHeavy),
+        ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('SUGERIR TÍTULO',
-                style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk)),
+            Text(
+              'SUGERIR TÍTULO',
+              style: yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yInk,
+              ),
+            ),
             const SizedBox(height: 12),
             for (int i = 0; i < widget.options.length; i++)
               GestureDetector(
@@ -2323,11 +2838,14 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(widget.options[i],
-                            style: ySans(
-                                size: 15,
-                                weight: FontWeight.w600,
-                                color: yInk)),
+                        child: Text(
+                          widget.options[i],
+                          style: ySans(
+                            size: 15,
+                            weight: FontWeight.w600,
+                            color: yInk,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -2371,12 +2889,15 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                         color: yCream,
                         border: Border.all(color: yInk, width: yLineMid),
                       ),
-                      child: Text('CANCELAR',
-                          style: yMono(
-                              size: 12,
-                              weight: FontWeight.w700,
-                              tracking: 1.2,
-                              color: yInk)),
+                      child: Text(
+                        'CANCELAR',
+                        style: yMono(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yInk,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -2384,8 +2905,7 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                 Expanded(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: () =>
-                        Navigator.of(context).pop(_ctrl.text.trim()),
+                    onTap: () => Navigator.of(context).pop(_ctrl.text.trim()),
                     child: Container(
                       height: 44,
                       alignment: Alignment.center,
@@ -2393,16 +2913,19 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                         color: widget.accent,
                         border: Border.all(color: yInk, width: yLineMid),
                       ),
-                      child: Text('APLICAR',
-                          style: yMono(
-                              size: 12,
-                              weight: FontWeight.w700,
-                              tracking: 1.2,
-                              color: yCream)),
+                      child: Text(
+                        'APLICAR',
+                        style: yMono(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yCream,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                  ],
+              ],
             ),
           ],
         ),
@@ -2449,28 +2972,35 @@ class _SourceViewDialog extends StatelessWidget {
             Container(
               decoration: const BoxDecoration(
                 color: yCream2,
-                border:
-                    Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+                border: Border(
+                  bottom: BorderSide(color: yInk, width: yLineMid),
+                ),
               ),
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('CONTEXTO DE FUENTE',
-                      style: yMono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          tracking: 1.2,
-                          color: yMuted)),
+                  Text(
+                    'CONTEXTO DE FUENTE',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: yMuted,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: ySans(
-                          size: 16,
-                          weight: FontWeight.w700,
-                          color: yInk)),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: ySans(
+                      size: 16,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -2494,8 +3024,11 @@ class _SourceViewDialog extends StatelessWidget {
                           children: [
                             const Padding(
                               padding: EdgeInsets.only(top: 1),
-                              child: Icon(Icons.info_outline,
-                                  size: 14, color: yAmber),
+                              child: Icon(
+                                Icons.info_outline,
+                                size: 14,
+                                color: yAmber,
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -2504,9 +3037,10 @@ class _SourceViewDialog extends StatelessWidget {
                                 'muy largo, la IA puede comprimirlo para '
                                 'ahorrar tokens.',
                                 style: yMono(
-                                    size: 10,
-                                    tracking: 0.4,
-                                    color: yInk),
+                                  size: 10,
+                                  tracking: 0.4,
+                                  color: yInk,
+                                ),
                               ),
                             ),
                           ],
@@ -2519,10 +3053,7 @@ class _SourceViewDialog extends StatelessWidget {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(
                           'Compresión aplicada: $originalLen → $compactedLen caracteres',
-                          style: yMono(
-                              size: 9,
-                              tracking: 0.4,
-                              color: yMuted),
+                          style: yMono(size: 9, tracking: 0.4, color: yMuted),
                         ),
                       ),
                       Container(
@@ -2531,16 +3062,14 @@ class _SourceViewDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    NoteMarkdownPreview(
-                        data: fixMarkdownTables(content)),
+                    NoteMarkdownPreview(data: fixMarkdownTables(content)),
                   ],
                 ),
               ),
             ),
             Container(
               decoration: const BoxDecoration(
-                border:
-                    Border(top: BorderSide(color: yInk, width: yLineThin)),
+                border: Border(top: BorderSide(color: yInk, width: yLineThin)),
               ),
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: Row(
@@ -2561,12 +3090,15 @@ class _SourceViewDialog extends StatelessWidget {
                           color: yCream,
                           border: Border.all(color: yInk, width: yLineMid),
                         ),
-                        child: Text('COPIAR ENLACE',
-                            style: yMono(
-                                size: 10,
-                                weight: FontWeight.w700,
-                                tracking: 1.2,
-                                color: yInk)),
+                        child: Text(
+                          'COPIAR ENLACE',
+                          style: yMono(
+                            size: 10,
+                            weight: FontWeight.w700,
+                            tracking: 1.2,
+                            color: yInk,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -2582,12 +3114,15 @@ class _SourceViewDialog extends StatelessWidget {
                         color: yInk,
                         border: Border.all(color: yInk, width: yLineMid),
                       ),
-                      child: Text('CERRAR',
-                          style: yMono(
-                              size: 10,
-                              weight: FontWeight.w700,
-                              tracking: 1.2,
-                              color: yCream)),
+                      child: Text(
+                        'CERRAR',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yCream,
+                        ),
+                      ),
                     ),
                   ),
                 ],

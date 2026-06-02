@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:yuli/data/local/database.dart';
@@ -10,6 +11,11 @@ import 'package:yuli/presentation/providers/database_providers.dart';
 import 'package:yuli/presentation/screens/flight/note_editor_screen.dart';
 
 void main() {
+  // Crear cards/tareas dispara la sincronización de recordatorios, que lee
+  // SharedPreferences; sin el mock el method channel nunca responde y cuelga.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   testWidgets('NoteEditorScreen LaTeX preview test', (WidgetTester tester) async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     

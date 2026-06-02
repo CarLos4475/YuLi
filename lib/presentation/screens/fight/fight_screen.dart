@@ -6,6 +6,7 @@ import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/task_propagation_provider.dart';
+import '../../widgets/reminder_picker.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/task.dart' as domain_task;
@@ -27,14 +28,19 @@ class FightScreen extends ConsumerWidget {
       children: [
         ModeHeader(
           mode: 'FIGHT',
-          subtitle: 'MODO CAPTURA · @ ETIQUETA CARPETA · MANTÉN-PRESIONADA → LAB',
+          subtitle:
+              'MODO CAPTURA · @ ETIQUETA CARPETA · MANTÉN-PRESIONADA → LAB',
           color: yFight,
-          onBack: () =>
-              ref.read(currentModeProvider.notifier).state = AppMode.home,
+          onBack:
+              () => ref.read(currentModeProvider.notifier).state = AppMode.home,
           headerRight: [
             YBadge(label: '${hoy.length} HOY', bg: yCream, fg: yInk),
             YBadge(label: '${ayer.length} AYER', bg: yAmber, fg: yCream),
-            YBadge(label: '${vencidas.length} VENCIDAS', bg: Color(0xFF8E2D4B), fg: yCream),
+            YBadge(
+              label: '${vencidas.length} VENCIDAS',
+              bg: Color(0xFF8E2D4B),
+              fg: yCream,
+            ),
           ],
         ),
         const _CapturaBar(),
@@ -101,7 +107,8 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
     if (cursor < 0) return;
     final before = cursor > 0 ? text.substring(0, cursor) : '';
     final atIdx = before.lastIndexOf('@');
-    final inMention = atIdx >= 0 &&
+    final inMention =
+        atIdx >= 0 &&
         !before.substring(atIdx).contains(' ') &&
         !before.substring(atIdx).contains('\n');
     if (inMention) {
@@ -117,9 +124,10 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
   void _showMention(String query) {
     final folders = ref.read(activeFoldersProvider).valueOrNull ?? [];
     final clean = _stripAccents(query.toLowerCase());
-    final filtered = folders
-        .where((f) => _stripAccents(f.name.toLowerCase()).contains(clean))
-        .toList();
+    final filtered =
+        folders
+            .where((f) => _stripAccents(f.name.toLowerCase()).contains(clean))
+            .toList();
     if (filtered.isEmpty) {
       _removeOverlay();
       return;
@@ -130,21 +138,22 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
       return;
     }
     _overlay = OverlayEntry(
-      builder: (_) => Positioned(
-        width: 260,
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(40, 60),
-          child: Material(
-            color: Colors.transparent,
-            child: _MentionPopup(
-              folders: _mentionFolders,
-              onSelect: _onMention,
+      builder:
+          (_) => Positioned(
+            width: 260,
+            child: CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              offset: const Offset(40, 60),
+              child: Material(
+                color: Colors.transparent,
+                child: _MentionPopup(
+                  folders: _mentionFolders,
+                  onSelect: _onMention,
+                ),
+              ),
             ),
           ),
-        ),
-      ),
     );
     Overlay.of(context).insert(_overlay!);
   }
@@ -164,8 +173,9 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
         text.substring(0, _mentionStart) + replacement + text.substring(cursor);
     _controller.value = TextEditingValue(
       text: newText,
-      selection:
-          TextSelection.collapsed(offset: _mentionStart! + replacement.length),
+      selection: TextSelection.collapsed(
+        offset: _mentionStart! + replacement.length,
+      ),
     );
     _mentionStart = null;
     _focusNode.requestFocus();
@@ -184,12 +194,15 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
     final m = RegExp(r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)').firstMatch(raw);
     if (m != null) {
       final clean = _stripAccents(m.group(1)!.toLowerCase());
-      final match =
-          folders.where((f) => _stripAccents(f.name.toLowerCase()) == clean);
+      final match = folders.where(
+        (f) => _stripAccents(f.name.toLowerCase()) == clean,
+      );
       if (match.isNotEmpty) folderId = match.first.id;
     }
     final now = DateTime.now();
-    await ref.read(taskRepositoryProvider).save(
+    await ref
+        .read(taskRepositoryProvider)
+        .save(
           domain_task.Task(
             id: 0,
             content: raw,
@@ -281,9 +294,10 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
                       size: 12,
                       weight: FontWeight.w700,
                       tracking: 0.5,
-                      color: _contentLength > _maxChars
-                          ? yFight
-                          : _contentLength > 260
+                      color:
+                          _contentLength > _maxChars
+                              ? yFight
+                              : _contentLength > 260
                               ? yAmber
                               : yMuted,
                     ),
@@ -292,18 +306,24 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
               // Red + submit
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: (_controller.text.trim().isEmpty || _contentLength > _maxChars)
-                    ? null
-                    : _submit,
+                onTap:
+                    (_controller.text.trim().isEmpty ||
+                            _contentLength > _maxChars)
+                        ? null
+                        : _submit,
                 child: Container(
                   width: 76,
                   height: double.infinity,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: (_controller.text.trim().isEmpty || _contentLength > _maxChars)
-                        ? yMuted.withValues(alpha: 0.3)
-                        : yFight,
-                    border: const Border(left: BorderSide(color: yInk, width: yLineHeavy)),
+                    color:
+                        (_controller.text.trim().isEmpty ||
+                                _contentLength > _maxChars)
+                            ? yMuted.withValues(alpha: 0.3)
+                            : yFight,
+                    border: const Border(
+                      left: BorderSide(color: yInk, width: yLineHeavy),
+                    ),
                   ),
                   child: Text(
                     '+',
@@ -412,40 +432,50 @@ class _StackedBuckets extends StatelessWidget {
       padding: EdgeInsets.zero,
       children: [
         _InlineBucketHeader(
-            title: 'HOY',
-            subtitle: 'capturadas hoy',
-            color: yFight,
-            count: hoy.length),
-        ...hoy.map((t) => Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: _SwipeableTaskCard(
-                  task: t, gesture: _BucketGesture.swipe),
-            )),
-        ...hechas.map((t) => Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: _SwipeableTaskCard(
-                  task: t, gesture: _BucketGesture.done),
-            )),
+          title: 'HOY',
+          subtitle: 'capturadas hoy',
+          color: yFight,
+          count: hoy.length,
+        ),
+        ...hoy.map(
+          (t) => Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: _SwipeableTaskCard(task: t, gesture: _BucketGesture.swipe),
+          ),
+        ),
+        ...hechas.map(
+          (t) => Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: _SwipeableTaskCard(task: t, gesture: _BucketGesture.done),
+          ),
+        ),
         _InlineBucketHeader(
-            title: 'AYER',
-            subtitle: 'sin terminar',
-            color: yAmber2,
-            count: ayer.length),
-        ...ayer.map((t) => Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: _SwipeableTaskCard(
-                  task: t, gesture: _BucketGesture.swipe),
-            )),
+          title: 'AYER',
+          subtitle: 'sin terminar',
+          color: yAmber2,
+          count: ayer.length,
+        ),
+        ...ayer.map(
+          (t) => Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: _SwipeableTaskCard(task: t, gesture: _BucketGesture.swipe),
+          ),
+        ),
         _InlineBucketHeader(
-            title: 'VENCIDAS',
-            subtitle: 'se borran pronto',
-            color: Color(0xFF8E2D4B),
-            count: vencidas.length),
-        ...vencidas.map((t) => Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: _SwipeableTaskCard(
-                  task: t, gesture: _BucketGesture.expiring),
-            )),
+          title: 'VENCIDAS',
+          subtitle: 'se borran pronto',
+          color: Color(0xFF8E2D4B),
+          count: vencidas.length,
+        ),
+        ...vencidas.map(
+          (t) => Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: _SwipeableTaskCard(
+              task: t,
+              gesture: _BucketGesture.expiring,
+            ),
+          ),
+        ),
         const SizedBox(height: 24),
       ],
     );
@@ -473,21 +503,25 @@ class _InlineBucketHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(title,
-              style: ySans(
-                size: 28,
-                weight: FontWeight.w700,
-                letterSpacing: -1,
-                color: yCream,
-              )),
+          Text(
+            title,
+            style: ySans(
+              size: 28,
+              weight: FontWeight.w700,
+              letterSpacing: -1,
+              color: yCream,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(subtitle,
-                style: yMono(
-                  size: 10,
-                  color: yCream.withValues(alpha: 0.85),
-                  tracking: 1.4,
-                )),
+            child: Text(
+              subtitle,
+              style: yMono(
+                size: 10,
+                color: yCream.withValues(alpha: 0.85),
+                tracking: 1.4,
+              ),
+            ),
           ),
           Text(
             count.toString().padLeft(2, '0'),
@@ -531,9 +565,12 @@ class _BucketColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: borderRight
-            ? const Border(right: BorderSide(color: yInk, width: yLineHeavy))
-            : null,
+        border:
+            borderRight
+                ? const Border(
+                  right: BorderSide(color: yInk, width: yLineHeavy),
+                )
+                : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -543,8 +580,9 @@ class _BucketColumn extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
             decoration: BoxDecoration(
               color: color,
-              border:
-                  const Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+              border: const Border(
+                bottom: BorderSide(color: yInk, width: yLineHeavy),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -591,52 +629,65 @@ class _BucketColumn extends StatelessWidget {
           Container(
             decoration: BoxDecoration(
               border: Border(
-                bottom:
-                    BorderSide(color: yInk.withValues(alpha: 0.25), width: 1),
+                bottom: BorderSide(
+                  color: yInk.withValues(alpha: 0.25),
+                  width: 1,
+                ),
               ),
             ),
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-            child: gesture == _BucketGesture.swipe
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('← DESCARTAR',
-                          style: yMono(size: 9, tracking: 1.4)),
-                      Text('COMPLETAR →',
-                          style: yMono(size: 9, tracking: 1.4)),
-                    ],
-                  )
-                : Center(
-                    child: Text('● AUTO-BORRADO PROGRAMADO',
-                        style: yMono(size: 9, tracking: 1.4)),
-                  ),
+            child:
+                gesture == _BucketGesture.swipe
+                    ? Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '← DESCARTAR',
+                          style: yMono(size: 9, tracking: 1.4),
+                        ),
+                        Text(
+                          'COMPLETAR →',
+                          style: yMono(size: 9, tracking: 1.4),
+                        ),
+                      ],
+                    )
+                    : Center(
+                      child: Text(
+                        '● AUTO-BORRADO PROGRAMADO',
+                        style: yMono(size: 9, tracking: 1.4),
+                      ),
+                    ),
           ),
           // List
           Expanded(
-            child: (tasks.isEmpty && doneTasks.isEmpty)
-                ? Center(
-                    child: Text(
-                      'NADA',
-                      style: yMono(
-                        size: 10,
-                        color: yMuted.withValues(alpha: 0.6),
-                        tracking: 1.4,
+            child:
+                (tasks.isEmpty && doneTasks.isEmpty)
+                    ? Center(
+                      child: Text(
+                        'NADA',
+                        style: yMono(
+                          size: 10,
+                          color: yMuted.withValues(alpha: 0.6),
+                          tracking: 1.4,
+                        ),
                       ),
+                    )
+                    : ListView(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                      children: [
+                        for (final t in tasks) ...[
+                          _SwipeableTaskCard(task: t, gesture: gesture),
+                          const SizedBox(height: 10),
+                        ],
+                        for (final t in doneTasks) ...[
+                          _SwipeableTaskCard(
+                            task: t,
+                            gesture: _BucketGesture.done,
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ],
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                    children: [
-                      for (final t in tasks) ...[
-                        _SwipeableTaskCard(task: t, gesture: gesture),
-                        const SizedBox(height: 10),
-                      ],
-                      for (final t in doneTasks) ...[
-                        _SwipeableTaskCard(task: t, gesture: _BucketGesture.done),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  ),
           ),
         ],
       ),
@@ -764,19 +815,22 @@ class _SwipeBg extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: align == Alignment.centerRight
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            align == Alignment.centerRight
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
         children: [
           Icon(icon, color: yCream, size: 20),
           const SizedBox(height: 2),
-          Text(label,
-              style: yMono(
-                size: 9,
-                weight: FontWeight.w700,
-                color: yCream,
-                tracking: 1.4,
-              )),
+          Text(
+            label,
+            style: yMono(
+              size: 9,
+              weight: FontWeight.w700,
+              color: yCream,
+              tracking: 1.4,
+            ),
+          ),
         ],
       ),
     );
@@ -823,10 +877,13 @@ class _TaskCardBody extends ConsumerWidget {
     final today = DateTime(now.year, now.month, now.day);
     final due = DateTime(d.year, d.month, d.day);
     final diff = due.difference(today).inDays;
-    final time = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    final time =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (diff == 0) return 'HOY $time';
     if (diff == 1) return 'MAÑANA $time';
-    if (diff < 0) return 'VENCIDA ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+    if (diff < 0) {
+      return 'VENCIDA ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+    }
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} $time';
   }
 
@@ -834,25 +891,47 @@ class _TaskCardBody extends ConsumerWidget {
     if (task.dueDate != null) {
       final action = await showDialog<String>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: yCream,
-          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-          title: Text('Fecha límite', style: ySans(size: 18, weight: FontWeight.w700, color: yInk)),
-          content: Text(
-            'Actual: ${_formatDueDate(task.dueDate!)}',
-            style: yBody(size: 14, color: yInk),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'clear'),
-              child: Text('BORRAR', style: yMono(size: 11, weight: FontWeight.w700, color: yFight, tracking: 1)),
+        builder:
+            (ctx) => AlertDialog(
+              backgroundColor: yCream,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
+              ),
+              title: Text(
+                'Fecha límite',
+                style: ySans(size: 18, weight: FontWeight.w700, color: yInk),
+              ),
+              content: Text(
+                'Actual: ${_formatDueDate(task.dueDate!)}',
+                style: yBody(size: 14, color: yInk),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'clear'),
+                  child: Text(
+                    'BORRAR',
+                    style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      color: yFight,
+                      tracking: 1,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'change'),
+                  child: Text(
+                    'CAMBIAR',
+                    style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                      tracking: 1,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'change'),
-              child: Text('CAMBIAR', style: yMono(size: 11, weight: FontWeight.w700, color: yInk, tracking: 1)),
-            ),
-          ],
-        ),
       );
       if (action == 'clear') {
         await ref.read(taskRepositoryProvider).updateDueDate(task.id, null);
@@ -868,48 +947,86 @@ class _TaskCardBody extends ConsumerWidget {
       initialDate: task.dueDate ?? now,
       firstDate: now,
       lastDate: now.add(const Duration(days: 365 * 5)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          datePickerTheme: const DatePickerThemeData(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              datePickerTheme: const DatePickerThemeData(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+            ),
+            child: child!,
           ),
-        ),
-        child: child!,
-      ),
     );
     if (picked == null || !context.mounted) return;
 
     final time = await showTimePicker(
       context: context,
-      initialTime: task.dueDate != null
-          ? TimeOfDay.fromDateTime(task.dueDate!)
-          : const TimeOfDay(hour: 12, minute: 0),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          timePickerTheme: const TimePickerThemeData(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      initialTime:
+          task.dueDate != null
+              ? TimeOfDay.fromDateTime(task.dueDate!)
+              : const TimeOfDay(hour: 12, minute: 0),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              timePickerTheme: const TimePickerThemeData(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+            ),
+            child: child!,
           ),
-        ),
-        child: child!,
-      ),
     );
     if (time == null) return;
 
-    final dt = DateTime(picked.year, picked.month, picked.day, time.hour, time.minute);
+    final dt = DateTime(
+      picked.year,
+      picked.month,
+      picked.day,
+      time.hour,
+      time.minute,
+    );
     await ref.read(taskRepositoryProvider).updateDueDate(task.id, dt);
+  }
+
+  Future<void> _pickReminder(BuildContext context, WidgetRef ref) async {
+    final selected = await showReminderPicker(
+      context,
+      accent: yFight,
+      dueDate: task.dueDate,
+      currentRemindAt: task.remindAt,
+    );
+    if (selected == null) return;
+    final coordinator = ref.read(reminderCoordinatorProvider);
+    if (selected.remindAt != null) {
+      await coordinator.requestNotificationPermission();
+    }
+    await ref
+        .read(taskRepositoryProvider)
+        .updateReminder(task.id, selected.remindAt, selected.preset);
+    if (selected.remindAt != null && context.mounted) {
+      final enabled = await coordinator.areNotificationsEnabled();
+      if (!enabled && context.mounted) {
+        showNotificationsDisabledSnack(
+          context,
+          onOpenSettings: coordinator.openNotificationSettings,
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final folder = task.folderId == null
-        ? null
-        : ref.watch(folderByIdProvider(task.folderId!)).valueOrNull;
-    final prop = ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
+    final folder =
+        task.folderId == null
+            ? null
+            : ref.watch(folderByIdProvider(task.folderId!)).valueOrNull;
+    final prop =
+        ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
         TaskPropagation.empty;
 
-    final bg = done
-        ? yInk.withValues(alpha: 0.06)
-        : expiring
+    final bg =
+        done
+            ? yInk.withValues(alpha: 0.06)
+            : expiring
             ? yCream2
             : yCream;
 
@@ -937,31 +1054,33 @@ class _TaskCardBody extends ConsumerWidget {
                       color: yInk,
                       height: 1.25,
                     ).copyWith(
-                      decoration: (expiring || done) ? TextDecoration.lineThrough : null,
+                      decoration:
+                          (expiring || done)
+                              ? TextDecoration.lineThrough
+                              : null,
                     ),
                   ),
                 ),
               ),
-              if (!done && !expiring)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+              if (!done && !expiring) ...[
+                _TinyTaskAction(
+                  icon:
+                      task.dueDate != null
+                          ? Icons.access_time_filled
+                          : Icons.access_time,
+                  active: task.dueDate != null,
                   onTap: () => _pickDueDate(context, ref),
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    margin: const EdgeInsets.only(left: 8),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: task.dueDate != null ? yFight : yCream,
-                      border: Border.all(color: yInk, width: 1.5),
-                    ),
-                    child: Icon(
-                      task.dueDate != null ? Icons.access_time_filled : Icons.access_time,
-                      size: 12,
-                      color: task.dueDate != null ? yCream : yInk,
-                    ),
-                  ),
                 ),
+                const SizedBox(width: 5),
+                _TinyTaskAction(
+                  icon:
+                      task.remindAt != null
+                          ? Icons.notifications_active
+                          : Icons.notifications_none,
+                  active: task.remindAt != null,
+                  onTap: () => _pickReminder(context, ref),
+                ),
+              ],
               if (done)
                 Container(
                   margin: const EdgeInsets.only(left: 8),
@@ -970,8 +1089,15 @@ class _TaskCardBody extends ConsumerWidget {
                     color: yLab,
                     border: Border.all(color: yInk, width: 1.5),
                   ),
-                  child: Text('✓ HECHO',
-                      style: yMono(size: 8, weight: FontWeight.w700, color: yCream, tracking: 1)),
+                  child: Text(
+                    '✓ HECHO',
+                    style: yMono(
+                      size: 8,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                      tracking: 1,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -987,7 +1113,31 @@ class _TaskCardBody extends ConsumerWidget {
                   ),
                   child: Text(
                     _formatDueDate(task.dueDate!),
-                    style: yMono(size: 9, weight: FontWeight.w700, color: yCream, tracking: 0.8),
+                    style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                      tracking: 0.8,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              if (task.remindAt != null && !done) ...[
+                Container(
+                  padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+                  decoration: BoxDecoration(
+                    color: yInk,
+                    border: Border.all(color: yInk, width: 1.5),
+                  ),
+                  child: Text(
+                    'REC ${formatReminderTime(task.remindAt!)}',
+                    style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                      tracking: 0.8,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -1019,9 +1169,10 @@ class _TaskCardBody extends ConsumerWidget {
               children: [
                 if (prop.hasNoteLinks)
                   _TaskLinkChip(
-                    text: prop.noteCount > 1
-                        ? '↳ ${prop.noteCount} NOTAS'
-                        : '↳ NOTA',
+                    text:
+                        prop.noteCount > 1
+                            ? '↳ ${prop.noteCount} NOTAS'
+                            : '↳ NOTA',
                     bg: yFlight,
                   ),
                 if (prop.spaceName != null)
@@ -1033,6 +1184,37 @@ class _TaskCardBody extends ConsumerWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _TinyTaskAction extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _TinyTaskAction({
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 24,
+        height: 24,
+        margin: const EdgeInsets.only(left: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? yFight : yCream,
+          border: Border.all(color: yInk, width: 1.5),
+        ),
+        child: Icon(icon, size: 12, color: active ? yCream : yInk),
       ),
     );
   }
@@ -1079,7 +1261,12 @@ class _FolderMention extends StatelessWidget {
       ),
       child: Text(
         '@${folder.name}',
-        style: yMono(size: 10, weight: FontWeight.w700, color: yCream, tracking: 0.3),
+        style: yMono(
+          size: 10,
+          weight: FontWeight.w700,
+          color: yCream,
+          tracking: 0.3,
+        ),
       ),
     );
   }
@@ -1102,28 +1289,34 @@ class _MentionPopup extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: folders.map((f) {
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onSelect(f),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Container(width: 10, height: 10, color: f.color),
-                  const SizedBox(width: 8),
-                  Text(f.name,
-                      style: yBody(
-                        size: 14,
-                        weight: FontWeight.w700,
-            color: Color(0xFF8E2D4B),
-                      )),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+        children:
+            folders.map((f) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onSelect(f),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(width: 10, height: 10, color: f.color),
+                      const SizedBox(width: 8),
+                      Text(
+                        f.name,
+                        style: yBody(
+                          size: 14,
+                          weight: FontWeight.w700,
+                          color: Color(0xFF8E2D4B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
       ),
     );
   }
@@ -1153,19 +1346,23 @@ class _SendToLabSheet extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Text('ENVIAR A LAB',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  )),
+              child: Text(
+                'ENVIAR A LAB',
+                style: yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yMuted,
+                ),
+              ),
             ),
             if (spaces.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: Text('No hay Lab Spaces. Crea uno primero.',
-                    style: yBody(size: 14, color: yMuted)),
+                child: Text(
+                  'No hay Lab Spaces. Crea uno primero.',
+                  style: yBody(size: 14, color: yMuted),
+                ),
               )
             else
               ...spaces.map((s) => _LabSpaceRow(task: task, space: s)),
@@ -1186,51 +1383,56 @@ class _LabSpaceRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Only "open" columns — never send a task straight to a terminal
     // (Entregado) or expired (Vencido) column.
-    final columns = (ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [])
-        .where((c) => !c.isTerminal && !c.isExpired)
-        .toList();
+    final columns =
+        (ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [])
+            .where((c) => !c.isTerminal && !c.isExpired)
+            .toList();
 
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 24),
       shape: const Border(),
       collapsedShape: const Border(),
-      title: Text(space.name,
-          style: ySans(
-            size: 16,
-            weight: FontWeight.w700,
-            color: space.accentColor,
-          )),
-      children: columns.map((col) {
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () async {
-            int? folderColor;
-            if (task.folderId != null) {
-              final folder = await ref
-                  .read(folderRepositoryProvider)
-                  .getById(task.folderId!);
-              folderColor = folder?.color.toARGB32();
-            }
-            await ref.read(kanbanCardRepositoryProvider).create(
-                  labSpaceId: space.id,
-                  columnId: col.id,
-                  title: task.content,
-                  originTaskId: task.id,
-                  originFolderColor: folderColor,
-                  dueDate: task.dueDate,
-                );
-            if (context.mounted) Navigator.pop(context);
-          },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(col.name,
-                  style: ySans(size: 14, color: yInk)),
-            ),
-          ),
-        );
-      }).toList(),
+      title: Text(
+        space.name,
+        style: ySans(
+          size: 16,
+          weight: FontWeight.w700,
+          color: space.accentColor,
+        ),
+      ),
+      children:
+          columns.map((col) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                int? folderColor;
+                if (task.folderId != null) {
+                  final folder = await ref
+                      .read(folderRepositoryProvider)
+                      .getById(task.folderId!);
+                  folderColor = folder?.color.toARGB32();
+                }
+                await ref
+                    .read(kanbanCardRepositoryProvider)
+                    .create(
+                      labSpaceId: space.id,
+                      columnId: col.id,
+                      title: task.content,
+                      originTaskId: task.id,
+                      originFolderColor: folderColor,
+                      dueDate: task.dueDate,
+                    );
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(col.name, style: ySans(size: 14, color: yInk)),
+                ),
+              ),
+            );
+          }).toList(),
     );
   }
 }

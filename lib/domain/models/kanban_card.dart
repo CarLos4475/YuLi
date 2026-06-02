@@ -1,3 +1,5 @@
+import 'reminder_preset.dart';
+
 enum CardPriority {
   none,
   low,
@@ -5,19 +7,19 @@ enum CardPriority {
   high;
 
   static CardPriority fromString(String value) => switch (value) {
-        'none' => none,
-        'low' => low,
-        'medium' => medium,
-        'high' => high,
-        _ => throw ArgumentError('Unknown CardPriority: $value'),
-      };
+    'none' => none,
+    'low' => low,
+    'medium' => medium,
+    'high' => high,
+    _ => throw ArgumentError('Unknown CardPriority: $value'),
+  };
 
   String toDbString() => switch (this) {
-        none => 'none',
-        low => 'low',
-        medium => 'medium',
-        high => 'high',
-      };
+    none => 'none',
+    low => 'low',
+    medium => 'medium',
+    high => 'high',
+  };
 }
 
 class KanbanCard {
@@ -29,6 +31,8 @@ class KanbanCard {
   final CardPriority priority;
   final int position;
   final DateTime? dueDate;
+  final DateTime? remindAt;
+  final ReminderPreset? reminderPreset;
 
   /// Lab-only optional planned start. Null → auto (timeline uses [createdAt]).
   final DateTime? startDate;
@@ -48,6 +52,8 @@ class KanbanCard {
     required this.priority,
     required this.position,
     this.dueDate,
+    this.remindAt,
+    this.reminderPreset,
     this.startDate,
     this.sourceNoteId,
     this.sourceAnchor,
@@ -92,6 +98,10 @@ class KanbanCard {
     int? position,
     DateTime? dueDate,
     bool clearDueDate = false,
+    DateTime? remindAt,
+    bool clearRemindAt = false,
+    ReminderPreset? reminderPreset,
+    bool clearReminderPreset = false,
     DateTime? startDate,
     bool clearStartDate = false,
     int? sourceNoteId,
@@ -111,11 +121,13 @@ class KanbanCard {
       labSpaceId: labSpaceId ?? this.labSpaceId,
       columnId: columnId ?? this.columnId,
       title: title ?? this.title,
-      description:
-          clearDescription ? null : (description ?? this.description),
+      description: clearDescription ? null : (description ?? this.description),
       priority: priority ?? this.priority,
       position: position ?? this.position,
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+      remindAt: clearRemindAt ? null : (remindAt ?? this.remindAt),
+      reminderPreset:
+          clearReminderPreset ? null : (reminderPreset ?? this.reminderPreset),
       startDate: clearStartDate ? null : (startDate ?? this.startDate),
       sourceNoteId:
           clearSourceNoteId ? null : (sourceNoteId ?? this.sourceNoteId),
@@ -123,12 +135,14 @@ class KanbanCard {
           clearSourceAnchor ? null : (sourceAnchor ?? this.sourceAnchor),
       originTaskId:
           clearOriginTaskId ? null : (originTaskId ?? this.originTaskId),
-      originFolderColor: clearOriginFolderColor
-          ? null
-          : (originFolderColor ?? this.originFolderColor),
-      originTaskDoneAt: clearOriginTaskDoneAt
-          ? null
-          : (originTaskDoneAt ?? this.originTaskDoneAt),
+      originFolderColor:
+          clearOriginFolderColor
+              ? null
+              : (originFolderColor ?? this.originFolderColor),
+      originTaskDoneAt:
+          clearOriginTaskDoneAt
+              ? null
+              : (originTaskDoneAt ?? this.originTaskDoneAt),
       createdAt: createdAt ?? this.createdAt,
     );
   }
