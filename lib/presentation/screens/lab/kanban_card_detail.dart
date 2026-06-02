@@ -11,6 +11,7 @@ import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/repositories/kanban_card_repository.dart';
+import 'lab_card_colors.dart';
 
 class KanbanCardDetail extends ConsumerStatefulWidget {
   final KanbanCard card;
@@ -135,7 +136,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '// TAREA · ID #${widget.card.id} · DESDE KANBAN',
+                            '> TAREA · ID #${widget.card.id} · DESDE KANBAN',
                             style: y.yMono(
                               size: 9,
                               weight: FontWeight.w700,
@@ -229,12 +230,13 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                   ref: ref,
                   card: _card,
                   repo: _repository,
+                  space: widget.space,
                   onChanged: (c) => _onCardChanged(c),
                 ),
                 const SizedBox(height: 20),
                 // Description
                 Text(
-                  '// DESCRIPCION . MARKDOWN . LATEX . CODIGO',
+                  '> DESCRIPCION . MARKDOWN . LATEX . CODIGO',
                   style: y.yMono(
                     size: 10,
                     weight: FontWeight.w700,
@@ -279,13 +281,9 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                             ),
                             maxLines: null,
                             decoration: InputDecoration(
-                              hintText:
-                                  'Descripcion (Markdown, LaTeX inline, codigo)',
-                              hintStyle: y.yBody(
-                                size: 13,
-                                color: y.yMuted,
-                                height: 1.55,
-                              ),
+                              hintText: '',
+                              filled: true,
+                              fillColor: Colors.transparent,
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
@@ -338,7 +336,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                 const SizedBox(height: 20),
                 // Aparece en
                 Text(
-                  '// ESTA TAREA APARECE EN',
+                  '> ESTA TAREA APARECE EN',
                   style: y.yMono(
                     size: 10,
                     weight: FontWeight.w700,
@@ -574,7 +572,7 @@ class _PrioritySelector extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: isSelected ? y.yInk : y.yCream,
+                    color: isSelected ? labPriorityColor(p) : y.yCream,
                     border: Border.all(
                       color: y.yBorderStrong,
                       width: y.yLineMid,
@@ -608,12 +606,14 @@ class _DueDateRow extends StatelessWidget {
   final WidgetRef ref;
   final KanbanCard card;
   final KanbanCardRepository repo;
+  final LabSpace space;
   final ValueChanged<KanbanCard> onChanged;
 
   const _DueDateRow({
     required this.ref,
     required this.card,
     required this.repo,
+    required this.space,
     required this.onChanged,
   });
 
@@ -627,7 +627,7 @@ class _DueDateRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '// FECHAS',
+          '> FECHAS',
           style: y.yMono(
             size: 10,
             weight: FontWeight.w700,
@@ -752,7 +752,7 @@ class _DueDateRow extends StatelessWidget {
                   card.remindAt != null
                       ? formatReminderTime(card.remindAt!)
                       : 'SIN RECORDATORIO',
-                  card.remindAt != null ? y.yInk : y.yCream,
+                  card.remindAt != null ? space.accentColor : y.yCream,
                 ),
               ),
             ),
@@ -844,7 +844,7 @@ class _DueDateRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? y.yInk : y.yCream,
+          color: active ? space.accentColor : y.yCream,
           border: Border.all(color: y.yBorderStrong, width: 2),
         ),
         child: Text(
@@ -985,28 +985,28 @@ class _AppearChips extends StatelessWidget {
     final chips = <Widget>[];
     if (currentColumn != null) {
       chips.add(
-        _AppearChip(glyph: '▣', label: 'Kanban / ${currentColumn!.name}'),
+        _AppearChip(glyph: '#', label: 'Kanban / ${currentColumn!.name}'),
       );
     }
     if (card.dueDate != null) {
       chips.add(
         _AppearChip(
-          glyph: '▦',
+          glyph: '+',
           label: 'Calendario / ${_fmtShort(card.dueDate!)}',
         ),
       );
       chips.add(
         _AppearChip(
-          glyph: '═',
+          glyph: '~',
           label: 'Timeline · ${_fmtShort(card.dueDate!)}',
         ),
       );
     }
     if (card.originTaskId != null) {
-      chips.add(const _AppearChip(glyph: '⚔', label: 'FIGHT / origen task'));
+      chips.add(const _AppearChip(glyph: 'x', label: 'FIGHT / origen task'));
     }
     if (card.sourceNoteId != null) {
-      chips.add(const _AppearChip(glyph: '✎', label: 'FLIGHT / nota'));
+      chips.add(const _AppearChip(glyph: '/', label: 'FLIGHT / nota'));
     }
     return Wrap(spacing: 6, runSpacing: 6, children: chips);
   }
