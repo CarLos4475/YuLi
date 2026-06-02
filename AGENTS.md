@@ -41,7 +41,18 @@ Reglas transversales de cross-mode y ciclo de vida que una auditoría dejó esta
 - **Colores de card → `lab_card_colors.dart`** (`labPriorityColor` / `labCardAccent`, paleta brutalista yuli). No vuelvas a meter helpers de prioridad por-vista ni la paleta brillante de `app_tokens` para cards. **Hecha = `yCream2` + tachado** en todas las vistas (nunca verde).
 - **Borrados → cascadas a nivel app** (FK OFF). Usa `AppDatabase.hardDeleteNoteCascade` / `hardDeleteFolderCascade` / `hardDeleteSpaceCascade` / `softDeleteFolderCascade` / `restoreFolderCascade` (los llaman repos + expiry); nunca el dao "pelado". Tabla hija nueva (ref a notes/folders/lab_spaces/tasks) → **súmala a la cascada**. Los **archivos de imagen** los limpia el GC de arranque (`cleanupOrphanedImages`), NO la cascada de BD; la capa de datos no hace I/O de archivos. Detalle en `KNOWN_ISSUES.md`.
 - **`firstWhere` sobre columnas/espacios de sistema → siempre con `orElse`** (no crashear si el usuario renombró/borró algo).
-- **`dueDate` es load-bearing y cross-mode** (se vuelve fecha de entrega al entrar a terminal, dispara expiry, se copia de la task). No agregues lógica de escritura sin entender el flujo completo.
+- **`dueDate` es load-bearing y cross-mode** (se vuelve fecha de entrega al entrar a terminal, dispara expiry, se copia de la task). Al **reabrir** (salir de terminal) se re-sincroniza desde la tarea vinculada. No agregues lógica de escritura sin entender el flujo completo.
+- **`updatePayload` (note_blocks) REEMPLAZA el payload, no mergea.** Cada `_persist` debe escribir el payload COMPLETO de su tipo de bloque; una llamada parcial borra las demás keys. (Doc en `NoteBlockRepository.updatePayload`.)
+- **Persistencia de canvas:** `DrawingData` (memoria) ↔ `DrawingBlock` (note_blocks: strokesJson/imagesJson/taskBlocksJson/textBlocksJson). Imágenes guardadas **solo por filename**; la ruta se reconstruye desde el noteId (`note_images/{noteId}/`) → sobreviven reinstalación. El sistema viejo de celdas (`<!-- CELL -->`, `parseCells`/`serializeCells`) está **eliminado** — no reintroducir (`cleanCellContent` sí vive, para snippets).
+- **Contexto IA cacheado:** `context_cache.dart` (compactación por hash de contenido + contenido de URL fetcheada). Usa sus helpers (`read/write/clearCompactCache`, `read/write/clearUrlContent`); al **quitar una fuente** llama `clear*` o quedan prefs huérfanas. API keys (DeepSeek/Jina) → `flutter_secure_storage`, nunca en texto plano ni logueadas.
+
+## Notas operativas (build / verificación) — para agentes
+
+- **Target real = Android.** La **lógica** se valida **headless** (`flutter test`; harness: `AppDatabase.forTesting(NativeDatabase.memory())`). La **GUI** corre en **Windows desktop** (requiere *Modo Desarrollador* + componente VS **C++ ATL v143**); **web NO** (drift nativo). Dibujo/gestos/lazo/OCR/render solo se validan corriendo con stylus.
+- **`test/audit_test.dart`** = red de regresión de la auditoría (isOverdue, transiciones de columna, expiry, cascadas). **Córrela** antes de tocar Lab / cross-mode / cascadas.
+- **Crash logger** (Ajustes→DIAGNÓSTICO→CRASH LOGS): captura errores **Dart** a `diagnostics/crash.log`, compartible. Para depurar crashes de dispositivo, pide el log al usuario (los crashes **nativos** no los captura → logcat).
+- **SQLite `'localtime'` devuelve NULL** en este build → la lógica de fecha **local** va en Dart, no en SQL (ver `KNOWN_ISSUES.md`).
+- **Migraciones de esquema:** en remoto se prueban contra BD vacía, pero corren contra los **datos reales** del usuario en su teléfono. En bumps de schema, sugiere **backup** y revisa el backfill (`WHERE name=...`).
 
 ## Persistent Context Files
 
