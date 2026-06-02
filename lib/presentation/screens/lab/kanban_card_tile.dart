@@ -181,8 +181,8 @@ class KanbanCardTile extends StatelessWidget {
                                 padding: EdgeInsets.only(right: 5),
                                 child: Icon(
                                   Icons.notifications_active,
-                                  size: 12,
-                                  color: yInk,
+                                  size: 13,
+                                  color: yLab,
                                 ),
                               ),
                             if (card.dueDate != null)

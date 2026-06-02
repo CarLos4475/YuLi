@@ -332,19 +332,9 @@ class _SearchBar extends ConsumerWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'buscar en $totalNotes notas…',
+                'Buscar en $totalNotes notas…',
                 style: yBody(size: 13, weight: FontWeight.w500, color: yMuted),
                 overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                border: Border.all(color: yBorderSoft, width: 1.5),
-              ),
-              child: Text(
-                '⌘ K',
-                style: yMono(size: 10, tracking: 1, color: yMuted),
               ),
             ),
           ],
