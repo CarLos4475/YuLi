@@ -112,7 +112,7 @@ class _LabAiSheet extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '// ACCIONES SOBRE EL PROYECTO',
+              '> ACCIONES SOBRE EL PROYECTO',
               style: yMono(
                 size: 10,
                 weight: FontWeight.w700,

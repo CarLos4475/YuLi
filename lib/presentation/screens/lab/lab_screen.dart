@@ -657,7 +657,7 @@ class _SpaceCard extends ConsumerWidget {
                       if (daysLeft != null)
                         YBadge(
                           label: urgent ? '▲ ${daysLeft}d' : '${daysLeft}d',
-                          bg: urgent ? yFight : yInk,
+                          bg: urgent ? yFight : yLab,
                           fg: yCream,
                           fontSize: 10,
                         ),
@@ -697,7 +697,7 @@ class _SpaceCard extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '// DISTRIBUCIÓN',
+                        '> DISTRIBUCIÓN',
                         style: yMono(size: 10, color: yMuted, tracking: 1.4),
                       ),
                       Text(
@@ -750,7 +750,7 @@ class _SpaceCard extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Text(
-                      '// VISTAS ACTIVAS',
+                      '> VISTAS ACTIVAS',
                       style: yMono(size: 10, color: yMuted, tracking: 1.4),
                     ),
                     const SizedBox(height: 6),

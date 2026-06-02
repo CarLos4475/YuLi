@@ -1581,8 +1581,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         children: [
           _hair(
             widget.isBoard
-                ? '// ACCIONES SOBRE EL TABLERO'
-                : '// ACCIONES SOBRE LA NOTA',
+                ? '> ACCIONES SOBRE EL TABLERO'
+                : '> ACCIONES SOBRE LA NOTA',
           ),
           const SizedBox(height: 9),
           SingleChildScrollView(

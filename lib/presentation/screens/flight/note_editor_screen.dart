@@ -868,7 +868,7 @@ class _NoteHeroHeader extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '// ${folder.name.toUpperCase()} / NOTA · ED. ${_lastEditLabel(lastEdit).toUpperCase()} · $wordCount PALABRAS',
+                            '> ${folder.name.toUpperCase()} / NOTA · ED. ${_lastEditLabel(lastEdit).toUpperCase()} · $wordCount PALABRAS',
                             style: yMono(
                               size: 10,
                               weight: FontWeight.w700,

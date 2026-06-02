@@ -178,7 +178,7 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
                             margin: const EdgeInsets.only(right: 8),
                             color: widget.accent,
                           ),
-                          Text('// EDITAR TEXTO',
+                          Text('> EDITAR TEXTO',
                               style: yMono(
                                   size: 10,
                                   weight: FontWeight.w700,

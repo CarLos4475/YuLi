@@ -1127,7 +1127,7 @@ class _TaskCardBody extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
                   decoration: BoxDecoration(
-                    color: yInk,
+                    color: yFight,
                     border: Border.all(color: yBorderStrong, width: 1.5),
                   ),
                   child: Text(

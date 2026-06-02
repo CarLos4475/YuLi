@@ -143,7 +143,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                       children: [
                         Expanded(
                           child: Text(
-                            '// ${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year} · ${count.toString().padLeft(2, '0')} ${count == 1 ? 'TAREA' : 'TAREAS'}',
+                            '> ${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year} · ${count.toString().padLeft(2, '0')} ${count == 1 ? 'TAREA' : 'TAREAS'}',
                             style: y.yMono(
                               size: 10,
                               weight: FontWeight.w700,

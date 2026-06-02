@@ -250,8 +250,8 @@ class _FolderHero extends StatelessWidget {
                     children: [
                       Text(
                         scope == null
-                            ? '// CARPETA'
-                            : '// CARPETA · ${scope.toUpperCase()}',
+                            ? '> CARPETA'
+                            : '> CARPETA · ${scope.toUpperCase()}',
                         style: yMono(
                           size: 10,
                           weight: FontWeight.w700,

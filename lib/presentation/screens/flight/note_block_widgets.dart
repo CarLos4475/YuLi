@@ -797,7 +797,7 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
             Row(
               children: [
                 Text(
-                  '// BLOQUE TAREAS',
+                  '> BLOQUE TAREAS',
                   style: yMono(
                     size: 10,
                     weight: FontWeight.w700,

@@ -2506,7 +2506,7 @@ class _ColumnManagePopover extends StatelessWidget {
               color: y.yInk,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Text(
-                '// COLUMNA · ${column.name.toUpperCase()}',
+                '> COLUMNA · ${column.name.toUpperCase()}',
                 style: y.yMono(
                   size: 10,
                   weight: FontWeight.w700,

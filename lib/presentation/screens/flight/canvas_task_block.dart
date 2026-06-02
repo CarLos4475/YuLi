@@ -408,7 +408,7 @@ class _CanvasTaskBlockOverlayState
           children: [
             Row(
               children: [
-                Text('// TAREAS',
+                Text('> TAREAS',
                     style: yMono(
                         size: 10,
                         weight: FontWeight.w700,
