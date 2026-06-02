@@ -110,51 +110,72 @@ class KanbanCardTile extends StatelessWidget {
                         const SizedBox(height: 7),
                         Row(
                           children: [
-                            if (folderColor != null && _folderName().isNotEmpty)
-                              Container(
-                                margin: const EdgeInsets.only(right: 5),
-                                padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
-                                decoration: BoxDecoration(
-                                  color: folderColor,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  '@${_folderName()}',
-                                  style: yMono(
-                                    size: 9,
-                                    weight: FontWeight.w700,
-                                    color: yCream,
-                                    tracking: 0.5,
-                                  ),
-                                ),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  if (folderColor != null &&
+                                      _folderName().isNotEmpty)
+                                    Flexible(
+                                      child: Container(
+                                        margin: const EdgeInsets.only(right: 5),
+                                        padding: const EdgeInsets.fromLTRB(
+                                          6,
+                                          1,
+                                          6,
+                                          2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: folderColor,
+                                          border: Border.all(
+                                            color: yBorderStrong,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '@${_folderName()}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: yMono(
+                                            size: 9,
+                                            weight: FontWeight.w700,
+                                            color: yCream,
+                                            tracking: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  if (card.originTaskId != null)
+                                    _originBadge(isEndState, overdue),
+                                  if (card.sourceNoteId != null)
+                                    Container(
+                                      margin: const EdgeInsets.only(right: 5),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        6,
+                                        1,
+                                        6,
+                                        2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: yFlight,
+                                        border: Border.all(
+                                          color: yBorderStrong,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'NOTA',
+                                        style: yMono(
+                                          size: 9,
+                                          weight: FontWeight.w700,
+                                          color: yCream,
+                                          tracking: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                            if (card.originTaskId != null)
-                              _originBadge(isEndState, overdue),
-                            if (card.sourceNoteId != null)
-                              Container(
-                                margin: const EdgeInsets.only(right: 5),
-                                padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
-                                decoration: BoxDecoration(
-                                  color: yFlight,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  'NOTA',
-                                  style: yMono(
-                                    size: 9,
-                                    weight: FontWeight.w700,
-                                    color: yCream,
-                                    tracking: 0.5,
-                                  ),
-                                ),
-                              ),
-                            const Spacer(),
+                            ),
+                            const SizedBox(width: 6),
                             if (card.remindAt != null && !isEndState)
                               const Padding(
                                 padding: EdgeInsets.only(right: 5),
