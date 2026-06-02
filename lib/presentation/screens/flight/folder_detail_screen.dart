@@ -127,21 +127,9 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            ModeHeader(
-              mode: 'FLIGHT',
-              subtitle: 'MODO NOTAS · CARPETA · ${notes.length} NOTAS',
-              color: yFlight,
-              onBack: () => Navigator.pop(context),
-              headerRight: [
-                YBadge(
-                  label: widget.folder.name.toUpperCase(),
-                  bg: widget.folder.color,
-                  fg: yCream,
-                ),
-              ],
-            ),
             _FolderHero(
               folder: widget.folder,
+              onBack: () => Navigator.pop(context),
               noteCount: notes.length,
               lastEdit: enrichment?.lastEditedAt,
               linkedSpaces: linkedSpaces.map((s) => s.name).toList(),
@@ -195,6 +183,7 @@ class _FolderHero extends StatelessWidget {
   final bool grid;
   final VoidCallback onToggleView;
   final VoidCallback onCreateNote;
+  final VoidCallback onBack;
 
   const _FolderHero({
     required this.folder,
@@ -204,6 +193,7 @@ class _FolderHero extends StatelessWidget {
     required this.grid,
     required this.onToggleView,
     required this.onCreateNote,
+    required this.onBack,
   });
 
   String _lastEditLabel(DateTime? d) {
@@ -236,112 +226,135 @@ class _FolderHero extends StatelessWidget {
             child: Container(width: 8, color: folder.color),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(28, 18, 28, 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            padding: const EdgeInsets.fromLTRB(20, 14, 28, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        scope == null
-                            ? '// CARPETA'
-                            : '// CARPETA · ${scope.toUpperCase()}',
-                        style: yMono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          tracking: 1.4,
-                          color: yMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onBack,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    ),
+                    child: const Icon(Icons.arrow_back, color: yInk, size: 18),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Text(
-                              folder.name,
-                              style: ySans(
-                                size: 44,
-                                weight: FontWeight.w700,
-                                letterSpacing: -1.5,
-                                color: folder.color,
-                                height: 0.95,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          Text(
+                            scope == null
+                                ? '// CARPETA'
+                                : '// CARPETA · ${scope.toUpperCase()}',
+                            style: yMono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              tracking: 1.4,
+                              color: yMuted,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Flexible(
-                            child: Text(
-                              '${noteCount.toString().padLeft(2, '0')} NOTAS'
-                              '${lastEdit != null ? ' · ED. HACE ${_lastEditLabel(lastEdit).toUpperCase()}' : ''}',
-                              style: yMono(
-                                size: 11,
-                                weight: FontWeight.w700,
-                                tracking: 1.4,
-                                color: yMuted,
+                          const SizedBox(height: 4),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  folder.name,
+                                  style: ySans(
+                                    size: 44,
+                                    weight: FontWeight.w700,
+                                    letterSpacing: -1.5,
+                                    color: folder.color,
+                                    height: 0.95,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                              const SizedBox(width: 12),
+                              Flexible(
+                                child: Text(
+                                  '${noteCount.toString().padLeft(2, '0')} NOTAS'
+                                  '${lastEdit != null ? ' · ED. HACE ${_lastEditLabel(lastEdit).toUpperCase()}' : ''}',
+                                  style: yMono(
+                                    size: 11,
+                                    weight: FontWeight.w700,
+                                    tracking: 1.4,
+                                    color: yMuted,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ViewToggleBtn(
-                  glyph: '▣',
-                  active: grid,
-                  onTap: grid ? () {} : onToggleView,
-                ),
-                const SizedBox(width: 4),
-                ViewToggleBtn(
-                  glyph: '≡',
-                  active: !grid,
-                  onTap: !grid ? () {} : onToggleView,
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onCreateNote,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 9,
                     ),
-                    decoration: BoxDecoration(
-                      color: folder.color,
-                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    const SizedBox(width: 12),
+                    ViewToggleBtn(
+                      glyph: '▣',
+                      active: grid,
+                      onTap: grid ? () {} : onToggleView,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          '+',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: yCream,
-                            height: 1.0,
+                    const SizedBox(width: 4),
+                    ViewToggleBtn(
+                      glyph: '≡',
+                      active: !grid,
+                      onTap: !grid ? () {} : onToggleView,
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onCreateNote,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: folder.color,
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'NOTA',
-                          style: yBody(
-                            size: 13,
-                            weight: FontWeight.w700,
-                            color: yCream,
-                          ).copyWith(letterSpacing: 1.2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              '+',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: yCream,
+                                height: 1.0,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'NOTA',
+                              style: yBody(
+                                size: 13,
+                                weight: FontWeight.w700,
+                                color: yCream,
+                              ).copyWith(letterSpacing: 1.2),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
