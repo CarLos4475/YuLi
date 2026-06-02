@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
+import '../../../domain/models/canvas_context_source.dart';
 import '../../../domain/repositories/lab_space_repository.dart';
 import '../../local/database.dart';
 
@@ -147,6 +148,58 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
   @override
   Stream<List<int>> watchLinkedSpaceIdsForFolder(int folderId) =>
       _db.labSpacesDao.watchLinkedSpaceIds(folderId);
+
+  @override
+  Future<void> addContextSource(
+    int labSpaceId,
+    CanvasSourceKind kind,
+    String ref, {
+    String? label,
+    DateTime? fetchedAt,
+  }) =>
+      _db.labSpacesDao.addSpaceSource(
+        labSpaceId,
+        kind.toDbString(),
+        ref,
+        label: label,
+        fetchedAt: fetchedAt,
+      );
+
+  @override
+  Future<void> removeContextSource(int id) =>
+      _db.labSpacesDao.removeSpaceSource(id);
+
+  @override
+  Future<void> updateContextSourceFetch(
+    int id, {
+    String? label,
+    DateTime? fetchedAt,
+  }) =>
+      _db.labSpacesDao
+          .updateSpaceSourceFetch(id, label: label, fetchedAt: fetchedAt);
+
+  @override
+  Stream<List<CanvasContextSource>> watchContextSources(int labSpaceId) =>
+      _db.labSpacesDao
+          .watchSpaceSources(labSpaceId)
+          .map((rows) => rows.map(_rowToSource).toList());
+
+  @override
+  Future<List<CanvasContextSource>> getContextSources(int labSpaceId) async {
+    final rows = await _db.labSpacesDao.getSpaceSources(labSpaceId);
+    return rows.map(_rowToSource).toList();
+  }
+
+  CanvasContextSource _rowToSource(SpaceContextSourceRow row) =>
+      CanvasContextSource(
+        id: row.id,
+        labSpaceId: row.labSpaceId,
+        kind: CanvasSourceKind.fromString(row.kind),
+        ref: row.ref,
+        label: row.label,
+        fetchedAt: row.fetchedAt,
+        createdAt: row.createdAt,
+      );
 
   LabSpace _rowToSpace(LabSpaceRow row) => LabSpace(
         id: row.id,

@@ -6028,6 +6028,465 @@ class CanvasContextSourcesCompanion
   }
 }
 
+class $SpaceContextSourcesTable extends SpaceContextSources
+    with TableInfo<$SpaceContextSourcesTable, SpaceContextSourceRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SpaceContextSourcesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _labSpaceIdMeta = const VerificationMeta(
+    'labSpaceId',
+  );
+  @override
+  late final GeneratedColumn<int> labSpaceId = GeneratedColumn<int>(
+    'lab_space_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES lab_spaces (id)',
+    ),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _refMeta = const VerificationMeta('ref');
+  @override
+  late final GeneratedColumn<String> ref = GeneratedColumn<String>(
+    'ref',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fetchedAtMeta = const VerificationMeta(
+    'fetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> fetchedAt = GeneratedColumn<DateTime>(
+    'fetched_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    labSpaceId,
+    kind,
+    ref,
+    label,
+    fetchedAt,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'space_context_sources';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SpaceContextSourceRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('lab_space_id')) {
+      context.handle(
+        _labSpaceIdMeta,
+        labSpaceId.isAcceptableOrUnknown(
+          data['lab_space_id']!,
+          _labSpaceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_labSpaceIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('ref')) {
+      context.handle(
+        _refMeta,
+        ref.isAcceptableOrUnknown(data['ref']!, _refMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_refMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
+    if (data.containsKey('fetched_at')) {
+      context.handle(
+        _fetchedAtMeta,
+        fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {labSpaceId, kind, ref},
+  ];
+  @override
+  SpaceContextSourceRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SpaceContextSourceRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      labSpaceId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}lab_space_id'],
+          )!,
+      kind:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}kind'],
+          )!,
+      ref:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}ref'],
+          )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      ),
+      fetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}fetched_at'],
+      ),
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+    );
+  }
+
+  @override
+  $SpaceContextSourcesTable createAlias(String alias) {
+    return $SpaceContextSourcesTable(attachedDatabase, alias);
+  }
+}
+
+class SpaceContextSourceRow extends DataClass
+    implements Insertable<SpaceContextSourceRow> {
+  final int id;
+  final int labSpaceId;
+  final String kind;
+  final String ref;
+  final String? label;
+  final DateTime? fetchedAt;
+  final DateTime createdAt;
+  const SpaceContextSourceRow({
+    required this.id,
+    required this.labSpaceId,
+    required this.kind,
+    required this.ref,
+    this.label,
+    this.fetchedAt,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['lab_space_id'] = Variable<int>(labSpaceId);
+    map['kind'] = Variable<String>(kind);
+    map['ref'] = Variable<String>(ref);
+    if (!nullToAbsent || label != null) {
+      map['label'] = Variable<String>(label);
+    }
+    if (!nullToAbsent || fetchedAt != null) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SpaceContextSourcesCompanion toCompanion(bool nullToAbsent) {
+    return SpaceContextSourcesCompanion(
+      id: Value(id),
+      labSpaceId: Value(labSpaceId),
+      kind: Value(kind),
+      ref: Value(ref),
+      label:
+          label == null && nullToAbsent ? const Value.absent() : Value(label),
+      fetchedAt:
+          fetchedAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(fetchedAt),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SpaceContextSourceRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SpaceContextSourceRow(
+      id: serializer.fromJson<int>(json['id']),
+      labSpaceId: serializer.fromJson<int>(json['labSpaceId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      ref: serializer.fromJson<String>(json['ref']),
+      label: serializer.fromJson<String?>(json['label']),
+      fetchedAt: serializer.fromJson<DateTime?>(json['fetchedAt']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'labSpaceId': serializer.toJson<int>(labSpaceId),
+      'kind': serializer.toJson<String>(kind),
+      'ref': serializer.toJson<String>(ref),
+      'label': serializer.toJson<String?>(label),
+      'fetchedAt': serializer.toJson<DateTime?>(fetchedAt),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SpaceContextSourceRow copyWith({
+    int? id,
+    int? labSpaceId,
+    String? kind,
+    String? ref,
+    Value<String?> label = const Value.absent(),
+    Value<DateTime?> fetchedAt = const Value.absent(),
+    DateTime? createdAt,
+  }) => SpaceContextSourceRow(
+    id: id ?? this.id,
+    labSpaceId: labSpaceId ?? this.labSpaceId,
+    kind: kind ?? this.kind,
+    ref: ref ?? this.ref,
+    label: label.present ? label.value : this.label,
+    fetchedAt: fetchedAt.present ? fetchedAt.value : this.fetchedAt,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SpaceContextSourceRow copyWithCompanion(SpaceContextSourcesCompanion data) {
+    return SpaceContextSourceRow(
+      id: data.id.present ? data.id.value : this.id,
+      labSpaceId:
+          data.labSpaceId.present ? data.labSpaceId.value : this.labSpaceId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      ref: data.ref.present ? data.ref.value : this.ref,
+      label: data.label.present ? data.label.value : this.label,
+      fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SpaceContextSourceRow(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('kind: $kind, ')
+          ..write('ref: $ref, ')
+          ..write('label: $label, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, labSpaceId, kind, ref, label, fetchedAt, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SpaceContextSourceRow &&
+          other.id == this.id &&
+          other.labSpaceId == this.labSpaceId &&
+          other.kind == this.kind &&
+          other.ref == this.ref &&
+          other.label == this.label &&
+          other.fetchedAt == this.fetchedAt &&
+          other.createdAt == this.createdAt);
+}
+
+class SpaceContextSourcesCompanion
+    extends UpdateCompanion<SpaceContextSourceRow> {
+  final Value<int> id;
+  final Value<int> labSpaceId;
+  final Value<String> kind;
+  final Value<String> ref;
+  final Value<String?> label;
+  final Value<DateTime?> fetchedAt;
+  final Value<DateTime> createdAt;
+  const SpaceContextSourcesCompanion({
+    this.id = const Value.absent(),
+    this.labSpaceId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.ref = const Value.absent(),
+    this.label = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  SpaceContextSourcesCompanion.insert({
+    this.id = const Value.absent(),
+    required int labSpaceId,
+    required String kind,
+    required String ref,
+    this.label = const Value.absent(),
+    this.fetchedAt = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : labSpaceId = Value(labSpaceId),
+       kind = Value(kind),
+       ref = Value(ref);
+  static Insertable<SpaceContextSourceRow> custom({
+    Expression<int>? id,
+    Expression<int>? labSpaceId,
+    Expression<String>? kind,
+    Expression<String>? ref,
+    Expression<String>? label,
+    Expression<DateTime>? fetchedAt,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (labSpaceId != null) 'lab_space_id': labSpaceId,
+      if (kind != null) 'kind': kind,
+      if (ref != null) 'ref': ref,
+      if (label != null) 'label': label,
+      if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  SpaceContextSourcesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? labSpaceId,
+    Value<String>? kind,
+    Value<String>? ref,
+    Value<String?>? label,
+    Value<DateTime?>? fetchedAt,
+    Value<DateTime>? createdAt,
+  }) {
+    return SpaceContextSourcesCompanion(
+      id: id ?? this.id,
+      labSpaceId: labSpaceId ?? this.labSpaceId,
+      kind: kind ?? this.kind,
+      ref: ref ?? this.ref,
+      label: label ?? this.label,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (labSpaceId.present) {
+      map['lab_space_id'] = Variable<int>(labSpaceId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (ref.present) {
+      map['ref'] = Variable<String>(ref.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (fetchedAt.present) {
+      map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SpaceContextSourcesCompanion(')
+          ..write('id: $id, ')
+          ..write('labSpaceId: $labSpaceId, ')
+          ..write('kind: $kind, ')
+          ..write('ref: $ref, ')
+          ..write('label: $label, ')
+          ..write('fetchedAt: $fetchedAt, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $OnboardingFlagsTable extends OnboardingFlags
     with TableInfo<$OnboardingFlagsTable, OnboardingFlagRow> {
   @override
@@ -7879,6 +8338,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $CanvasContextSourcesTable canvasContextSources =
       $CanvasContextSourcesTable(this);
+  late final $SpaceContextSourcesTable spaceContextSources =
+      $SpaceContextSourcesTable(this);
   late final $OnboardingFlagsTable onboardingFlags = $OnboardingFlagsTable(
     this,
   );
@@ -7917,6 +8378,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     spaceFolderLinks,
     noteCanvasLinks,
     canvasContextSources,
+    spaceContextSources,
     onboardingFlags,
     notifications,
     scheduleBlocks,
@@ -11469,6 +11931,33 @@ final class $$LabSpacesTableReferences
     );
   }
 
+  static MultiTypedResultKey<
+    $SpaceContextSourcesTable,
+    List<SpaceContextSourceRow>
+  >
+  _spaceContextSourcesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.spaceContextSources,
+        aliasName: $_aliasNameGenerator(
+          db.labSpaces.id,
+          db.spaceContextSources.labSpaceId,
+        ),
+      );
+
+  $$SpaceContextSourcesTableProcessedTableManager get spaceContextSourcesRefs {
+    final manager = $$SpaceContextSourcesTableTableManager(
+      $_db,
+      $_db.spaceContextSources,
+    ).filter((f) => f.labSpaceId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _spaceContextSourcesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$ScheduleBlocksTable, List<ScheduleBlockRow>>
   _scheduleBlocksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.scheduleBlocks,
@@ -11653,6 +12142,31 @@ class $$LabSpacesTableFilterComposer
           }) => $$SpaceFolderLinksTableFilterComposer(
             $db: $db,
             $table: $db.spaceFolderLinks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> spaceContextSourcesRefs(
+    Expression<bool> Function($$SpaceContextSourcesTableFilterComposer f) f,
+  ) {
+    final $$SpaceContextSourcesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.spaceContextSources,
+      getReferencedColumn: (t) => t.labSpaceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SpaceContextSourcesTableFilterComposer(
+            $db: $db,
+            $table: $db.spaceContextSources,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11898,6 +12412,32 @@ class $$LabSpacesTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> spaceContextSourcesRefs<T extends Object>(
+    Expression<T> Function($$SpaceContextSourcesTableAnnotationComposer a) f,
+  ) {
+    final $$SpaceContextSourcesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.spaceContextSources,
+          getReferencedColumn: (t) => t.labSpaceId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$SpaceContextSourcesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.spaceContextSources,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> scheduleBlocksRefs<T extends Object>(
     Expression<T> Function($$ScheduleBlocksTableAnnotationComposer a) f,
   ) {
@@ -11992,6 +12532,7 @@ class $$LabSpacesTableTableManager
             bool kanbanColumnsRefs,
             bool kanbanCardsRefs,
             bool spaceFolderLinksRefs,
+            bool spaceContextSourcesRefs,
             bool scheduleBlocksRefs,
             bool scheduleSettingsRefs,
             bool scheduleWeekNotesRefs,
@@ -12062,6 +12603,7 @@ class $$LabSpacesTableTableManager
             kanbanColumnsRefs = false,
             kanbanCardsRefs = false,
             spaceFolderLinksRefs = false,
+            spaceContextSourcesRefs = false,
             scheduleBlocksRefs = false,
             scheduleSettingsRefs = false,
             scheduleWeekNotesRefs = false,
@@ -12072,6 +12614,7 @@ class $$LabSpacesTableTableManager
                 if (kanbanColumnsRefs) db.kanbanColumns,
                 if (kanbanCardsRefs) db.kanbanCards,
                 if (spaceFolderLinksRefs) db.spaceFolderLinks,
+                if (spaceContextSourcesRefs) db.spaceContextSources,
                 if (scheduleBlocksRefs) db.scheduleBlocks,
                 if (scheduleSettingsRefs) db.scheduleSettings,
                 if (scheduleWeekNotesRefs) db.scheduleWeekNotes,
@@ -12139,6 +12682,28 @@ class $$LabSpacesTableTableManager
                                 table,
                                 p0,
                               ).spaceFolderLinksRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.labSpaceId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (spaceContextSourcesRefs)
+                    await $_getPrefetchedData<
+                      LabSpaceRow,
+                      $LabSpacesTable,
+                      SpaceContextSourceRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$LabSpacesTableReferences
+                          ._spaceContextSourcesRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$LabSpacesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).spaceContextSourcesRefs,
                       referencedItemsForCurrentItem:
                           (item, referencedItems) => referencedItems.where(
                             (e) => e.labSpaceId == item.id,
@@ -12235,6 +12800,7 @@ typedef $$LabSpacesTableProcessedTableManager =
         bool kanbanColumnsRefs,
         bool kanbanCardsRefs,
         bool spaceFolderLinksRefs,
+        bool spaceContextSourcesRefs,
         bool scheduleBlocksRefs,
         bool scheduleSettingsRefs,
         bool scheduleWeekNotesRefs,
@@ -14690,6 +15256,383 @@ typedef $$CanvasContextSourcesTableProcessedTableManager =
       CanvasContextSourceRow,
       PrefetchHooks Function({bool canvasNoteId})
     >;
+typedef $$SpaceContextSourcesTableCreateCompanionBuilder =
+    SpaceContextSourcesCompanion Function({
+      Value<int> id,
+      required int labSpaceId,
+      required String kind,
+      required String ref,
+      Value<String?> label,
+      Value<DateTime?> fetchedAt,
+      Value<DateTime> createdAt,
+    });
+typedef $$SpaceContextSourcesTableUpdateCompanionBuilder =
+    SpaceContextSourcesCompanion Function({
+      Value<int> id,
+      Value<int> labSpaceId,
+      Value<String> kind,
+      Value<String> ref,
+      Value<String?> label,
+      Value<DateTime?> fetchedAt,
+      Value<DateTime> createdAt,
+    });
+
+final class $$SpaceContextSourcesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $SpaceContextSourcesTable,
+          SpaceContextSourceRow
+        > {
+  $$SpaceContextSourcesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $LabSpacesTable _labSpaceIdTable(_$AppDatabase db) =>
+      db.labSpaces.createAlias(
+        $_aliasNameGenerator(
+          db.spaceContextSources.labSpaceId,
+          db.labSpaces.id,
+        ),
+      );
+
+  $$LabSpacesTableProcessedTableManager get labSpaceId {
+    final $_column = $_itemColumn<int>('lab_space_id')!;
+
+    final manager = $$LabSpacesTableTableManager(
+      $_db,
+      $_db.labSpaces,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_labSpaceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$SpaceContextSourcesTableFilterComposer
+    extends Composer<_$AppDatabase, $SpaceContextSourcesTable> {
+  $$SpaceContextSourcesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ref => $composableBuilder(
+    column: $table.ref,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$LabSpacesTableFilterComposer get labSpaceId {
+    final $$LabSpacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableFilterComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SpaceContextSourcesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SpaceContextSourcesTable> {
+  $$SpaceContextSourcesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ref => $composableBuilder(
+    column: $table.ref,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get fetchedAt => $composableBuilder(
+    column: $table.fetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$LabSpacesTableOrderingComposer get labSpaceId {
+    final $$LabSpacesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableOrderingComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SpaceContextSourcesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SpaceContextSourcesTable> {
+  $$SpaceContextSourcesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get ref =>
+      $composableBuilder(column: $table.ref, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get fetchedAt =>
+      $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$LabSpacesTableAnnotationComposer get labSpaceId {
+    final $$LabSpacesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.labSpaceId,
+      referencedTable: $db.labSpaces,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$LabSpacesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.labSpaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SpaceContextSourcesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SpaceContextSourcesTable,
+          SpaceContextSourceRow,
+          $$SpaceContextSourcesTableFilterComposer,
+          $$SpaceContextSourcesTableOrderingComposer,
+          $$SpaceContextSourcesTableAnnotationComposer,
+          $$SpaceContextSourcesTableCreateCompanionBuilder,
+          $$SpaceContextSourcesTableUpdateCompanionBuilder,
+          (SpaceContextSourceRow, $$SpaceContextSourcesTableReferences),
+          SpaceContextSourceRow,
+          PrefetchHooks Function({bool labSpaceId})
+        > {
+  $$SpaceContextSourcesTableTableManager(
+    _$AppDatabase db,
+    $SpaceContextSourcesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$SpaceContextSourcesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer:
+              () => $$SpaceContextSourcesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer:
+              () => $$SpaceContextSourcesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> labSpaceId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> ref = const Value.absent(),
+                Value<String?> label = const Value.absent(),
+                Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SpaceContextSourcesCompanion(
+                id: id,
+                labSpaceId: labSpaceId,
+                kind: kind,
+                ref: ref,
+                label: label,
+                fetchedAt: fetchedAt,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int labSpaceId,
+                required String kind,
+                required String ref,
+                Value<String?> label = const Value.absent(),
+                Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SpaceContextSourcesCompanion.insert(
+                id: id,
+                labSpaceId: labSpaceId,
+                kind: kind,
+                ref: ref,
+                label: label,
+                fetchedAt: fetchedAt,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$SpaceContextSourcesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({labSpaceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (labSpaceId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.labSpaceId,
+                            referencedTable:
+                                $$SpaceContextSourcesTableReferences
+                                    ._labSpaceIdTable(db),
+                            referencedColumn:
+                                $$SpaceContextSourcesTableReferences
+                                    ._labSpaceIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SpaceContextSourcesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SpaceContextSourcesTable,
+      SpaceContextSourceRow,
+      $$SpaceContextSourcesTableFilterComposer,
+      $$SpaceContextSourcesTableOrderingComposer,
+      $$SpaceContextSourcesTableAnnotationComposer,
+      $$SpaceContextSourcesTableCreateCompanionBuilder,
+      $$SpaceContextSourcesTableUpdateCompanionBuilder,
+      (SpaceContextSourceRow, $$SpaceContextSourcesTableReferences),
+      SpaceContextSourceRow,
+      PrefetchHooks Function({bool labSpaceId})
+    >;
 typedef $$OnboardingFlagsTableCreateCompanionBuilder =
     OnboardingFlagsCompanion Function({
       required String key,
@@ -16151,6 +17094,8 @@ class $AppDatabaseManager {
       $$NoteCanvasLinksTableTableManager(_db, _db.noteCanvasLinks);
   $$CanvasContextSourcesTableTableManager get canvasContextSources =>
       $$CanvasContextSourcesTableTableManager(_db, _db.canvasContextSources);
+  $$SpaceContextSourcesTableTableManager get spaceContextSources =>
+      $$SpaceContextSourcesTableTableManager(_db, _db.spaceContextSources);
   $$OnboardingFlagsTableTableManager get onboardingFlags =>
       $$OnboardingFlagsTableTableManager(_db, _db.onboardingFlags);
   $$NotificationsTableTableManager get notifications =>

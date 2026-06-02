@@ -1,5 +1,6 @@
 import '../models/lab_space.dart';
 import '../models/kanban_column.dart';
+import '../models/canvas_context_source.dart';
 
 abstract class LabSpaceRepository {
   Stream<List<LabSpace>> watchActive();
@@ -24,4 +25,21 @@ abstract class LabSpaceRepository {
   Future<List<int>> getLinkedSpaceIdsForFolder(int folderId);
   Stream<List<int>> watchLinkedSpaceIdsForFolder(int folderId);
   Stream<List<LabSpace>> watchDeleted();
+
+  // Unified context sources owned by a space (note/folder/url).
+  Future<void> addContextSource(
+    int labSpaceId,
+    CanvasSourceKind kind,
+    String ref, {
+    String? label,
+    DateTime? fetchedAt,
+  });
+  Future<void> removeContextSource(int id);
+  Future<void> updateContextSourceFetch(
+    int id, {
+    String? label,
+    DateTime? fetchedAt,
+  });
+  Stream<List<CanvasContextSource>> watchContextSources(int labSpaceId);
+  Future<List<CanvasContextSource>> getContextSources(int labSpaceId);
 }

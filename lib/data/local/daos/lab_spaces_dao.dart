@@ -2,11 +2,11 @@ import 'package:drift/drift.dart';
 import '../database.dart';
 import '../tables/lab_spaces_table.dart';
 import '../tables/kanban_columns_table.dart';
-import '../tables/space_folder_links_table.dart';
+import '../tables/space_context_sources_table.dart';
 
 part 'lab_spaces_dao.g.dart';
 
-@DriftAccessor(tables: [LabSpaces, KanbanColumns, SpaceFolderLinks])
+@DriftAccessor(tables: [LabSpaces, KanbanColumns, SpaceContextSources])
 class LabSpacesDao extends DatabaseAccessor<AppDatabase>
     with _$LabSpacesDaoMixin {
   LabSpacesDao(super.db);
@@ -85,39 +85,83 @@ class LabSpacesDao extends DatabaseAccessor<AppDatabase>
     });
   }
 
-  // Folder links
-  Future<void> linkFolder(int labSpaceId, int folderId) =>
-      into(spaceFolderLinks).insertOnConflictUpdate(
-        SpaceFolderLinksCompanion.insert(
+  // ─── Space context sources (unified: note/folder/url) ────────────────────
+  // Replaces the old space_folder_links: a linked folder is just a source of
+  // kind 'folder'. Sources of kind 'note'/'url' feed the space AI chat.
+
+  Future<void> addSpaceSource(
+    int labSpaceId,
+    String kind,
+    String ref, {
+    String? label,
+    DateTime? fetchedAt,
+  }) =>
+      into(spaceContextSources).insert(
+        SpaceContextSourcesCompanion.insert(
           labSpaceId: labSpaceId,
-          folderId: folderId,
+          kind: kind,
+          ref: ref,
+          label: Value(label),
+          fetchedAt: Value(fetchedAt),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+
+  Future<void> removeSpaceSource(int id) =>
+      (delete(spaceContextSources)..where((s) => s.id.equals(id))).go();
+
+  Future<void> updateSpaceSourceFetch(
+    int id, {
+    String? label,
+    DateTime? fetchedAt,
+  }) =>
+      (update(spaceContextSources)..where((s) => s.id.equals(id))).write(
+        SpaceContextSourcesCompanion(
+          label: Value(label),
+          fetchedAt: Value(fetchedAt),
         ),
       );
 
+  Stream<List<SpaceContextSourceRow>> watchSpaceSources(int labSpaceId) =>
+      (select(spaceContextSources)
+            ..where((s) => s.labSpaceId.equals(labSpaceId))
+            ..orderBy([(s) => OrderingTerm.asc(s.createdAt)]))
+          .watch();
+
+  Future<List<SpaceContextSourceRow>> getSpaceSources(int labSpaceId) =>
+      (select(spaceContextSources)
+            ..where((s) => s.labSpaceId.equals(labSpaceId))
+            ..orderBy([(s) => OrderingTerm.asc(s.createdAt)]))
+          .get();
+
+  // Folder links — now expressed as 'folder' sources on the unified table.
+  Future<void> linkFolder(int labSpaceId, int folderId) =>
+      addSpaceSource(labSpaceId, 'folder', folderId.toString());
+
   Future<void> unlinkFolder(int labSpaceId, int folderId) =>
-      (delete(spaceFolderLinks)
-            ..where((l) =>
-                l.labSpaceId.equals(labSpaceId) &
-                l.folderId.equals(folderId)))
-          .go();
+      (delete(spaceContextSources)..where((s) =>
+            s.labSpaceId.equals(labSpaceId) &
+            s.kind.equals('folder') &
+            s.ref.equals(folderId.toString()))).go();
 
   Future<List<int>> getLinkedFolderIds(int labSpaceId) async {
-    final rows = await (select(spaceFolderLinks)
-          ..where((l) => l.labSpaceId.equals(labSpaceId)))
-        .get();
-    return rows.map((r) => r.folderId).toList();
+    final rows = await (select(spaceContextSources)..where(
+      (s) => s.labSpaceId.equals(labSpaceId) & s.kind.equals('folder'),
+    )).get();
+    return rows.map((r) => int.tryParse(r.ref)).whereType<int>().toList();
   }
 
   Future<List<int>> getLinkedSpaceIds(int folderId) async {
-    final rows = await (select(spaceFolderLinks)
-          ..where((l) => l.folderId.equals(folderId)))
-        .get();
-    return rows.map((r) => r.labSpaceId).toList();
+    final rows = await (select(spaceContextSources)..where(
+      (s) => s.kind.equals('folder') & s.ref.equals(folderId.toString()),
+    )).get();
+    return rows.map((r) => r.labSpaceId).toSet().toList();
   }
 
   Stream<List<int>> watchLinkedSpaceIds(int folderId) =>
-      (select(spaceFolderLinks)
-            ..where((l) => l.folderId.equals(folderId)))
-          .watch()
-          .map((rows) => rows.map((r) => r.labSpaceId).toList());
+      (select(spaceContextSources)..where(
+        (s) => s.kind.equals('folder') & s.ref.equals(folderId.toString()),
+      )).watch().map(
+        (rows) => rows.map((r) => r.labSpaceId).toSet().toList(),
+      );
 }

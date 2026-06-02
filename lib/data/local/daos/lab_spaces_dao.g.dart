@@ -6,9 +6,8 @@ part of 'lab_spaces_dao.dart';
 mixin _$LabSpacesDaoMixin on DatabaseAccessor<AppDatabase> {
   $LabSpacesTable get labSpaces => attachedDatabase.labSpaces;
   $KanbanColumnsTable get kanbanColumns => attachedDatabase.kanbanColumns;
-  $FoldersTable get folders => attachedDatabase.folders;
-  $SpaceFolderLinksTable get spaceFolderLinks =>
-      attachedDatabase.spaceFolderLinks;
+  $SpaceContextSourcesTable get spaceContextSources =>
+      attachedDatabase.spaceContextSources;
   LabSpacesDaoManager get managers => LabSpacesDaoManager(this);
 }
 
@@ -19,11 +18,9 @@ class LabSpacesDaoManager {
       $$LabSpacesTableTableManager(_db.attachedDatabase, _db.labSpaces);
   $$KanbanColumnsTableTableManager get kanbanColumns =>
       $$KanbanColumnsTableTableManager(_db.attachedDatabase, _db.kanbanColumns);
-  $$FoldersTableTableManager get folders =>
-      $$FoldersTableTableManager(_db.attachedDatabase, _db.folders);
-  $$SpaceFolderLinksTableTableManager get spaceFolderLinks =>
-      $$SpaceFolderLinksTableTableManager(
+  $$SpaceContextSourcesTableTableManager get spaceContextSources =>
+      $$SpaceContextSourcesTableTableManager(
         _db.attachedDatabase,
-        _db.spaceFolderLinks,
+        _db.spaceContextSources,
       );
 }

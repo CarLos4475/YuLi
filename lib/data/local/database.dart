@@ -14,6 +14,7 @@ import 'tables/kanban_cards_table.dart';
 import 'tables/space_folder_links_table.dart';
 import 'tables/note_canvas_links_table.dart';
 import 'tables/canvas_context_sources_table.dart';
+import 'tables/space_context_sources_table.dart';
 import 'tables/onboarding_flags_table.dart';
 import 'tables/notifications_table.dart';
 import 'tables/schedule_blocks_table.dart';
@@ -45,6 +46,7 @@ part 'database.g.dart';
     SpaceFolderLinks,
     NoteCanvasLinks,
     CanvasContextSources,
+    SpaceContextSources,
     OnboardingFlags,
     Notifications,
     ScheduleBlocks,
@@ -67,7 +69,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -177,6 +179,19 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(tasks, tasks.reminderPreset);
           await m.addColumn(kanbanCards, kanbanCards.remindAt);
           await m.addColumn(kanbanCards, kanbanCards.reminderPreset);
+        } catch (_) {}
+      }
+      if (from <= 19) {
+        // Fuentes unificadas: tabla de sources del lab space + migración de los
+        // vínculos carpeta→space existentes a fuentes de tipo 'folder'.
+        try {
+          await m.createTable(spaceContextSources);
+          await customStatement(
+            "INSERT INTO space_context_sources "
+            "(lab_space_id, kind, ref, created_at) "
+            "SELECT lab_space_id, 'folder', CAST(folder_id AS TEXT), "
+            "strftime('%s','now') FROM space_folder_links",
+          );
         } catch (_) {}
       }
     },
@@ -419,6 +434,10 @@ class AppDatabase extends _$AppDatabase {
     await (delete(canvasContextSources)..where(
       (s) => s.kind.equals('note') & s.ref.equals(noteId.toString()),
     )).go();
+    // Same note used as a source by a lab space.
+    await (delete(spaceContextSources)..where(
+      (s) => s.kind.equals('note') & s.ref.equals(noteId.toString()),
+    )).go();
     await (delete(noteCanvasLinks)..where(
       (l) => l.canvasNoteId.equals(noteId) | l.sourceNoteId.equals(noteId),
     )).go();
@@ -478,6 +497,13 @@ class AppDatabase extends _$AppDatabase {
     // referenced it (both hold a folder_id with no FK).
     await (delete(spaceFolderLinks)
       ..where((l) => l.folderId.equals(folderId))).go();
+    // Folder sources (unified model) referencing this folder, on any owner.
+    await (delete(spaceContextSources)..where(
+      (s) => s.kind.equals('folder') & s.ref.equals(folderId.toString()),
+    )).go();
+    await (delete(canvasContextSources)..where(
+      (s) => s.kind.equals('folder') & s.ref.equals(folderId.toString()),
+    )).go();
     await (update(scheduleBlocks)..where(
       (s) => s.folderId.equals(folderId),
     )).write(const ScheduleBlocksCompanion(folderId: Value(null)));
@@ -497,6 +523,8 @@ class AppDatabase extends _$AppDatabase {
     await (delete(scheduleWeekNotes)
       ..where((s) => s.labSpaceId.equals(spaceId))).go();
     await (delete(spaceFolderLinks)
+      ..where((s) => s.labSpaceId.equals(spaceId))).go();
+    await (delete(spaceContextSources)
       ..where((s) => s.labSpaceId.equals(spaceId))).go();
     await (delete(labSpaces)..where((s) => s.id.equals(spaceId))).go();
   });
