@@ -161,7 +161,7 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
               child: Container(
                 decoration: const BoxDecoration(
                   color: yCream,
-                  border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+                  border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
                 ),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 child: SafeArea(
@@ -201,7 +201,7 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
                       Container(
                         decoration: BoxDecoration(
                           color: yCream,
-                          border: Border.all(color: yInk, width: yLineMid),
+                          border: Border.all(color: yBorderStrong, width: yLineMid),
                         ),
                         padding:
                             const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -261,7 +261,7 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
     final card = Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
         borderRadius: BorderRadius.zero,
         boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
       ),

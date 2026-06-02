@@ -67,8 +67,7 @@ class WhiteboardEditorScreen extends ConsumerStatefulWidget {
       _WhiteboardEditorScreenState();
 }
 
-class _WhiteboardEditorScreenState
-    extends ConsumerState<WhiteboardEditorScreen>
+class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     with TickerProviderStateMixin {
   int? _blockId;
   DrawingData _data = DrawingData();
@@ -106,12 +105,31 @@ class _WhiteboardEditorScreenState
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)>
-      _undoStack = [];
-  final List<(List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)>
-      _redoStack = [];
-  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)?
-      _gestureBefore;
+  final List<
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+  >
+  _undoStack = [];
+  final List<
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+  >
+  _redoStack = [];
+  (
+    List<DrawingStroke>,
+    List<CanvasImage>,
+    List<CanvasTaskBlock>,
+    List<CanvasTextBlock>,
+  )?
+  _gestureBefore;
   bool _gestureChanged = false;
   DrawingStroke? _active;
   // Ticked on every live point added to [_active]. Repaints only the active
@@ -238,9 +256,10 @@ class _WhiteboardEditorScreenState
       if (_colorPickerOpen) {
         _widthPickerOpen = false;
         final v = _color.toARGB32();
-        _pickerFavoriteAnchor = _savedColors
-            .cast<Color?>()
-            .firstWhere((c) => c!.toARGB32() == v, orElse: () => null);
+        _pickerFavoriteAnchor = _savedColors.cast<Color?>().firstWhere(
+          (c) => c!.toARGB32() == v,
+          orElse: () => null,
+        );
       } else {
         _pickerFavoriteAnchor = null;
       }
@@ -279,9 +298,12 @@ class _WhiteboardEditorScreenState
         _savedColors = SavedColorsPrefs.remove(_savedColors, value);
       } else {
         final anchor = _pickerFavoriteAnchor;
-        final anchorIdx = anchor == null
-            ? -1
-            : _savedColors.indexWhere((c) => c.toARGB32() == anchor.toARGB32());
+        final anchorIdx =
+            anchor == null
+                ? -1
+                : _savedColors.indexWhere(
+                  (c) => c.toARGB32() == anchor.toARGB32(),
+                );
         if (anchorIdx >= 0) {
           // A favorite was selected: replace it in place with the new shade.
           final list = List<Color>.from(_savedColors);
@@ -298,12 +320,14 @@ class _WhiteboardEditorScreenState
   }
 
   void _starBgColor(Color value) {
-    final isStarred =
-        _bgSavedColors.any((c) => c.toARGB32() == value.toARGB32());
+    final isStarred = _bgSavedColors.any(
+      (c) => c.toARGB32() == value.toARGB32(),
+    );
     setState(() {
-      _bgSavedColors = isStarred
-          ? SavedBgColorsPrefs.remove(_bgSavedColors, value)
-          : SavedBgColorsPrefs.push(_bgSavedColors, value);
+      _bgSavedColors =
+          isStarred
+              ? SavedBgColorsPrefs.remove(_bgSavedColors, value)
+              : SavedBgColorsPrefs.push(_bgSavedColors, value);
     });
     SavedBgColorsPrefs.save(_bgSavedColors);
     HapticFeedback.selectionClick();
@@ -368,8 +392,7 @@ class _WhiteboardEditorScreenState
         final dir = Directory(dirPath);
         if (!await dir.exists()) return;
         await for (final entity in dir.list()) {
-          if (entity is File &&
-              !referenced.contains(p.basename(entity.path))) {
+          if (entity is File && !referenced.contains(p.basename(entity.path))) {
             try {
               await entity.delete();
             } catch (_) {}
@@ -383,7 +406,9 @@ class _WhiteboardEditorScreenState
     if (_active == null) return false;
     // A scribble densely fills a box and would be mis-snapped to a rectangle —
     // leave it for the scribble-erase on pen-up.
-    if (isScribble(_rawPen.isNotEmpty ? _rawPen : _active!.points)) return false;
+    if (isScribble(_rawPen.isNotEmpty ? _rawPen : _active!.points)) {
+      return false;
+    }
     final shape = ShapeRecognizer.detect(_active!.points);
     if (shape == null) return false;
     _enterShapeAdjust(shape, _active!);
@@ -408,8 +433,10 @@ class _WhiteboardEditorScreenState
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
       final end = src.points.last;
-      _snapRefDist =
-          (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(1.0, 1e9);
+      _snapRefDist = (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(
+        1.0,
+        1e9,
+      );
     }
     setState(() {
       _active = DrawingStroke(
@@ -430,10 +457,16 @@ class _WhiteboardEditorScreenState
     } else if (_snapKind == ShapeKind.arrow) {
       pts = buildArrowShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
     } else {
-      final ratio =
-          ((p - _snapCenter!).distance / _snapRefDist).clamp(0.05, 20.0);
+      final ratio = ((p - _snapCenter!).distance / _snapRefDist).clamp(
+        0.05,
+        20.0,
+      );
       pts = scaleShape(
-          _snapBasePoints!, _snapCenter!.dx, _snapCenter!.dy, ratio);
+        _snapBasePoints!,
+        _snapCenter!.dx,
+        _snapCenter!.dy,
+        ratio,
+      );
     }
     setState(() {
       _active = DrawingStroke(
@@ -469,14 +502,14 @@ class _WhiteboardEditorScreenState
   Future<void> _ensureCanvasBlock() async {
     final repo = ref.read(noteBlockRepositoryProvider);
     final blocks = await repo.getByNote(widget.note.id);
-    DrawingBlock? canvas = blocks
-        .whereType<DrawingBlock>()
-        .firstOrNull;
-    canvas ??= await repo.insertAtEnd(
-      widget.note.id,
-      NoteBlockType.drawing,
-      payload: {'h': _kCanvasH, 's': [], 'whiteboard': true},
-    ) as DrawingBlock;
+    DrawingBlock? canvas = blocks.whereType<DrawingBlock>().firstOrNull;
+    canvas ??=
+        await repo.insertAtEnd(
+              widget.note.id,
+              NoteBlockType.drawing,
+              payload: {'h': _kCanvasH, 's': [], 'whiteboard': true},
+            )
+            as DrawingBlock;
     if (!mounted) return;
     setState(() {
       _blockId = canvas!.id;
@@ -559,16 +592,16 @@ class _WhiteboardEditorScreenState
   }
 
   Widget _eraserModePopup() => EraserModePopup(
-        mode: _eraserMode,
-        accent: _accent,
-        onPick: (m) {
-          setState(() {
-            _eraserMode = m;
-            _eraserPopupOpen = false;
-          });
-          DrawingPrefs.saveEraserMode(m);
-        },
-      );
+    mode: _eraserMode,
+    accent: _accent,
+    onPick: (m) {
+      setState(() {
+        _eraserMode = m;
+        _eraserPopupOpen = false;
+      });
+      DrawingPrefs.saveEraserMode(m);
+    },
+  );
 
   /// Copy a ready (compressed) file into this note's image folder, place it at
   /// the centre of the current viewport, and record it as an undoable step.
@@ -591,8 +624,9 @@ class _WhiteboardEditorScreenState
 
       final worldW = (screen.width * 0.5) / _viewScale;
       final worldH = worldW * ih / iw;
-      final center =
-          _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+      final center = _screenToWorld(
+        Offset(screen.width / 2, screen.height / 2),
+      );
       final img = CanvasImage(
         filename: filename,
         x: center.dx - worldW / 2,
@@ -663,9 +697,10 @@ class _WhiteboardEditorScreenState
   void _insertTextBlock([String markdown = '']) {
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    final screenW = markdown.isNotEmpty
-        ? (200.0 + markdown.length * 0.35).clamp(120.0, 800.0)
-        : 200.0;
+    final screenW =
+        markdown.isNotEmpty
+            ? (200.0 + markdown.length * 0.35).clamp(120.0, 800.0)
+            : 200.0;
     final w = (screenW / _viewScale).clamp(60.0, 600.0);
     final h = markdown.isNotEmpty ? w : w / 2;
     final block = CanvasTextBlock(
@@ -682,8 +717,13 @@ class _WhiteboardEditorScreenState
       // placed, movable/resizable object instead of a box with no affordance.
       _tool = DrawTool.lasso;
       _lassoCtrl.hitScale = _viewScale;
-      _lassoCtrl.selectTextBlock(_data.textBlocks.length - 1, _data.strokes,
-          _data.images, _data.taskBlocks, _data.textBlocks);
+      _lassoCtrl.selectTextBlock(
+        _data.textBlocks.length - 1,
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        _data.textBlocks,
+      );
       _toolbarVisible = false;
     });
     _commit(before);
@@ -787,8 +827,10 @@ class _WhiteboardEditorScreenState
       return null;
     }
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop =
-        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    final screenTop = MatrixUtils.transformPoint(
+      _viewCtrl.value,
+      Offset(bb.center.dx, bb.top),
+    );
     return Rect.fromLTWH(screenTop.dx - 110, screenTop.dy - 148, 220, 100);
   }
 
@@ -814,10 +856,14 @@ class _WhiteboardEditorScreenState
       _multiFingerMoved = false;
     }
 
-    final isStylus = e.kind == PointerDeviceKind.stylus || e.kind == PointerDeviceKind.invertedStylus;
+    final isStylus =
+        e.kind == PointerDeviceKind.stylus ||
+        e.kind == PointerDeviceKind.invertedStylus;
     if (isStylus) {
       _stylusActive = true;
-      if (_palmRejection) _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
+      if (_palmRejection) {
+        _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
+      }
     }
 
     if (_showPasteAt != null) {
@@ -912,7 +958,7 @@ class _WhiteboardEditorScreenState
       return;
     }
     _rawPen = [
-      [p.dx, p.dy]
+      [p.dx, p.dy],
     ];
     setState(() {
       _active = DrawingStroke(
@@ -920,7 +966,7 @@ class _WhiteboardEditorScreenState
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
         points: [
-          [sp.dx, sp.dy]
+          [sp.dx, sp.dy],
         ],
       );
     });
@@ -967,8 +1013,13 @@ class _WhiteboardEditorScreenState
     // Nothing selected. A tap on an interactive block belongs to its task UI.
     if (_interactiveBlockAt(p)) return;
     setState(() {
-      if (_lassoCtrl.tapSelect(p, _data.strokes, _data.images,
-          _data.taskBlocks, _data.textBlocks)) {
+      if (_lassoCtrl.tapSelect(
+        p,
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        _data.textBlocks,
+      )) {
         _toolbarVisible = false;
       } else {
         _lassoCtrl.deselect();
@@ -1066,9 +1117,10 @@ class _WhiteboardEditorScreenState
     setState(() => _isDrawing = false);
 
     if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
-      final elapsed = _multiFingerDownTime != null
-          ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
-          : 999;
+      final elapsed =
+          _multiFingerDownTime != null
+              ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
+              : 999;
       if (!_multiFingerMoved && elapsed < 400) {
         if (_maxSimultaneous == 2) {
           _undo();
@@ -1175,15 +1227,15 @@ class _WhiteboardEditorScreenState
     if (_snapKind != null) return;
     if (_active == null) return;
     _active!.points.removeWhere(
-        (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite);
+      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
+    );
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       return;
     }
 
-    final scribblePts = _rawPen.length >= _active!.points.length
-        ? _rawPen
-        : _active!.points;
+    final scribblePts =
+        _rawPen.length >= _active!.points.length ? _rawPen : _active!.points;
     if (_tool == DrawTool.pen && isScribble(scribblePts)) {
       final bounds = scribbleBounds(scribblePts);
       final before = _snapshot();
@@ -1216,7 +1268,8 @@ class _WhiteboardEditorScreenState
   void _finishFountainStroke() {
     if (_active == null) return;
     _active!.points.removeWhere(
-        (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite);
+      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
+    );
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       return;
@@ -1274,27 +1327,45 @@ class _WhiteboardEditorScreenState
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startRotation(
-            worldPos, _data.strokes, _data.images, _data.taskBlocks);
+          worldPos,
+          _data.strokes,
+          _data.images,
+          _data.taskBlocks,
+        );
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startResize(
-            corner, worldPos, _data.strokes, _data.images, _data.taskBlocks);
+          corner,
+          worldPos,
+          _data.strokes,
+          _data.images,
+          _data.taskBlocks,
+        );
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startSideResize(
-            side, worldPos, _data.strokes, _data.images, _data.taskBlocks);
+          side,
+          worldPos,
+          _data.strokes,
+          _data.images,
+          _data.taskBlocks,
+        );
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startMove(
-            worldPos, _data.strokes, _data.images, _data.taskBlocks);
+          worldPos,
+          _data.strokes,
+          _data.images,
+          _data.taskBlocks,
+        );
         return;
       }
       // Outside the selection: defer. A tap (no drag) dismisses the toolbar /
@@ -1359,26 +1430,45 @@ class _WhiteboardEditorScreenState
     }
     if (_lassoCtrl.phase == LassoPhase.tracing) {
       _lassoCtrl.finishTracing(
-          _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks);
-      _toolbarVisible = false; // a fresh selection starts with the toolbar hidden
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        _data.textBlocks,
+      );
+      _toolbarVisible =
+          false; // a fresh selection starts with the toolbar hidden
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
       _lassoCtrl.finishMove(
-          _data.strokes, _data.images, _data.taskBlocks, 0, _data.textBlocks);
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        0,
+        _data.textBlocks,
+      );
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       final side = _lassoCtrl.isSideResize;
       final cornerScale = _lassoCtrl.resizeScale;
       final sideScaleX = _lassoCtrl.resizeScaleX;
       final sideScaleY = _lassoCtrl.resizeScaleY;
-      final moved = side
-          ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
-          : (cornerScale - 1).abs() > 0.02;
+      final moved =
+          side
+              ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
+              : (cornerScale - 1).abs() > 0.02;
       side
           ? _lassoCtrl.finishSideResize(
-              _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks)
+            _data.strokes,
+            _data.images,
+            _data.taskBlocks,
+            _data.textBlocks,
+          )
           : _lassoCtrl.finishResize(
-              _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks);
+            _data.strokes,
+            _data.images,
+            _data.taskBlocks,
+            _data.textBlocks,
+          );
       for (final i in _lassoCtrl.selectedBlockIndices) {
         if (i >= _data.taskBlocks.length) continue;
         final b = _data.taskBlocks[i];
@@ -1398,7 +1488,11 @@ class _WhiteboardEditorScreenState
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
       _lassoCtrl.finishRotation(
-          _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks);
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        _data.textBlocks,
+      );
       _finishTransformOrTap(moved);
     }
   }
@@ -1416,14 +1510,21 @@ class _WhiteboardEditorScreenState
   }
 
   void _lassoDelete() {
-    _lassoMutate(() => _lassoCtrl.deleteSelected(
-        _data.strokes, _data.images, _data.taskBlocks, _data.textBlocks));
+    _lassoMutate(
+      () => _lassoCtrl.deleteSelected(
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        _data.textBlocks,
+      ),
+    );
     HapticFeedback.lightImpact();
   }
 
   void _lassoDuplicate() {
     _lassoMutate(
-        () => _lassoCtrl.duplicateSelected(_data.strokes, _data.images));
+      () => _lassoCtrl.duplicateSelected(_data.strokes, _data.images),
+    );
     HapticFeedback.lightImpact();
   }
 
@@ -1456,22 +1557,36 @@ class _WhiteboardEditorScreenState
 
   Future<void> _recognizeSelection() async {
     final strokes = _selectedWritingStrokes();
-    runOcrFlow(context, ref, strokes,
-        accent: _accent,
-        folderId: widget.note.folderId,
-        noteId: widget.note.id);
+    runOcrFlow(
+      context,
+      ref,
+      strokes,
+      accent: _accent,
+      folderId: widget.note.folderId,
+      noteId: widget.note.id,
+    );
   }
 
   Future<void> _sendSelectionToYuli() async {
     final strokes = _selectedWritingStrokes();
-    runOcrToYuliFlow(context, ref, strokes,
-        accent: _accent, noteId: widget.note.id);
+    runOcrToYuliFlow(
+      context,
+      ref,
+      strokes,
+      accent: _accent,
+      noteId: widget.note.id,
+    );
   }
 
   Future<void> _sendMathSelectionToYuli() async {
     final strokes = _selectedWritingStrokes();
-    runMathToYuliFlow(context, ref, strokes,
-        accent: _accent, noteId: widget.note.id);
+    runMathToYuliFlow(
+      context,
+      ref,
+      strokes,
+      accent: _accent,
+      noteId: widget.note.id,
+    );
   }
 
   Future<void> _cropSelectedImage() async {
@@ -1483,10 +1598,11 @@ class _WhiteboardEditorScreenState
     final result = await Navigator.of(context).push<CropResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => ImageCropScreen(
-          sourcePath: p.join(dirPath, img.filename),
-          accent: _accent,
-        ),
+        builder:
+            (_) => ImageCropScreen(
+              sourcePath: p.join(dirPath, img.filename),
+              accent: _accent,
+            ),
       ),
     );
     if (result == null || !mounted) return;
@@ -1511,7 +1627,8 @@ class _WhiteboardEditorScreenState
   }
 
   List<Widget> _buildTaskBlockOverlays() {
-    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+    final gesture =
+        _lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
         _lassoCtrl.phase == LassoPhase.rotating;
     final out = <Widget>[];
@@ -1529,7 +1646,8 @@ class _WhiteboardEditorScreenState
           folderName: widget.folder.name,
           folderColor: widget.folder.color,
           accent: _accent,
-          interactive: !selected &&
+          interactive:
+              !selected &&
               !gesture &&
               (_tool == DrawTool.lasso || _palmRejection),
           onPersist: _persist,
@@ -1540,7 +1658,10 @@ class _WhiteboardEditorScreenState
             if (!mounted) return;
             setState(() => b.h = h);
             _lassoCtrl.refreshBoundingBox(
-                _data.strokes, _data.images, _data.taskBlocks);
+              _data.strokes,
+              _data.images,
+              _data.taskBlocks,
+            );
             _persist();
           },
         ),
@@ -1549,12 +1670,14 @@ class _WhiteboardEditorScreenState
       // During corner resize (uniform scale) the transform is fine; during side
       // resize (non-uniform) the widget stays at original size so text doesn't
       // distort, snapping to the new geometry on release.
-      final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+      final isLiveTransform =
+          _lassoCtrl.phase == LassoPhase.moving ||
           _lassoCtrl.phase == LassoPhase.rotating ||
           (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
       if (isLiveTransform && selected) {
         final off = Offset(b.x, b.y);
-        final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+        final tm =
+            Matrix4.translationValues(-off.dx, -off.dy, 0) *
             _lassoCtrl.liveGestureMatrix() *
             Matrix4.translationValues(off.dx, off.dy, 0);
         overlay = Transform(transform: tm, child: overlay);
@@ -1565,7 +1688,8 @@ class _WhiteboardEditorScreenState
   }
 
   List<Widget> _buildTextBlockOverlays() {
-    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+    final gesture =
+        _lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
         _lassoCtrl.phase == LassoPhase.rotating;
     final out = <Widget>[];
@@ -1590,8 +1714,12 @@ class _WhiteboardEditorScreenState
           onHeightMeasured: (h) {
             if (!mounted) return;
             setState(() => b.h = h);
-            _lassoCtrl.refreshBoundingBox(_data.strokes, _data.images,
-                _data.taskBlocks, _data.textBlocks);
+            _lassoCtrl.refreshBoundingBox(
+              _data.strokes,
+              _data.images,
+              _data.taskBlocks,
+              _data.textBlocks,
+            );
             _persist();
           },
           onDragStart: () => _gestureBefore = _snapshot(),
@@ -1601,12 +1729,14 @@ class _WhiteboardEditorScreenState
           },
         ),
       );
-      final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+      final isLiveTransform =
+          _lassoCtrl.phase == LassoPhase.moving ||
           _lassoCtrl.phase == LassoPhase.rotating ||
           (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
       if (isLiveTransform && selected) {
         final off = Offset(b.x, b.y);
-        final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+        final tm =
+            Matrix4.translationValues(-off.dx, -off.dy, 0) *
             _lassoCtrl.liveGestureMatrix() *
             Matrix4.translationValues(off.dx, off.dy, 0);
         overlay = Transform(transform: tm, child: overlay);
@@ -1618,8 +1748,10 @@ class _WhiteboardEditorScreenState
 
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop =
-        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    final screenTop = MatrixUtils.transformPoint(
+      _viewCtrl.value,
+      Offset(bb.center.dx, bb.top),
+    );
     // Anchor the toolbar's BOTTOM a fixed screen gap above the selection top
     // (clearing the rotation handle), growing upward. A world-space offset
     // shrank on screen when zoomed out and the toolbar then covered the top
@@ -1634,18 +1766,21 @@ class _WhiteboardEditorScreenState
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
         // Mathpix math OCR is debug-only for now (too costly for current scope).
-        onSendMathToYuli: (kDebugMode && _selectionHasWriting)
-            ? _sendMathSelectionToYuli
-            : null,
+        onSendMathToYuli:
+            (kDebugMode && _selectionHasWriting)
+                ? _sendMathSelectionToYuli
+                : null,
         palette: _palette,
-        onColorChange: (c) => _lassoMutate(
-            () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32())),
-        onWidthChange: (w) =>
-            _lassoMutate(() => _lassoCtrl.changeWidth(_data.strokes, w)),
-        onFlipH: () =>
-            _lassoMutate(() => _lassoCtrl.flipHorizontal(_data.strokes)),
-        onFlipV: () =>
-            _lassoMutate(() => _lassoCtrl.flipVertical(_data.strokes)),
+        onColorChange:
+            (c) => _lassoMutate(
+              () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32()),
+            ),
+        onWidthChange:
+            (w) => _lassoMutate(() => _lassoCtrl.changeWidth(_data.strokes, w)),
+        onFlipH:
+            () => _lassoMutate(() => _lassoCtrl.flipHorizontal(_data.strokes)),
+        onFlipV:
+            () => _lassoMutate(() => _lassoCtrl.flipVertical(_data.strokes)),
         onCopy: () {
           _lassoCtrl.copySelected(_data.strokes, _data.images);
           HapticFeedback.lightImpact();
@@ -1657,8 +1792,13 @@ class _WhiteboardEditorScreenState
           );
         },
         onCut: () {
-          _lassoMutate(() => _lassoCtrl.cutSelected(
-              _data.strokes, _data.images, _data.taskBlocks));
+          _lassoMutate(
+            () => _lassoCtrl.cutSelected(
+              _data.strokes,
+              _data.images,
+              _data.taskBlocks,
+            ),
+          );
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1672,15 +1812,24 @@ class _WhiteboardEditorScreenState
   }
 
   Widget _buildPasteButton() {
-    final screenPos = MatrixUtils.transformPoint(_viewCtrl.value, _showPasteAt!);
+    final screenPos = MatrixUtils.transformPoint(
+      _viewCtrl.value,
+      _showPasteAt!,
+    );
     return Positioned(
       left: screenPos.dx - 40,
       top: screenPos.dy - 40,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          _lassoMutate(() => _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes,
-              _data.images, 0));
+          _lassoMutate(
+            () => _lassoCtrl.pasteAt(
+              _showPasteAt!,
+              _data.strokes,
+              _data.images,
+              0,
+            ),
+          );
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -1688,12 +1837,19 @@ class _WhiteboardEditorScreenState
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: yCream,
-            border: Border.all(color: yInk, width: yLineMid),
-            boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+            boxShadow: const [
+              BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+            ],
           ),
           child: Text(
             'PEGAR',
-            style: yMono(size: 11, weight: FontWeight.w700, tracking: 1.4, color: yInk),
+            style: yMono(
+              size: 11,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yInk,
+            ),
           ),
         ),
       ),
@@ -1702,23 +1858,42 @@ class _WhiteboardEditorScreenState
 
   // ─── Undo / redo (snapshot history) ─────────────────────────────────────
 
-  (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>)
-      _snapshot() => (
-            _data.strokes.map((s) => s.clone()).toList(),
-            _data.images.map((im) => im.clone()).toList(),
-            _data.taskBlocks.map((b) => b.clone()).toList(),
-            _data.textBlocks.map((b) => b.clone()).toList(),
-          );
+  (
+    List<DrawingStroke>,
+    List<CanvasImage>,
+    List<CanvasTaskBlock>,
+    List<CanvasTextBlock>,
+  )
+  _snapshot() => (
+    _data.strokes.map((s) => s.clone()).toList(),
+    _data.images.map((im) => im.clone()).toList(),
+    _data.taskBlocks.map((b) => b.clone()).toList(),
+    _data.textBlocks.map((b) => b.clone()).toList(),
+  );
 
   void _commit(
-      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>) before) {
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+    before,
+  ) {
     _undoStack.add(before);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
   void _restore(
-      (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>, List<CanvasTextBlock>) snap) {
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+    snap,
+  ) {
     _data.strokes = snap.$1;
     _data.images = snap.$2;
     _data.taskBlocks = snap.$3;
@@ -1773,21 +1948,28 @@ class _WhiteboardEditorScreenState
     if (_data.strokes.isEmpty) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Borrar pizarra',
-            style: ySans(size: 18, weight: FontWeight.w700)),
-        content: Text('¿Borrar todos los trazos?', style: yBody(size: 13)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Borrar')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Borrar pizarra',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: Text('¿Borrar todos los trazos?', style: yBody(size: 13)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Borrar'),
+              ),
+            ],
+          ),
     );
     if (ok == true) {
       final before = _snapshot();
@@ -1807,7 +1989,10 @@ class _WhiteboardEditorScreenState
     final cy = box?.center.dy ?? _kCanvasH / 2;
     setState(() {
       _viewCtrl.value = Matrix4.translationValues(
-          _viewport.width / 2 - cx, _viewport.height / 2 - cy, 0);
+        _viewport.width / 2 - cx,
+        _viewport.height / 2 - cy,
+        0,
+      );
     });
   }
 
@@ -1861,15 +2046,19 @@ class _WhiteboardEditorScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _viewCtrl.value = Matrix4.translationValues(
-          _viewport.width / 2 - cx, _viewport.height / 2 - cy, 0);
+        _viewport.width / 2 - cx,
+        _viewport.height / 2 - cy,
+        0,
+      );
     });
   }
 
   void _zoomToFit() {
-    final box = (_lassoCtrl.phase == LassoPhase.selected &&
-            _lassoCtrl.boundingBox != null)
-        ? _lassoCtrl.boundingBox!
-        : _contentBounds();
+    final box =
+        (_lassoCtrl.phase == LassoPhase.selected &&
+                _lassoCtrl.boundingBox != null)
+            ? _lassoCtrl.boundingBox!
+            : _contentBounds();
     if (box == null || box.width < 1 || box.height < 1) return;
     final vw = _viewport.width, vh = _viewport.height;
     if (vw < 1 || vh < 1) return;
@@ -1880,18 +2069,21 @@ class _WhiteboardEditorScreenState
     final s = scale.clamp(0.3, 4.0);
     final c = box.center;
     setState(() {
-      _viewCtrl.value = Matrix4.translationValues(vw / 2, vh / 2, 0)
-        ..multiply(Matrix4.diagonal3Values(s, s, 1))
-        ..multiply(Matrix4.translationValues(-c.dx, -c.dy, 0));
+      _viewCtrl.value =
+          Matrix4.translationValues(vw / 2, vh / 2, 0)
+            ..multiply(Matrix4.diagonal3Values(s, s, 1))
+            ..multiply(Matrix4.translationValues(-c.dx, -c.dy, 0));
     });
   }
 
   Future<void> _linkToLab(List<LabSpace> spaces) async {
     if (spaces.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('No hay spaces activos'),
-        duration: Duration(seconds: 2),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay spaces activos'),
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
     final picked = await showDialog<LabSpace>(
@@ -1903,10 +2095,12 @@ class _WhiteboardEditorScreenState
     final existing = await kanbanRepo.watchBySourceNoteId(widget.note.id).first;
     if (existing.any((c) => c.labSpaceId == picked.id)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Ya vinculada a ${picked.name}'),
-          duration: const Duration(seconds: 2),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ya vinculada a ${picked.name}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
       return;
     }
@@ -1915,12 +2109,16 @@ class _WhiteboardEditorScreenState
     if (columns.isEmpty) return;
     final backlog = columns.firstWhere(
       (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
-      orElse: () => columns.firstWhere((c) => !c.isTerminal && !c.isExpired,
-          orElse: () => columns.first),
+      orElse:
+          () => columns.firstWhere(
+            (c) => !c.isTerminal && !c.isExpired,
+            orElse: () => columns.first,
+          ),
     );
-    final title = (widget.note.title?.trim().isNotEmpty == true)
-        ? widget.note.title!
-        : 'Pizarra ${widget.folder.name}';
+    final title =
+        (widget.note.title?.trim().isNotEmpty == true)
+            ? widget.note.title!
+            : 'Pizarra ${widget.folder.name}';
     await kanbanRepo.create(
       labSpaceId: picked.id,
       columnId: backlog.id,
@@ -1928,10 +2126,12 @@ class _WhiteboardEditorScreenState
       sourceNoteId: widget.note.id,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Pizarra vinculada a ${picked.name}'),
-      duration: const Duration(seconds: 2),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Pizarra vinculada a ${picked.name}'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Color get _accent => widget.note.color ?? widget.folder.color;
@@ -1945,10 +2145,11 @@ class _WhiteboardEditorScreenState
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
-    final aiLinked = (ref
-                .watch(canvasContextSourcesProvider(widget.note.id))
-                .valueOrNull
-                ?.isNotEmpty) ??
+    final aiLinked =
+        (ref
+            .watch(canvasContextSourcesProvider(widget.note.id))
+            .valueOrNull
+            ?.isNotEmpty) ??
         false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
@@ -1958,257 +2159,334 @@ class _WhiteboardEditorScreenState
       body: Stack(
         children: [
           Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_headerCollapsed)
-            SafeArea(
-              child: _CollapsedWhiteboardHeader(
-                folder: widget.folder,
-                spaces: spaces,
-                accent: _accent,
-                hasAiKey: hasAiKey,
-                aiLinked: aiLinked,
-                onExpand: () => setState(() => _headerCollapsed = false),
-                onReset: _resetView,
-                onLink: () => _linkToLab(spaces),
-                onAi: () => showAiChat(context, ref,
-                    noteId: widget.note.id,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_headerCollapsed)
+                SafeArea(
+                  child: _CollapsedWhiteboardHeader(
+                    folder: widget.folder,
+                    spaces: spaces,
                     accent: _accent,
-                    onSendToCanvas: _insertTextBlock),
-              ),
-            )
-          else ...[
-            SafeArea(
-              child: Column(
-                children: [
-                  ModeHeader(
-                    mode: 'PIZARRA',
-                    subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
-                    color: _accent,
-                    onBack: () => Navigator.pop(context),
-                    headerRight: [
-                      YBadge(
-                        label: '@${widget.folder.name}',
-                        bg: widget.folder.color,
-                        fg: yCream,
-                      ),
-                      _BrutalBtn(
-                        icon: Icons.center_focus_strong,
-                        onTap: _resetView,
-                      ),
-                      _BrutalBtn(
-                        icon: Icons.all_inclusive,
-                        color: yLab,
-                        onTap: () => _linkToLab(spaces),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: hasAiKey
-                            ? () => showAiChat(context, ref,
-                                noteId: widget.note.id,
-                                accent: _accent,
-                                onSendToCanvas: _insertTextBlock)
-                            : null,
-                        child: AiLinkBadge(
-                          active: aiLinked,
-                          color: _accent,
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: hasAiKey ? _accent : yMuted,
-                              border: Border.all(color: yInk, width: yLineMid),
-                            ),
-                            child: Icon(Icons.auto_awesome,
-                                color: hasAiKey ? yCream : yCream2, size: 18),
-                          ),
+                    hasAiKey: hasAiKey,
+                    aiLinked: aiLinked,
+                    onExpand: () => setState(() => _headerCollapsed = false),
+                    onReset: _resetView,
+                    onLink: () => _linkToLab(spaces),
+                    onAi:
+                        () => showAiChat(
+                          context,
+                          ref,
+                          noteId: widget.note.id,
+                          accent: _accent,
+                          onSendToCanvas: _insertTextBlock,
                         ),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => setState(() => _headerCollapsed = true),
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: yCream,
-                            border: Border.all(color: yInk, width: yLineMid),
-                          ),
-                          child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
-                        ),
-                      ),
-                    ],
                   ),
-                  if (linkedSpaces.isNotEmpty) _LinkedSpacesBar(spaces: linkedSpaces),
-                ],
-              ),
-            ),
-          ],
-          Expanded(
-              child: LayoutBuilder(builder: (ctx, c) {
-                _viewport = Size(c.maxWidth, c.maxHeight);
-                _maybeInitView();
-                return AnimatedBuilder(
-                  animation: _viewCtrl,
-                  builder: (_, _) {
-                    final inv = Matrix4.inverted(_viewCtrl.value);
-                    final tl = MatrixUtils.transformPoint(inv, Offset.zero);
-                    final br = MatrixUtils.transformPoint(
-                        inv, Offset(c.maxWidth, c.maxHeight));
-                    final visibleRect = Rect.fromPoints(tl, br);
-                    // Keep handle hit/draw sizes correct even if the user zooms
-                    // while a selection is active.
-                    _lassoCtrl.hitScale = _viewScale;
-                    return Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        ClipRect(
-                          child: GestureDetector(
-                            onTapUp: _onLassoTap,
-                            child: Listener(
+                )
+              else ...[
+                SafeArea(
+                  child: Column(
+                    children: [
+                      ModeHeader(
+                        mode: 'PIZARRA',
+                        subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
+                        color: _accent,
+                        onBack: () => Navigator.pop(context),
+                        headerRight: [
+                          YBadge(
+                            label: '@${widget.folder.name}',
+                            bg: widget.folder.color,
+                            fg: yCream,
+                          ),
+                          _BrutalBtn(
+                            icon: Icons.center_focus_strong,
+                            onTap: _resetView,
+                          ),
+                          _BrutalBtn(
+                            icon: Icons.all_inclusive,
+                            color: yLab,
+                            onTap: () => _linkToLab(spaces),
+                          ),
+                          GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onPointerDown: _onDown,
-                            onPointerMove: _onMove,
-                            onPointerUp: _onUp,
-                            onPointerCancel: _onCancel,
-                            child: InteractiveViewer(
-                              transformationController: _viewCtrl,
-                              minScale: 0.3,
-                              maxScale: 4.0,
-                              boundaryMargin: const EdgeInsets.all(_kCanvasW * 0.5),
-                              // Text mode: 1-finger drag is reserved for moving
-                              // a box (its GestureDetector), so disable pan;
-                              // 2-finger still zooms/navigates.
-                              panEnabled: _tool == DrawTool.text
-                                  ? false
-                                  : _tool == DrawTool.lasso
-                                      ? (_lassoCtrl.phase == LassoPhase.idle && !_isDrawing)
-                                      : _palmRejection
-                                          ? !_stylusActive
-                                          : !_isDrawing,
-                              scaleEnabled: _tool == DrawTool.text
-                                  ? true
-                                  : _tool == DrawTool.lasso
-                                      ? (_lassoCtrl.phase == LassoPhase.idle && !_isDrawing)
-                                      : !_stylusActive && !_locked,
-                              constrained: false,
-                              child: SizedBox(
-                                width: _kCanvasW,
-                                height: _kCanvasH,
-                                child: Stack(
-                                  children: [
-                                    // Paper + pattern + images (no strokes).
-                                    RepaintBoundary(
-                                      child: CustomPaint(
-                                        painter: _CanvasPainter(
-                                          strokes: _data.strokes,
-                                          images: _data.images,
-                                          imageCache: _imgCache,
-                                          background: _data.background,
-                                          paper: bgPaper(_data.bgColorValue, yCream),
-                                          visibleRect: visibleRect,
-                                          hiddenImageIndices: (_lassoCtrl.phase == LassoPhase.moving ||
-                                                  _lassoCtrl.phase == LassoPhase.resizing ||
-                                                  _lassoCtrl.phase == LassoPhase.rotating)
-                                              ? _lassoCtrl.selectedImageIndices
-                                              : null,
-                                          drawStrokes: false,
-                                        ),
-                                        size: const Size(_kCanvasW, _kCanvasH),
-                                      ),
-                                    ),
-                                    // Text blocks sit BELOW the ink so strokes
-                                    // drawn over them stay visible.
-                                    ..._buildTextBlockOverlays(),
-                                    // Strokes — painted above the text blocks.
-                                    // IgnorePointer so taps still reach the boxes.
-                                    IgnorePointer(
-                                      child: RepaintBoundary(
-                                        child: CustomPaint(
-                                          painter: _CanvasPainter(
-                                            strokes: _data.strokes,
-                                            images: _data.images,
-                                            imageCache: _imgCache,
-                                            background: _data.background,
-                                            paper: bgPaper(_data.bgColorValue, yCream),
-                                            visibleRect: visibleRect,
-                                            hiddenIndices: (_lassoCtrl.phase == LassoPhase.moving ||
-                                                    _lassoCtrl.phase == LassoPhase.resizing ||
-                                                    _lassoCtrl.phase == LassoPhase.rotating)
-                                                ? _lassoCtrl.selectedIndices
-                                                : null,
-                                            drawBackground: false,
-                                          ),
-                                          size: const Size(_kCanvasW, _kCanvasH),
-                                        ),
-                                      ),
-                                    ),
-                                    IgnorePointer(
-                                      child: RepaintBoundary(
-                                        child: AnimatedBuilder(
-                                          animation: _activeTick,
-                                          builder: (_, _) => CustomPaint(
-                                            painter: _ActiveStrokePainter(
-                                                active: _active),
-                                            size: const Size(_kCanvasW, _kCanvasH),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    // Task blocks above the ink (interactive UI).
-                                    ..._buildTaskBlockOverlays(),
-                                    if (_lassoCtrl.phase != LassoPhase.idle)
-                                      AnimatedBuilder(
-                                        animation: _lassoAnimCtrl,
-                                        builder: (_, _) => CustomPaint(
-                                          painter: LassoPainter(
-                                            ctrl: _lassoCtrl,
-                                            animValue: _lassoAnimCtrl.value,
-                                            strokes: _data.strokes,
-                                            images: _data.images,
-                                            imageCache: _imgCache,
-                                            visibleRect: visibleRect,
-                                          ),
-                                          size: const Size(_kCanvasW, _kCanvasH),
-                                        ),
-                                      ),
-                                  ],
+                            onTap:
+                                hasAiKey
+                                    ? () => showAiChat(
+                                      context,
+                                      ref,
+                                      noteId: widget.note.id,
+                                      accent: _accent,
+                                      onSendToCanvas: _insertTextBlock,
+                                    )
+                                    : null,
+                            child: AiLinkBadge(
+                              active: aiLinked,
+                              color: _accent,
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: hasAiKey ? _accent : yMuted,
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: yLineMid,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.auto_awesome,
+                                  color: hasAiKey ? yCream : yCream2,
+                                  size: 18,
                                 ),
                               ),
                             ),
                           ),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap:
+                                () => setState(() => _headerCollapsed = true),
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: yCream,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.keyboard_arrow_up,
+                                color: yInk,
+                                size: 18,
+                              ),
+                            ),
                           ),
-                        ),
-                        if (_lassoCtrl.phase == LassoPhase.selected &&
-                            _toolbarVisible)
-                          _buildLassoMiniToolbar(),
-                        if (_showPasteAt != null)
-                          _buildPasteButton(),
-                        if (_tool == DrawTool.eraser && _eraserCursor != null)
-                          Positioned(
-                            left: _eraserCursor!.dx - _eraserScreenRadius,
-                            top: _eraserCursor!.dy - _eraserScreenRadius,
-                            child: const EraserCursor(radius: _eraserScreenRadius),
-                          ),
-                      ],
+                        ],
+                      ),
+                      if (linkedSpaces.isNotEmpty)
+                        _LinkedSpacesBar(spaces: linkedSpaces),
+                    ],
+                  ),
+                ),
+              ],
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (ctx, c) {
+                    _viewport = Size(c.maxWidth, c.maxHeight);
+                    _maybeInitView();
+                    return AnimatedBuilder(
+                      animation: _viewCtrl,
+                      builder: (_, _) {
+                        final inv = Matrix4.inverted(_viewCtrl.value);
+                        final tl = MatrixUtils.transformPoint(inv, Offset.zero);
+                        final br = MatrixUtils.transformPoint(
+                          inv,
+                          Offset(c.maxWidth, c.maxHeight),
+                        );
+                        final visibleRect = Rect.fromPoints(tl, br);
+                        // Keep handle hit/draw sizes correct even if the user zooms
+                        // while a selection is active.
+                        _lassoCtrl.hitScale = _viewScale;
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ClipRect(
+                              child: GestureDetector(
+                                onTapUp: _onLassoTap,
+                                child: Listener(
+                                  behavior: HitTestBehavior.opaque,
+                                  onPointerDown: _onDown,
+                                  onPointerMove: _onMove,
+                                  onPointerUp: _onUp,
+                                  onPointerCancel: _onCancel,
+                                  child: InteractiveViewer(
+                                    transformationController: _viewCtrl,
+                                    minScale: 0.3,
+                                    maxScale: 4.0,
+                                    boundaryMargin: const EdgeInsets.all(
+                                      _kCanvasW * 0.5,
+                                    ),
+                                    // Text mode: 1-finger drag is reserved for moving
+                                    // a box (its GestureDetector), so disable pan;
+                                    // 2-finger still zooms/navigates.
+                                    panEnabled:
+                                        _tool == DrawTool.text
+                                            ? false
+                                            : _tool == DrawTool.lasso
+                                            ? (_lassoCtrl.phase ==
+                                                    LassoPhase.idle &&
+                                                !_isDrawing)
+                                            : _palmRejection
+                                            ? !_stylusActive
+                                            : !_isDrawing,
+                                    scaleEnabled:
+                                        _tool == DrawTool.text
+                                            ? true
+                                            : _tool == DrawTool.lasso
+                                            ? (_lassoCtrl.phase ==
+                                                    LassoPhase.idle &&
+                                                !_isDrawing)
+                                            : !_stylusActive && !_locked,
+                                    constrained: false,
+                                    child: SizedBox(
+                                      width: _kCanvasW,
+                                      height: _kCanvasH,
+                                      child: Stack(
+                                        children: [
+                                          // Paper + pattern + images (no strokes).
+                                          RepaintBoundary(
+                                            child: CustomPaint(
+                                              painter: _CanvasPainter(
+                                                strokes: _data.strokes,
+                                                images: _data.images,
+                                                imageCache: _imgCache,
+                                                background: _data.background,
+                                                paper: bgPaper(
+                                                  _data.bgColorValue,
+                                                  yCream,
+                                                ),
+                                                visibleRect: visibleRect,
+                                                hiddenImageIndices:
+                                                    (_lassoCtrl.phase ==
+                                                                LassoPhase
+                                                                    .moving ||
+                                                            _lassoCtrl.phase ==
+                                                                LassoPhase
+                                                                    .resizing ||
+                                                            _lassoCtrl.phase ==
+                                                                LassoPhase
+                                                                    .rotating)
+                                                        ? _lassoCtrl
+                                                            .selectedImageIndices
+                                                        : null,
+                                                drawStrokes: false,
+                                              ),
+                                              size: const Size(
+                                                _kCanvasW,
+                                                _kCanvasH,
+                                              ),
+                                            ),
+                                          ),
+                                          // Text blocks sit BELOW the ink so strokes
+                                          // drawn over them stay visible.
+                                          ..._buildTextBlockOverlays(),
+                                          // Strokes — painted above the text blocks.
+                                          // IgnorePointer so taps still reach the boxes.
+                                          IgnorePointer(
+                                            child: RepaintBoundary(
+                                              child: CustomPaint(
+                                                painter: _CanvasPainter(
+                                                  strokes: _data.strokes,
+                                                  images: _data.images,
+                                                  imageCache: _imgCache,
+                                                  background: _data.background,
+                                                  paper: bgPaper(
+                                                    _data.bgColorValue,
+                                                    yCream,
+                                                  ),
+                                                  visibleRect: visibleRect,
+                                                  hiddenIndices:
+                                                      (_lassoCtrl.phase ==
+                                                                  LassoPhase
+                                                                      .moving ||
+                                                              _lassoCtrl
+                                                                      .phase ==
+                                                                  LassoPhase
+                                                                      .resizing ||
+                                                              _lassoCtrl
+                                                                      .phase ==
+                                                                  LassoPhase
+                                                                      .rotating)
+                                                          ? _lassoCtrl
+                                                              .selectedIndices
+                                                          : null,
+                                                  drawBackground: false,
+                                                ),
+                                                size: const Size(
+                                                  _kCanvasW,
+                                                  _kCanvasH,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          IgnorePointer(
+                                            child: RepaintBoundary(
+                                              child: AnimatedBuilder(
+                                                animation: _activeTick,
+                                                builder:
+                                                    (_, _) => CustomPaint(
+                                                      painter:
+                                                          _ActiveStrokePainter(
+                                                            active: _active,
+                                                          ),
+                                                      size: const Size(
+                                                        _kCanvasW,
+                                                        _kCanvasH,
+                                                      ),
+                                                    ),
+                                              ),
+                                            ),
+                                          ),
+                                          // Task blocks above the ink (interactive UI).
+                                          ..._buildTaskBlockOverlays(),
+                                          if (_lassoCtrl.phase !=
+                                              LassoPhase.idle)
+                                            AnimatedBuilder(
+                                              animation: _lassoAnimCtrl,
+                                              builder:
+                                                  (_, _) => CustomPaint(
+                                                    painter: LassoPainter(
+                                                      ctrl: _lassoCtrl,
+                                                      animValue:
+                                                          _lassoAnimCtrl.value,
+                                                      strokes: _data.strokes,
+                                                      images: _data.images,
+                                                      imageCache: _imgCache,
+                                                      visibleRect: visibleRect,
+                                                    ),
+                                                    size: const Size(
+                                                      _kCanvasW,
+                                                      _kCanvasH,
+                                                    ),
+                                                  ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_lassoCtrl.phase == LassoPhase.selected &&
+                                _toolbarVisible)
+                              _buildLassoMiniToolbar(),
+                            if (_showPasteAt != null) _buildPasteButton(),
+                            if (_tool == DrawTool.eraser &&
+                                _eraserCursor != null)
+                              Positioned(
+                                left: _eraserCursor!.dx - _eraserScreenRadius,
+                                top: _eraserCursor!.dy - _eraserScreenRadius,
+                                child: const EraserCursor(
+                                  radius: _eraserScreenRadius,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     );
                   },
-                );
-              }),
-            ),
-            _toolbar(),
-          ],
-        ),
+                ),
+              ),
+              _toolbar(),
+            ],
+          ),
           if (_eyedropperMode)
             Positioned(
               left: 12,
               right: 12,
               top: 12,
-              child: Center(
-                child: _EyedropperHint(onCancel: _exitEyedropper),
-              ),
+              child: Center(child: _EyedropperHint(onCancel: _exitEyedropper)),
             ),
           if (_imagePanelOpen) ...[
             Positioned.fill(
@@ -2255,10 +2533,11 @@ class _WhiteboardEditorScreenState
                   accent: _accent,
                   onPattern: _setBgPattern,
                   onColor: _setBgColor,
-                  onMoreColors: () => setState(() {
-                    _bgColorPickerOpen = true;
-                    _bgPopupOpen = false;
-                  }),
+                  onMoreColors:
+                      () => setState(() {
+                        _bgColorPickerOpen = true;
+                        _bgPopupOpen = false;
+                      }),
                   onScope: (_) {},
                   onClose: _toggleBgPopup,
                 ),
@@ -2284,15 +2563,16 @@ class _WhiteboardEditorScreenState
                   savedColors: _bgSavedColors,
                   quickColors: _bgSavedColors,
                   quickLabel: 'FAVORITOS',
-                  onPreview: (c) =>
-                      setState(() => _data.bgColorValue = c.toARGB32()),
+                  onPreview:
+                      (c) => setState(() => _data.bgColorValue = c.toARGB32()),
                   onCommit: _setBgColor,
                   onStar: _starBgColor,
                   onEyedropper: () {},
-                  onClose: () => setState(() {
-                    _bgColorPickerOpen = false;
-                    _bgPopupOpen = true;
-                  }),
+                  onClose:
+                      () => setState(() {
+                        _bgColorPickerOpen = false;
+                        _bgPopupOpen = true;
+                      }),
                 ),
               ),
             ),
@@ -2407,7 +2687,7 @@ class _WhiteboardEditorScreenState
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -2437,9 +2717,10 @@ class _WhiteboardEditorScreenState
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: _eraserMode == EraserMode.partial
-                    ? Icons.cleaning_services_outlined
-                    : Icons.auto_fix_high,
+                icon:
+                    _eraserMode == EraserMode.partial
+                        ? Icons.cleaning_services_outlined
+                        : Icons.auto_fix_high,
                 active: _tool == DrawTool.eraser,
                 tooltip: 'Borrador',
                 onTap: () {
@@ -2541,11 +2822,11 @@ class _WhiteboardEditorScreenState
   }
 
   Widget _divider() => Container(
-        width: 1,
-        height: 22,
-        margin: const EdgeInsets.symmetric(horizontal: 10),
-        color: yInk.withValues(alpha: 0.2),
-      );
+    width: 1,
+    height: 22,
+    margin: const EdgeInsets.symmetric(horizontal: 10),
+    color: yInk.withValues(alpha: 0.2),
+  );
 
   Widget _toolBtn({
     required IconData icon,
@@ -2565,7 +2846,7 @@ class _WhiteboardEditorScreenState
         decoration: BoxDecoration(
           color: active ? _accent : yCream,
           border: Border.all(
-            color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
+            color: enabled ? yBorderStrong : yMuted.withValues(alpha: 0.4),
             width: yLineThin,
           ),
         ),
@@ -2575,21 +2856,24 @@ class _WhiteboardEditorScreenState
             Icon(
               icon,
               size: 15,
-              color: active
-                  ? yCream
-                  : enabled
+              color:
+                  active
+                      ? yCream
+                      : enabled
                       ? yInk
                       : yMuted.withValues(alpha: 0.4),
             ),
             if (label != null) ...[
               const SizedBox(width: 5),
-              Text(label,
-                  style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.2,
-                    color: active ? yCream : yInk,
-                  )),
+              Text(
+                label,
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: active ? yCream : yInk,
+                ),
+              ),
             ],
           ],
         ),
@@ -2611,8 +2895,10 @@ class _WhiteboardEditorScreenState
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       padding: const EdgeInsets.all(10),
       child: Wrap(
@@ -2683,7 +2969,6 @@ class _WhiteboardEditorScreenState
       ),
     );
   }
-
 }
 
 class _EyedropperHint extends StatelessWidget {
@@ -2696,8 +2981,10 @@ class _EyedropperHint extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2721,7 +3008,7 @@ class _EyedropperHint extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
                 color: yInk,
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
               child: Text(
                 'CANCELAR',
@@ -2768,7 +3055,9 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
@@ -2782,7 +3071,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(Icons.arrow_back, color: yInk, size: 16),
             ),
@@ -2793,7 +3082,13 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
           Expanded(
             child: Text(
               'PIZARRA · @${folder.name}',
-              style: ySans(size: 15, weight: FontWeight.w700, letterSpacing: -0.3, color: accent, height: 1.0),
+              style: ySans(
+                size: 15,
+                weight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: accent,
+                height: 1.0,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -2808,9 +3103,13 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.center_focus_strong, color: yInk, size: 16),
+              child: const Icon(
+                Icons.center_focus_strong,
+                color: yInk,
+                size: 16,
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -2823,7 +3122,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yLab,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(Icons.all_inclusive, color: yCream, size: 16),
             ),
@@ -2841,10 +3140,13 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: hasAiKey ? accent : yMuted,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
-                child: Icon(Icons.auto_awesome,
-                    color: hasAiKey ? yCream : yCream2, size: 16),
+                child: Icon(
+                  Icons.auto_awesome,
+                  color: hasAiKey ? yCream : yCream2,
+                  size: 16,
+                ),
               ),
             ),
           ),
@@ -2858,9 +3160,13 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.keyboard_arrow_down, color: yInk, size: 18),
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: yInk,
+                size: 18,
+              ),
             ),
           ),
         ],
@@ -2970,18 +3276,22 @@ class _LinkedSpacesBar extends ConsumerWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineThin),
+        ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Row(
         children: [
-          Text('VINCULADA A',
-              style: yMono(
-                size: 9,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: yMuted,
-              )),
+          Text(
+            'VINCULADA A',
+            style: yMono(
+              size: 9,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yMuted,
+            ),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: SingleChildScrollView(
@@ -2993,27 +3303,30 @@ class _LinkedSpacesBar extends ConsumerWidget {
                       behavior: HitTestBehavior.opaque,
                       onTap: () {
                         Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: s)),
+                          MaterialPageRoute(
+                            builder: (_) => LabSpaceDetailScreen(space: s),
+                          ),
                           (route) => route.isFirst,
                         );
                       },
                       child: Container(
-                        padding:
-                            const EdgeInsets.fromLTRB(8, 3, 8, 4),
+                        padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
                         decoration: BoxDecoration(
                           color: s.accentColor,
-                          border: Border.all(color: yInk, width: 1.5),
+                          border: Border.all(color: yBorderStrong, width: 1.5),
                         ),
-                        child: Text('→ ${s.name.toUpperCase()}',
-                            style: yMono(
-                              size: 9,
-                              weight: FontWeight.w700,
-                              tracking: 1.2,
-                              color: yCream,
-                            )),
+                        child: Text(
+                          '→ ${s.name.toUpperCase()}',
+                          style: yMono(
+                            size: 9,
+                            weight: FontWeight.w700,
+                            tracking: 1.2,
+                            color: yCream,
+                          ),
+                        ),
                       ),
                     ),
-                const SizedBox(width: 2),
+                    const SizedBox(width: 2),
                   ],
                 ],
               ),
@@ -3037,27 +3350,27 @@ class _SpacePickerDialog extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Vincular pizarra a LAB',
-                style: ySans(
-                  size: 20,
-                  weight: FontWeight.w700,
-                  color: yInk,
-                )),
+            Text(
+              'Vincular pizarra a LAB',
+              style: ySans(size: 20, weight: FontWeight.w700, color: yInk),
+            ),
             const SizedBox(height: 4),
-            Text('Aparecerá como tarjeta en el kanban del space.',
-                style: yMono(
-                  size: 10,
-                  weight: FontWeight.w500,
-                  tracking: 1.2,
-                  color: yMuted,
-                )),
+            Text(
+              'Aparecerá como tarjeta en el kanban del space.',
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w500,
+                tracking: 1.2,
+                color: yMuted,
+              ),
+            ),
             const SizedBox(height: 14),
             for (final s in spaces)
               GestureDetector(
@@ -3070,13 +3383,15 @@ class _SpacePickerDialog extends StatelessWidget {
                       Container(width: 12, height: 12, color: s.accentColor),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(s.name,
-                            style: ySans(size: 16, color: yInk)),
+                        child: Text(
+                          s.name,
+                          style: ySans(size: 16, color: yInk),
+                        ),
                       ),
                     ],
                   ),
                 ),
-            ),
+              ),
           ],
         ),
       ),
@@ -3088,7 +3403,11 @@ class _BrutalBtn extends StatelessWidget {
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
-  const _BrutalBtn({required this.icon, this.color = yCream, required this.onTap});
+  const _BrutalBtn({
+    required this.icon,
+    this.color = yCream,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3101,7 +3420,7 @@ class _BrutalBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: color,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
           boxShadow: const [
             BoxShadow(
               color: inkBlack,

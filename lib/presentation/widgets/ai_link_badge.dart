@@ -72,7 +72,7 @@ class _AiLinkBadgeState extends State<AiLinkBadge> {
               height: 10,
               decoration: BoxDecoration(
                 color: widget.color,
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
             ),
           ),

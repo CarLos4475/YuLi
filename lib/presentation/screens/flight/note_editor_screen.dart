@@ -30,11 +30,7 @@ class NoteEditorScreen extends ConsumerStatefulWidget {
   final Note note;
   final Folder folder;
 
-  const NoteEditorScreen({
-    super.key,
-    required this.note,
-    required this.folder,
-  });
+  const NoteEditorScreen({super.key, required this.note, required this.folder});
 
   @override
   ConsumerState<NoteEditorScreen> createState() => _NoteEditorScreenState();
@@ -89,18 +85,22 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   /// Apply an AI-suggested title to the note's title field + persist.
   void _applyAiTitle(String title) {
     _titleCtrl.text = title;
-    _titleCtrl.selection =
-        TextSelection.collapsed(offset: _titleCtrl.text.length);
+    _titleCtrl.selection = TextSelection.collapsed(
+      offset: _titleCtrl.text.length,
+    );
     _saveTitle();
   }
 
   /// Open the AI chat for this note. The persisted anchor (if any) is loaded
   /// automatically by [AiChatSession]; no new context is injected here.
   void _openAiChat() {
-    showAiChat(context, ref,
-        noteId: widget.note.id,
-        accent: _accent,
-        onApplyTitle: _applyAiTitle);
+    showAiChat(
+      context,
+      ref,
+      noteId: widget.note.id,
+      accent: _accent,
+      onApplyTitle: _applyAiTitle,
+    );
   }
 
   /// Explicitly push the current note content as the AI context anchor.
@@ -122,18 +122,24 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       if (anchor != null &&
           anchor.isNotEmpty &&
           _normalise(anchor).contains(_normalise(ctx))) {
-        showAiChat(context, ref,
-            noteId: widget.note.id,
-            accent: _accent,
-            onApplyTitle: _applyAiTitle);
+        showAiChat(
+          context,
+          ref,
+          noteId: widget.note.id,
+          accent: _accent,
+          onApplyTitle: _applyAiTitle,
+        );
         return;
       }
     }
-    showAiChat(context, ref,
-        noteId: widget.note.id,
-        newContext: ctx,
-        accent: _accent,
-        onApplyTitle: _applyAiTitle);
+    showAiChat(
+      context,
+      ref,
+      noteId: widget.note.id,
+      newContext: ctx,
+      accent: _accent,
+      onApplyTitle: _applyAiTitle,
+    );
   }
 
   String _normalise(String s) =>
@@ -172,7 +178,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         payload = {'md': ''};
       case NoteBlockType.bullets:
         payload = {
-          'items': ['']
+          'items': [''],
         };
       case NoteBlockType.tareas:
         payload = {'taskIds': <int>[]};
@@ -184,25 +190,27 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         .insertAtEnd(widget.note.id, type, payload: payload);
   }
 
-  Future<void> _onReorder(List<NoteBlock> blocks, int oldIdx, int newIdx) async {
+  Future<void> _onReorder(
+    List<NoteBlock> blocks,
+    int oldIdx,
+    int newIdx,
+  ) async {
     final ids = blocks.map((b) => b.id).toList();
     final id = ids.removeAt(oldIdx);
     ids.insert(newIdx > oldIdx ? newIdx - 1 : newIdx, id);
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .reorder(widget.note.id, ids);
+    await ref.read(noteBlockRepositoryProvider).reorder(widget.note.id, ids);
   }
 
   Future<void> _exportPdf(List<NoteBlock> blocks) async {
     await exportNoteToPdf(
       context: context,
-      title: _titleCtrl.text.trim().isEmpty
-          ? 'Sin título'
-          : _titleCtrl.text.trim(),
+      title:
+          _titleCtrl.text.trim().isEmpty
+              ? 'Sin título'
+              : _titleCtrl.text.trim(),
       blocks: blocks,
     );
   }
-
 
   void _onTextBlockFocusChanged(TextEditingController? ctrl) {
     setState(() {
@@ -216,9 +224,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (ctrl == null) return;
     final cursor = ctrl.selection.baseOffset;
     final text = ctrl.text;
-    final newText = cursor >= 0
-        ? text.substring(0, cursor) + syntax + text.substring(cursor)
-        : text + syntax;
+    final newText =
+        cursor >= 0
+            ? text.substring(0, cursor) + syntax + text.substring(cursor)
+            : text + syntax;
     ctrl.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(
@@ -231,10 +240,11 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => BlockInsertMenu(
-        onDirectInsert: (syntax) => _insertSyntax(syntax),
-        onOpenPanel: (type) => setState(() => _activePanel = type),
-      ),
+      builder:
+          (_) => BlockInsertMenu(
+            onDirectInsert: (syntax) => _insertSyntax(syntax),
+            onOpenPanel: (type) => setState(() => _activePanel = type),
+          ),
     );
   }
 
@@ -243,34 +253,40 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.2,
-        maxChildSize: 0.9,
-        builder: (ctx, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: yCream,
-            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
-          ),
-          child: FightPanel(
-            folderId: widget.folder.id,
-            scrollController: scrollController,
-            onTapTask: (task) async {
-              _insertSyntax('\n- [ ] ${task.content}\n');
-              await setTaskDone(ref, task.id, done: true);
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Tarea insertada como checklist y completada'),
-                    duration: Duration(seconds: 2),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.5,
+            minChildSize: 0.2,
+            maxChildSize: 0.9,
+            builder:
+                (ctx, scrollController) => Container(
+                  decoration: const BoxDecoration(
+                    color: yCream,
+                    border: Border(
+                      top: BorderSide(color: yBorderStrong, width: yLineMid),
+                    ),
                   ),
-                );
-              }
-            },
+                  child: FightPanel(
+                    folderId: widget.folder.id,
+                    scrollController: scrollController,
+                    onTapTask: (task) async {
+                      _insertSyntax('\n- [ ] ${task.content}\n');
+                      await setTaskDone(ref, task.id, done: true);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Tarea insertada como checklist y completada',
+                            ),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
           ),
-        ),
-      ),
     );
   }
 
@@ -287,33 +303,47 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (columns.isEmpty) return;
     final backlog = columns.firstWhere(
       (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
-      orElse: () => columns.firstWhere((c) => !c.isTerminal && !c.isExpired,
-          orElse: () => columns.first),
+      orElse:
+          () => columns.firstWhere(
+            (c) => !c.isTerminal && !c.isExpired,
+            orElse: () => columns.first,
+          ),
     );
     await kanbanRepo.create(
       labSpaceId: picked.id,
       columnId: backlog.id,
-      title: _titleCtrl.text.trim().isEmpty
-          ? 'Nota sin título'
-          : _titleCtrl.text.trim(),
+      title:
+          _titleCtrl.text.trim().isEmpty
+              ? 'Nota sin título'
+              : _titleCtrl.text.trim(),
       sourceNoteId: widget.note.id,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Vinculada a ${picked.name}'),
-      duration: const Duration(seconds: 2),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Vinculada a ${picked.name}'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final blocks = ref.watch(noteBlocksProvider(widget.note.id)).valueOrNull ?? [];
+    final blocks =
+        ref.watch(noteBlocksProvider(widget.note.id)).valueOrNull ?? [];
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
-    final linkedCards = ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
+    final linkedCards =
+        ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
-    final aiLinked = hasAiKey && (widget.note.kind == NoteKind.block
-        ? blocks.isNotEmpty
-        : (ref.watch(canvasContextSourcesProvider(widget.note.id)).valueOrNull?.isNotEmpty ?? false));
+    final aiLinked =
+        hasAiKey &&
+        (widget.note.kind == NoteKind.block
+            ? blocks.isNotEmpty
+            : (ref
+                    .watch(canvasContextSourcesProvider(widget.note.id))
+                    .valueOrNull
+                    ?.isNotEmpty ??
+                false));
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
 
@@ -335,7 +365,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     accent: _accent,
                     onBack: () => Navigator.pop(context),
                     onSave: _saveTitle,
-                    onTogglePreview: () => setState(() => _isPreview = !_isPreview),
+                    onTogglePreview:
+                        () => setState(() => _isPreview = !_isPreview),
                     onExpand: () => setState(() => _headerCollapsed = false),
                     onAi: () => _openAiChat(),
                     onAiLongPress: () => _pushNoteContextToAi(blocks),
@@ -364,10 +395,16 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: hasAiKey ? _accent : yMuted,
-                              border: Border.all(color: yInk, width: yLineMid),
+                              border: Border.all(
+                                color: yBorderStrong,
+                                width: yLineMid,
+                              ),
                             ),
-                            child: Icon(Icons.auto_awesome,
-                                color: hasAiKey ? yCream : yCream2, size: 18),
+                            child: Icon(
+                              Icons.auto_awesome,
+                              color: hasAiKey ? yCream : yCream2,
+                              size: 18,
+                            ),
                           ),
                         ),
                       ),
@@ -380,9 +417,16 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: yCream,
-                            border: Border.all(color: yInk, width: yLineMid),
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineMid,
+                            ),
                           ),
-                          child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
+                          child: const Icon(
+                            Icons.keyboard_arrow_up,
+                            color: yInk,
+                            size: 18,
+                          ),
                         ),
                       ),
                     ],
@@ -400,61 +444,76 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     onLink: () => _showLinkToLab(spaces),
                     onPdf: () => _exportPdf(blocks),
                     onFight: _showFightPanel,
-                    onTogglePreview: () => setState(() => _isPreview = !_isPreview),
+                    onTogglePreview:
+                        () => setState(() => _isPreview = !_isPreview),
                     isPreview: _isPreview,
                   ),
                 ],
                 Expanded(
                   child: Container(
                     color: yCream,
-                    child: blocks.isEmpty
-                        ? _EmptyState(onAdd: _addBlock, accent: _accent)
-                        : _isPreview
+                    child:
+                        blocks.isEmpty
+                            ? _EmptyState(onAdd: _addBlock, accent: _accent)
+                            : _isPreview
                             ? _buildPreview(blocks)
                             : ReorderableListView.builder(
-                                physics: _scrollLocked
-                                    ? const NeverScrollableScrollPhysics()
-                                    : null,
-                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                                buildDefaultDragHandles: false,
-                                proxyDecorator: (child, _, _) => Material(
-                                  color: Colors.transparent,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: _accent, width: yLineThin),
-                                    ),
-                                    child: child,
-                                  ),
-                                ),
-                                itemBuilder: (ctx, i) => Padding(
-                                  key: ValueKey('block_${blocks[i].id}'),
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: BlockRouter(
-                                    block: blocks[i],
-                                    note: widget.note,
-                                    folder: widget.folder,
-                                    index: i,
-                                    onTextBlockFocusChanged: _onTextBlockFocusChanged,
-                                    onScrollLockChanged: (locked) {
-                                      setState(() => _scrollLocked = locked);
-                                    },
-                                  ),
-                                ),
-                                itemCount: blocks.length,
-                                onReorder: (a, b) => _onReorder(blocks, a, b),
+                              physics:
+                                  _scrollLocked
+                                      ? const NeverScrollableScrollPhysics()
+                                      : null,
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                16,
+                                16,
+                                16,
                               ),
+                              buildDefaultDragHandles: false,
+                              proxyDecorator:
+                                  (child, _, _) => Material(
+                                    color: Colors.transparent,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: _accent,
+                                          width: yLineThin,
+                                        ),
+                                      ),
+                                      child: child,
+                                    ),
+                                  ),
+                              itemBuilder:
+                                  (ctx, i) => Padding(
+                                    key: ValueKey('block_${blocks[i].id}'),
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: BlockRouter(
+                                      block: blocks[i],
+                                      note: widget.note,
+                                      folder: widget.folder,
+                                      index: i,
+                                      onTextBlockFocusChanged:
+                                          _onTextBlockFocusChanged,
+                                      onScrollLockChanged: (locked) {
+                                        setState(() => _scrollLocked = locked);
+                                      },
+                                    ),
+                                  ),
+                              itemCount: blocks.length,
+                              onReorder: (a, b) => _onReorder(blocks, a, b),
+                            ),
                   ),
                 ),
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeInOut,
-                  child: _activeTextCtrl != null && !_isPreview
-                      ? FormatToolbar(
-                          controller: _activeTextCtrl,
-                          onOpenInsertMenu: _showInsertMenu,
-                          accent: _accent,
-                        )
-                      : const SizedBox.shrink(),
+                  child:
+                      _activeTextCtrl != null && !_isPreview
+                          ? FormatToolbar(
+                            controller: _activeTextCtrl,
+                            onOpenInsertMenu: _showInsertMenu,
+                            accent: _accent,
+                          )
+                          : const SizedBox.shrink(),
                 ),
                 _EditorFooter(
                   blocks: blocks,
@@ -491,17 +550,24 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: switch (b) {
-                TextBlock t => t.markdown.isNotEmpty
-                    ? NoteMarkdownPreview(data: t.markdown)
-                    : const SizedBox.shrink(),
-                MathBlock m => m.latex.isNotEmpty
-                    ? Container(
+                TextBlock t =>
+                  t.markdown.isNotEmpty
+                      ? NoteMarkdownPreview(data: t.markdown)
+                      : const SizedBox.shrink(),
+                MathBlock m =>
+                  m.latex.isNotEmpty
+                      ? Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: widget.folder.color,
-                          border: Border.all(color: yInk, width: yLineMid),
-                          boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(color: yInk, offset: Offset(3, 3)),
+                          ],
                         ),
                         child: Center(
                           child: Math.tex(
@@ -511,49 +577,62 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                               fontSize: 22,
                               color: yCream,
                             ),
-                            onErrorFallback: (err) => Text(
-                              err.message,
-                              style: yMono(size: 11, color: yAmber2, tracking: 0.8),
-                            ),
+                            onErrorFallback:
+                                (err) => Text(
+                                  err.message,
+                                  style: yMono(
+                                    size: 11,
+                                    color: yAmber2,
+                                    tracking: 0.8,
+                                  ),
+                                ),
                           ),
                         ),
                       )
-                    : const SizedBox.shrink(),
+                      : const SizedBox.shrink(),
                 BulletsBlock bl => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final it in bl.items)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8, right: 10),
-                                child: SizedBox(width: 6, height: 6,
-                                    child: ColoredBox(color: yInk)),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final it in bl.items)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 8, right: 10),
+                              child: SizedBox(
+                                width: 6,
+                                height: 6,
+                                child: ColoredBox(color: yInk),
                               ),
-                              Expanded(
-                                child: Text(it,
-                                    style: yBody(size: 14, color: yInk2, height: 1.5)),
+                            ),
+                            Expanded(
+                              child: Text(
+                                it,
+                                style: yBody(
+                                  size: 14,
+                                  color: yInk2,
+                                  height: 1.5,
+                                ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
+                ),
                 TareasBlock _ => const SizedBox.shrink(),
                 DrawingBlock d => SizedBox(
-                    height: d.height,
-                    width: double.infinity,
-                    child: CustomPaint(
-                      painter: DrawingPreviewPainter(
-                          strokes: DrawingData.fromJson(
-                                  d.payloadJson())
-                              .strokes),
-                      size: Size.infinite,
+                  height: d.height,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: DrawingPreviewPainter(
+                      strokes: DrawingData.fromJson(d.payloadJson()).strokes,
                     ),
+                    size: Size.infinite,
                   ),
+                ),
               },
             ),
         ],
@@ -624,7 +703,9 @@ class _CollapsedHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
@@ -638,7 +719,7 @@ class _CollapsedHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(Icons.arrow_back, color: yInk, size: 16),
             ),
@@ -696,9 +777,13 @@ class _CollapsedHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.keyboard_arrow_down, color: yInk, size: 18),
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: yInk,
+                size: 18,
+              ),
             ),
           ),
         ],
@@ -758,12 +843,16 @@ class _NoteHeroHeader extends ConsumerWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       child: Stack(
         children: [
           Positioned(
-            top: 0, bottom: 0, left: 0,
+            top: 0,
+            bottom: 0,
+            left: 0,
             child: Container(width: 6, color: accent),
           ),
           Padding(
@@ -799,7 +888,9 @@ class _NoteHeroHeader extends ConsumerWidget {
                             ),
                             decoration: InputDecoration(
                               isCollapsed: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                              ),
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               focusedBorder: InputBorder.none,
@@ -827,13 +918,21 @@ class _NoteHeroHeader extends ConsumerWidget {
                     ),
                     const SizedBox(width: 6),
                     _HeaderIcon(
-                      icon: isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
+                      icon:
+                          isPreview
+                              ? Icons.edit_outlined
+                              : Icons.visibility_outlined,
                       fill: isPreview,
                       color: yLab,
                       onTap: onTogglePreview,
                     ),
                     const SizedBox(width: 6),
-                    _HeaderIcon(icon: Icons.flash_on, fill: true, color: yFight, onTap: onFight),
+                    _HeaderIcon(
+                      icon: Icons.flash_on,
+                      fill: true,
+                      color: yFight,
+                      onTap: onFight,
+                    ),
                     const SizedBox(width: 6),
                     _HeaderIcon(icon: Icons.image_outlined, onTap: onImage),
                     const SizedBox(width: 6),
@@ -857,9 +956,10 @@ class _NoteHeroHeader extends ConsumerWidget {
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
-                    children: uniqueSpaceIds.map((spaceId) =>
-                      _LabBadge(spaceId: spaceId),
-                    ).toList(),
+                    children:
+                        uniqueSpaceIds
+                            .map((spaceId) => _LabBadge(spaceId: spaceId))
+                            .toList(),
                   ),
                 ],
               ],
@@ -894,7 +994,7 @@ class _LabBadge extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: space.accentColor,
-          border: Border.all(color: yInk, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -944,13 +1044,9 @@ class _HeaderIcon extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: fill ? color : yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: fill ? yCream : yInk,
-        ),
+        child: Icon(icon, size: 18, color: fill ? yCream : yInk),
       ),
     );
   }
@@ -974,7 +1070,7 @@ class _EditorFooter extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
       child: Row(
@@ -989,15 +1085,35 @@ class _EditorFooter extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _AddBlockBtn(glyph: 'Tt', label: 'Texto', onTap: () => onAdd(NoteBlockType.text)),
+          _AddBlockBtn(
+            glyph: 'Tt',
+            label: 'Texto',
+            onTap: () => onAdd(NoteBlockType.text),
+          ),
           const SizedBox(width: 6),
-          _AddBlockBtn(glyph: '∑', label: 'Math', onTap: () => onAdd(NoteBlockType.math)),
+          _AddBlockBtn(
+            glyph: '∑',
+            label: 'Math',
+            onTap: () => onAdd(NoteBlockType.math),
+          ),
           const SizedBox(width: 6),
-          _AddBlockBtn(glyph: '•', label: 'Lista', onTap: () => onAdd(NoteBlockType.bullets)),
+          _AddBlockBtn(
+            glyph: '•',
+            label: 'Lista',
+            onTap: () => onAdd(NoteBlockType.bullets),
+          ),
           const SizedBox(width: 6),
-          _AddBlockBtn(glyph: '☑', label: 'Tareas', onTap: () => onAdd(NoteBlockType.tareas)),
+          _AddBlockBtn(
+            glyph: '☑',
+            label: 'Tareas',
+            onTap: () => onAdd(NoteBlockType.tareas),
+          ),
           const SizedBox(width: 6),
-          _AddBlockBtn(glyph: '✎', label: 'Dibujo', onTap: () => onAdd(NoteBlockType.drawing)),
+          _AddBlockBtn(
+            glyph: '✎',
+            label: 'Dibujo',
+            onTap: () => onAdd(NoteBlockType.drawing),
+          ),
         ],
       ),
     );
@@ -1024,7 +1140,7 @@ class _AddBlockBtn extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(10, 6, 12, 7),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1090,11 +1206,13 @@ class _EmptyState extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: () => onAdd(NoteBlockType.text),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: accent,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child: Text(
                   '+ EMPEZAR CON TEXTO',
@@ -1127,19 +1245,17 @@ class _LabPickerDialog extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Vincular a LAB',
-                style: ySans(
-                  size: 20,
-                  weight: FontWeight.w700,
-                  color: yInk,
-                )),
+            Text(
+              'Vincular a LAB',
+              style: ySans(size: 20, weight: FontWeight.w700, color: yInk),
+            ),
             const SizedBox(height: 12),
             for (final s in spaces)
               GestureDetector(
@@ -1152,8 +1268,10 @@ class _LabPickerDialog extends StatelessWidget {
                       Container(width: 12, height: 12, color: s.accentColor),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(s.name,
-                            style: ySans(size: 16, color: yInk)),
+                        child: Text(
+                          s.name,
+                          style: ySans(size: 16, color: yInk),
+                        ),
                       ),
                     ],
                   ),

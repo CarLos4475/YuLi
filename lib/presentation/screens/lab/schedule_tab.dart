@@ -31,8 +31,7 @@ String _minutesToTime(int m) {
   return '${h.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')}';
 }
 
-int _roundToHour(int minutes) =>
-    (minutes / 60).round() * 60;
+int _roundToHour(int minutes) => (minutes / 60).round() * 60;
 
 DateTime _mondayOfWeek(DateTime date) {
   final wd = date.weekday;
@@ -111,9 +110,11 @@ List<_LaneInfo> _assignLanesForCluster(List<ScheduleBlock> cluster) {
   for (final (block, c) in tempResult) {
     int colSpan = 1;
     for (int j = c + 1; j < N; j++) {
-      final hasOverlap = lanes[j].any((otherBlock) =>
-          otherBlock.startMinutes < block.endMinutes &&
-          otherBlock.endMinutes > block.startMinutes);
+      final hasOverlap = lanes[j].any(
+        (otherBlock) =>
+            otherBlock.startMinutes < block.endMinutes &&
+            otherBlock.endMinutes > block.startMinutes,
+      );
       if (hasOverlap) {
         break;
       }
@@ -127,25 +128,28 @@ List<_LaneInfo> _assignLanesForCluster(List<ScheduleBlock> cluster) {
 
 // ─── Providers ────────────────────────────────────────────────────────────
 
-final _scheduleSettingsProvider =
-    FutureProvider.family<ScheduleSettings, int>((ref, spaceId) async {
+final _scheduleSettingsProvider = FutureProvider.family<ScheduleSettings, int>((
+  ref,
+  spaceId,
+) async {
   final repo = ref.watch(scheduleRepositoryProvider);
   return repo.getOrCreateSettings(spaceId);
 });
 
-final _scheduleBlocksProvider =
-    StreamProvider.family<List<ScheduleBlock>, int>((ref, spaceId) {
-  final repo = ref.watch(scheduleRepositoryProvider);
-  return repo.watchBySpace(spaceId);
-});
+final _scheduleBlocksProvider = StreamProvider.family<List<ScheduleBlock>, int>(
+  (ref, spaceId) {
+    final repo = ref.watch(scheduleRepositoryProvider);
+    return repo.watchBySpace(spaceId);
+  },
+);
 
 final _weekNoteProvider =
     StreamProvider.family<ScheduleWeekNote?, (int, String)>((ref, key) {
-  final (spaceId, weekStart) = key;
-  final date = DateTime.parse(weekStart);
-  final repo = ref.watch(scheduleRepositoryProvider);
-  return repo.watchWeekNote(spaceId, date);
-});
+      final (spaceId, weekStart) = key;
+      final date = DateTime.parse(weekStart);
+      final repo = ref.watch(scheduleRepositoryProvider);
+      return repo.watchWeekNote(spaceId, date);
+    });
 
 // ─── Main Widget ───────────────────────────────────────────────────────────
 
@@ -181,12 +185,16 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   }
 
   void _prev() => setState(
-      () => _currentWeekStart = _currentWeekStart.subtract(const Duration(days: 7)));
+    () =>
+        _currentWeekStart = _currentWeekStart.subtract(const Duration(days: 7)),
+  );
 
   void _next() => setState(
-      () => _currentWeekStart = _currentWeekStart.add(const Duration(days: 7)));
+    () => _currentWeekStart = _currentWeekStart.add(const Duration(days: 7)),
+  );
 
-  void _today() => setState(() => _currentWeekStart = _mondayOfWeek(DateTime.now()));
+  void _today() =>
+      setState(() => _currentWeekStart = _mondayOfWeek(DateTime.now()));
 
   String _weekLabel() {
     final end = _currentWeekStart.add(const Duration(days: 6));
@@ -201,7 +209,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final ink = inkColor(context);
     final settingsAsync = ref.watch(_scheduleSettingsProvider(widget.space.id));
     final blocksAsync = ref.watch(_scheduleBlocksProvider(widget.space.id));
-    final weekNoteAsync = ref.watch(_weekNoteProvider((widget.space.id, _weekStartStr())));
+    final weekNoteAsync = ref.watch(
+      _weekNoteProvider((widget.space.id, _weekStartStr())),
+    );
 
     final settings = settingsAsync.valueOrNull;
     final blocks = blocksAsync.valueOrNull ?? [];
@@ -212,8 +222,12 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     return _buildWithBlocks(settings, blocks, weekNote, ink);
   }
 
-  Widget _buildWithBlocks(ScheduleSettings settings, List<ScheduleBlock> blocks,
-      ScheduleWeekNote? weekNote, Color ink) {
+  Widget _buildWithBlocks(
+    ScheduleSettings settings,
+    List<ScheduleBlock> blocks,
+    ScheduleWeekNote? weekNote,
+    Color ink,
+  ) {
     final days = _weekDays(settings.showSaturday, settings.showSunday);
     final sMin = settings.startMinutes;
     final eMin = settings.endMinutes;
@@ -225,7 +239,10 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
 
     return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 8,
+        ),
         child: Column(
           children: [
             _ScheduleHeader(
@@ -235,8 +252,8 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
               onToday: _today,
               onSettings: () => _showSettings(context, settings),
               creatingMode: _creatingMode,
-              onToggleCreate: () =>
-                  setState(() => _creatingMode = !_creatingMode),
+              onToggleCreate:
+                  () => setState(() => _creatingMode = !_creatingMode),
             ),
             if (weekNote != null)
               _WeekNoteBanner(
@@ -271,113 +288,136 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                             child: Stack(
                               children: [
                                 Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Hours column
-                                SizedBox(
-                                  width: _hoursWidth,
-                                  child: Column(
-                                    children: [
-                                      for (int m = sMin;
-                                          m <= eMin;
-                                          m += 60)
-                                        SizedBox(
-                                          height: _hourHeight,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(right: 6, top: 2),
-                                            child: Text(
-                                              _minutesToTime(m),
-                                              style: y.yMono(
-                                                size: 10,
-                                                weight: FontWeight.w700,
-                                                tracking: 1,
-                                                color: y.yMuted,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Hours column
+                                    SizedBox(
+                                      width: _hoursWidth,
+                                      child: Column(
+                                        children: [
+                                          for (int m = sMin; m <= eMin; m += 60)
+                                            SizedBox(
+                                              height: _hourHeight,
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(
+                                                  right: 6,
+                                                  top: 2,
+                                                ),
+                                                child: Text(
+                                                  _minutesToTime(m),
+                                                  style: y.yMono(
+                                                    size: 10,
+                                                    weight: FontWeight.w700,
+                                                    tracking: 1,
+                                                    color: y.yMuted,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                // Days area
-                                Expanded(
-                                  child: SizedBox(
-                                    height: totalHeight + _hourHeight,
-                                    child: Stack(
-                                      children: [
-                                        CustomPaint(
-                                          size: Size(
-                                              constraints.maxWidth - _hoursWidth,
-                                              totalHeight + _hourHeight),
-                                          painter: _GridPainter(
-                                            ink: ink,
-                                            totalMinutes: totalMins,
-                                            numDays: days.length,
-                                            dayWidth: dayWidth,
-                                          hourHeight: _hourHeight,
-                                          ),
-                                        ),
-                                        // Blocks per day
-                                        for (int di = 0; di < days.length; di++)
-                                          ..._buildDayBlocks(
-                                            blocks,
-                                            di,
-                                            days[di],
-                                            dayWidth,
-                                            sMin,
-                                            totalHeight,
-                                          ),
-                                        // Drag overlay (only in creating mode)
-                                        if (_creatingMode &&
-                                            _dragStartY != null &&
-                                            _dragCurrentY != null &&
-                                            _dragDayIndex != null)
-                                          _DragOverlay(
-                                            startY: _dragStartY!,
-                                            currentY: _dragCurrentY!,
-                                            dayIndex: _dragDayIndex!,
-                                            dayWidth: dayWidth,
-                                            hoursWidth: _hoursWidth,
-                                          ),
-                                        // Drag gesture detector for each day
-                                        for (int di = 0; di < days.length; di++)
-                                          Positioned(
-                                            left: di * dayWidth,
-                                            top: 0,
-                                            width: dayWidth,
-                                            height:
-                                                totalHeight + _hourHeight,
-                                            child: IgnorePointer(
-                                              ignoring: !_creatingMode,
-                                              child: GestureDetector(
-                                                behavior:
-                                                    HitTestBehavior.translucent,
-                                                onVerticalDragStart: (d) =>
-                                                    setState(() {
-                                                  _dragStartY =
-                                                      d.localPosition.dy;
-                                                  _dragCurrentY =
-                                                      d.localPosition.dy;
-                                                  _dragDayIndex = di;
-                                                }),
-                                                onVerticalDragUpdate: (d) =>
-                                                    setState(() =>
-                                                        _dragCurrentY =
-                                                            d.localPosition.dy),
-                                                onVerticalDragEnd: (d) {
-                                                  _finishDrag(
-                                                      blocks, days, sMin,
-                                                      totalHeight);
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
+                                    // Days area
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: totalHeight + _hourHeight,
+                                        child: Stack(
+                                          children: [
+                                            CustomPaint(
+                                              size: Size(
+                                                constraints.maxWidth -
+                                                    _hoursWidth,
+                                                totalHeight + _hourHeight,
+                                              ),
+                                              painter: _GridPainter(
+                                                ink: ink,
+                                                totalMinutes: totalMins,
+                                                numDays: days.length,
+                                                dayWidth: dayWidth,
+                                                hourHeight: _hourHeight,
+                                              ),
+                                            ),
+                                            // Blocks per day
+                                            for (
+                                              int di = 0;
+                                              di < days.length;
+                                              di++
+                                            )
+                                              ..._buildDayBlocks(
+                                                blocks,
+                                                di,
+                                                days[di],
+                                                dayWidth,
+                                                sMin,
+                                                totalHeight,
+                                              ),
+                                            // Drag overlay (only in creating mode)
+                                            if (_creatingMode &&
+                                                _dragStartY != null &&
+                                                _dragCurrentY != null &&
+                                                _dragDayIndex != null)
+                                              _DragOverlay(
+                                                startY: _dragStartY!,
+                                                currentY: _dragCurrentY!,
+                                                dayIndex: _dragDayIndex!,
+                                                dayWidth: dayWidth,
+                                                hoursWidth: _hoursWidth,
+                                              ),
+                                            // Drag gesture detector for each day
+                                            for (
+                                              int di = 0;
+                                              di < days.length;
+                                              di++
+                                            )
+                                              Positioned(
+                                                left: di * dayWidth,
+                                                top: 0,
+                                                width: dayWidth,
+                                                height:
+                                                    totalHeight + _hourHeight,
+                                                child: IgnorePointer(
+                                                  ignoring: !_creatingMode,
+                                                  child: GestureDetector(
+                                                    behavior:
+                                                        HitTestBehavior
+                                                            .translucent,
+                                                    onVerticalDragStart:
+                                                        (d) => setState(() {
+                                                          _dragStartY =
+                                                              d
+                                                                  .localPosition
+                                                                  .dy;
+                                                          _dragCurrentY =
+                                                              d
+                                                                  .localPosition
+                                                                  .dy;
+                                                          _dragDayIndex = di;
+                                                        }),
+                                                    onVerticalDragUpdate:
+                                                        (d) => setState(
+                                                          () =>
+                                                              _dragCurrentY =
+                                                                  d
+                                                                      .localPosition
+                                                                      .dy,
+                                                        ),
+                                                    onVerticalDragEnd: (d) {
+                                                      _finishDrag(
+                                                        blocks,
+                                                        days,
+                                                        sMin,
+                                                        totalHeight,
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
                                 // Current time line (spans full width including hours column)
                                 _TimeLineWidget(
                                   startMinutes: sMin,
@@ -409,9 +449,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     int startMinutes,
     double totalHeight,
   ) {
-    final dayBlocks = blocks
-        .where((b) => b.days.contains(dayKey))
-        .toList();
+    final dayBlocks = blocks.where((b) => b.days.contains(dayKey)).toList();
     if (dayBlocks.isEmpty) return [];
 
     final lanes = _assignLanes(dayBlocks);
@@ -468,10 +506,8 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final bottom = yStart < yEnd ? yEnd : yStart;
 
     final minPerPixel = 60.0 / _hourHeight;
-    final startMins =
-        _roundToHour(startMinutes + (top * minPerPixel).round());
-    final endMins =
-        _roundToHour(startMinutes + (bottom * minPerPixel).round());
+    final startMins = _roundToHour(startMinutes + (top * minPerPixel).round());
+    final endMins = _roundToHour(startMinutes + (bottom * minPerPixel).round());
 
     final dayIndex = _dragDayIndex!;
 
@@ -490,23 +526,29 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   // ─── Sheets ──────────────────────────────────────────────────────────────
 
   void _showCreateBlock(
-      BuildContext context, int startMins, int endMins, String dayKey) {
+    BuildContext context,
+    int startMins,
+    int endMins,
+    String dayKey,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (ctx, sc) => _BlockFormSheet(
-          space: widget.space,
-          scrollController: sc,
-          initialStartTime: _minutesToTime(startMins),
-          initialEndTime: _minutesToTime(endMins),
-          initialDays: [dayKey],
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, sc) => _BlockFormSheet(
+                  space: widget.space,
+                  scrollController: sc,
+                  initialStartTime: _minutesToTime(startMins),
+                  initialEndTime: _minutesToTime(endMins),
+                  initialDays: [dayKey],
+                ),
+          ),
     );
   }
 
@@ -515,21 +557,23 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.8,
-        builder: (ctx, sc) => _BlockDetailSheet(
-          block: block,
-          space: widget.space,
-          scrollController: sc,
-          onEdit: () {
-            Navigator.pop(ctx);
-            _showEditBlock(context, block);
-          },
-          onDelete: () => _confirmDelete(context, block),
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            minChildSize: 0.3,
+            maxChildSize: 0.8,
+            builder:
+                (ctx, sc) => _BlockDetailSheet(
+                  block: block,
+                  space: widget.space,
+                  scrollController: sc,
+                  onEdit: () {
+                    Navigator.pop(ctx);
+                    _showEditBlock(context, block);
+                  },
+                  onDelete: () => _confirmDelete(context, block),
+                ),
+          ),
     );
   }
 
@@ -538,46 +582,58 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (ctx, sc) => _BlockFormSheet(
-          space: widget.space,
-          scrollController: sc,
-          existingBlock: block,
-          initialStartTime: block.startTime,
-          initialEndTime: block.endTime,
-          initialDays: List.from(block.days),
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, sc) => _BlockFormSheet(
+                  space: widget.space,
+                  scrollController: sc,
+                  existingBlock: block,
+                  initialStartTime: block.startTime,
+                  initialEndTime: block.endTime,
+                  initialDays: List.from(block.days),
+                ),
+          ),
     );
   }
 
-  Future<void> _confirmDelete(
-      BuildContext context, ScheduleBlock block) async {
+  Future<void> _confirmDelete(BuildContext context, ScheduleBlock block) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Eliminar este bloque?',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: Text('Afecta todos los dias en que se repite.',
-            style: bodyM.copyWith(color: inkColor(context))),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child:
-                Text('Cancelar', style: labelBold.copyWith(color: inkGray)),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: paperColor(context),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Eliminar este bloque?',
+              style: displayM.copyWith(color: inkColor(context)),
+            ),
+            content: Text(
+              'Afecta todos los dias en que se repite.',
+              style: bodyM.copyWith(color: inkColor(context)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  'Cancelar',
+                  style: labelBold.copyWith(color: inkGray),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'Eliminar',
+                  style: labelBold.copyWith(color: accentFight),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Eliminar',
-                style: labelBold.copyWith(color: accentFight)),
-          ),
-        ],
-      ),
     );
     if (confirmed == true && context.mounted) {
       await ref.read(scheduleRepositoryProvider).deleteBlock(block.id);
@@ -589,19 +645,21 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.7,
-        builder: (ctx, sc) => _SettingsSheet(
-          settings: settings,
-          scrollController: sc,
-          onChanged: (s) {
-            ref.read(scheduleRepositoryProvider).updateSettings(s);
-            ref.invalidate(_scheduleSettingsProvider(widget.space.id));
-          },
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.5,
+            minChildSize: 0.3,
+            maxChildSize: 0.7,
+            builder:
+                (ctx, sc) => _SettingsSheet(
+                  settings: settings,
+                  scrollController: sc,
+                  onChanged: (s) {
+                    ref.read(scheduleRepositoryProvider).updateSettings(s);
+                    ref.invalidate(_scheduleSettingsProvider(widget.space.id));
+                  },
+                ),
+          ),
     );
   }
 
@@ -609,41 +667,68 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
     final ctrl = TextEditingController(text: note?.note ?? '');
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: paperColor(context),
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Nota de la semana',
-            style: displayM.copyWith(color: inkColor(context))),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLines: 3,
-          style: bodyM.copyWith(color: inkColor(context)),
-          decoration: InputDecoration(
-            hintText: 'Ej: Semana de examenes',
-            hintStyle: bodyM.copyWith(color: inkGray),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: paperColor(context),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Nota de la semana',
+              style: displayM.copyWith(color: inkColor(context)),
+            ),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLines: 3,
+              style: bodyM.copyWith(color: inkColor(context)),
+              decoration: InputDecoration(
+                hintText: 'Ej: Semana de examenes',
+                hintStyle: bodyM.copyWith(color: inkGray),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineThin,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineMid,
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                  'Cancelar',
+                  style: labelBold.copyWith(color: inkGray),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  if (ctrl.text.trim().isNotEmpty) {
+                    await ref
+                        .read(scheduleRepositoryProvider)
+                        .setWeekNote(
+                          widget.space.id,
+                          _currentWeekStart,
+                          ctrl.text.trim(),
+                        );
+                  }
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Text(
+                  'Guardar',
+                  style: labelBold.copyWith(color: inkColor(context)),
+                ),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child:
-                Text('Cancelar', style: labelBold.copyWith(color: inkGray)),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (ctrl.text.trim().isNotEmpty) {
-                await ref
-                    .read(scheduleRepositoryProvider)
-                    .setWeekNote(widget.space.id, _currentWeekStart, ctrl.text.trim());
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child:
-                Text('Guardar', style: labelBold.copyWith(color: inkColor(context))),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -682,13 +767,15 @@ class _ScheduleHeader extends StatelessWidget {
           onTap: onToday,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Text('HOY',
-                style: y.yMono(
-                  size: 11,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: y.yInk,
-                )),
+            child: Text(
+              'HOY',
+              style: y.yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: y.yInk,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 4),
@@ -735,12 +822,7 @@ class _WeekNoteBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              note,
-              style: bodyS.copyWith(color: accentLab),
-            ),
-          ),
+          Expanded(child: Text(note, style: bodyS.copyWith(color: accentLab))),
           GestureDetector(
             onTap: onEdit,
             child: Container(
@@ -748,8 +830,10 @@ class _WeekNoteBanner extends StatelessWidget {
               decoration: BoxDecoration(
                 border: Border.all(color: accentLab, width: borderWidth),
               ),
-              child: Text('[Editar]',
-                  style: labelBold.copyWith(color: accentLab, fontSize: 10)),
+              child: Text(
+                '[Editar]',
+                style: labelBold.copyWith(color: accentLab, fontSize: 10),
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -789,9 +873,7 @@ class _DayHeaderRow extends StatelessWidget {
     return Container(
       height: _dayHeaderHeight,
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: y.yInk, width: 2),
-        ),
+        border: Border(bottom: BorderSide(color: y.yBorderStrong, width: 2)),
       ),
       child: Row(
         children: [
@@ -799,22 +881,24 @@ class _DayHeaderRow extends StatelessWidget {
             width: _hoursWidth,
             decoration: BoxDecoration(
               color: accentColor,
-              border: const Border(right: BorderSide(color: y.yInk, width: 2)),
+              border: const Border(
+                right: BorderSide(color: y.yBorderStrong, width: 2),
+              ),
             ),
             alignment: Alignment.center,
-            child: Text('SEM $_weekNumber',
-                style: y.yMono(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: y.yCream)),
+            child: Text(
+              'SEM $_weekNumber',
+              style: y.yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: y.yCream,
+              ),
+            ),
           ),
           for (int i = 0; i < days.length; i++) ...[
-            if (i > 0)
-              Container(width: 2, color: y.yInk.withAlpha(25)),
-            Expanded(
-              child: _buildDayCell(days[i], i, today),
-            ),
+            if (i > 0) Container(width: 2, color: y.yBorderSoft.withAlpha(25)),
+            Expanded(child: _buildDayCell(days[i], i, today)),
           ],
         ],
       ),
@@ -823,7 +907,8 @@ class _DayHeaderRow extends StatelessWidget {
 
   Widget _buildDayCell(String dayName, int offset, DateTime today) {
     final date = weekStart.add(Duration(days: offset));
-    final isToday = date.year == today.year &&
+    final isToday =
+        date.year == today.year &&
         date.month == today.month &&
         date.day == today.day;
 
@@ -882,8 +967,7 @@ class _TimeLineWidget extends StatelessWidget {
     final now = DateTime.now();
     final nowMinutes = now.hour * 60 + now.minute;
 
-    if (nowMinutes < startMinutes ||
-        nowMinutes > startMinutes + totalMinutes) {
+    if (nowMinutes < startMinutes || nowMinutes > startMinutes + totalMinutes) {
       return const SizedBox.shrink();
     }
 
@@ -910,15 +994,17 @@ class _TimeLineWidget extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: y.yFight,
-                  border: Border.all(color: y.yInk, width: 2),
+                  border: Border.all(color: y.yBorderStrong, width: 2),
                 ),
-                child: Text(label,
-                    style: y.yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      tracking: 1.2,
-                      color: y.yCream,
-                    )),
+                child: Text(
+                  label,
+                  style: y.yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: y.yCream,
+                  ),
+                ),
               ),
             ),
             // Horizontal line
@@ -940,7 +1026,7 @@ class _TimeLineWidget extends StatelessWidget {
                   height: 10,
                   decoration: BoxDecoration(
                     color: y.yFight,
-                    border: Border.all(color: y.yInk, width: 1.5),
+                    border: Border.all(color: y.yBorderStrong, width: 1.5),
                   ),
                 ),
               ),
@@ -971,13 +1057,15 @@ class _GridPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = ink.withAlpha(20)
-      ..strokeWidth = 0.5;
+    final gridPaint =
+        Paint()
+          ..color = ink.withAlpha(20)
+          ..strokeWidth = 0.5;
 
-    final borderPaint = Paint()
-      ..color = ink.withAlpha(40)
-      ..strokeWidth = borderWidth;
+    final borderPaint =
+        Paint()
+          ..color = ink.withAlpha(40)
+          ..strokeWidth = borderWidth;
 
     final hours = totalMinutes ~/ 60;
 
@@ -992,11 +1080,7 @@ class _GridPainter extends CustomPainter {
 
     for (int i = 1; i < numDays; i++) {
       final x = i * dayWidth;
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        borderPaint,
-      );
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), borderPaint);
     }
   }
 
@@ -1076,10 +1160,13 @@ class _ScheduleBlockWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           border: Border.all(
-              color: y.yInk, width: current ? y.yLineHeavy : 2),
-          boxShadow: current
-              ? [BoxShadow(color: y.yInk, offset: const Offset(3, 3))]
-              : null,
+            color: y.yBorderStrong,
+            width: current ? y.yLineHeavy : 2,
+          ),
+          boxShadow:
+              current
+                  ? [BoxShadow(color: y.yInk, offset: const Offset(3, 3))]
+                  : null,
         ),
         padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
         child: Stack(
@@ -1120,15 +1207,17 @@ class _ScheduleBlockWidget extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
                   decoration: BoxDecoration(
                     color: y.yCream,
-                    border: Border.all(color: y.yInk, width: 1.5),
+                    border: Border.all(color: y.yBorderStrong, width: 1.5),
                   ),
-                  child: Text('EN VIVO',
-                      style: y.yMono(
-                        size: 8,
-                        weight: FontWeight.w700,
-                        tracking: 1,
-                        color: bg,
-                      )),
+                  child: Text(
+                    'EN VIVO',
+                    style: y.yMono(
+                      size: 8,
+                      weight: FontWeight.w700,
+                      tracking: 1,
+                      color: bg,
+                    ),
+                  ),
                 ),
               ),
           ],
@@ -1166,7 +1255,7 @@ class _BlockDetailSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: ink, width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidthHeavy),
         ),
       ),
       child: ListView(
@@ -1183,20 +1272,18 @@ class _BlockDetailSheet extends ConsumerWidget {
           ),
           Row(
             children: [
-              Container(
-                width: 4,
-                height: 32,
-                color: _parseHex(block.color),
-              ),
+              Container(width: 4, height: 32, color: _parseHex(block.color)),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(block.title,
-                    style: displayM.copyWith(color: ink)),
+                child: Text(block.title, style: displayM.copyWith(color: ink)),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          _InfoRow(label: 'Horario', value: '${block.startTime} – ${block.endTime}'),
+          _InfoRow(
+            label: 'Horario',
+            value: '${block.startTime} – ${block.endTime}',
+          ),
           const SizedBox(height: 8),
           _InfoRow(label: 'Dias', value: dayLabels),
           if (block.location != null && block.location!.isNotEmpty) ...[
@@ -1217,12 +1304,17 @@ class _BlockDetailSheet extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: accentLab,
-                      border: Border.all(color: inkBlack, width: borderWidth),
+                      border: Border.all(
+                        color: y.yBorderStrong,
+                        width: y.yLineMid,
+                      ),
                       boxShadow: shadowM,
                     ),
                     child: Center(
-                      child: Text('Editar',
-                          style: labelBold.copyWith(color: paperLight)),
+                      child: Text(
+                        'Editar',
+                        style: labelBold.copyWith(color: paperLight),
+                      ),
                     ),
                   ),
                 ),
@@ -1235,12 +1327,17 @@ class _BlockDetailSheet extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: accentFight,
-                      border: Border.all(color: inkBlack, width: borderWidth),
+                      border: Border.all(
+                        color: y.yBorderStrong,
+                        width: y.yLineMid,
+                      ),
                       boxShadow: shadowM,
                     ),
                     child: Center(
-                      child: Text('Eliminar',
-                          style: labelBold.copyWith(color: paperLight)),
+                      child: Text(
+                        'Eliminar',
+                        style: labelBold.copyWith(color: paperLight),
+                      ),
                     ),
                   ),
                 ),
@@ -1266,12 +1363,12 @@ class _InfoRow extends StatelessWidget {
       children: [
         SizedBox(
           width: 60,
-          child: Text(label,
-              style: labelBold.copyWith(color: inkGray, fontSize: 12)),
+          child: Text(
+            label,
+            style: labelBold.copyWith(color: inkGray, fontSize: 12),
+          ),
         ),
-        Expanded(
-          child: Text(value, style: bodyM.copyWith(color: ink)),
-        ),
+        Expanded(child: Text(value, style: bodyM.copyWith(color: ink))),
       ],
     );
   }
@@ -1302,8 +1399,10 @@ class _FolderLinkButton extends ConsumerWidget {
           children: [
             Icon(Icons.folder_outlined, size: 16, color: folder.color),
             const SizedBox(width: 8),
-              Text('Ir a carpeta $_arrow',
-                style: labelBold.copyWith(color: folder.color)),
+            Text(
+              'Ir a carpeta $_arrow',
+              style: labelBold.copyWith(color: folder.color),
+            ),
           ],
         ),
       ),
@@ -1371,39 +1470,45 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     String title = _titleCtrl.text.trim();
     if (_selectedFolderId != null) {
       final folders = ref.read(activeFoldersProvider).valueOrNull ?? [];
-      final folder = folders.where((f) => f.id == _selectedFolderId).firstOrNull;
+      final folder =
+          folders.where((f) => f.id == _selectedFolderId).firstOrNull;
       if (folder != null) {
         title = folder.name;
       }
     }
     if (title.isEmpty || _selectedDays.isEmpty) return;
 
-    final color = _useFolderColor && _selectedFolderId != null
-        ? _colorToHex(_folderColor(_selectedFolderId!))
-        : _selectedColor;
+    final color =
+        _useFolderColor && _selectedFolderId != null
+            ? _colorToHex(_folderColor(_selectedFolderId!))
+            : _selectedColor;
 
     final repo = ref.read(scheduleRepositoryProvider);
     if (widget.existingBlock != null) {
-      await repo.updateBlock(widget.existingBlock!.copyWith(
-        title: title,
-        location: _locationCtrl.text.trim().isEmpty
-            ? null
-            : _locationCtrl.text.trim(),
-        startTime: _startTime,
-        endTime: _endTime,
-        days: List.from(_selectedDays),
-        color: color,
-        folderId: _selectedFolderId,
-        useFolderColor: _useFolderColor,
-      ));
+      await repo.updateBlock(
+        widget.existingBlock!.copyWith(
+          title: title,
+          location:
+              _locationCtrl.text.trim().isEmpty
+                  ? null
+                  : _locationCtrl.text.trim(),
+          startTime: _startTime,
+          endTime: _endTime,
+          days: List.from(_selectedDays),
+          color: color,
+          folderId: _selectedFolderId,
+          useFolderColor: _useFolderColor,
+        ),
+      );
     } else {
       await repo.createBlock(
         labSpaceId: widget.space.id,
         folderId: _selectedFolderId,
         title: title,
-        location: _locationCtrl.text.trim().isEmpty
-            ? null
-            : _locationCtrl.text.trim(),
+        location:
+            _locationCtrl.text.trim().isEmpty
+                ? null
+                : _locationCtrl.text.trim(),
         startTime: _startTime,
         endTime: _endTime,
         days: List.from(_selectedDays),
@@ -1434,7 +1539,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: ink, width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidthHeavy),
         ),
       ),
       child: ListView(
@@ -1464,19 +1569,22 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
               ...folders.map((f) {
                 final isSelected = _selectedFolderId == f.id;
                 return GestureDetector(
-                  onTap: () => setState(() {
-                    _selectedFolderId = isSelected ? null : f.id;
-                    if (_selectedFolderId != null) {
-                      _useFolderColor = true;
-                    }
-                  }),
+                  onTap:
+                      () => setState(() {
+                        _selectedFolderId = isSelected ? null : f.id;
+                        if (_selectedFolderId != null) {
+                          _useFolderColor = true;
+                        }
+                      }),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: f.color,
                       border: Border.all(
-                        color: inkBlack,
+                        color: y.yBorderStrong,
                         width: isSelected ? borderWidthHeavy : borderWidth,
                       ),
                       boxShadow: shadowM,
@@ -1487,18 +1595,23 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
                         Text(
                           f.name,
                           style: labelBold.copyWith(
-                            color: f.color.computeLuminance() > 0.5
-                                ? inkBlack
-                                : paperLight,
+                            color:
+                                f.color.computeLuminance() > 0.5
+                                    ? inkBlack
+                                    : paperLight,
                             fontSize: 11,
                           ),
                         ),
                         if (isSelected) ...[
                           const SizedBox(width: 6),
-                          Icon(Icons.check, size: 10,
-                              color: f.color.computeLuminance() > 0.5
-                                  ? inkBlack
-                                  : paperLight),
+                          Icon(
+                            Icons.check,
+                            size: 10,
+                            color:
+                                f.color.computeLuminance() > 0.5
+                                    ? inkBlack
+                                    : paperLight,
+                          ),
                         ],
                       ],
                     ),
@@ -1507,17 +1620,25 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
               }),
               if (_selectedFolderId != null)
                 GestureDetector(
-                  onTap: () =>
-                      setState(() => _selectedFolderId = null),
+                  onTap: () => setState(() => _selectedFolderId = null),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: accentFight, width: borderWidth),
+                      horizontal: 10,
+                      vertical: 6,
                     ),
-                    child: Text('Sin carpeta',
-                        style: labelBold.copyWith(
-                            color: accentFight, fontSize: 11)),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: accentFight,
+                        width: borderWidth,
+                      ),
+                    ),
+                    child: Text(
+                      'Sin carpeta',
+                      style: labelBold.copyWith(
+                        color: accentFight,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -1532,14 +1653,22 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
                 hintStyle: bodyM.copyWith(color: inkGray),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: ink, width: borderWidth),
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: borderWidth,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: ink, width: borderWidth),
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineMid,
+                  ),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
             ),
           ],
@@ -1550,40 +1679,44 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: _dayNames.map((d) {
-              final isSelected = _selectedDays.contains(d);
-              return GestureDetector(
-                onTap: () => setState(() {
-                  if (isSelected) {
-                    _selectedDays.remove(d);
-                  } else {
-                    _selectedDays.add(d);
-                  }
-                }),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? _parseHex(_selectedColor)
-                        : Colors.transparent,
-                    border: Border.all(
-                      color: isSelected
-                          ? _parseHex(_selectedColor)
-                          : inkGray,
-                      width: borderWidth,
+            children:
+                _dayNames.map((d) {
+                  final isSelected = _selectedDays.contains(d);
+                  return GestureDetector(
+                    onTap:
+                        () => setState(() {
+                          if (isSelected) {
+                            _selectedDays.remove(d);
+                          } else {
+                            _selectedDays.add(d);
+                          }
+                        }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            isSelected
+                                ? _parseHex(_selectedColor)
+                                : Colors.transparent,
+                        border: Border.all(
+                          color:
+                              isSelected ? _parseHex(_selectedColor) : inkGray,
+                          width: borderWidth,
+                        ),
+                      ),
+                      child: Text(
+                        d,
+                        style: labelBold.copyWith(
+                          color: isSelected ? paperLight : inkGray,
+                          fontSize: 11,
+                        ),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    d,
-                    style: labelBold.copyWith(
-                      color: isSelected ? paperLight : inkGray,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
           ),
           const SizedBox(height: 20),
           // Time pickers
@@ -1616,14 +1749,22 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
               hintStyle: bodyM.copyWith(color: inkGray),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.zero,
-                borderSide: BorderSide(color: ink, width: borderWidth),
+                borderSide: BorderSide(
+                  color: y.yBorderStrong,
+                  width: borderWidth,
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.zero,
-                borderSide: BorderSide(color: ink, width: borderWidth),
+                borderSide: BorderSide(
+                  color: y.yBorderStrong,
+                  width: y.yLineMid,
+                ),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
             ),
           ),
           if (_selectedFolderId == null) ...[
@@ -1633,31 +1774,47 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: [
-                '#3D6B4F', '#2D4B8E', '#E02B2B', '#C17F3A',
-                '#4A7C59', '#5B6ABF', '#D9805A', '#7B4B8A',
-                '#3A7F7F', '#8F6B3A',
-              ].map((hex) {
-                final c = _parseHex(hex);
-                final isSelected = _selectedColor == hex;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedColor = hex),
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: c,
-                      border: Border.all(
-                        color: isSelected ? inkBlack : Colors.transparent,
-                        width: borderWidthHeavy,
+              children:
+                  [
+                    '#3D6B4F',
+                    '#2D4B8E',
+                    '#E02B2B',
+                    '#C17F3A',
+                    '#4A7C59',
+                    '#5B6ABF',
+                    '#D9805A',
+                    '#7B4B8A',
+                    '#3A7F7F',
+                    '#8F6B3A',
+                  ].map((hex) {
+                    final c = _parseHex(hex);
+                    final isSelected = _selectedColor == hex;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedColor = hex),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: c,
+                          border: Border.all(
+                            color:
+                                isSelected
+                                    ? y.yBorderStrong
+                                    : Colors.transparent,
+                            width: borderWidthHeavy,
+                          ),
+                        ),
+                        child:
+                            isSelected
+                                ? const Icon(
+                                  Icons.check,
+                                  size: 14,
+                                  color: paperLight,
+                                )
+                                : null,
                       ),
-                    ),
-                    child: isSelected
-                        ? const Icon(Icons.check, size: 14, color: paperLight)
-                        : null,
-                  ),
-                );
-              }).toList(),
+                    );
+                  }).toList(),
             ),
           ],
           if (_selectedFolderId != null) ...[
@@ -1665,25 +1822,36 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             Row(
               children: [
                 GestureDetector(
-                  onTap: () =>
-                      setState(() => _useFolderColor = !_useFolderColor),
+                  onTap:
+                      () => setState(() => _useFolderColor = !_useFolderColor),
                   child: Container(
                     width: 16,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: _useFolderColor
-                          ? _folderColor(_selectedFolderId!)
-                          : Colors.transparent,
-                      border: Border.all(color: ink, width: borderWidth),
+                      color:
+                          _useFolderColor
+                              ? _folderColor(_selectedFolderId!)
+                              : Colors.transparent,
+                      border: Border.all(
+                        color: y.yBorderStrong,
+                        width: borderWidth,
+                      ),
                     ),
-                    child: _useFolderColor
-                        ? const Icon(Icons.check, size: 10, color: paperLight)
-                        : null,
+                    child:
+                        _useFolderColor
+                            ? const Icon(
+                              Icons.check,
+                              size: 10,
+                              color: paperLight,
+                            )
+                            : null,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('Usar color de carpeta',
-                    style: bodyS.copyWith(color: ink)),
+                Text(
+                  'Usar color de carpeta',
+                  style: bodyS.copyWith(color: ink),
+                ),
               ],
             ),
           ],
@@ -1695,12 +1863,14 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
                 color: accentLab,
-                border: Border.all(color: inkBlack, width: borderWidth),
+                border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
                 boxShadow: shadowM,
               ),
               child: Center(
                 child: Text(
-                  widget.existingBlock != null ? 'Guardar cambios' : 'Crear bloque',
+                  widget.existingBlock != null
+                      ? 'Guardar cambios'
+                      : 'Crear bloque',
                   style: labelBold.copyWith(color: paperLight),
                 ),
               ),
@@ -1732,19 +1902,16 @@ class _ToggleRow extends StatelessWidget {
       onTap: () => onChanged(!value),
       child: Row(
         children: [
-          Expanded(
-            child: Text(label, style: labelBold.copyWith(color: ink)),
-          ),
+          Expanded(child: Text(label, style: labelBold.copyWith(color: ink))),
           Container(
             width: 40,
             height: 22,
             decoration: BoxDecoration(
               color: value ? accentLab : inkGray,
-              border: Border.all(color: inkBlack, width: borderWidth),
+              border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
             ),
             child: Align(
-              alignment:
-                  value ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
                 width: 18,
                 height: 18,
@@ -1778,22 +1945,29 @@ class _TimePickerField extends StatelessWidget {
     return GestureDetector(
       onTap: () async {
         final p = value.split(':');
-        final initial = TimeOfDay(hour: int.parse(p[0]), minute: int.parse(p[1]));
+        final initial = TimeOfDay(
+          hour: int.parse(p[0]),
+          minute: int.parse(p[1]),
+        );
         final picked = await showTimePicker(
           context: context,
           initialTime: initial,
-          builder: (ctx, child) => Theme(
-            data: Theme.of(ctx).copyWith(
-              dialogTheme: const DialogThemeData(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          builder:
+              (ctx, child) => Theme(
+                data: Theme.of(ctx).copyWith(
+                  dialogTheme: const DialogThemeData(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.zero,
+                    ),
+                  ),
+                ),
+                child: child!,
               ),
-            ),
-            child: child!,
-          ),
         );
         if (picked != null && context.mounted) {
           onChanged(
-              '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}');
+            '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}',
+          );
         }
       },
       child: Column(
@@ -1804,7 +1978,7 @@ class _TimePickerField extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              border: Border.all(color: ink, width: borderWidth),
+              border: Border.all(color: y.yBorderStrong, width: borderWidth),
             ),
             child: Row(
               children: [
@@ -1853,12 +2027,14 @@ class _SettingsSheetState extends State<_SettingsSheet> {
   }
 
   void _emit() {
-    widget.onChanged(widget.settings.copyWith(
-      showSaturday: _showSaturday,
-      showSunday: _showSunday,
-      dayStartTime: _dayStart,
-      dayEndTime: _dayEnd,
-    ));
+    widget.onChanged(
+      widget.settings.copyWith(
+        showSaturday: _showSaturday,
+        showSunday: _showSunday,
+        dayStartTime: _dayStart,
+        dayEndTime: _dayEnd,
+      ),
+    );
   }
 
   @override
@@ -1869,7 +2045,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: ink, width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidthHeavy),
         ),
       ),
       child: ListView(
@@ -1884,8 +2060,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
               margin: const EdgeInsets.only(bottom: 16),
             ),
           ),
-          Text('Ajustes del horario',
-              style: displayM.copyWith(color: ink)),
+          Text('Ajustes del horario', style: displayM.copyWith(color: ink)),
           const SizedBox(height: 24),
           _ToggleRow(
             label: 'Mostrar sabado',

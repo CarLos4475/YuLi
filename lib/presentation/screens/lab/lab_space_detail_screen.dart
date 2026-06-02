@@ -218,7 +218,9 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
             Container(
               decoration: const BoxDecoration(
                 color: y.yCream,
-                border: Border(bottom: BorderSide(color: y.yInk, width: 2)),
+                border: Border(
+                  bottom: BorderSide(color: y.yBorderStrong, width: 2),
+                ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -311,7 +313,7 @@ class _AddTabSheet extends StatelessWidget {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidth),
         ),
       ),
       child: SafeArea(
@@ -392,7 +394,7 @@ class _HeaderIcon extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: fill ? bg : y.yCream,
-          border: Border.all(color: y.yInk, width: y.yLineMid),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
         ),
         child: Icon(icon, size: 17, color: fg),
       ),
@@ -424,7 +426,7 @@ class _TabButton extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: isActive ? y.yInk : Colors.transparent,
+              color: isActive ? y.yBorderStrong : Colors.transparent,
               width: 3,
             ),
           ),
@@ -501,7 +503,7 @@ class _KanbanHeader extends ConsumerWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: y.yCream,
-                border: Border.all(color: y.yInk, width: y.yLineMid),
+                border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
               ),
               child: const Icon(Icons.arrow_back, color: y.yInk, size: 18),
             ),
@@ -666,7 +668,10 @@ class _KanbanHeader extends ConsumerWidget {
                 content: Container(
                   width: 320,
                   decoration: BoxDecoration(
-                    border: Border.all(color: ink, width: borderWidth),
+                    border: Border.all(
+                      color: y.yBorderStrong,
+                      width: borderWidth,
+                    ),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -676,7 +681,10 @@ class _KanbanHeader extends ConsumerWidget {
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           border: Border(
-                            bottom: BorderSide(color: ink, width: borderWidth),
+                            bottom: BorderSide(
+                              color: y.yBorderStrong,
+                              width: borderWidth,
+                            ),
                           ),
                         ),
                         child: Row(
@@ -771,7 +779,10 @@ class _KanbanHeader extends ConsumerWidget {
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           border: Border(
-                            top: BorderSide(color: ink, width: borderWidth),
+                            top: BorderSide(
+                              color: y.yBorderStrong,
+                              width: borderWidth,
+                            ),
                           ),
                         ),
                         child: Row(
@@ -786,7 +797,7 @@ class _KanbanHeader extends ConsumerWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: ink,
+                                    color: y.yBorderStrong,
                                     width: borderWidth,
                                   ),
                                 ),
@@ -881,7 +892,7 @@ class _DateRow extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                border: Border.all(color: ink, width: borderWidth),
+                border: Border.all(color: y.yBorderStrong, width: borderWidth),
               ),
               child: Row(
                 children: [
@@ -1011,8 +1022,9 @@ class _KanbanBoard extends ConsumerWidget {
       builder:
           (ctx) => AlertDialog(
             backgroundColor: y.yCream,
-            shape: const RoundedRectangleBorder(
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.zero,
+              side: BorderSide(color: y.yBorderStrong, width: y.yLineMid),
             ),
             title: Text(
               'Nueva tarea',
@@ -1021,7 +1033,23 @@ class _KanbanBoard extends ConsumerWidget {
             content: TextField(
               controller: ctrl,
               autofocus: true,
-              decoration: const InputDecoration(hintText: 'Titulo'),
+              decoration: InputDecoration(
+                hintText: 'Titulo',
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineThin,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineMid,
+                  ),
+                ),
+              ),
               onSubmitted: (t) async {
                 if (t.trim().isNotEmpty) {
                   await ref
@@ -1087,7 +1115,7 @@ class _KanbanColumn extends ConsumerWidget {
             backgroundColor: paperColor(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.zero,
-              side: BorderSide(color: inkColor(context), width: borderWidth),
+              side: BorderSide(color: y.yBorderStrong, width: borderWidth),
             ),
             title: Text(
               'Eliminar columna',
@@ -1145,14 +1173,14 @@ class _KanbanColumn extends ConsumerWidget {
       child: Container(
         decoration: BoxDecoration(
           color: y.yCream,
-          border: Border.all(color: y.yInk, width: y.yLineMid),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Color stripe
             Container(height: 6, color: colColor),
-            Container(height: 2, color: y.yInk),
+            Container(height: 2, color: y.yBorderStrong),
             // Column header
             _ColumnHead(
               column: column,
@@ -1290,7 +1318,7 @@ class _KanbanColumn extends ConsumerWidget {
                 },
               ),
             ),
-            Container(height: 1, color: y.yInk),
+            Container(height: 1, color: y.yBorderStrong),
             _AddCardButton(
               spaceId: space.id,
               columnId: column.id,
@@ -1584,7 +1612,7 @@ class _AddColumnButton extends ConsumerWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: y.yCream,
-                  border: Border.all(color: y.yInk, width: 3),
+                  border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
                 ),
                 child: const Text(
                   '+',
@@ -1631,8 +1659,9 @@ class _AddColumnButton extends ConsumerWidget {
       builder:
           (ctx) => AlertDialog(
             backgroundColor: paperColor(context),
-            shape: const RoundedRectangleBorder(
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.zero,
+              side: BorderSide(color: y.yBorderStrong, width: y.yLineMid),
             ),
             title: Text(
               'Nueva columna',
@@ -1645,6 +1674,20 @@ class _AddColumnButton extends ConsumerWidget {
               decoration: InputDecoration(
                 hintText: 'Nombre',
                 hintStyle: bodyL.copyWith(color: inkGray),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineThin,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineMid,
+                  ),
+                ),
               ),
               onSubmitted: (name) async {
                 if (name.trim().isNotEmpty) {
@@ -1732,8 +1775,9 @@ class _AddCardButton extends ConsumerWidget {
       builder:
           (ctx) => AlertDialog(
             backgroundColor: paperColor(context),
-            shape: const RoundedRectangleBorder(
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.zero,
+              side: BorderSide(color: y.yBorderStrong, width: y.yLineMid),
             ),
             title: Text(
               'Nueva tarjeta',
@@ -1746,6 +1790,20 @@ class _AddCardButton extends ConsumerWidget {
               decoration: InputDecoration(
                 hintText: 'Título',
                 hintStyle: bodyL.copyWith(color: inkGray),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineThin,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: y.yBorderStrong,
+                    width: y.yLineMid,
+                  ),
+                ),
               ),
               onSubmitted: (title) async {
                 if (title.trim().isNotEmpty) {
@@ -1815,7 +1873,7 @@ class _LinkFoldersSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidth),
         ),
       ),
       child: SafeArea(
@@ -1879,7 +1937,7 @@ class _LinkFoldersSheet extends ConsumerWidget {
                               height: 16,
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: inkColor(context),
+                                  color: y.yBorderStrong,
                                   width: borderWidth,
                                 ),
                               ),
@@ -1942,7 +2000,7 @@ class _LinkedNotesSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidth),
         ),
       ),
       child:
@@ -2055,7 +2113,7 @@ class _NoteRow extends ConsumerWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: cardBackground(context),
-            border: Border.all(color: inkColor(context), width: borderWidth),
+            border: Border.all(color: y.yBorderStrong, width: borderWidth),
           ),
           child: Row(
             children: [
@@ -2133,7 +2191,9 @@ class _SelectionBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: paperColor(context),
-        border: Border(top: BorderSide(color: ink, width: borderWidthHeavy)),
+        border: Border(
+          top: BorderSide(color: y.yBorderStrong, width: borderWidth),
+        ),
       ),
       child: SafeArea(
         top: false,
@@ -2207,7 +2267,7 @@ class _ColumnPickerSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: paperColor(context),
         border: Border(
-          top: BorderSide(color: inkColor(context), width: borderWidthHeavy),
+          top: BorderSide(color: y.yBorderStrong, width: borderWidth),
         ),
       ),
       child: SafeArea(
@@ -2295,7 +2355,7 @@ class _ColumnHead extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: y.yInk, width: 2)),
+        border: Border(bottom: BorderSide(color: y.yBorderStrong, width: 2)),
       ),
       padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
       child: Row(
@@ -2435,7 +2495,7 @@ class _ColumnManagePopover extends StatelessWidget {
         width: 280,
         decoration: BoxDecoration(
           color: y.yCream,
-          border: Border.all(color: y.yInk, width: 3),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
           boxShadow: [BoxShadow(color: y.yInk, offset: const Offset(4, 4))],
         ),
         child: Column(
@@ -2455,7 +2515,7 @@ class _ColumnManagePopover extends StatelessWidget {
                 ),
               ),
             ),
-            Container(height: 2, color: y.yInk),
+            Container(height: 2, color: y.yBorderStrong),
             _PopRow(
               icon: Icons.edit_outlined,
               label: 'Renombrar',
@@ -2499,7 +2559,7 @@ class _ColumnManagePopover extends StatelessWidget {
                       : 'Marcar como EN PROCESO',
               onTap: onToggleInProgress,
             ),
-            Container(height: 2, color: y.yInk.withValues(alpha: 0.15)),
+            Container(height: 2, color: y.yBorderSoft),
             _PopRow(
               icon: Icons.close,
               label: 'Eliminar columna',

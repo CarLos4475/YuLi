@@ -221,7 +221,9 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineHeavy),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 22),
       child: CompositedTransformTarget(
@@ -229,7 +231,7 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
         child: Container(
           decoration: BoxDecoration(
             color: yCream,
-            border: Border.all(color: yInk, width: yLineHeavy),
+            border: Border.all(color: yBorderStrong, width: yLineMid),
           ),
           height: 76,
           child: Row(
@@ -249,7 +251,7 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
                   ),
                 ),
               ),
-              Container(width: yLineHeavy, color: yInk),
+              Container(width: yLineMid, color: yBorderStrong),
               // Input
               Expanded(
                 child: Padding(
@@ -322,7 +324,7 @@ class _CapturaBarState extends ConsumerState<_CapturaBar> {
                             ? yMuted.withValues(alpha: 0.3)
                             : yFight,
                     border: const Border(
-                      left: BorderSide(color: yInk, width: yLineHeavy),
+                      left: BorderSide(color: yBorderStrong, width: yLineMid),
                     ),
                   ),
                   child: Text(
@@ -568,7 +570,7 @@ class _BucketColumn extends StatelessWidget {
         border:
             borderRight
                 ? const Border(
-                  right: BorderSide(color: yInk, width: yLineHeavy),
+                  right: BorderSide(color: yBorderStrong, width: yLineMid),
                 )
                 : null,
       ),
@@ -581,7 +583,7 @@ class _BucketColumn extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               border: const Border(
-                bottom: BorderSide(color: yInk, width: yLineHeavy),
+                bottom: BorderSide(color: yBorderStrong, width: yLineMid),
               ),
             ),
             child: Column(
@@ -628,12 +630,7 @@ class _BucketColumn extends StatelessWidget {
           // Gesture hint
           Container(
             decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: yInk.withValues(alpha: 0.25),
-                  width: 1,
-                ),
-              ),
+              border: Border(bottom: BorderSide(color: yBorderSoft, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child:
@@ -1033,7 +1030,10 @@ class _TaskCardBody extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: done ? yMuted : yInk, width: yLineMid),
+        border: Border.all(
+          color: done ? yMuted : yBorderStrong,
+          width: yLineMid,
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
       child: Column(
@@ -1087,7 +1087,7 @@ class _TaskCardBody extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(6, 2, 6, 3),
                   decoration: BoxDecoration(
                     color: yLab,
-                    border: Border.all(color: yInk, width: 1.5),
+                    border: Border.all(color: yBorderStrong, width: 1.5),
                   ),
                   child: Text(
                     '✓ HECHO',
@@ -1109,7 +1109,7 @@ class _TaskCardBody extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
                   decoration: BoxDecoration(
                     color: _dueDateColor(task.dueDate!),
-                    border: Border.all(color: yInk, width: 1.5),
+                    border: Border.all(color: yBorderStrong, width: 1.5),
                   ),
                   child: Text(
                     _formatDueDate(task.dueDate!),
@@ -1128,7 +1128,7 @@ class _TaskCardBody extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
                   decoration: BoxDecoration(
                     color: yInk,
-                    border: Border.all(color: yInk, width: 1.5),
+                    border: Border.all(color: yBorderStrong, width: 1.5),
                   ),
                   child: Text(
                     'REC ${formatReminderTime(task.remindAt!)}',
@@ -1212,7 +1212,7 @@ class _TinyTaskAction extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? yFight : yCream,
-          border: Border.all(color: yInk, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: 1.5),
         ),
         child: Icon(icon, size: 12, color: active ? yCream : yInk),
       ),
@@ -1232,7 +1232,7 @@ class _TaskLinkChip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: 1.5),
+        border: Border.all(color: yBorderStrong, width: 1.5),
       ),
       child: Text(
         text,
@@ -1257,7 +1257,7 @@ class _FolderMention extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
       decoration: BoxDecoration(
         color: folder.color,
-        border: Border.all(color: yInk, width: 1.5),
+        border: Border.all(color: yBorderStrong, width: 1.5),
       ),
       child: Text(
         '@${folder.name}',
@@ -1285,7 +1285,7 @@ class _MentionPopup extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1336,7 +1336,9 @@ class _SendToLabSheet extends ConsumerWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          top: BorderSide(color: yBorderStrong, width: yLineHeavy),
+        ),
       ),
       child: SafeArea(
         top: false,

@@ -54,14 +54,23 @@ class BlockRouter extends StatelessWidget {
       index: index,
       child: switch (block) {
         TextBlock t => _TextBlockBody(
-            block: t, onFocusChanged: onTextBlockFocusChanged),
+          block: t,
+          onFocusChanged: onTextBlockFocusChanged,
+        ),
         MathBlock m => _MathBlockBody(block: m, accentColor: accent),
         BulletsBlock bl => _BulletsBlockBody(block: bl),
-        TareasBlock tb =>
-            _TareasBlockBody(block: tb, note: note, folder: folder, accent: accent),
+        TareasBlock tb => _TareasBlockBody(
+          block: tb,
+          note: note,
+          folder: folder,
+          accent: accent,
+        ),
         DrawingBlock d => _DrawingBlockBody(
-            block: d, accent: accent, folderId: folder.id,
-            onScrollLockChanged: onScrollLockChanged),
+          block: d,
+          accent: accent,
+          folderId: folder.id,
+          onScrollLockChanged: onScrollLockChanged,
+        ),
       },
     );
   }
@@ -74,7 +83,11 @@ class _BlockShell extends ConsumerWidget {
   final Widget child;
   final int index;
 
-  const _BlockShell({required this.block, required this.child, required this.index});
+  const _BlockShell({
+    required this.block,
+    required this.child,
+    required this.index,
+  });
 
   static const _glyphForType = {
     NoteBlockType.text: 'Tt',
@@ -103,7 +116,7 @@ class _BlockShell extends ConsumerWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: yCream,
-                  border: Border.all(color: yInk, width: 1.5),
+                  border: Border.all(color: yBorderStrong, width: 1.5),
                 ),
                 child: Text(
                   _glyphForType[block.type] ?? '·',
@@ -118,7 +131,11 @@ class _BlockShell extends ConsumerWidget {
               const SizedBox(height: 6),
               ReorderableDragStartListener(
                 index: index,
-                child: const Icon(Icons.drag_indicator, size: 14, color: yMuted),
+                child: const Icon(
+                  Icons.drag_indicator,
+                  size: 14,
+                  color: yMuted,
+                ),
               ),
             ],
           ),
@@ -136,8 +153,11 @@ class _BlockShell extends ConsumerWidget {
                   onTap: () => _confirmDelete(context, ref),
                   child: Padding(
                     padding: const EdgeInsets.all(4),
-                    child: Icon(Icons.close,
-                        size: 14, color: yMuted.withValues(alpha: 0.5)),
+                    child: Icon(
+                      Icons.close,
+                      size: 14,
+                      color: yMuted.withValues(alpha: 0.5),
+                    ),
                   ),
                 ),
               ),
@@ -151,22 +171,32 @@ class _BlockShell extends ConsumerWidget {
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Borrar bloque',
-            style: ySans(size: 18, weight: FontWeight.w700)),
-        content: Text('Se eliminará este bloque de la nota.',
-            style: yBody(size: 14)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Borrar')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: yBorderStrong, width: yLineMid),
+            ),
+            title: Text(
+              'Borrar bloque',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: Text(
+              'Se eliminará este bloque de la nota.',
+              style: yBody(size: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Borrar'),
+              ),
+            ],
+          ),
     );
     if (ok == true) {
       await ref.read(noteBlockRepositoryProvider).delete(block.id);
@@ -249,9 +279,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   }
 
   Future<void> _persist() async {
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .updatePayload(widget.block.id, {'md': _ctrl.text});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'md': _ctrl.text,
+    });
   }
 
   @override
@@ -325,9 +355,9 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
   }
 
   Future<void> _persist() async {
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .updatePayload(widget.block.id, {'latex': _ctrl.text});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'latex': _ctrl.text,
+    });
   }
 
   @override
@@ -339,8 +369,10 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
         Container(
           decoration: BoxDecoration(
             color: widget.accentColor,
-            border: Border.all(color: yInk, width: yLineMid),
-            boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+            boxShadow: const [
+              BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+            ],
           ),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
           child: Stack(
@@ -348,38 +380,41 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
               Positioned(
                 top: 0,
                 right: 4,
-                child: Text('LATEX · DISPLAY',
-                    style: yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yCream.withValues(alpha: 0.55),
-                    )),
+                child: Text(
+                  'LATEX · DISPLAY',
+                  style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yCream.withValues(alpha: 0.55),
+                  ),
+                ),
               ),
               Center(
-                child: latex.trim().isEmpty
-                    ? Text('introduce LaTeX abajo',
-                        style: yMono(
-                          size: 12,
-                          color: yCream.withValues(alpha: 0.6),
-                          tracking: 1.2,
-                        ))
-                    : Math.tex(
-                        latex,
-                        mathStyle: MathStyle.display,
-                        textStyle: TextStyle(
-                          fontSize: 22,
-                          color: yCream,
-                        ),
-                        onErrorFallback: (err) => Text(
-                          err.message,
+                child:
+                    latex.trim().isEmpty
+                        ? Text(
+                          'introduce LaTeX abajo',
                           style: yMono(
-                            size: 11,
-                            color: yAmber2,
-                            tracking: 0.8,
+                            size: 12,
+                            color: yCream.withValues(alpha: 0.6),
+                            tracking: 1.2,
                           ),
+                        )
+                        : Math.tex(
+                          latex,
+                          mathStyle: MathStyle.display,
+                          textStyle: TextStyle(fontSize: 22, color: yCream),
+                          onErrorFallback:
+                              (err) => Text(
+                                err.message,
+                                style: yMono(
+                                  size: 11,
+                                  color: yAmber2,
+                                  tracking: 0.8,
+                                ),
+                              ),
                         ),
-                      ),
               ),
             ],
           ),
@@ -396,7 +431,10 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
           style: yMono(size: 12, color: yInk, tracking: 0.5),
           decoration: InputDecoration(
             isCollapsed: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 6,
+              horizontal: 4,
+            ),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
@@ -479,9 +517,9 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
 
   Future<void> _persist() async {
     _items = _ctrls.map((c) => c.text).toList();
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .updatePayload(widget.block.id, {'items': _items});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'items': _items,
+    });
   }
 
   void _addItem() {
@@ -557,15 +595,13 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
                     style: yBody(size: 14, color: yInk2, height: 1.5),
                     decoration: InputDecoration(
                       isCollapsed: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 4),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                       filled: false,
                       hintText: 'item…',
-                      hintStyle:
-                          yBody(size: 14, color: yMuted, height: 1.5),
+                      hintStyle: yBody(size: 14, color: yMuted, height: 1.5),
                     ),
                   ),
                 ),
@@ -579,13 +615,15 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
               onTap: _addItem,
               child: Padding(
                 padding: const EdgeInsets.only(top: 4, left: 16),
-                child: Text('+ item',
-                    style: yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yMuted,
-                    )),
+                child: Text(
+                  '+ item',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -594,13 +632,15 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
               onTap: _copyAll,
               child: Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('COPIAR TODO',
-                    style: yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yMuted,
-                    )),
+                child: Text(
+                  'COPIAR TODO',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
+                ),
               ),
             ),
           ],
@@ -634,10 +674,10 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
   bool _showInput = false;
 
   NoteBlockActions get _actions => NoteBlockActions(
-        ref: ref,
-        noteId: widget.note.id,
-        folderId: widget.note.folderId,
-      );
+    ref: ref,
+    noteId: widget.note.id,
+    folderId: widget.note.folderId,
+  );
 
   @override
   void dispose() {
@@ -658,10 +698,12 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
   Future<void> _onLongPress(Task t) async {
     final spaces = ref.read(activeLabSpacesProvider).valueOrNull ?? [];
     if (spaces.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('No hay spaces activos'),
-        duration: Duration(seconds: 2),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay spaces activos'),
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
     final picked = await showDialog<LabSpace>(
@@ -671,36 +713,44 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
     if (picked == null) return;
     await _actions.linkTaskToSpace(t, picked.id);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Linkeada a ${picked.name}'),
-        duration: const Duration(seconds: 2),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Linkeada a ${picked.name}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
   Future<void> _onDelete(Task t) async {
     final choice = await showDialog<_DeleteChoice>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Borrar tarea',
-            style: ySans(size: 18, weight: FontWeight.w700)),
-        content: Text(
-          '¿Solo desenlazar de la nota (sigue viva en FIGHT) o borrar de todos los lugares?',
-          style: yBody(size: 13),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () =>
-                  Navigator.pop(ctx, _DeleteChoice.unlink),
-              child: const Text('Solo desenlazar')),
-          TextButton(
-              onPressed: () =>
-                  Navigator.pop(ctx, _DeleteChoice.hard),
-              child: const Text('Borrar de todos lados')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: yBorderStrong, width: yLineMid),
+            ),
+            title: Text(
+              'Borrar tarea',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: Text(
+              '¿Solo desenlazar de la nota (sigue viva en FIGHT) o borrar de todos los lugares?',
+              style: yBody(size: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, _DeleteChoice.unlink),
+                child: const Text('Solo desenlazar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, _DeleteChoice.hard),
+                child: const Text('Borrar de todos lados'),
+              ),
+            ],
+          ),
     );
     if (choice == null) return;
     switch (choice) {
@@ -715,29 +765,30 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
   Widget build(BuildContext context) {
     final tasksAsync = ref.watch(noteLinkedTasksProvider(widget.note.id));
     final allTasks = tasksAsync.valueOrNull ?? [];
-    final blockTasks = allTasks
-        .where((t) =>
-            widget.block.taskIds.contains(t.id) &&
-            t.status != TaskStatus.trash)
-        .toList()
-      ..sort((a, b) {
-        final aDone = a.status == TaskStatus.done;
-        final bDone = b.status == TaskStatus.done;
-        if (aDone != bDone) return aDone ? 1 : -1;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+    final blockTasks =
+        allTasks
+            .where(
+              (t) =>
+                  widget.block.taskIds.contains(t.id) &&
+                  t.status != TaskStatus.trash,
+            )
+            .toList()
+          ..sort((a, b) {
+            final aDone = a.status == TaskStatus.done;
+            final bDone = b.status == TaskStatus.done;
+            if (aDone != bDone) return aDone ? 1 : -1;
+            return a.createdAt.compareTo(b.createdAt);
+          });
 
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
         borderRadius: BorderRadius.zero,
       ),
       child: Container(
         decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: widget.accent, width: 6),
-          ),
+          border: Border(left: BorderSide(color: widget.accent, width: 6)),
         ),
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(
@@ -745,13 +796,15 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
           children: [
             Row(
               children: [
-                Text('// BLOQUE TAREAS',
-                    style: yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
-                    )),
+                Text(
+                  '// BLOQUE TAREAS',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -788,21 +841,29 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
                       decoration: InputDecoration(
                         isCollapsed: true,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 10),
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.zero,
-                          borderSide:
-                              BorderSide(color: yInk, width: yLineMid),
+                          borderSide: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.zero,
-                          borderSide:
-                              BorderSide(color: yInk, width: yLineMid),
+                          borderSide: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.zero,
-                          borderSide:
-                              BorderSide(color: yInk, width: yLineMid),
+                          borderSide: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         filled: false,
                         hintText: 'nueva tarea…',
@@ -820,11 +881,19 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yFight,
-                        border: Border.all(color: yInk, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
-                      child: const Text('+',
-                          style: TextStyle(
-                              fontSize: 18, color: yCream, height: 1.0)),
+                      child: const Text(
+                        '+',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: yCream,
+                          height: 1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -834,12 +903,14 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
             if (blockTasks.isEmpty && !_showInput)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text('sin tareas',
-                    style: yMono(
-                      size: 10,
-                      color: yMuted.withValues(alpha: 0.6),
-                      tracking: 1.2,
-                    )),
+                child: Text(
+                  'sin tareas',
+                  style: yMono(
+                    size: 10,
+                    color: yMuted.withValues(alpha: 0.6),
+                    tracking: 1.2,
+                  ),
+                ),
               ),
             for (final t in blockTasks)
               _NoteTaskRow(
@@ -891,30 +962,40 @@ class _NoteTaskRow extends ConsumerWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: done ? yInk : yCream,
-                  border: Border.all(color: yInk, width: yLineThin),
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
-                child: done
-                    ? const Text('✓',
-                        style: TextStyle(
+                child:
+                    done
+                        ? const Text(
+                          '✓',
+                          style: TextStyle(
                             fontSize: 12,
                             color: yCream,
                             height: 1.0,
-                            fontWeight: FontWeight.w700))
-                    : null,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                        : null,
               ),
             ),
             const SizedBox(width: 10),
             if (task.folderId != null) ...[
-              Builder(builder: (context) {
-                final fColor = ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color;
-                if (fColor == null) return const SizedBox.shrink();
-                return Container(
-                  width: 4,
-                  height: 16,
-                  margin: const EdgeInsets.only(right: 6),
-                  color: fColor,
-                );
-              }),
+              Builder(
+                builder: (context) {
+                  final fColor =
+                      ref
+                          .watch(folderByIdProvider(task.folderId!))
+                          .valueOrNull
+                          ?.color;
+                  if (fColor == null) return const SizedBox.shrink();
+                  return Container(
+                    width: 4,
+                    height: 16,
+                    margin: const EdgeInsets.only(right: 6),
+                    color: fColor,
+                  );
+                },
+              ),
             ],
             Expanded(
               child: Text(
@@ -955,8 +1036,11 @@ class _NoteTaskRow extends ConsumerWidget {
               onTap: onDelete,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Icon(Icons.close,
-                    size: 14, color: yMuted.withValues(alpha: 0.6)),
+                child: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: yMuted.withValues(alpha: 0.6),
+                ),
               ),
             ),
           ],
@@ -981,15 +1065,17 @@ class _LinkChip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: 1.5),
+        border: Border.all(color: yBorderStrong, width: 1.5),
       ),
-      child: Text(text,
-          style: yMono(
-            size: 8,
-            weight: FontWeight.w700,
-            tracking: 1,
-            color: yCream,
-          )),
+      child: Text(
+        text,
+        style: yMono(
+          size: 8,
+          weight: FontWeight.w700,
+          tracking: 1,
+          color: yCream,
+        ),
+      ),
     );
   }
 }
@@ -998,17 +1084,19 @@ enum _DeleteChoice { unlink, hard }
 
 /// Returns the linked space name for a task (or null if no kanban link).
 /// Reactive: refreshes when the linked card is created/moved/deleted.
-final _kanbanByTaskProvider =
-    StreamProvider.family<String?, int>((ref, taskId) {
+final _kanbanByTaskProvider = StreamProvider.family<String?, int>((
+  ref,
+  taskId,
+) {
   final labRepo = ref.watch(labSpaceRepositoryProvider);
   return ref
       .watch(kanbanCardRepositoryProvider)
       .watchByOriginTaskId(taskId)
       .asyncMap((card) async {
-    if (card == null) return null;
-    final space = await labRepo.getById(card.labSpaceId);
-    return space?.name;
-  });
+        if (card == null) return null;
+        final space = await labRepo.getById(card.labSpaceId);
+        return space?.name;
+      });
 });
 
 class _SpacePickerDialog extends StatelessWidget {
@@ -1019,23 +1107,24 @@ class _SpacePickerDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: yCream,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: yBorderStrong, width: yLineMid),
+      ),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Linkear a space',
-                style: ySans(
-                  size: 20,
-                  weight: FontWeight.w700,
-                  color: yInk,
-                )),
+            Text(
+              'Linkear a space',
+              style: ySans(size: 20, weight: FontWeight.w700, color: yInk),
+            ),
             const SizedBox(height: 12),
             for (final s in spaces)
               GestureDetector(
@@ -1048,8 +1137,10 @@ class _SpacePickerDialog extends StatelessWidget {
                       Container(width: 12, height: 12, color: s.accentColor),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(s.name,
-                            style: ySans(size: 16, color: yInk)),
+                        child: Text(
+                          s.name,
+                          style: ySans(size: 16, color: yInk),
+                        ),
                       ),
                     ],
                   ),
@@ -1078,8 +1169,7 @@ class _DrawingBlockBody extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_DrawingBlockBody> createState() =>
-      _DrawingBlockBodyState();
+  ConsumerState<_DrawingBlockBody> createState() => _DrawingBlockBodyState();
 }
 
 class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
@@ -1103,13 +1193,10 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
 
   Future<void> _persist(DrawingData data) async {
     _data = data;
-    await ref.read(noteBlockRepositoryProvider).updatePayload(
-      widget.block.id,
-      {
-        'h': data.height,
-        's': data.strokes.map((s) => s.toJson()).toList(),
-      },
-    );
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'h': data.height,
+      's': data.strokes.map((s) => s.toJson()).toList(),
+    });
   }
 
   @override
@@ -1126,17 +1213,33 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       onScrollLockChanged: (locked) {
         widget.onScrollLockChanged?.call(locked);
       },
-      onRecognizeText: (strokes) => runOcrFlow(context, ref, strokes,
-          accent: widget.accent,
-          folderId: widget.folderId,
-          noteId: widget.block.noteId),
-      onSendToYuli: (strokes) => runOcrToYuliFlow(context, ref, strokes,
-          accent: widget.accent,
-          noteId: widget.block.noteId),
-      onSendMathToYuli: kDebugMode
-          ? (strokes) => runMathToYuliFlow(context, ref, strokes,
-              accent: widget.accent, noteId: widget.block.noteId)
-          : null,
+      onRecognizeText:
+          (strokes) => runOcrFlow(
+            context,
+            ref,
+            strokes,
+            accent: widget.accent,
+            folderId: widget.folderId,
+            noteId: widget.block.noteId,
+          ),
+      onSendToYuli:
+          (strokes) => runOcrToYuliFlow(
+            context,
+            ref,
+            strokes,
+            accent: widget.accent,
+            noteId: widget.block.noteId,
+          ),
+      onSendMathToYuli:
+          kDebugMode
+              ? (strokes) => runMathToYuliFlow(
+                context,
+                ref,
+                strokes,
+                accent: widget.accent,
+                noteId: widget.block.noteId,
+              )
+              : null,
     );
   }
 }
@@ -1176,12 +1279,19 @@ String fixMarkdownTables(String md) {
 class NoteMarkdownPreview extends ConsumerWidget {
   final String data;
   final bool tight;
-  const NoteMarkdownPreview({required this.data, this.tight = false});
+  const NoteMarkdownPreview({
+    super.key,
+    required this.data,
+    this.tight = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     SpanNode? customTextGenerator(
-        m.Node node, MarkdownConfig config, WidgetVisitor visitor) {
+      m.Node node,
+      MarkdownConfig config,
+      WidgetVisitor visitor,
+    ) {
       return null;
     }
 
@@ -1189,22 +1299,32 @@ class NoteMarkdownPreview extends ConsumerWidget {
       textGenerator: customTextGenerator,
       linesMargin: tight ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
       inlineSyntaxList: [_LatexSyntax()],
-      blockSyntaxList: [const _DefinitionListSyntax(), const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
+      blockSyntaxList: [
+        const _DefinitionListSyntax(),
+        const _LatexBlockSyntax(),
+        const _AlignmentBlockSyntax(),
+      ],
       generators: [
         SpanNodeGeneratorWithTag(
           tag: 'latex',
-          generator: (e, config, visitor) =>
-              _LatexNode(e.attributes, e.textContent, config),
+          generator:
+              (e, config, visitor) =>
+                  _LatexNode(e.attributes, e.textContent, config),
         ),
         SpanNodeGeneratorWithTag(
           tag: 'align',
-          generator: (e, config, visitor) =>
-              _AlignmentNode(e.attributes['align'] ?? 'left', e.textContent, config),
+          generator:
+              (e, config, visitor) => _AlignmentNode(
+                e.attributes['align'] ?? 'left',
+                e.textContent,
+                config,
+              ),
         ),
         SpanNodeGeneratorWithTag(
           tag: 'deflist',
-          generator: (e, config, visitor) =>
-              _DefinitionListNode(e.attributes['data'] ?? '', config),
+          generator:
+              (e, config, visitor) =>
+                  _DefinitionListNode(e.attributes['data'] ?? '', config),
         ),
       ],
     );
@@ -1212,48 +1332,93 @@ class NoteMarkdownPreview extends ConsumerWidget {
     return MarkdownWidget(
       data: data,
       shrinkWrap: true,
-      padding: tight ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.all(8.0),
+      padding:
+          tight
+              ? const EdgeInsets.symmetric(vertical: 4)
+              : const EdgeInsets.all(8.0),
       markdownGenerator: generator,
-      config: MarkdownConfig(configs: [
-        PConfig(textStyle: yBody(size: 15, color: yInk2, height: 1.55)),
-        H1Config(style: ySans(size: 28, weight: FontWeight.w700, letterSpacing: -0.8, color: yInk)),
-        H2Config(style: ySans(size: 22, weight: FontWeight.w700, letterSpacing: -0.5, color: yInk)),
-        H3Config(style: ySans(size: 18, weight: FontWeight.w700, letterSpacing: -0.3, color: yInk)),
-        CheckBoxConfig(builder: (checked) => Padding(
-          padding: const EdgeInsets.only(right: 4),
-          child: Icon(
-            checked ? Icons.check_box : Icons.check_box_outline_blank,
-            size: 18,
-            color: yInk,
+      config: MarkdownConfig(
+        configs: [
+          PConfig(textStyle: yBody(size: 15, color: yInk2, height: 1.55)),
+          H1Config(
+            style: ySans(
+              size: 28,
+              weight: FontWeight.w700,
+              letterSpacing: -0.8,
+              color: yInk,
+            ),
           ),
-        )),
-        CodeConfig(style: yMono(size: 12, color: yInk, tracking: 0.5).copyWith(backgroundColor: yCream2)),
-        BlockquoteConfig(textColor: yMuted, sideColor: yFlight),
-        ImgConfig(
-          builder: (url, attributes) {
-            final maxW = MediaQuery.of(context).size.width * 0.75;
-            Widget img;
-            if (url.startsWith('/')) {
-              img = Image.file(File(url),
+          H2Config(
+            style: ySans(
+              size: 22,
+              weight: FontWeight.w700,
+              letterSpacing: -0.5,
+              color: yInk,
+            ),
+          ),
+          H3Config(
+            style: ySans(
+              size: 18,
+              weight: FontWeight.w700,
+              letterSpacing: -0.3,
+              color: yInk,
+            ),
+          ),
+          CheckBoxConfig(
+            builder:
+                (checked) => Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Icon(
+                    checked ? Icons.check_box : Icons.check_box_outline_blank,
+                    size: 18,
+                    color: yInk,
+                  ),
+                ),
+          ),
+          CodeConfig(
+            style: yMono(
+              size: 12,
+              color: yInk,
+              tracking: 0.5,
+            ).copyWith(backgroundColor: yCream2),
+          ),
+          BlockquoteConfig(textColor: yMuted, sideColor: yFlight),
+          ImgConfig(
+            builder: (url, attributes) {
+              final maxW = MediaQuery.of(context).size.width * 0.75;
+              Widget img;
+              if (url.startsWith('/')) {
+                img = Image.file(
+                  File(url),
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => Text('[Imagen no encontrada]',
-                      style: yBody(size: 13, color: yMuted)));
-            } else {
-              img = Image.network(url,
+                  errorBuilder:
+                      (_, _, _) => Text(
+                        '[Imagen no encontrada]',
+                        style: yBody(size: 13, color: yMuted),
+                      ),
+                );
+              } else {
+                img = Image.network(
+                  url,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => Text('[Imagen: $url]',
-                      style: yBody(size: 13, color: yMuted)));
-            }
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: 300, maxWidth: maxW),
-                child: img,
-              ),
-            );
-          },
-        ),
-      ]),
+                  errorBuilder:
+                      (_, _, _) => Text(
+                        '[Imagen: $url]',
+                        style: yBody(size: 13, color: yMuted),
+                      ),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 300, maxWidth: maxW),
+                  child: img,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1281,8 +1446,9 @@ class _LatexNode extends SpanNode {
         content,
         mathStyle: isInline ? MathStyle.text : MathStyle.display,
         textStyle: style,
-        onErrorFallback: (err) =>
-            Text(textContent, style: style.copyWith(color: Colors.red)),
+        onErrorFallback:
+            (err) =>
+                Text(textContent, style: style.copyWith(color: Colors.red)),
       ),
     );
   }
@@ -1316,8 +1482,7 @@ class _LatexBlockSyntax extends m.BlockSyntax {
 
 class _LatexSyntax extends m.InlineSyntax {
   _LatexSyntax()
-      : super(
-            r'(\$\$\s*([\s\S]+?)\s*\$\$)|(\$(?!\s)([^$\n]+?)(?<!\s)\$)');
+    : super(r'(\$\$\s*([\s\S]+?)\s*\$\$)|(\$(?!\s)([^$\n]+?)(?<!\s)\$)');
 
   @override
   bool onMatch(m.InlineParser parser, Match match) {
@@ -1364,8 +1529,8 @@ class _AlignmentNode extends SpanNode {
       generators: [
         SpanNodeGeneratorWithTag(
           tag: 'latex',
-          generator: (e, cfg, visitor) =>
-              _LatexNode(e.attributes, e.textContent, cfg),
+          generator:
+              (e, cfg, visitor) => _LatexNode(e.attributes, e.textContent, cfg),
         ),
       ],
     );
@@ -1376,10 +1541,7 @@ class _AlignmentNode extends SpanNode {
       alignment: PlaceholderAlignment.middle,
       child: SizedBox(
         width: double.infinity,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: widgets,
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: widgets),
       ),
     );
   }
@@ -1471,53 +1633,47 @@ class _DefinitionListNode extends SpanNode {
       if (parts.length < 2) continue;
       final term = parts[0];
       final defs = parts.sublist(1);
-      children.add(WidgetSpan(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                term,
-                style: ySans(
-                  size: 15,
-                  weight: FontWeight.w700,
-                  color: yInk,
-                  height: 1.4,
-                ),
-              ),
-              for (final def in defs)
-                Padding(
-                  padding: const EdgeInsets.only(left: 20, top: 2),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 5, right: 8),
-                        child: Container(
-                          width: 6,
-                          height: 2,
-                          color: yMuted,
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          def,
-                          style: yBody(
-                            size: 14,
-                            color: yInk2,
-                            height: 1.5,
-                          ),
-                        ),
-                      ),
-                    ],
+      children.add(
+        WidgetSpan(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  term,
+                  style: ySans(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: yInk,
+                    height: 1.4,
                   ),
                 ),
-            ],
+                for (final def in defs)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 20, top: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5, right: 8),
+                          child: Container(width: 6, height: 2, color: yMuted),
+                        ),
+                        Expanded(
+                          child: Text(
+                            def,
+                            style: yBody(size: 14, color: yInk2, height: 1.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
-      ));
+      );
     }
     if (children.isEmpty) return const TextSpan();
     if (children.length == 1) return children.first;

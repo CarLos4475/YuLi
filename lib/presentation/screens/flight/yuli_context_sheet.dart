@@ -14,12 +14,13 @@ Future<void> showYuliContextSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _YuliContextSheet(
-      contextText: contextText,
-      accent: accent,
-      onSend: onSend,
-      onAsk: onAsk,
-    ),
+    builder:
+        (_) => _YuliContextSheet(
+          contextText: contextText,
+          accent: accent,
+          onSend: onSend,
+          onAsk: onAsk,
+        ),
   );
 }
 
@@ -41,8 +42,9 @@ class _YuliContextSheet extends StatefulWidget {
 }
 
 class _YuliContextSheetState extends State<_YuliContextSheet> {
-  late final TextEditingController _ctrl =
-      TextEditingController(text: widget.contextText);
+  late final TextEditingController _ctrl = TextEditingController(
+    text: widget.contextText,
+  );
   bool _copied = false;
 
   @override
@@ -65,7 +67,9 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
       child: Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          border: Border(
+            top: BorderSide(color: yBorderStrong, width: yLineMid),
+          ),
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: SafeArea(
@@ -76,12 +80,15 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
             children: [
               Row(
                 children: [
-                  Text('CONTEXTO PARA YULI',
-                      style: yMono(
-                          size: 11,
-                          weight: FontWeight.w700,
-                          tracking: 1.4,
-                          color: yInk)),
+                  Text(
+                    'CONTEXTO PARA YULI',
+                    style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
                   const Spacer(),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -104,15 +111,24 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
                     contentPadding: const EdgeInsets.all(10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yInk, width: yLineMid),
+                      borderSide: BorderSide(
+                        color: yBorderStrong,
+                        width: yLineMid,
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yInk, width: yLineMid),
+                      borderSide: BorderSide(
+                        color: yBorderStrong,
+                        width: yLineMid,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yInk, width: yLineMid),
+                      borderSide: BorderSide(
+                        color: yBorderStrong,
+                        width: yLineMid,
+                      ),
                     ),
                     hintText: 'CONTEXTO VACÍO',
                     hintStyle: yBody(size: 15, color: yMuted),
@@ -136,15 +152,19 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: widget.accent,
-                          border: Border.all(color: yInk, width: yLineMid),
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         child: Text(
                           'ENVIAR A YULI',
                           style: yMono(
-                              size: 11,
-                              weight: FontWeight.w700,
-                              tracking: 1.2,
-                              color: yCream),
+                            size: 11,
+                            weight: FontWeight.w700,
+                            tracking: 1.2,
+                            color: yCream,
+                          ),
                         ),
                       ),
                     ),
@@ -164,16 +184,19 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: yCream,
-                          border:
-                              Border.all(color: widget.accent, width: yLineMid),
+                          border: Border.all(
+                            color: widget.accent,
+                            width: yLineMid,
+                          ),
                         ),
                         child: Text(
                           'PREGUNTAR A YULI',
                           style: yMono(
-                              size: 11,
-                              weight: FontWeight.w700,
-                              tracking: 1.0,
-                              color: yInk),
+                            size: 11,
+                            weight: FontWeight.w700,
+                            tracking: 1.0,
+                            color: yInk,
+                          ),
                         ),
                       ),
                     ),
@@ -194,10 +217,11 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
                   child: Text(
                     _copied ? 'COPIADO' : 'COPIAR CONTEXTO',
                     style: yMono(
-                        size: 11,
-                        weight: FontWeight.w700,
-                        tracking: 1.2,
-                        color: _copied ? yCream : yInk),
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: _copied ? yCream : yInk,
+                    ),
                   ),
                 ),
               ),

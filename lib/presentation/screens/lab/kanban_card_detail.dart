@@ -107,7 +107,9 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
     return Container(
       decoration: BoxDecoration(
         color: y.yCream,
-        border: Border(top: BorderSide(color: y.yInk, width: 3)),
+        border: Border(
+          top: BorderSide(color: y.yBorderStrong, width: y.yLineMid),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -244,7 +246,10 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                 Container(
                   decoration: BoxDecoration(
                     color: y.yCream2,
-                    border: Border.all(color: y.yInk, width: y.yLineMid),
+                    border: Border.all(
+                      color: y.yBorderStrong,
+                      width: y.yLineMid,
+                    ),
                   ),
                   padding: const EdgeInsets.all(14),
                   constraints: const BoxConstraints(minHeight: 160),
@@ -350,7 +355,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
           Container(
             decoration: const BoxDecoration(
               color: y.yCream2,
-              border: Border(top: BorderSide(color: y.yInk, width: 2)),
+              border: Border(top: BorderSide(color: y.yBorderStrong, width: 2)),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             child: Row(
@@ -463,7 +468,7 @@ class _ColumnSelector extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         decoration: BoxDecoration(
           color: y.yCream2,
-          border: Border.all(color: y.yInk, width: y.yLineMid),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
         ),
         child: Row(
           children: [
@@ -472,7 +477,7 @@ class _ColumnSelector extends StatelessWidget {
               height: 14,
               decoration: BoxDecoration(
                 color: _colColor(currentColumn),
-                border: Border.all(color: y.yInk, width: 1.5),
+                border: Border.all(color: y.yBorderStrong, width: 1.5),
               ),
             ),
             const SizedBox(width: 10),
@@ -570,7 +575,10 @@ class _PrioritySelector extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: isSelected ? y.yInk : y.yCream,
-                    border: Border.all(color: y.yInk, width: y.yLineMid),
+                    border: Border.all(
+                      color: y.yBorderStrong,
+                      width: y.yLineMid,
+                    ),
                   ),
                   child: Text(
                     _label(p),
@@ -757,7 +765,7 @@ class _DueDateRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: Color(card.originFolderColor!),
-              border: Border.all(color: y.yInk, width: 1.5),
+              border: Border.all(color: y.yBorderStrong, width: 1.5),
             ),
             child: Text(
               '@${RegExp(r'@([a-zA-Z0-9_áéíóúñ]+)').firstMatch(card.title)!.group(1)!}',
@@ -780,7 +788,7 @@ class _DueDateRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: y.yInk, width: 1.5),
+        border: Border.all(color: y.yBorderStrong, width: 1.5),
       ),
       child: Text(
         label,
@@ -837,7 +845,7 @@ class _DueDateRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: active ? y.yInk : y.yCream,
-          border: Border.all(color: y.yInk, width: 2),
+          border: Border.all(color: y.yBorderStrong, width: 2),
         ),
         child: Text(
           label,
@@ -958,7 +966,7 @@ class _SheetIcon extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? color : y.yCream,
-          border: Border.all(color: y.yInk, width: y.yLineMid),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
         ),
         child: Icon(icon, size: 16, color: active ? y.yCream : y.yInk),
       ),
@@ -1018,7 +1026,7 @@ class _AppearChip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 4, 10, 5),
       decoration: BoxDecoration(
         color: y.yCream2,
-        border: Border.all(color: y.yInk, width: 2),
+        border: Border.all(color: y.yBorderStrong, width: 2),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

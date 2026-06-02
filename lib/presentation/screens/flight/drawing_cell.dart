@@ -583,7 +583,7 @@ class _DrawingCellState extends State<DrawingCell>
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
       ),
       child: Stack(
         children: [
@@ -665,7 +665,7 @@ class _DrawingCellState extends State<DrawingCell>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
+        border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineThin)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: SingleChildScrollView(
@@ -1109,7 +1109,7 @@ class _DrawingCellState extends State<DrawingCell>
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: yCream,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                   boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
                 ),
                 child: Text(
@@ -1127,7 +1127,7 @@ class _DrawingCellState extends State<DrawingCell>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineThin)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
@@ -1151,7 +1151,7 @@ class _DrawingCellState extends State<DrawingCell>
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineThin),
+                border: Border.all(color: yBorderStrong, width: yLineThin),
               ),
               child: const Icon(Icons.swap_vert, size: 14, color: yInk),
             ),
@@ -1173,7 +1173,7 @@ class _DrawingCellState extends State<DrawingCell>
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Icon(icon, size: 14, color: yInk),
       ),
@@ -1265,7 +1265,7 @@ class _DrawingCellState extends State<DrawingCell>
         decoration: BoxDecoration(
           color: active ? yInk : yCream,
           border: Border.all(
-            color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
+            color: enabled ? yBorderStrong : yMuted.withValues(alpha: 0.4),
             width: yLineThin,
           ),
         ),
@@ -1309,7 +1309,7 @@ class _EyedropperHint extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
         boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
       ),
       child: Row(
@@ -1334,7 +1334,7 @@ class _EyedropperHint extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
                 color: yInk,
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
               child: Text(
                 'CANCELAR',

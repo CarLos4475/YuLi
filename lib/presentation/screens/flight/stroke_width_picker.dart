@@ -73,7 +73,10 @@ class StrokeWidthButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isOpen ? accentColor : yCream,
-          border: Border.all(color: yInk, width: isOpen ? 2.5 : yLineThin),
+          border: Border.all(
+            color: yBorderStrong,
+            width: isOpen ? 2.5 : yLineThin,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -136,15 +139,19 @@ class _StrokeWidthPopupState extends State<StrokeWidthPopup> {
 
   @override
   Widget build(BuildContext context) {
-    final previewDot =
-        (_value * 1.0).clamp(2.0, 56.0); // visible preview, max 56px
+    final previewDot = (_value * 1.0).clamp(
+      2.0,
+      56.0,
+    ); // visible preview, max 56px
 
     return Container(
       width: 300,
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
@@ -153,28 +160,34 @@ class _StrokeWidthPopupState extends State<StrokeWidthPopup> {
         children: [
           Row(
             children: [
-              Text('GROSOR',
-                  style: yMono(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  )),
+              Text(
+                'GROSOR',
+                style: yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yMuted,
+                ),
+              ),
               const Spacer(),
-              Text(_value.toStringAsFixed(_value < 10 ? 1 : 0),
-                  style: yMono(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    tracking: 1.2,
-                    color: yInk,
-                  )),
-              Text(' PX',
-                  style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  )),
+              Text(
+                _value.toStringAsFixed(_value < 10 ? 1 : 0),
+                style: yMono(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: yInk,
+                ),
+              ),
+              Text(
+                ' PX',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yMuted,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -182,7 +195,7 @@ class _StrokeWidthPopupState extends State<StrokeWidthPopup> {
             height: 70,
             decoration: BoxDecoration(
               color: const Color(0xFFFFFDF8),
-              border: Border.all(color: yInk, width: 1.5),
+              border: Border.all(color: yBorderStrong, width: 1.5),
             ),
             alignment: Alignment.center,
             child: Container(
@@ -202,8 +215,7 @@ class _StrokeWidthPopupState extends State<StrokeWidthPopup> {
               inactiveTrackColor: yInk.withValues(alpha: 0.2),
               thumbColor: widget.accentColor,
               overlayColor: widget.accentColor.withValues(alpha: 0.2),
-              thumbShape:
-                  const RoundSliderThumbShape(enabledThumbRadius: 9),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
               trackShape: const RectangularSliderTrackShape(),
             ),
             child: Slider(
@@ -221,13 +233,15 @@ class _StrokeWidthPopupState extends State<StrokeWidthPopup> {
           ),
           const SizedBox(height: 8),
           if (widget.recentWidths.isNotEmpty) ...[
-            Text('RECIENTES',
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yMuted,
-                )),
+            Text(
+              'RECIENTES',
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yMuted,
+              ),
+            ),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -279,10 +293,7 @@ class _RecentChip extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? accentColor : yCream,
-            border: Border.all(
-              color: yInk,
-              width: selected ? 2.5 : yLineThin,
-            ),
+            border: Border.all(color: yBorderStrong, width: selected ? 2.5 : yLineThin),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

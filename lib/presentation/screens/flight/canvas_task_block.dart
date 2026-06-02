@@ -197,7 +197,7 @@ class _CanvasTaskBlockOverlayState
         child: Container(
           decoration: const BoxDecoration(
             color: yCream,
-            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+            border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
           ),
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: SafeArea(
@@ -223,15 +223,15 @@ class _CanvasTaskBlockOverlayState
                           horizontal: 10, vertical: 11),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: yInk, width: yLineMid),
+                        borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: yInk, width: yLineMid),
+                        borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: yInk, width: yLineMid),
+                        borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                       ),
                       filled: false,
                       hintText: 'nueva tarea en @${widget.folderName.toLowerCase()}…',
@@ -249,7 +249,7 @@ class _CanvasTaskBlockOverlayState
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: yFight,
-                      border: Border.all(color: yInk, width: yLineMid),
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
                     ),
                     child: const Text('+',
                         style: TextStyle(
@@ -266,7 +266,7 @@ class _CanvasTaskBlockOverlayState
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: yCream,
-                      border: Border.all(color: yInk, width: yLineMid),
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
                     ),
                     child: const Icon(Icons.keyboard_arrow_down,
                         color: yInk, size: 20),
@@ -393,7 +393,7 @@ class _CanvasTaskBlockOverlayState
     final card = Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
         borderRadius: BorderRadius.zero,
         boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
       ),
@@ -495,7 +495,7 @@ class _CanvasTaskRow extends ConsumerWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: done ? yInk : yCream,
-                  border: Border.all(color: yInk, width: yLineThin),
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
                 child: done
                     ? const Text('✓',
@@ -573,7 +573,7 @@ class _LinkChip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: 1.5),
+        border: Border.all(color: yBorderStrong, width: 1.5),
       ),
       child: Text(text,
           style: yMono(
@@ -593,7 +593,7 @@ class _SpacePickerDialog extends StatelessWidget {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
-        decoration: BoxDecoration(border: Border.all(color: yInk, width: yLineHeavy)),
+        decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineHeavy)),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,

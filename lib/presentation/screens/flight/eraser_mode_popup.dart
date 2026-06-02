@@ -17,7 +17,10 @@ class EraserCursor extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: yInk.withValues(alpha: 0.08),
-          border: Border.all(color: yInk.withValues(alpha: 0.55), width: 1.5),
+          border: Border.all(
+            color: yBorderStrong.withValues(alpha: 0.55),
+            width: 1.5,
+          ),
         ),
       ),
     );
@@ -43,8 +46,10 @@ class EraserModePopup extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       padding: const EdgeInsets.all(8),
       child: Row(
@@ -52,7 +57,11 @@ class EraserModePopup extends StatelessWidget {
         children: [
           _chip('TRAZO', Icons.auto_fix_high, EraserMode.stroke),
           const SizedBox(width: 8),
-          _chip('PRECISO', Icons.cleaning_services_outlined, EraserMode.partial),
+          _chip(
+            'PRECISO',
+            Icons.cleaning_services_outlined,
+            EraserMode.partial,
+          ),
         ],
       ),
     );
@@ -67,19 +76,25 @@ class EraserModePopup extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: active ? accent : yCream,
-          border: Border.all(color: yInk, width: active ? 2.5 : yLineThin),
+          border: Border.all(
+            color: yBorderStrong,
+            width: active ? 2.5 : yLineThin,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 14, color: active ? yCream : yInk),
             const SizedBox(width: 6),
-            Text(label,
-                style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.2,
-                    color: active ? yCream : yInk)),
+            Text(
+              label,
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.2,
+                color: active ? yCream : yInk,
+              ),
+            ),
           ],
         ),
       ),

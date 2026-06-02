@@ -141,7 +141,9 @@ Future<_CtxAction?> _chooseContextAction(BuildContext context, Color accent) {
         (_) => Container(
           decoration: const BoxDecoration(
             color: yCream,
-            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+            border: Border(
+              top: BorderSide(color: yBorderStrong, width: yLineMid),
+            ),
           ),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
           child: SafeArea(
@@ -194,7 +196,7 @@ Widget _bigChoice(String label, Color accent, bool filled, VoidCallback onTap) {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: filled ? accent : yCream,
-        border: Border.all(color: filled ? yInk : accent, width: yLineMid),
+        border: Border.all(color: filled ? yBorderStrong : accent, width: yLineMid),
       ),
       child: Text(
         label,
@@ -445,7 +447,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         child: Container(
           decoration: const BoxDecoration(
             color: yCream,
-            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+            border: Border(
+              top: BorderSide(color: yBorderStrong, width: yLineMid),
+            ),
           ),
           child: SafeArea(
             top: false,
@@ -544,7 +548,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: yCream,
-                    border: Border.all(color: yInk, width: yLineMid),
+                    border: Border.all(color: yBorderStrong, width: yLineMid),
                   ),
                   child: Text(
                     'IMPORTAR NOTA',
@@ -607,7 +611,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         return Container(
           decoration: const BoxDecoration(
             color: yCream,
-            border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+            border: Border(
+              top: BorderSide(color: yBorderStrong, width: yLineMid),
+            ),
           ),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
           child: SafeArea(
@@ -656,7 +662,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                             decoration: const BoxDecoration(
                               border: Border(
                                 bottom: BorderSide(
-                                  color: yInk,
+                                  color: yBorderStrong,
                                   width: yLineThin,
                                 ),
                               ),
@@ -746,7 +752,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
@@ -792,7 +800,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
@@ -820,7 +830,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
@@ -846,7 +858,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 ),
                 decoration: BoxDecoration(
                   color: yCream,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child: Text(
                   _s.anchor ?? '',
@@ -875,7 +887,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: BoxDecoration(
         color: yCream2,
-        border: const Border(bottom: BorderSide(color: yInk, width: yLineMid)),
+        border: const Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
@@ -935,7 +949,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: yCream,
-            border: Border.all(color: yInk, width: yLineMid),
+            border: Border.all(color: yBorderStrong, width: yLineMid),
           ),
           child: Icon(icon, size: 14, color: yInk),
         ),
@@ -963,7 +977,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: const BoxDecoration(
         color: yInk,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       child: Row(
@@ -1168,9 +1184,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
                   decoration: BoxDecoration(
                     color: yCream,
-                    border: Border.all(color: yInk, width: yLineMid),
+                    border: Border.all(color: yBorderStrong, width: yLineMid),
                     boxShadow: const [
-                      BoxShadow(color: yInk, offset: Offset(4, 4)),
+                      BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
                     ],
                   ),
                   child: Column(
@@ -1205,7 +1221,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Text(
           label.toUpperCase(),
@@ -1365,8 +1381,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
               decoration: BoxDecoration(
                 color: widget.accent,
-                border: Border.all(color: yInk, width: yLineMid),
-                boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+                boxShadow: const [
+                  BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+                ],
               ),
               child: SelectableText(
                 text,
@@ -1554,7 +1572,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(top: BorderSide(color: yInk, width: yLineMid)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
       child: Column(
@@ -1625,7 +1643,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
           color: _s.streaming ? yCream2 : yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1658,7 +1676,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Row(
@@ -1686,11 +1704,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: _s.streaming ? yMuted : widget.accent,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
                 boxShadow:
                     _s.streaming
                         ? null
-                        : const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+                        : const [
+                          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+                        ],
               ),
               child:
                   _s.streaming
@@ -1723,7 +1743,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           child: Container(
             decoration: const BoxDecoration(
               color: yCream,
-              border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+              border: Border(
+                top: BorderSide(color: yBorderStrong, width: yLineMid),
+              ),
             ),
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: SafeArea(
@@ -1773,7 +1795,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: yCream,
-                            border: Border.all(color: yInk, width: yLineMid),
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineMid,
+                            ),
                           ),
                           child: Text(
                             'LIMPIAR',
@@ -1804,15 +1829,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     hintStyle: yBody(size: 14, color: yMuted),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yInk, width: yLineMid),
+      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yInk, width: yLineMid),
+      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yInk, width: yLineMid),
+      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
     ),
   );
 
@@ -1825,7 +1850,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: widget.accent,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Text(
           label,
@@ -2101,7 +2126,9 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
       child: Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          border: Border(
+            top: BorderSide(color: yBorderStrong, width: yLineMid),
+          ),
         ),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: SafeArea(
@@ -2156,7 +2183,7 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
                                   decoration: BoxDecoration(
                                     color: _sel[i] ? widget.accent : yCream,
                                     border: Border.all(
-                                      color: yInk,
+                                      color: yBorderStrong,
                                       width: yLineMid,
                                     ),
                                   ),
@@ -2184,13 +2211,13 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
                                     ),
                                     border: const UnderlineInputBorder(
                                       borderSide: BorderSide(
-                                        color: yInk,
+                                        color: yBorderStrong,
                                         width: yLineThin,
                                       ),
                                     ),
                                     enabledBorder: const UnderlineInputBorder(
                                       borderSide: BorderSide(
-                                        color: yInk,
+                                        color: yBorderStrong,
                                         width: yLineThin,
                                       ),
                                     ),
@@ -2221,7 +2248,10 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: _count == 0 ? yMuted : widget.accent,
-                          border: Border.all(color: yInk, width: yLineMid),
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         child:
                             _creating
@@ -2255,7 +2285,10 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yCream,
-                        border: Border.all(color: yInk, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
                       child: Text(
                         'CANCELAR',
@@ -2348,7 +2381,9 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
           (ctx) => Container(
             decoration: const BoxDecoration(
               color: yCream,
-              border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+              border: Border(
+                top: BorderSide(color: yBorderStrong, width: yLineMid),
+              ),
             ),
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: SafeArea(
@@ -2382,7 +2417,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
                             decoration: const BoxDecoration(
                               border: Border(
                                 bottom: BorderSide(
-                                  color: yInk,
+                                  color: yBorderStrong,
                                   width: yLineThin,
                                 ),
                               ),
@@ -2523,7 +2558,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: SafeArea(
@@ -2669,7 +2704,9 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: yInk, width: yLineThin)),
+          border: Border(
+            bottom: BorderSide(color: yBorderStrong, width: yLineThin),
+          ),
         ),
         child: Row(
           children: [
@@ -2803,7 +2840,7 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -2833,7 +2870,10 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                         height: 16,
                         decoration: BoxDecoration(
                           color: _sel == i ? widget.accent : yCream,
-                          border: Border.all(color: yInk, width: yLineMid),
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -2863,15 +2903,15 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                 hintText: 'Editar título…',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yInk, width: yLineMid),
+                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yInk, width: yLineMid),
+                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yInk, width: yLineMid),
+                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                 ),
               ),
             ),
@@ -2887,7 +2927,10 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yCream,
-                        border: Border.all(color: yInk, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
                       child: Text(
                         'CANCELAR',
@@ -2911,7 +2954,10 @@ class _TitlePickerDialogState extends State<_TitlePickerDialog> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: widget.accent,
-                        border: Border.all(color: yInk, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
                       child: Text(
                         'APLICAR',
@@ -2958,7 +3004,10 @@ class _SourceViewDialog extends StatelessWidget {
     final screenW = MediaQuery.of(context).size.width;
     return Dialog(
       backgroundColor: yCream,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: yBorderStrong, width: yLineMid),
+      ),
       insetPadding: const EdgeInsets.all(20),
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -2973,7 +3022,7 @@ class _SourceViewDialog extends StatelessWidget {
               decoration: const BoxDecoration(
                 color: yCream2,
                 border: Border(
-                  bottom: BorderSide(color: yInk, width: yLineMid),
+                  bottom: BorderSide(color: yBorderStrong, width: yLineMid),
                 ),
               ),
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
@@ -3069,7 +3118,9 @@ class _SourceViewDialog extends StatelessWidget {
             ),
             Container(
               decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+                border: Border(
+                  top: BorderSide(color: yBorderStrong, width: yLineThin),
+                ),
               ),
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: Row(
@@ -3088,7 +3139,10 @@ class _SourceViewDialog extends StatelessWidget {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: yCream,
-                          border: Border.all(color: yInk, width: yLineMid),
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         child: Text(
                           'COPIAR ENLACE',
@@ -3112,7 +3166,10 @@ class _SourceViewDialog extends StatelessWidget {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yInk,
-                        border: Border.all(color: yInk, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
                       child: Text(
                         'CERRAR',

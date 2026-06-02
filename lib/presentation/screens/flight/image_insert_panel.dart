@@ -117,7 +117,7 @@ class _ImageInsertPanelState extends State<ImageInsertPanel> {
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
         boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -195,7 +195,7 @@ class _ImageInsertPanelState extends State<ImageInsertPanel> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -226,7 +226,7 @@ class _Thumb extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(border: Border.all(color: yInk, width: 1)),
+        decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: 1)),
         child: FutureBuilder(
           future: asset.thumbnailDataWithSize(const ThumbnailSize.square(220)),
           builder: (_, snap) {

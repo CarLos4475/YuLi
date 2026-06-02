@@ -27,8 +27,7 @@ class FolderDetailScreen extends ConsumerStatefulWidget {
   const FolderDetailScreen({super.key, required this.folder});
 
   @override
-  ConsumerState<FolderDetailScreen> createState() =>
-      _FolderDetailScreenState();
+  ConsumerState<FolderDetailScreen> createState() => _FolderDetailScreenState();
 }
 
 class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
@@ -49,15 +48,23 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
   Future<void> _navigateToPendingNote(int noteId) async {
     final note = await ref.read(noteRepositoryProvider).getById(noteId);
     if (note == null || !mounted) return;
-    final folder =
-        await ref.read(folderRepositoryProvider).getById(note.folderId);
+    final folder = await ref
+        .read(folderRepositoryProvider)
+        .getById(note.folderId);
     if (folder == null || !mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => switch (note.kind) {
-              NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: folder),
-              NoteKind.notebook => NotebookEditorScreen(note: note, folder: folder),
+        builder:
+            (_) => switch (note.kind) {
+              NoteKind.whiteboard => WhiteboardEditorScreen(
+                note: note,
+                folder: folder,
+              ),
+              NoteKind.notebook => NotebookEditorScreen(
+                note: note,
+                folder: folder,
+              ),
               _ => NoteEditorScreen(note: note, folder: folder),
             },
       ),
@@ -69,7 +76,9 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
     if (kind == null || !mounted) return;
     final details = await showNewNoteDetailsDialog(context, kind);
     if (details == null || !mounted) return;
-    final note = await ref.read(noteRepositoryProvider).create(
+    final note = await ref
+        .read(noteRepositoryProvider)
+        .create(
           widget.folder.id,
           rawMarkdown: '',
           kind: kind,
@@ -84,9 +93,16 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => switch (note.kind) {
-              NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: widget.folder),
-              NoteKind.notebook => NotebookEditorScreen(note: note, folder: widget.folder),
+        builder:
+            (_) => switch (note.kind) {
+              NoteKind.whiteboard => WhiteboardEditorScreen(
+                note: note,
+                folder: widget.folder,
+              ),
+              NoteKind.notebook => NotebookEditorScreen(
+                note: note,
+                folder: widget.folder,
+              ),
               _ => NoteEditorScreen(note: note, folder: widget.folder),
             },
       ),
@@ -95,9 +111,15 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final notes = ref.watch(notesByFolderProvider(widget.folder.id)).valueOrNull ?? [];
-    final pending = ref.watch(pendingTasksForFolderProvider(widget.folder.id)).valueOrNull ?? [];
-    final enrichment = ref.watch(folderEnrichmentProvider(widget.folder.id)).valueOrNull;
+    final notes =
+        ref.watch(notesByFolderProvider(widget.folder.id)).valueOrNull ?? [];
+    final pending =
+        ref
+            .watch(pendingTasksForFolderProvider(widget.folder.id))
+            .valueOrNull ??
+        [];
+    final enrichment =
+        ref.watch(folderEnrichmentProvider(widget.folder.id)).valueOrNull;
     final linkedSpaces = enrichment?.linkedSpaces ?? [];
 
     return Scaffold(
@@ -107,8 +129,7 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
           children: [
             ModeHeader(
               mode: 'FLIGHT',
-              subtitle:
-                  'MODO NOTAS · CARPETA · ${notes.length} NOTAS',
+              subtitle: 'MODO NOTAS · CARPETA · ${notes.length} NOTAS',
               color: yFlight,
               onBack: () => Navigator.pop(context),
               headerRight: [
@@ -131,18 +152,19 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
             Expanded(
               child: Container(
                 color: yCream,
-                child: notes.isEmpty
-                    ? Center(
-                        child: Text(
-                          'SIN NOTAS — toca + NOTA',
-                          style: yMono(
-                            size: 11,
-                            color: yMuted,
-                            tracking: 1.4,
+                child:
+                    notes.isEmpty
+                        ? Center(
+                          child: Text(
+                            'SIN NOTAS — toca + NOTA',
+                            style: yMono(
+                              size: 11,
+                              color: yMuted,
+                              tracking: 1.4,
+                            ),
                           ),
-                        ),
-                      )
-                    : _grid
+                        )
+                        : _grid
                         ? _NoteGrid(notes: notes, folder: widget.folder)
                         : _NoteList(notes: notes, folder: widget.folder),
               ),
@@ -196,12 +218,13 @@ class _FolderHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scope =
-        linkedSpaces.isEmpty ? null : linkedSpaces.join(' · ');
+    final scope = linkedSpaces.isEmpty ? null : linkedSpaces.join(' · ');
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       child: Stack(
         children: [
@@ -288,25 +311,34 @@ class _FolderHero extends StatelessWidget {
                   behavior: HitTestBehavior.opaque,
                   onTap: onCreateNote,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 9,
+                    ),
                     decoration: BoxDecoration(
                       color: folder.color,
-                      border: Border.all(color: yInk, width: yLineMid),
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text('+',
-                            style:
-                                TextStyle(fontSize: 16, color: yCream, height: 1.0)),
+                        const Text(
+                          '+',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: yCream,
+                            height: 1.0,
+                          ),
+                        ),
                         const SizedBox(width: 6),
-                        Text('NOTA',
-                            style: yBody(
-                              size: 13,
-                              weight: FontWeight.w700,
-                              color: yCream,
-                            ).copyWith(letterSpacing: 1.2)),
+                        Text(
+                          'NOTA',
+                          style: yBody(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: yCream,
+                          ).copyWith(letterSpacing: 1.2),
+                        ),
                       ],
                     ),
                   ),
@@ -332,9 +364,10 @@ class _NoteGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (ctx, c) {
-        final cols = c.maxWidth >= 1000
-            ? 3
-            : c.maxWidth >= 650
+        final cols =
+            c.maxWidth >= 1000
+                ? 3
+                : c.maxWidth >= 650
                 ? 2
                 : 1;
         return GridView.builder(
@@ -420,18 +453,31 @@ class _NoteCard extends ConsumerWidget {
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.zero,
-        ),
-        title: Text('Eliminar nota', style: ySans(size: 20, weight: FontWeight.w700)),
-        content: Text('Se moverá la nota a la papelera.', style: yBody(size: 14)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
-        ],
-      ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Eliminar nota',
+              style: ySans(size: 20, weight: FontWeight.w700),
+            ),
+            content: Text(
+              'Se moverá la nota a la papelera.',
+              style: yBody(size: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
     );
     if (confirmed == true) {
       await ref.read(noteRepositoryProvider).softDelete(note.id);
@@ -441,21 +487,21 @@ class _NoteCard extends ConsumerWidget {
   void _showOptions(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (ctx) => EditItemDialog(
-        title: 'Nota',
-        initialName: note.displayTitle,
-        initialColor: note.color ?? folder.color,
-        onSave: (name, color) async {
-          await ref.read(noteRepositoryProvider).update(note.copyWith(
-                title: name,
-                color: color,
-              ));
-        },
-        onDelete: () async {
-          Navigator.pop(ctx);
-          await _confirmDelete(context, ref);
-        },
-      ),
+      builder:
+          (ctx) => EditItemDialog(
+            title: 'Nota',
+            initialName: note.displayTitle,
+            initialColor: note.color ?? folder.color,
+            onSave: (name, color) async {
+              await ref
+                  .read(noteRepositoryProvider)
+                  .update(note.copyWith(title: name, color: color));
+            },
+            onDelete: () async {
+              Navigator.pop(ctx);
+              await _confirmDelete(context, ref);
+            },
+          ),
     );
   }
 
@@ -466,16 +512,24 @@ class _NoteCard extends ConsumerWidget {
     final preview = _previewOf(note);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => switch (note.kind) {
-                NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: folder),
-                NoteKind.notebook => NotebookEditorScreen(note: note, folder: folder),
-                _ => NoteEditorScreen(note: note, folder: folder),
-              },
-        ),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder:
+                  (_) => switch (note.kind) {
+                    NoteKind.whiteboard => WhiteboardEditorScreen(
+                      note: note,
+                      folder: folder,
+                    ),
+                    NoteKind.notebook => NotebookEditorScreen(
+                      note: note,
+                      folder: folder,
+                    ),
+                    _ => NoteEditorScreen(note: note, folder: folder),
+                  },
+            ),
+          ),
       onLongPress: () => _showOptions(context, ref),
       child: Stack(
         clipBehavior: Clip.none,
@@ -483,7 +537,7 @@ class _NoteCard extends ConsumerWidget {
           Container(
             decoration: BoxDecoration(
               color: bg,
-              border: Border.all(color: yInk, width: yLineHeavy),
+              border: Border.all(color: yBorderStrong, width: yLineMid),
             ),
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             child: Column(
@@ -517,10 +571,7 @@ class _NoteCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  height: 1.5,
-                  color: yCream.withValues(alpha: 0.3),
-                ),
+                Container(height: 1.5, color: yCream.withValues(alpha: 0.3)),
                 const SizedBox(height: 6),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -558,15 +609,17 @@ class _NoteCard extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
                   decoration: BoxDecoration(
                     color: yAmber2,
-                    border: Border.all(color: yInk, width: yLineThin),
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
                   ),
-                  child: Text('★ FIJADA',
-                      style: yMono(
-                        size: 9,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yInk,
-                      )),
+                  child: Text(
+                    '★ FIJADA',
+                    style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -586,39 +639,47 @@ class _NoteRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => switch (note.kind) {
-                NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: folder),
-                NoteKind.notebook => NotebookEditorScreen(note: note, folder: folder),
-                _ => NoteEditorScreen(note: note, folder: folder),
-              },
-        ),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder:
+                  (_) => switch (note.kind) {
+                    NoteKind.whiteboard => WhiteboardEditorScreen(
+                      note: note,
+                      folder: folder,
+                    ),
+                    NoteKind.notebook => NotebookEditorScreen(
+                      note: note,
+                      folder: folder,
+                    ),
+                    _ => NoteEditorScreen(note: note, folder: folder),
+                  },
+            ),
+          ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: note.color ?? folder.color,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(
           children: [
             _NoteKindGlyph(kind: note.kind, color: yCream),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(note.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ySans(
-                    size: 16,
-                    weight: FontWeight.w700,
-                    color: yCream,
-                  )),
+              child: Text(
+                note.displayTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ySans(size: 16, weight: FontWeight.w700, color: yCream),
+              ),
             ),
             const SizedBox(width: 8),
-            Text('→',
-                style: TextStyle(fontSize: 14, color: yCream, height: 1.0)),
+            Text(
+              '→',
+              style: TextStyle(fontSize: 14, color: yCream, height: 1.0),
+            ),
           ],
         ),
       ),
@@ -629,10 +690,10 @@ class _NoteRow extends ConsumerWidget {
 // ─── Note kind indicators ────────────────────────────────────────────────────
 
 ({IconData icon, String label}) _kindMeta(NoteKind k) => switch (k) {
-      NoteKind.notebook => (icon: Icons.menu_book_outlined, label: 'CUADERNO'),
-      NoteKind.whiteboard => (icon: Icons.gesture, label: 'PIZARRA'),
-      NoteKind.block => (icon: Icons.notes_outlined, label: 'NOTA'),
-    };
+  NoteKind.notebook => (icon: Icons.menu_book_outlined, label: 'CUADERNO'),
+  NoteKind.whiteboard => (icon: Icons.gesture, label: 'PIZARRA'),
+  NoteKind.block => (icon: Icons.notes_outlined, label: 'NOTA'),
+};
 
 class _NoteKindBadge extends StatelessWidget {
   final NoteKind kind;
@@ -679,9 +740,7 @@ class _NoteKindGlyph extends StatelessWidget {
       width: 26,
       height: 26,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
-        border: Border.all(color: color, width: 1.5),
-      ),
+      decoration: BoxDecoration(border: Border.all(color: color, width: 1.5)),
       child: Icon(meta.icon, size: 14, color: color),
     );
   }
@@ -705,7 +764,7 @@ class _TareasStrip extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(28, 12, 28, 14),
       child: Column(
@@ -713,13 +772,15 @@ class _TareasStrip extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('── TAREAS PENDIENTES',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.6,
-                    color: yInk,
-                  )),
+              Text(
+                '── TAREAS PENDIENTES',
+                style: yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.6,
+                  color: yInk,
+                ),
+              ),
               const SizedBox(width: 10),
               YBadge(
                 label: '@${folder.name} · ${tasks.length}',
@@ -731,35 +792,39 @@ class _TareasStrip extends StatelessWidget {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onOpen,
-                child: Text('ABRIR EN FIGHT →',
-                    style: yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
-                    ).copyWith(
-                      decoration: TextDecoration.underline,
-                      decorationColor: yInk,
-                    )),
+                child: Text(
+                  'ABRIR EN FIGHT →',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ).copyWith(
+                    decoration: TextDecoration.underline,
+                    decorationColor: yInk,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          LayoutBuilder(builder: (ctx, c) {
-            final cols = (tasks.length).clamp(1, 4);
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: c.maxWidth >= 900 ? cols : 1,
-                mainAxisExtent: 48,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 8,
-              ),
-              itemCount: tasks.length,
-              itemBuilder: (_, i) => _TareaStripRow(task: tasks[i]),
-            );
-          }),
+          LayoutBuilder(
+            builder: (ctx, c) {
+              final cols = (tasks.length).clamp(1, 4);
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: c.maxWidth >= 900 ? cols : 1,
+                  mainAxisExtent: 48,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: tasks.length,
+                itemBuilder: (_, i) => _TareaStripRow(task: tasks[i]),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -772,13 +837,14 @@ class _TareaStripRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final prop = ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
+    final prop =
+        ref.watch(taskPropagationProvider(task.id)).valueOrNull ??
         TaskPropagation.empty;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineThin),
+        border: Border.all(color: yBorderStrong, width: yLineThin),
       ),
       child: Row(
         children: [
@@ -791,7 +857,7 @@ class _TareaStripRow extends ConsumerWidget {
               width: 16,
               height: 16,
               decoration: BoxDecoration(
-                border: Border.all(color: yInk, width: yLineThin),
+                border: Border.all(color: yBorderStrong, width: yLineThin),
               ),
             ),
           ),
@@ -828,15 +894,13 @@ class _TareaStripRow extends ConsumerWidget {
           if (prop.hasNoteLinks) ...[
             const SizedBox(width: 6),
             _StripChip(
-                text: prop.noteCount > 1 ? '↳ ${prop.noteCount}' : '↳ NOTA',
-                bg: yFlight),
+              text: prop.noteCount > 1 ? '↳ ${prop.noteCount}' : '↳ NOTA',
+              bg: yFlight,
+            ),
           ],
           if (prop.spaceName != null) ...[
             const SizedBox(width: 4),
-            _StripChip(
-              text: '→ ${prop.spaceName!.toUpperCase()}',
-              bg: yLab,
-            ),
+            _StripChip(text: '→ ${prop.spaceName!.toUpperCase()}', bg: yLab),
           ],
         ],
       ),
@@ -856,7 +920,7 @@ class _StripChip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: 1.5),
+        border: Border.all(color: yBorderStrong, width: 1.5),
       ),
       child: Text(
         text,

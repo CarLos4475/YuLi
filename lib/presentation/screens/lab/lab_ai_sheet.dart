@@ -77,7 +77,7 @@ class _LabAiSheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: SafeArea(
@@ -155,8 +155,10 @@ class _LabAiSheet extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineMid),
-          boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+          ],
         ),
         child: Row(
           children: [
@@ -166,7 +168,7 @@ class _LabAiSheet extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: space.accentColor,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: Icon(icon, color: yCream, size: 18),
             ),
@@ -506,7 +508,7 @@ class _SummaryDialog extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -552,7 +554,7 @@ class _SummaryDialog extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: accent,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child: Text(
                   'COPIAR',
@@ -694,7 +696,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: SafeArea(
@@ -734,7 +736,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: n == 0 ? yCream2 : widget.space.accentColor,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child:
                     _busy
@@ -770,7 +772,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       decoration: BoxDecoration(
         color: p.include ? yCream : yCream2,
-        border: Border.all(color: yInk, width: yLineThin),
+        border: Border.all(color: yBorderStrong, width: yLineThin),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -786,7 +788,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: p.include ? yInk : yCream,
-                    border: Border.all(color: yInk, width: yLineThin),
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
                   ),
                   child:
                       p.include
@@ -853,7 +855,7 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
           color: bg,
-          border: Border.all(color: yInk, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: 1.5),
         ),
         child: Text(
           label,

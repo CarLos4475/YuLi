@@ -10,13 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../widgets/yuli_design.dart';
 import '../../providers/database_providers.dart';
 
-enum InsertPanelType {
-  table,
-  code,
-  quote,
-  latex,
-  image,
-}
+enum InsertPanelType { table, code, quote, latex, image }
 
 class InsertPanelOverlay extends StatelessWidget {
   final InsertPanelType type;
@@ -51,11 +45,27 @@ class InsertPanelOverlay extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
               child: switch (type) {
-                InsertPanelType.table => _TablePanel(onInsert: onInsert, onClose: onClose),
-                InsertPanelType.code => _CodePanel(onInsert: onInsert, onClose: onClose),
-                InsertPanelType.quote => _QuotePanel(onInsert: onInsert, onClose: onClose),
-                InsertPanelType.latex => _LatexPanel(onInsert: onInsert, onClose: onClose),
-                InsertPanelType.image => _ImagePanel(onInsert: onInsert, onClose: onClose, noteId: noteId),
+                InsertPanelType.table => _TablePanel(
+                  onInsert: onInsert,
+                  onClose: onClose,
+                ),
+                InsertPanelType.code => _CodePanel(
+                  onInsert: onInsert,
+                  onClose: onClose,
+                ),
+                InsertPanelType.quote => _QuotePanel(
+                  onInsert: onInsert,
+                  onClose: onClose,
+                ),
+                InsertPanelType.latex => _LatexPanel(
+                  onInsert: onInsert,
+                  onClose: onClose,
+                ),
+                InsertPanelType.image => _ImagePanel(
+                  onInsert: onInsert,
+                  onClose: onClose,
+                  noteId: noteId,
+                ),
               },
             ),
           ),
@@ -85,7 +95,7 @@ class _PanelScaffold extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineHeavy),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -94,7 +104,7 @@ class _PanelScaffold extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
             decoration: const BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: yInk, width: yLineMid),
+                bottom: BorderSide(color: yBorderStrong, width: yLineMid),
               ),
             ),
             child: Row(
@@ -102,7 +112,11 @@ class _PanelScaffold extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: ySans(size: 24, weight: FontWeight.w700, color: yInk),
+                    style: ySans(
+                      size: 24,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                    ),
                   ),
                 ),
                 GestureDetector(
@@ -132,7 +146,7 @@ class _PanelScaffold extends StatelessWidget {
                 decoration: const BoxDecoration(
                   color: yFlight,
                   border: Border(
-                    top: BorderSide(color: yInk, width: yLineMid),
+                    top: BorderSide(color: yBorderStrong, width: yLineMid),
                   ),
                 ),
                 child: Center(
@@ -161,15 +175,15 @@ InputDecoration _panelInputDecoration({String? hint}) {
     hintStyle: yBody(size: 13, color: yMuted),
     border: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yMuted, width: 1),
+      borderSide: BorderSide(color: yBorderSoft, width: 1),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yMuted.withValues(alpha: 0.5), width: 1),
+      borderSide: BorderSide(color: yBorderSoft, width: 1),
     ),
     focusedBorder: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yFlight, width: 2),
+      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
     ),
     contentPadding: const EdgeInsets.all(12),
     isDense: true,
@@ -289,15 +303,23 @@ class _TablePanelState extends State<_TablePanel> {
           behavior: HitTestBehavior.opaque,
           onTap: onRemove,
           child: Container(
-            width: 30, height: 30,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               border: Border.all(
-                color: onRemove != null ? yInk : disabledColor, width: 1),
+                color: onRemove != null ? yBorderStrong : disabledColor,
+                width: 1,
+              ),
             ),
             child: Center(
-              child: Text('−',
-                  style: yBody(size: 16,
-                      color: onRemove != null ? yInk : disabledColor, height: 1)),
+              child: Text(
+                '−',
+                style: yBody(
+                  size: 16,
+                  color: onRemove != null ? yInk : disabledColor,
+                  height: 1,
+                ),
+              ),
             ),
           ),
         ),
@@ -309,9 +331,10 @@ class _TablePanelState extends State<_TablePanel> {
           behavior: HitTestBehavior.opaque,
           onTap: onAdd,
           child: Container(
-            width: 30, height: 30,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
-              border: Border.all(color: yInk, width: 1),
+              border: Border.all(color: yBorderStrong, width: 1),
             ),
             child: Center(
               child: Text('+', style: yBody(size: 16, color: yInk, height: 1)),
@@ -327,11 +350,14 @@ class _TablePanelState extends State<_TablePanel> {
     return GestureDetector(
       onTap: () => setState(() => _alignment = value),
       child: Container(
-        width: 34, height: 34,
+        width: 34,
+        height: 34,
         decoration: BoxDecoration(
           color: selected ? yFlight : Colors.transparent,
           border: Border.all(
-            color: selected ? yFlight : yMuted.withValues(alpha: 0.4), width: 1),
+            color: selected ? yFlight : yMuted.withValues(alpha: 0.4),
+            width: 1,
+          ),
         ),
         child: Icon(icon, size: 18, color: selected ? yCream : yInk),
       ),
@@ -349,15 +375,22 @@ class _TablePanelState extends State<_TablePanel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Wrap(
-            spacing: 20, runSpacing: 12,
+            spacing: 20,
+            runSpacing: 12,
             alignment: WrapAlignment.center,
             children: [
-              _counterBtn(label: 'col', value: _cols,
-                  onAdd: _addColumn,
-                  onRemove: _cols > 1 ? _removeColumn : null),
-              _counterBtn(label: 'filas', value: _cells.length - 1,
-                  onAdd: _addRow,
-                  onRemove: _cells.length > 2 ? _removeRow : null),
+              _counterBtn(
+                label: 'col',
+                value: _cols,
+                onAdd: _addColumn,
+                onRemove: _cols > 1 ? _removeColumn : null,
+              ),
+              _counterBtn(
+                label: 'filas',
+                value: _cells.length - 1,
+                onAdd: _addRow,
+                onRemove: _cells.length > 2 ? _removeRow : null,
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -388,28 +421,45 @@ class _TablePanelState extends State<_TablePanel> {
                 children: [
                   for (int r = 0; r < _cells.length; r++)
                     TableRow(
-                      decoration: r == 0
-                          ? BoxDecoration(color: yInk.withValues(alpha: 0.05))
-                          : null,
+                      decoration:
+                          r == 0
+                              ? BoxDecoration(
+                                color: yInk.withValues(alpha: 0.05),
+                              )
+                              : null,
                       children: [
                         for (int c = 0; c < _cols; c++)
                           Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 4),
+                              horizontal: 6,
+                              vertical: 4,
+                            ),
                             child: SizedBox(
                               height: 36,
                               child: TextField(
                                 controller: _cells[r][c],
-                                style: r == 0
-                                    ? yBody(size: 13, weight: FontWeight.w700, color: yInk)
-                                    : yBody(size: 13, color: yInk),
+                                style:
+                                    r == 0
+                                        ? yBody(
+                                          size: 13,
+                                          weight: FontWeight.w700,
+                                          color: yInk,
+                                        )
+                                        : yBody(size: 13, color: yInk),
                                 textAlign: _alignment,
                                 decoration: InputDecoration(
                                   hintText: r == 0 ? 'Encab.' : '',
-                                  hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
+                                  hintStyle: yBody(
+                                    size: 13,
+                                    color: yMuted.withValues(alpha: 0.5),
+                                  ),
                                   border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
                                   contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 4, vertical: 8),
+                                    horizontal: 4,
+                                    vertical: 8,
+                                  ),
                                   isDense: true,
                                 ),
                               ),
@@ -464,7 +514,10 @@ class _CodePanelState extends State<_CodePanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Lenguaje', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
+          Text(
+            'Lenguaje',
+            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _langController,
@@ -472,7 +525,10 @@ class _CodePanelState extends State<_CodePanel> {
             decoration: _panelInputDecoration(hint: 'python, dart, js...'),
           ),
           const SizedBox(height: 16),
-          Text('Código', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
+          Text(
+            'Código',
+            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _codeController,
@@ -522,7 +578,10 @@ class _QuotePanelState extends State<_QuotePanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Texto de la cita', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
+          Text(
+            'Texto de la cita',
+            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
@@ -569,8 +628,10 @@ class _LatexPanelState extends State<_LatexPanel> {
           color: selected ? yFlight : Colors.transparent,
           border: Border.all(color: selected ? yFlight : yMuted, width: 1),
         ),
-        child: Text(label,
-            style: yBody(size: 13, color: selected ? yCream : yInk)),
+        child: Text(
+          label,
+          style: yBody(size: 13, color: selected ? yCream : yInk),
+        ),
       ),
     );
   }
@@ -601,16 +662,17 @@ class _LatexPanelState extends State<_LatexPanel> {
             ],
           ),
           const SizedBox(height: 16),
-          Text('Fórmula', style: yBody(size: 14, weight: FontWeight.w700, color: yMuted)),
+          Text(
+            'Fórmula',
+            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
             style: yMono(size: 14, color: yInk, tracking: 0),
             maxLines: _isBlock ? 6 : 1,
             minLines: _isBlock ? 3 : 1,
-            decoration: _panelInputDecoration(
-              hint: r'f(x) = \int_0^1 x^2\,dx',
-            ),
+            decoration: _panelInputDecoration(hint: r'f(x) = \int_0^1 x^2\,dx'),
           ),
         ],
       ),
@@ -657,8 +719,9 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
 
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final imagesDir =
-          Directory(p.join(appDir.path, 'note_images', '${widget.noteId}'));
+      final imagesDir = Directory(
+        p.join(appDir.path, 'note_images', '${widget.noteId}'),
+      );
       await imagesDir.create(recursive: true);
 
       final ext = p.extension(_pickedFile!.path).toLowerCase();
@@ -668,12 +731,9 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
       await File(_pickedFile!.path).copy(newPath);
 
       final fileSize = await File(newPath).length();
-      await ref.read(noteRepositoryProvider).addImage(
-            widget.noteId,
-            newFilename,
-            newPath,
-            fileSize,
-          );
+      await ref
+          .read(noteRepositoryProvider)
+          .addImage(widget.noteId, newFilename, newPath, fileSize);
 
       widget.onInsert('\n![Imagen]($newPath)\n');
       widget.onClose();
@@ -694,10 +754,7 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
           if (_pickedFile != null)
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 280),
-              child: Image.file(
-                File(_pickedFile!.path),
-                fit: BoxFit.contain,
-              ),
+              child: Image.file(File(_pickedFile!.path), fit: BoxFit.contain),
             )
           else
             GestureDetector(
@@ -714,8 +771,10 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
                   children: [
                     const Icon(Icons.image_outlined, size: 48, color: yMuted),
                     const SizedBox(height: 12),
-                    Text('Seleccionar imagen',
-                        style: yBody(size: 16, color: yMuted)),
+                    Text(
+                      'Seleccionar imagen',
+                      style: yBody(size: 16, color: yMuted),
+                    ),
                   ],
                 ),
               ),
@@ -725,16 +784,26 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
               padding: const EdgeInsets.only(top: 12),
               child: GestureDetector(
                 onTap: _pickImage,
-                child: Text('Cambiar imagen',
-                    style: yBody(size: 14, weight: FontWeight.w700, color: yFlight)),
+                child: Text(
+                  'Cambiar imagen',
+                  style: yBody(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: yFlight,
+                  ),
+                ),
               ),
             ),
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.only(top: 16),
               child: SizedBox(
-                width: 24, height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2, color: yFlight),
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: yFlight,
+                ),
               ),
             ),
         ],

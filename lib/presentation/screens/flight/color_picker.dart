@@ -61,7 +61,13 @@ Color? sampleStrokeColorAt(
 }
 
 double _distanceToSegment2(
-  double px, double py, double ax, double ay, double bx, double by) {
+  double px,
+  double py,
+  double ax,
+  double ay,
+  double bx,
+  double by,
+) {
   final dx = bx - ax;
   final dy = by - ay;
   final len2 = dx * dx + dy * dy;
@@ -79,7 +85,6 @@ double _distanceToSegment2(
   return ex * ex + ey * ey;
 }
 
-
 abstract class _ColorListPrefs {
   static Future<List<Color>> _load(String key, int max) async {
     final prefs = await SharedPreferences.getInstance();
@@ -88,11 +93,7 @@ abstract class _ColorListPrefs {
     try {
       final list = jsonDecode(raw);
       if (list is List) {
-        return list
-            .whereType<int>()
-            .map((v) => Color(v))
-            .take(max)
-            .toList();
+        return list.whereType<int>().map((v) => Color(v)).take(max).toList();
       }
     } catch (_) {}
     return const [];
@@ -191,7 +192,10 @@ class ColorButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: isOpen ? 2.5 : yLineThin),
+          border: Border.all(
+            color: yBorderStrong,
+            width: isOpen ? 2.5 : yLineThin,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -201,7 +205,7 @@ class ColorButton extends StatelessWidget {
               height: 20,
               decoration: BoxDecoration(
                 color: currentColor,
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
             ),
             const SizedBox(width: 8),
@@ -246,12 +250,10 @@ class SavedColorsStrip extends StatelessWidget {
               decoration: BoxDecoration(
                 color: savedColors[i],
                 border: Border.all(
-                  color: savedColors[i].toARGB32() == selectedArgb
-                      ? yCream
-                      : yInk,
-                  width: savedColors[i].toARGB32() == selectedArgb
-                      ? 3
-                      : yLineThin,
+                  color:
+                      savedColors[i].toARGB32() == selectedArgb ? yCream : yBorderStrong,
+                  width:
+                      savedColors[i].toARGB32() == selectedArgb ? 3 : yLineThin,
                 ),
               ),
             ),
@@ -328,8 +330,10 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
       width: 320,
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: _advanced ? _buildAdvanced() : _buildCompact(),
@@ -359,7 +363,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
               height: 18,
               decoration: BoxDecoration(
                 color: widget.currentColor,
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
             ),
           ],
@@ -375,28 +379,31 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
           ),
         ),
         const SizedBox(height: 6),
-        Builder(builder: (_) {
-          final quick = widget.quickColors ?? widget.recentColors;
-          return Row(
-            children: [
-              for (int i = 0; i < kRecentColorsCount; i++) ...[
-                Expanded(
-                  child: i < quick.length
-                      ? _SwatchTile(
-                          color: quick[i],
-                          selected: quick[i].toARGB32() == selectedArgb,
-                          onTap: () {
-                            widget.onPreview(quick[i]);
-                            widget.onCommit(quick[i]);
-                          },
-                        )
-                      : const _EmptySwatch(),
-                ),
-                if (i < kRecentColorsCount - 1) const SizedBox(width: 6),
+        Builder(
+          builder: (_) {
+            final quick = widget.quickColors ?? widget.recentColors;
+            return Row(
+              children: [
+                for (int i = 0; i < kRecentColorsCount; i++) ...[
+                  Expanded(
+                    child:
+                        i < quick.length
+                            ? _SwatchTile(
+                              color: quick[i],
+                              selected: quick[i].toARGB32() == selectedArgb,
+                              onTap: () {
+                                widget.onPreview(quick[i]);
+                                widget.onCommit(quick[i]);
+                              },
+                            )
+                            : const _EmptySwatch(),
+                  ),
+                  if (i < kRecentColorsCount - 1) const SizedBox(width: 6),
+                ],
               ],
-            ],
-          );
-        }),
+            );
+          },
+        ),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -439,7 +446,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: yCream,
-                  border: Border.all(color: yInk, width: yLineThin),
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
                 child: const Icon(Icons.arrow_back, size: 14, color: yInk),
               ),
@@ -464,7 +471,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: starred ? yAmber2 : yCream,
-                  border: Border.all(color: yInk, width: yLineThin),
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
                 child: Icon(
                   starred ? Icons.star : Icons.star_border,
@@ -508,7 +515,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
               height: 32,
               decoration: BoxDecoration(
                 color: _hsv.toColor(),
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
             ),
             const SizedBox(width: 10),
@@ -550,18 +557,19 @@ class _SwatchTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           border: Border.all(
-            color: selected ? yCream : yInk,
+            color: selected ? yCream : yBorderStrong,
             width: selected ? 3 : yLineThin,
           ),
         ),
-        child: selected
-            ? Container(
-                margin: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  border: Border.all(color: yInk, width: 1.5),
-                ),
-              )
-            : null,
+        child:
+            selected
+                ? Container(
+                  margin: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: yBorderStrong, width: 1.5),
+                  ),
+                )
+                : null,
       ),
     );
   }
@@ -584,10 +592,7 @@ class _EmptySwatch extends StatelessWidget {
       child: Center(
         child: Text(
           '·',
-          style: yMono(
-            size: 16,
-            color: yMuted.withValues(alpha: 0.5),
-          ),
+          style: yMono(size: 16, color: yMuted.withValues(alpha: 0.5)),
         ),
       ),
     );
@@ -619,7 +624,7 @@ class _ActionBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: bg,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -693,38 +698,43 @@ class _SVPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final hueColor = HSVColor.fromAHSV(1, hue, 1, 1).toColor();
-    final base = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [Colors.white, hueColor],
-      ).createShader(rect);
+    final base =
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Colors.white, hueColor],
+          ).createShader(rect);
     canvas.drawRect(rect, base);
-    final overlay = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Colors.transparent, Colors.black],
-      ).createShader(rect);
+    final overlay =
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.transparent, Colors.black],
+          ).createShader(rect);
     canvas.drawRect(rect, overlay);
 
     final cx = s * size.width;
     final cy = (1 - v) * size.height;
-    final ringOuter = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = Colors.white;
-    final ringInner = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.black;
+    final ringOuter =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.white;
+    final ringInner =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = Colors.black;
     canvas.drawCircle(Offset(cx, cy), 9, ringOuter);
     canvas.drawCircle(Offset(cx, cy), 9, ringInner);
 
-    final border = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = yInk;
+    final border =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = yInk;
     canvas.drawRect(rect, border);
   }
 
@@ -781,29 +791,33 @@ class _HuePainter extends CustomPainter {
       for (int i = 0; i <= 360; i += 60)
         HSVColor.fromAHSV(1, i.toDouble() % 360, 1, 1).toColor(),
     ];
-    final p = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: colors,
-      ).createShader(rect);
+    final p =
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: colors,
+          ).createShader(rect);
     canvas.drawRect(rect, p);
 
-    final border = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = yInk;
+    final border =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = yInk;
     canvas.drawRect(rect, border);
 
     final y = (hue / 360.0) * size.height;
-    final marker = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = Colors.white;
-    final markerInner = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.black;
+    final marker =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.white;
+    final markerInner =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = Colors.black;
     final m = Rect.fromLTWH(-2, y - 4, size.width + 4, 8);
     canvas.drawRect(m, marker);
     canvas.drawRect(m, markerInner);
@@ -881,7 +895,7 @@ class _HexInputState extends State<_HexInput> {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineThin),
+        border: Border.all(color: yBorderStrong, width: yLineThin),
       ),
       child: Row(
         children: [

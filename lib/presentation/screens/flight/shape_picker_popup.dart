@@ -21,8 +21,10 @@ class ShapePickerPopup extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       padding: const EdgeInsets.all(8),
       child: Row(
@@ -50,19 +52,22 @@ class ShapePickerPopup extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 20, color: yInk),
             const SizedBox(height: 4),
-            Text(label,
-                style: yMono(
-                    size: 8,
-                    weight: FontWeight.w700,
-                    tracking: 1.0,
-                    color: yInk)),
+            Text(
+              label,
+              style: yMono(
+                size: 8,
+                weight: FontWeight.w700,
+                tracking: 1.0,
+                color: yInk,
+              ),
+            ),
           ],
         ),
       ),

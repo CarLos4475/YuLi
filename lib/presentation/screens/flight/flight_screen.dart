@@ -47,24 +47,30 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
     if (folder == null || !mounted) return;
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => FolderDetailScreen(folder: folder),
-      ),
+      MaterialPageRoute(builder: (_) => FolderDetailScreen(folder: folder)),
     );
   }
 
   Future<void> _navigateToPendingNote(int noteId) async {
     final note = await ref.read(noteRepositoryProvider).getById(noteId);
     if (note == null || !mounted) return;
-    final folder =
-        await ref.read(folderRepositoryProvider).getById(note.folderId);
+    final folder = await ref
+        .read(folderRepositoryProvider)
+        .getById(note.folderId);
     if (folder == null || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => switch (note.kind) {
-              NoteKind.whiteboard => WhiteboardEditorScreen(note: note, folder: folder),
-              NoteKind.notebook => NotebookEditorScreen(note: note, folder: folder),
+        builder:
+            (_) => switch (note.kind) {
+              NoteKind.whiteboard => WhiteboardEditorScreen(
+                note: note,
+                folder: folder,
+              ),
+              NoteKind.notebook => NotebookEditorScreen(
+                note: note,
+                folder: folder,
+              ),
               _ => NoteEditorScreen(note: note, folder: folder),
             },
       ),
@@ -95,19 +101,18 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
           subtitle:
               'MODO NOTAS · ${folders.length} CARPETAS · $totalNotes NOTAS',
           color: yFlight,
-          onBack: () =>
-              ref.read(currentModeProvider.notifier).state = AppMode.home,
-          headerRight: [
-            _SearchBar(totalNotes: totalNotes),
-          ],
+          onBack:
+              () => ref.read(currentModeProvider.notifier).state = AppMode.home,
+          headerRight: [_SearchBar(totalNotes: totalNotes)],
         ),
         const _Toolbar(),
         Expanded(
           child: Container(
             color: yCream,
-            child: sorted.isEmpty
-                ? _Empty()
-                : _FolderGrid(folders: sorted, counts: counts),
+            child:
+                sorted.isEmpty
+                    ? _Empty()
+                    : _FolderGrid(folders: sorted, counts: counts),
           ),
         ),
       ],
@@ -173,36 +178,42 @@ class _Toolbar extends ConsumerWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
       child: Row(
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => showDialog(
-              context: context,
-              builder: (_) => const NewFolderDialog(),
-            ),
+            onTap:
+                () => showDialog(
+                  context: context,
+                  builder: (_) => const NewFolderDialog(),
+                ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
               decoration: BoxDecoration(
                 color: yFlight,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('+',
-                      style: TextStyle(
-                          fontSize: 18, color: yCream, height: 1.0)),
+                  const Text(
+                    '+',
+                    style: TextStyle(fontSize: 18, color: yCream, height: 1.0),
+                  ),
                   const SizedBox(width: 8),
-                  Text('NUEVA CARPETA',
-                      style: yBody(
-                        size: 13,
-                        weight: FontWeight.w700,
-                        color: yCream,
-                      ).copyWith(letterSpacing: 1.2)),
+                  Text(
+                    'NUEVA CARPETA',
+                    style: yBody(
+                      size: 13,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                    ).copyWith(letterSpacing: 1.2),
+                  ),
                 ],
               ),
             ),
@@ -269,8 +280,7 @@ class _Toolbar extends ConsumerWidget {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       items: const [
         PopupMenuItem(value: FlightFilter.all, child: Text('Todas')),
-        PopupMenuItem(
-            value: FlightFilter.withNotes, child: Text('Con notas')),
+        PopupMenuItem(value: FlightFilter.withNotes, child: Text('Con notas')),
         PopupMenuItem(value: FlightFilter.empty, child: Text('Vacías')),
         PopupMenuItem(value: FlightFilter.pinned, child: Text('Fijadas')),
       ],
@@ -287,12 +297,9 @@ class _Toolbar extends ConsumerWidget {
       color: yCream,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       items: [
-        const PopupMenuItem(
-            value: FlightSort.recent, child: Text('Reciente')),
-        const PopupMenuItem(
-            value: FlightSort.alphabetical, child: Text('A–Z')),
-        const PopupMenuItem(
-            value: FlightSort.count, child: Text('Más notas')),
+        const PopupMenuItem(value: FlightSort.recent, child: Text('Reciente')),
+        const PopupMenuItem(value: FlightSort.alphabetical, child: Text('A–Z')),
+        const PopupMenuItem(value: FlightSort.count, child: Text('Más notas')),
       ],
     ).then((s) {
       if (s != null) notifier.setSort(s);
@@ -317,7 +324,7 @@ class _SearchBar extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(
           children: [
@@ -326,25 +333,19 @@ class _SearchBar extends ConsumerWidget {
             Expanded(
               child: Text(
                 'buscar en $totalNotes notas…',
-                style: yBody(
-                  size: 13,
-                  weight: FontWeight.w500,
-                  color: yMuted,
-                ),
+                style: yBody(size: 13, weight: FontWeight.w500, color: yMuted),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
-                border: Border.all(color: yMuted, width: 1.5),
+                border: Border.all(color: yBorderSoft, width: 1.5),
               ),
-              child: Text('⌘ K',
-                  style: yMono(
-                    size: 10,
-                    tracking: 1,
-                    color: yMuted,
-                  )),
+              child: Text(
+                '⌘ K',
+                style: yMono(size: 10, tracking: 1, color: yMuted),
+              ),
             ),
           ],
         ),
@@ -353,10 +354,7 @@ class _SearchBar extends ConsumerWidget {
   }
 
   Future<void> _openSearch(BuildContext context, WidgetRef ref) {
-    return showDialog(
-      context: context,
-      builder: (_) => const _SearchDialog(),
-    );
+    return showDialog(context: context, builder: (_) => const _SearchDialog());
   }
 }
 
@@ -379,9 +377,10 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final hits = _query.isEmpty
-        ? <NoteSearchHit>[]
-        : ref.watch(globalNoteSearchProvider(_query)).valueOrNull ?? [];
+    final hits =
+        _query.isEmpty
+            ? <NoteSearchHit>[]
+            : ref.watch(globalNoteSearchProvider(_query)).valueOrNull ?? [];
 
     return Dialog(
       backgroundColor: yCream,
@@ -389,7 +388,7 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
       insetPadding: const EdgeInsets.all(60),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         constraints: const BoxConstraints(maxWidth: 700, maxHeight: 600),
         padding: const EdgeInsets.all(20),
@@ -406,13 +405,17 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
                     controller: _controller,
                     autofocus: true,
                     style: ySans(
-                        size: 18, weight: FontWeight.w500, color: yInk),
+                      size: 18,
+                      weight: FontWeight.w500,
+                      color: yInk,
+                    ),
                     decoration: InputDecoration(
                       hintText: 'Buscar en todas las notas…',
                       hintStyle: ySans(
-                          size: 18,
-                          weight: FontWeight.w500,
-                          color: yMuted),
+                        size: 18,
+                        weight: FontWeight.w500,
+                        color: yMuted,
+                      ),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
@@ -425,57 +428,59 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
               ],
             ),
             const SizedBox(height: 8),
-            Container(height: 1, color: yInk),
+            Container(height: 1, color: yBorderStrong),
             const SizedBox(height: 8),
             Expanded(
-              child: hits.isEmpty
-                  ? Center(
-                      child: Text(
-                        _query.isEmpty ? '' : 'Sin resultados',
-                        style: yBody(
-                            size: 14, color: yMuted),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemBuilder: (_, i) {
-                        final h = hits[i];
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () async {
-                            Navigator.pop(context);
-                            ref
-                                .read(pendingNoteNavigationProvider.notifier)
-                                .state = h.note.id;
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(h.note.title ?? '(sin título)',
+              child:
+                  hits.isEmpty
+                      ? Center(
+                        child: Text(
+                          _query.isEmpty ? '' : 'Sin resultados',
+                          style: yBody(size: 14, color: yMuted),
+                        ),
+                      )
+                      : ListView.separated(
+                        itemBuilder: (_, i) {
+                          final h = hits[i];
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () async {
+                              Navigator.pop(context);
+                              ref
+                                  .read(pendingNoteNavigationProvider.notifier)
+                                  .state = h.note.id;
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    h.note.title ?? '(sin título)',
                                     style: ySans(
                                       size: 15,
                                       weight: FontWeight.w700,
                                       color: yInk,
-                                    )),
-                                const SizedBox(height: 2),
-                                Text(h.folderName,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    h.folderName,
                                     style: yMono(
                                       size: 10,
                                       tracking: 1.2,
                                       color: yMuted,
-                                    )),
-                              ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      separatorBuilder: (_, _) => Container(
-                        height: 1,
-                        color: yInk.withValues(alpha: 0.15),
+                          );
+                        },
+                        separatorBuilder:
+                            (_, _) => Container(height: 1, color: yBorderSoft),
+                        itemCount: hits.length,
                       ),
-                      itemCount: hits.length,
-                    ),
             ),
           ],
         ),
@@ -499,20 +504,22 @@ class _FolderGrid extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (ctx, c) {
-        final cols = c.maxWidth >= 1100
-            ? 3
-            : c.maxWidth >= 700
+        final cols =
+            c.maxWidth >= 1100
+                ? 3
+                : c.maxWidth >= 700
                 ? 2
                 : 1;
 
         if (toolbar.view == FlightView.list) {
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(28, 22, 28, 24),
-            itemBuilder: (_, i) => _FolderListRow(
-              folder: folders[i],
-              count: counts[folders[i].id] ?? 0,
-              pinned: pinned.contains(folders[i].id),
-            ),
+            itemBuilder:
+                (_, i) => _FolderListRow(
+                  folder: folders[i],
+                  count: counts[folders[i].id] ?? 0,
+                  pinned: pinned.contains(folders[i].id),
+                ),
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemCount: folders.length,
           );
@@ -576,10 +583,13 @@ class _FolderCard extends ConsumerWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => FolderDetailScreen(folder: folder)),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FolderDetailScreen(folder: folder),
+            ),
+          ),
       onLongPress: () => _showFolderContextMenu(context, ref, folder, pinned),
       child: Stack(
         clipBehavior: Clip.none,
@@ -587,7 +597,7 @@ class _FolderCard extends ConsumerWidget {
           Container(
             decoration: BoxDecoration(
               color: folder.color,
-              border: Border.all(color: yInk, width: yLineHeavy),
+              border: Border.all(color: yBorderStrong, width: yLineMid),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -640,9 +650,7 @@ class _FolderCard extends ConsumerWidget {
                     ],
                   ),
                 ),
-                Container(
-                    height: 2,
-                    color: yCream.withValues(alpha: 0.25)),
+                Container(height: 2, color: yCream.withValues(alpha: 0.25)),
                 // Recent notes preview
                 Expanded(
                   child: Padding(
@@ -658,12 +666,14 @@ class _FolderCard extends ConsumerWidget {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('▸',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontFamily: 'monospace',
-                                        color: yCream.withValues(alpha: 0.7),
-                                      )),
+                                  Text(
+                                    '▸',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontFamily: 'monospace',
+                                      color: yCream.withValues(alpha: 0.7),
+                                    ),
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
@@ -686,25 +696,32 @@ class _FolderCard extends ConsumerWidget {
                   ),
                 ),
                 // Footer enter affordance
-                Container(
-                    height: 2,
-                    color: yCream.withValues(alpha: 0.25)),
+                Container(height: 2, color: yCream.withValues(alpha: 0.25)),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('ABRIR CARPETA',
-                          style: yMono(
-                            size: 10,
-                            weight: FontWeight.w700,
-                            tracking: 1.4,
-                            color: yCream.withValues(alpha: 0.85),
-                          )),
-                      Text('→',
-                          style: TextStyle(
-                              fontSize: 16, color: yCream, height: 1.0)),
+                      Text(
+                        'ABRIR CARPETA',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: yCream.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      Text(
+                        '→',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: yCream,
+                          height: 1.0,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -721,15 +738,17 @@ class _FolderCard extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(10, 4, 10, 5),
                   decoration: BoxDecoration(
                     color: yAmber2,
-                    border: Border.all(color: yInk, width: yLineThin),
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
                   ),
-                  child: Text('★ FIJADA',
-                      style: yMono(
-                        size: 9,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yInk,
-                      )),
+                  child: Text(
+                    '★ FIJADA',
+                    style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -758,47 +777,51 @@ class _FolderListRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => FolderDetailScreen(folder: folder)),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FolderDetailScreen(folder: folder),
+            ),
+          ),
       onLongPress: () => _showFolderListMenu(context, ref),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: folder.color,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(
           children: [
             if (pinned) ...[
-              Text('★',
-                  style:
-                      TextStyle(fontSize: 14, color: yAmber2, height: 1.0)),
+              Text(
+                '★',
+                style: TextStyle(fontSize: 14, color: yAmber2, height: 1.0),
+              ),
               const SizedBox(width: 10),
             ],
             Expanded(
               child: Text(
                 folder.name,
-                style: ySans(
-                  size: 18,
-                  weight: FontWeight.w700,
-                  color: yCream,
-                ),
+                style: ySans(size: 18, weight: FontWeight.w700, color: yCream),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text(count.toString().padLeft(2, '0'),
-                style: yMono(
-                  size: 11,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: yCream.withValues(alpha: 0.85),
-                )),
+            Text(
+              count.toString().padLeft(2, '0'),
+              style: yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.2,
+                color: yCream.withValues(alpha: 0.85),
+              ),
+            ),
             const SizedBox(width: 8),
-            Text('→',
-                style: TextStyle(fontSize: 16, color: yCream, height: 1.0)),
+            Text(
+              '→',
+              style: TextStyle(fontSize: 16, color: yCream, height: 1.0),
+            ),
           ],
         ),
       ),
@@ -811,15 +834,16 @@ class _NewFolderTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => showDialog(
-        context: context,
-        builder: (_) => const NewFolderDialog(),
-      ),
+      onTap:
+          () => showDialog(
+            context: context,
+            builder: (_) => const NewFolderDialog(),
+          ),
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(
-            color: yInk,
-            width: yLineHeavy,
+            color: yBorderStrong,
+            width: yLineMid,
             style: BorderStyle.solid,
           ),
         ),
@@ -833,28 +857,33 @@ class _NewFolderTile extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineHeavy),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: Text('+',
-                  style: TextStyle(
-                      fontSize: 32, color: yInk, height: 1.0)),
+              child: Text(
+                '+',
+                style: TextStyle(fontSize: 32, color: yInk, height: 1.0),
+              ),
             ),
             const SizedBox(height: 10),
-            Text('Nueva carpeta',
-                style: ySans(
-                  size: 16,
-                  weight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                  color: yInk,
-                )),
+            Text(
+              'Nueva carpeta',
+              style: ySans(
+                size: 16,
+                weight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: yInk,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text('ELIGE UN COLOR',
-                style: yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yMuted,
-                )),
+            Text(
+              'ELIGE UN COLOR',
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yMuted,
+              ),
+            ),
           ],
         ),
       ),
@@ -862,111 +891,160 @@ class _NewFolderTile extends StatelessWidget {
   }
 }
 
-void _showFolderContextMenu(BuildContext context, WidgetRef ref, Folder folder, bool pinned) {
+void _showFolderContextMenu(
+  BuildContext context,
+  WidgetRef ref,
+  Folder folder,
+  bool pinned,
+) {
   final repo = ref.read(folderRepositoryProvider);
   showModalBottomSheet(
     context: context,
     backgroundColor: yCream,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-    builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: Text(
-              folder.name.toUpperCase(),
-              style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted),
-            ),
-          ),
-          _FolderMenuItem(
-            icon: Icons.edit_outlined,
-            label: 'Cambiar nombre',
-            onTap: () {
-              Navigator.pop(ctx);
-              showDialog(
-                context: context,
-                builder: (_) => EditItemDialog(
-                  title: 'Renombrar carpeta',
-                  initialName: folder.name,
-                  initialColor: folder.color,
-                  onSave: (name, color) async {
-                    await repo.update(folder.copyWith(name: name, color: color));
-                  },
-                  onDelete: () async {
-                    await repo.softDelete(folder.id);
-                  },
-                ),
-              );
-            },
-          ),
-          _FolderMenuItem(
-            icon: Icons.palette_outlined,
-            label: 'Cambiar color',
-            onTap: () {
-              Navigator.pop(ctx);
-              showDialog(
-                context: context,
-                builder: (dCtx) => AlertDialog(
-                  backgroundColor: yCream,
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                  title: Text('Color de carpeta', style: ySans(size: 18, weight: FontWeight.w700)),
-                  content: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: folderPalette.map((c) => GestureDetector(
-                      onTap: () async {
-                        await repo.update(folder.copyWith(color: c));
-                        if (dCtx.mounted) Navigator.pop(dCtx);
-                      },
-                      child: Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(
-                          color: c,
-                          border: Border.all(color: yInk, width: folder.color == c ? 3 : yLineThin),
-                        ),
-                      ),
-                    )).toList(),
+    builder:
+        (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  folder.name.toUpperCase(),
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
                   ),
                 ),
-              );
-            },
+              ),
+              _FolderMenuItem(
+                icon: Icons.edit_outlined,
+                label: 'Cambiar nombre',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showDialog(
+                    context: context,
+                    builder:
+                        (_) => EditItemDialog(
+                          title: 'Renombrar carpeta',
+                          initialName: folder.name,
+                          initialColor: folder.color,
+                          onSave: (name, color) async {
+                            await repo.update(
+                              folder.copyWith(name: name, color: color),
+                            );
+                          },
+                          onDelete: () async {
+                            await repo.softDelete(folder.id);
+                          },
+                        ),
+                  );
+                },
+              ),
+              _FolderMenuItem(
+                icon: Icons.palette_outlined,
+                label: 'Cambiar color',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showDialog(
+                    context: context,
+                    builder:
+                        (dCtx) => AlertDialog(
+                          backgroundColor: yCream,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero,
+                          ),
+                          title: Text(
+                            'Color de carpeta',
+                            style: ySans(size: 18, weight: FontWeight.w700),
+                          ),
+                          content: Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children:
+                                folderPalette
+                                    .map(
+                                      (c) => GestureDetector(
+                                        onTap: () async {
+                                          await repo.update(
+                                            folder.copyWith(color: c),
+                                          );
+                                          if (dCtx.mounted) Navigator.pop(dCtx);
+                                        },
+                                        child: Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: c,
+                                            border: Border.all(
+                                              color: yBorderStrong,
+                                              width:
+                                                  folder.color == c
+                                                      ? yLineMid
+                                                      : yLineThin,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                          ),
+                        ),
+                  );
+                },
+              ),
+              _FolderMenuItem(
+                icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                label: pinned ? 'Desfijar' : 'Destacar',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(pinnedFoldersProvider.notifier).toggle(folder.id);
+                },
+              ),
+              _FolderMenuItem(
+                icon: Icons.delete_outline,
+                label: 'Eliminar',
+                destructive: true,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder:
+                        (d) => AlertDialog(
+                          backgroundColor: yCream,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero,
+                          ),
+                          title: Text(
+                            'Eliminar carpeta',
+                            style: ySans(size: 18, weight: FontWeight.w700),
+                          ),
+                          content: Text(
+                            '¿Eliminar "${folder.name}"? Se moverá a la papelera.',
+                            style: yBody(size: 14),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(d, false),
+                              child: const Text('Cancelar'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(d, true),
+                              child: const Text('Eliminar'),
+                            ),
+                          ],
+                        ),
+                  );
+                  if (ok == true) await repo.softDelete(folder.id);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
-          _FolderMenuItem(
-            icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
-            label: pinned ? 'Desfijar' : 'Destacar',
-            onTap: () {
-              Navigator.pop(ctx);
-              ref.read(pinnedFoldersProvider.notifier).toggle(folder.id);
-            },
-          ),
-          _FolderMenuItem(
-            icon: Icons.delete_outline,
-            label: 'Eliminar',
-            destructive: true,
-            onTap: () async {
-              Navigator.pop(ctx);
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (d) => AlertDialog(
-                  backgroundColor: yCream,
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                  title: Text('Eliminar carpeta', style: ySans(size: 18, weight: FontWeight.w700)),
-                  content: Text('¿Eliminar "${folder.name}"? Se moverá a la papelera.', style: yBody(size: 14)),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
-                    TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Eliminar')),
-                  ],
-                ),
-              );
-              if (ok == true) await repo.softDelete(folder.id);
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ),
+        ),
   );
 }
 
@@ -991,13 +1069,24 @@ class _FolderMenuItem extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: yInk, width: 0.5)),
+          border: Border(top: BorderSide(color: yBorderSoft, width: 0.5)),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: destructive ? const Color(0xFF8E2D4B) : yInk),
+            Icon(
+              icon,
+              size: 18,
+              color: destructive ? const Color(0xFF8E2D4B) : yInk,
+            ),
             const SizedBox(width: 12),
-            Text(label, style: ySans(size: 15, weight: FontWeight.w600, color: destructive ? const Color(0xFF8E2D4B) : yInk)),
+            Text(
+              label,
+              style: ySans(
+                size: 15,
+                weight: FontWeight.w600,
+                color: destructive ? const Color(0xFF8E2D4B) : yInk,
+              ),
+            ),
           ],
         ),
       ),

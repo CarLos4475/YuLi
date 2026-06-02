@@ -179,7 +179,7 @@ Future<void> _sendOcrContextToYuli(
       builder: (ctx) => Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: SafeArea(
@@ -203,7 +203,7 @@ Future<void> _sendOcrContextToYuli(
                     padding: const EdgeInsets.symmetric(vertical: 11),
                     decoration: const BoxDecoration(
                       border: Border(
-                          bottom: BorderSide(color: yInk, width: yLineThin)),
+                          bottom: BorderSide(color: yBorderStrong, width: yLineThin)),
                     ),
                     child: Text(
                       (s.label?.trim().isEmpty ?? true)

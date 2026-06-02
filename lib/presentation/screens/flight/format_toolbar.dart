@@ -21,7 +21,10 @@ class FormatToolbar extends StatelessWidget {
     final text = ctrl.text;
     final selected = sel.textInside(text);
     final newText = text.replaceRange(
-        sel.start, sel.end, '$before$selected$after');
+      sel.start,
+      sel.end,
+      '$before$selected$after',
+    );
     ctrl.value = TextEditingValue(
       text: newText,
       selection: TextSelection(
@@ -42,9 +45,7 @@ class FormatToolbar extends StatelessWidget {
     final newText = text.replaceRange(sel.start, sel.end, wrapped);
     ctrl.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(
-        offset: sel.start + wrapped.length,
-      ),
+      selection: TextSelection.collapsed(offset: sel.start + wrapped.length),
     );
   }
 
@@ -53,7 +54,7 @@ class FormatToolbar extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineThin)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
@@ -68,11 +69,20 @@ class FormatToolbar extends StatelessWidget {
           const SizedBox(width: 4),
           _FmtBtn(label: r'$', onTap: () => _wrap(r'$', r'$')),
           const SizedBox(width: 8),
-          _AlignBtn(icon: Icons.format_align_left, onTap: () => _wrapAlign('left')),
+          _AlignBtn(
+            icon: Icons.format_align_left,
+            onTap: () => _wrapAlign('left'),
+          ),
           const SizedBox(width: 4),
-          _AlignBtn(icon: Icons.format_align_center, onTap: () => _wrapAlign('center')),
+          _AlignBtn(
+            icon: Icons.format_align_center,
+            onTap: () => _wrapAlign('center'),
+          ),
           const SizedBox(width: 4),
-          _AlignBtn(icon: Icons.format_align_right, onTap: () => _wrapAlign('right')),
+          _AlignBtn(
+            icon: Icons.format_align_right,
+            onTap: () => _wrapAlign('right'),
+          ),
           const Spacer(),
           if (onOpenInsertMenu != null)
             GestureDetector(
@@ -84,15 +94,17 @@ class FormatToolbar extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: accent,
-                  border: Border.all(color: yInk, width: 1.5),
+                  border: Border.all(color: yBorderStrong, width: 1.5),
                 ),
-                child: Text('+',
-                    style: yMono(
-                      size: 14,
-                      weight: FontWeight.w700,
-                      color: yCream,
-                      tracking: 0,
-                    )),
+                child: Text(
+                  '+',
+                  style: yMono(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: yCream,
+                    tracking: 0,
+                  ),
+                ),
               ),
             ),
         ],
@@ -117,7 +129,7 @@ class _FmtBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: 1.5),
         ),
         child: Text(
           label,
@@ -143,7 +155,7 @@ class _AlignBtn extends StatelessWidget {
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: 1.5),
         ),
         child: Icon(icon, size: 14, color: yInk),
       ),

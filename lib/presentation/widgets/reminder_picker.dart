@@ -195,7 +195,7 @@ class _OptionButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: filled ? accent : y.yCream,
-          border: Border.all(color: y.yInk, width: y.yLineMid),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
         ),
         child: Text(
           label,

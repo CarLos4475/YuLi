@@ -119,7 +119,7 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
       child: Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: SafeArea(
@@ -231,7 +231,7 @@ class _FolderChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? folder.color : yCream,
-          border: Border.all(color: yInk, width: selected ? 2.5 : yLineThin),
+          border: Border.all(color: yBorderStrong, width: selected ? 2.5 : yLineThin),
         ),
         child: Text(
           folder.name,
@@ -271,7 +271,7 @@ class _DestRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: highlight ? accent.withValues(alpha: 0.12) : yCream,
           border: Border.all(
-              color: highlight ? accent : yInk,
+              color: highlight ? accent : yBorderStrong,
               width: highlight ? 2 : yLineThin),
         ),
         child: Row(

@@ -51,7 +51,8 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
     final spacesAsync = ref.watch(activeLabSpacesProvider);
     final ink = inkColor(context);
 
-    final reactiveSpace = spacesAsync.valueOrNull?.firstWhere(
+    final reactiveSpace =
+        spacesAsync.valueOrNull?.firstWhere(
           (s) => s.id == widget.space.id,
           orElse: () => widget.space,
         ) ??
@@ -78,50 +79,60 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
             final zoom = (availH / totalH).clamp(1.2, 2.0);
             SchedulerBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              _transformationController.value = Matrix4.diagonal3Values(zoom, zoom, 1);
+              _transformationController.value = Matrix4.diagonal3Values(
+                zoom,
+                zoom,
+                1,
+              );
             });
 
-                return Column(
-                  children: [
-                    y.ViewHead(
-                      title: 'Timeline',
-                      titleColor: reactiveSpace.accentColor,
-                      kicker:
-                          '${withDate.length} CON FECHA · ${columns.length} COLUMNAS',
+            return Column(
+              children: [
+                y.ViewHead(
+                  title: 'Timeline',
+                  titleColor: reactiveSpace.accentColor,
+                  kicker:
+                      '${withDate.length} CON FECHA · ${columns.length} COLUMNAS',
+                ),
+                Expanded(
+                  child: _TimelineViewer(
+                    key: ValueKey(
+                      '${reactiveSpace.id}_${columns.length}_${withDate.length}',
                     ),
-                    Expanded(
-                      child: _TimelineViewer(
-                        key: ValueKey('${reactiveSpace.id}_${columns.length}_${withDate.length}'),
-                        space: reactiveSpace,
-                        columns: columns,
-                        cards: withDate,
-                        ink: ink,
-                        transformationController: _transformationController,
-                        onCardTap: (card) => widget.selectionMode
-                            ? widget.onToggleSelection(card.id)
-                            : _openCardDetail(context, card),
-                        onCardLongPress: (card) =>
-                            widget.onToggleSelection(card.id),
-                        selectedCardIds: widget.selectedCardIds,
-                        selectionMode: widget.selectionMode,
-                        accentColor: widget.space.accentColor,
-                      ),
-                    ),
-                    if (noDate.isNotEmpty)
-                      _SinFechaSection(
-                        cards: noDate,
-                        ink: ink,
-                        accentColor: widget.space.accentColor,
-                        onCardTap: (card) => widget.selectionMode
-                            ? widget.onToggleSelection(card.id)
-                            : _openCardDetail(context, card),
-                        onCardLongPress: (card) =>
-                            widget.onToggleSelection(card.id),
-                        selectedCardIds: widget.selectedCardIds,
-                        selectionMode: widget.selectionMode,
-                      ),
-                  ],
-                );
+                    space: reactiveSpace,
+                    columns: columns,
+                    cards: withDate,
+                    ink: ink,
+                    transformationController: _transformationController,
+                    onCardTap:
+                        (card) =>
+                            widget.selectionMode
+                                ? widget.onToggleSelection(card.id)
+                                : _openCardDetail(context, card),
+                    onCardLongPress:
+                        (card) => widget.onToggleSelection(card.id),
+                    selectedCardIds: widget.selectedCardIds,
+                    selectionMode: widget.selectionMode,
+                    accentColor: widget.space.accentColor,
+                  ),
+                ),
+                if (noDate.isNotEmpty)
+                  _SinFechaSection(
+                    cards: noDate,
+                    ink: ink,
+                    accentColor: widget.space.accentColor,
+                    onCardTap:
+                        (card) =>
+                            widget.selectionMode
+                                ? widget.onToggleSelection(card.id)
+                                : _openCardDetail(context, card),
+                    onCardLongPress:
+                        (card) => widget.onToggleSelection(card.id),
+                    selectedCardIds: widget.selectedCardIds,
+                    selectionMode: widget.selectionMode,
+                  ),
+              ],
+            );
           },
         );
       },
@@ -133,16 +144,18 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.8,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (ctx, sc) => KanbanCardDetail(
-          card: card,
-          space: widget.space,
-          scrollController: sc,
-        ),
-      ),
+      builder:
+          (_) => DraggableScrollableSheet(
+            initialChildSize: 0.8,
+            minChildSize: 0.4,
+            maxChildSize: 0.95,
+            builder:
+                (ctx, sc) => KanbanCardDetail(
+                  card: card,
+                  space: widget.space,
+                  scrollController: sc,
+                ),
+          ),
     );
   }
 }
@@ -156,13 +169,14 @@ class _NoDatesMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = accentColor.computeLuminance() > 0.5 ? inkBlack : paperColor(context);
+    final fg =
+        accentColor.computeLuminance() > 0.5 ? inkBlack : paperColor(context);
     return Center(
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: accentColor,
-          border: Border.all(color: inkBlack, width: borderWidth),
+          border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
           boxShadow: shadowM,
         ),
         child: Column(
@@ -221,9 +235,15 @@ class _TimelineViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final startDay = DateTime(
-        space.startDate!.year, space.startDate!.month, space.startDate!.day);
-    final endDay =
-        DateTime(space.dueDate!.year, space.dueDate!.month, space.dueDate!.day);
+      space.startDate!.year,
+      space.startDate!.month,
+      space.startDate!.day,
+    );
+    final endDay = DateTime(
+      space.dueDate!.year,
+      space.dueDate!.month,
+      space.dueDate!.day,
+    );
     final totalDays = endDay.difference(startDay).inDays + 1;
     const headerHeight = 40.0;
     const rowH = 32.0; // height of one stacked bar row
@@ -248,15 +268,17 @@ class _TimelineViewer extends StatelessWidget {
     final placed = <_BarPlacement>[];
     final laneRowCount = List.filled(columns.length, 1);
     for (int li = 0; li < columns.length; li++) {
-      final spans = cards
-          .where((c) => c.dueDate != null && c.columnId == columns[li].id)
-          .map((c) {
-        final s = clampDay(c.startDate ?? c.createdAt);
-        var e = clampDay(c.dueDate!);
-        if (e < s) e = s;
-        return (card: c, s: s, e: e);
-      }).toList()
-        ..sort((a, b) => a.s.compareTo(b.s));
+      final spans =
+          cards
+              .where((c) => c.dueDate != null && c.columnId == columns[li].id)
+              .map((c) {
+                final s = clampDay(c.startDate ?? c.createdAt);
+                var e = clampDay(c.dueDate!);
+                if (e < s) e = s;
+                return (card: c, s: s, e: e);
+              })
+              .toList()
+            ..sort((a, b) => a.s.compareTo(b.s));
       final rowEnds = <int>[]; // last end-day index per row
       for (final sp in spans) {
         int row = -1;
@@ -272,8 +294,15 @@ class _TimelineViewer extends StatelessWidget {
         } else {
           rowEnds[row] = sp.e;
         }
-        placed.add(_BarPlacement(
-            card: sp.card, lane: li, row: row, startIdx: sp.s, endIdx: sp.e));
+        placed.add(
+          _BarPlacement(
+            card: sp.card,
+            lane: li,
+            row: row,
+            startIdx: sp.s,
+            endIdx: sp.e,
+          ),
+        );
       }
       laneRowCount[li] = math.max(1, rowEnds.length);
     }
@@ -297,9 +326,12 @@ class _TimelineViewer extends StatelessWidget {
         final cardWidth = (p.endIdx - p.startIdx + 1) * dayW - 4;
         final cardHeight = 28.0;
         final isSelected = selectedCardIds.contains(card.id);
-        final bg = labCardAccent(card,
-            inExpiredColumn:
-                columns.any((c) => c.id == card.columnId && c.isExpired));
+        final bg = labCardAccent(
+          card,
+          inExpiredColumn: columns.any(
+            (c) => c.id == card.columnId && c.isExpired,
+          ),
+        );
 
         cardWidgets.add(
           Positioned(
@@ -315,7 +347,7 @@ class _TimelineViewer extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected ? accentColor : bg,
                   border: Border.all(
-                    color: y.yInk,
+                    color: y.yBorderStrong,
                     width: isSelected ? y.yLineHeavy : 2,
                   ),
                 ),
@@ -325,21 +357,25 @@ class _TimelineViewer extends StatelessWidget {
                     Expanded(
                       child: Text(
                         y.cleanMention(card.title),
-                        style: y.ySans(
-                          size: 11,
-                          weight: FontWeight.w700,
-                          letterSpacing: -0.1,
-                          color: isSelected
-                              ? y.yCream
-                              : bg.computeLuminance() > 0.5
-                                  ? y.yInk
-                                  : y.yCream,
-                          height: 1.1,
-                        ).copyWith(
-                          decoration: card.originTaskDoneAt != null
-                              ? TextDecoration.lineThrough
-                              : null,
-                        ),
+                        style: y
+                            .ySans(
+                              size: 11,
+                              weight: FontWeight.w700,
+                              letterSpacing: -0.1,
+                              color:
+                                  isSelected
+                                      ? y.yCream
+                                      : bg.computeLuminance() > 0.5
+                                      ? y.yInk
+                                      : y.yCream,
+                              height: 1.1,
+                            )
+                            .copyWith(
+                              decoration:
+                                  card.originTaskDoneAt != null
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                            ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -351,9 +387,10 @@ class _TimelineViewer extends StatelessWidget {
                           '${card.dueDate!.day.toString().padLeft(2, '0')}/${card.dueDate!.month.toString().padLeft(2, '0')}',
                           style: y.yMono(
                             size: 9,
-                            color: (isSelected || bg.computeLuminance() <= 0.5)
-                                ? y.yCream.withAlpha(216)
-                                : y.yMuted,
+                            color:
+                                (isSelected || bg.computeLuminance() <= 0.5)
+                                    ? y.yCream.withAlpha(216)
+                                    : y.yMuted,
                           ),
                         ),
                       ),
@@ -396,7 +433,6 @@ class _TimelineViewer extends StatelessWidget {
       ),
     );
   }
-
 }
 
 /// A card's placement on the timeline: its lane (column), the stacked row it
@@ -444,17 +480,20 @@ class _TimelineGridPainter extends CustomPainter {
     final totalDays = dueDate.difference(startDate).inDays + 1;
     final today = DateTime.now();
 
-    final gridPaint = Paint()
-      ..color = ink.withAlpha(30)
-      ..strokeWidth = 0.5;
+    final gridPaint =
+        Paint()
+          ..color = ink.withAlpha(30)
+          ..strokeWidth = 0.5;
 
-    final laneBorderPaint = Paint()
-      ..color = ink.withAlpha(60)
-      ..strokeWidth = borderWidth;
+    final laneBorderPaint =
+        Paint()
+          ..color = ink.withAlpha(60)
+          ..strokeWidth = borderWidth;
 
-    final todayPaint = Paint()
-      ..color = y.yFight
-      ..strokeWidth = 2.0;
+    final todayPaint =
+        Paint()
+          ..color = y.yFight
+          ..strokeWidth = 2.0;
 
     const textStyle = TextStyle(
       color: inkGray,
@@ -468,11 +507,7 @@ class _TimelineGridPainter extends CustomPainter {
       final dw = dayWidths[i];
 
       // Grid line at start of day
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        gridPaint,
-      );
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
 
       // Grid line at end of day
       canvas.drawLine(
@@ -491,10 +526,7 @@ class _TimelineGridPainter extends CustomPainter {
       );
       textPainter.layout();
       final labelX = x + 2;
-      textPainter.paint(
-        canvas,
-        Offset(labelX, 2),
-      );
+      textPainter.paint(canvas, Offset(labelX, 2));
 
       // Month label on first day or when month changes
       if (i == 0 || day.day == 1) {
@@ -508,10 +540,7 @@ class _TimelineGridPainter extends CustomPainter {
           textDirection: TextDirection.ltr,
         );
         monthPainter.layout();
-        monthPainter.paint(
-          canvas,
-          Offset(labelX, 14),
-        );
+        monthPainter.paint(canvas, Offset(labelX, 14));
       }
     }
 
@@ -527,11 +556,7 @@ class _TimelineGridPainter extends CustomPainter {
       final y = laneTopPositions[i];
 
       // Lane top border
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        laneBorderPaint,
-      );
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), laneBorderPaint);
 
       // Column label
       final labelSpan = TextSpan(
@@ -548,10 +573,7 @@ class _TimelineGridPainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       );
       labelPainter.layout();
-      labelPainter.paint(
-        canvas,
-        Offset(4, y + 4),
-      );
+      labelPainter.paint(canvas, Offset(4, y + 4));
     }
 
     // Bottom border
@@ -562,9 +584,12 @@ class _TimelineGridPainter extends CustomPainter {
     );
 
     // Today vertical line
-    final todayDiff = DateTime(today.year, today.month, today.day)
-        .difference(DateTime(startDate.year, startDate.month, startDate.day))
-        .inDays;
+    final todayDiff =
+        DateTime(today.year, today.month, today.day)
+            .difference(
+              DateTime(startDate.year, startDate.month, startDate.day),
+            )
+            .inDays;
     if (todayDiff >= 0 && todayDiff < totalDays) {
       final todayX = dayPositions[todayDiff] + (dayWidths[todayDiff] / 2);
       canvas.drawLine(
@@ -602,17 +627,15 @@ class _TimelineGridPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2,
       );
-      hoyPainter.paint(
-        canvas,
-        Offset(todayX - hoyPainter.width / 2, 1),
-      );
+      hoyPainter.paint(canvas, Offset(todayX - hoyPainter.width / 2, 1));
     }
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 
-  String _monthShort(int m) => [
+  String _monthShort(int m) =>
+      [
         'ENE',
         'FEB',
         'MAR',
@@ -653,9 +676,7 @@ class _SinFechaSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: ink, width: borderWidth),
-        ),
+        border: Border(top: BorderSide(color: ink, width: borderWidth)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -691,9 +712,10 @@ class _SinFechaSection extends StatelessWidget {
                 final isSelected = selectedCardIds.contains(cards[i].id);
                 return GestureDetector(
                   onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
-                  onLongPress: onCardLongPress != null
-                      ? () => onCardLongPress!(cards[i])
-                      : null,
+                  onLongPress:
+                      onCardLongPress != null
+                          ? () => onCardLongPress!(cards[i])
+                          : null,
                   child: Container(
                     width: 140,
                     margin: const EdgeInsets.only(right: 8),
@@ -709,9 +731,10 @@ class _SinFechaSection extends StatelessWidget {
                     child: Text(
                       cards[i].title,
                       style: bodyS.copyWith(
-                        color: bg.computeLuminance() > 0.5
-                            ? inkBlack
-                            : paperColor(context),
+                        color:
+                            bg.computeLuminance() > 0.5
+                                ? inkBlack
+                                : paperColor(context),
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 2,
@@ -726,5 +749,4 @@ class _SinFechaSection extends StatelessWidget {
       ),
     );
   }
-
 }

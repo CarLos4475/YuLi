@@ -53,8 +53,10 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
             margin: const EdgeInsets.only(bottom: 4),
             decoration: BoxDecoration(
               color: yCream,
-              border: Border.all(color: yInk, width: yLineMid),
-              boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+              border: Border.all(color: yBorderStrong, width: yLineMid),
+              boxShadow: const [
+                BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+              ],
             ),
             padding: const EdgeInsets.all(6),
             child: Row(
@@ -72,7 +74,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
                       margin: const EdgeInsets.symmetric(horizontal: 2),
                       decoration: BoxDecoration(
                         color: c,
-                        border: Border.all(color: yInk, width: 1.5),
+                        border: Border.all(color: yBorderStrong, width: 1.5),
                       ),
                     ),
                   ),
@@ -85,8 +87,10 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
             margin: const EdgeInsets.only(bottom: 4),
             decoration: BoxDecoration(
               color: yCream,
-              border: Border.all(color: yInk, width: yLineMid),
-              boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+              border: Border.all(color: yBorderStrong, width: yLineMid),
+              boxShadow: const [
+                BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+              ],
             ),
             padding: const EdgeInsets.all(6),
             child: Row(
@@ -105,7 +109,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yCream,
-                        border: Border.all(color: yInk, width: 1.5),
+                        border: Border.all(color: yBorderStrong, width: 1.5),
                       ),
                       child: Container(
                         width: w * 2,
@@ -124,66 +128,97 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
         Container(
           decoration: BoxDecoration(
             color: yCream,
-            border: Border.all(color: yInk, width: yLineMid),
-            boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+            boxShadow: const [
+              BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.onRecognizeText != null) ...[
                 _Btn(
-                    icon: Icons.text_fields,
-                    label: 'TEXTO',
-                    onTap: widget.onRecognizeText!),
+                  icon: Icons.text_fields,
+                  label: 'TEXTO',
+                  onTap: widget.onRecognizeText!,
+                ),
                 _sep(),
               ],
               if (widget.onSendToYuli != null) ...[
                 _Btn(
-                    icon: Icons.auto_awesome,
-                    label: 'YULI',
-                    onTap: widget.onSendToYuli!),
+                  icon: Icons.auto_awesome,
+                  label: 'YULI',
+                  onTap: widget.onSendToYuli!,
+                ),
                 _sep(),
               ],
               if (widget.onSendMathToYuli != null) ...[
                 _Btn(
-                    icon: Icons.functions,
-                    label: 'MATH',
-                    onTap: widget.onSendMathToYuli!),
+                  icon: Icons.functions,
+                  label: 'MATH',
+                  onTap: widget.onSendMathToYuli!,
+                ),
                 _sep(),
               ],
               if (widget.onCrop != null) ...[
-                _Btn(icon: Icons.crop, label: 'RECORTAR', onTap: widget.onCrop!),
+                _Btn(
+                  icon: Icons.crop,
+                  label: 'RECORTAR',
+                  onTap: widget.onCrop!,
+                ),
                 _sep(),
               ],
-              _Btn(icon: Icons.delete_outline, label: 'BORRAR', onTap: widget.onDelete),
+              _Btn(
+                icon: Icons.delete_outline,
+                label: 'BORRAR',
+                onTap: widget.onDelete,
+              ),
               _sep(),
-              _Btn(icon: Icons.copy_outlined, label: 'DUPLICAR', onTap: widget.onDuplicate),
+              _Btn(
+                icon: Icons.copy_outlined,
+                label: 'DUPLICAR',
+                onTap: widget.onDuplicate,
+              ),
               _sep(),
               _Btn(
                 icon: Icons.palette_outlined,
                 label: 'COLOR',
-                onTap: () => setState(() {
-                  _showPalette = !_showPalette;
-                  _showWidths = false;
-                }),
+                onTap:
+                    () => setState(() {
+                      _showPalette = !_showPalette;
+                      _showWidths = false;
+                    }),
               ),
               _sep(),
               _Btn(
                 icon: Icons.line_weight,
                 label: 'GROSOR',
-                onTap: () => setState(() {
-                  _showWidths = !_showWidths;
-                  _showPalette = false;
-                }),
+                onTap:
+                    () => setState(() {
+                      _showWidths = !_showWidths;
+                      _showPalette = false;
+                    }),
               ),
               _sep(),
               _Btn(icon: Icons.flip, label: 'H', onTap: widget.onFlipH),
               _sep(),
-              _Btn(icon: Icons.flip_outlined, label: 'V', onTap: widget.onFlipV),
+              _Btn(
+                icon: Icons.flip_outlined,
+                label: 'V',
+                onTap: widget.onFlipV,
+              ),
               _sep(),
-              _Btn(icon: Icons.content_copy, label: 'COPIAR', onTap: widget.onCopy),
+              _Btn(
+                icon: Icons.content_copy,
+                label: 'COPIAR',
+                onTap: widget.onCopy,
+              ),
               _sep(),
-              _Btn(icon: Icons.content_cut, label: 'CORTAR', onTap: widget.onCut),
+              _Btn(
+                icon: Icons.content_cut,
+                label: 'CORTAR',
+                onTap: widget.onCut,
+              ),
             ],
           ),
         ),
@@ -199,11 +234,7 @@ class _Btn extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _Btn({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  const _Btn({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

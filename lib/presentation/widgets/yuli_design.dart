@@ -16,6 +16,8 @@ const Color yInk2 = Color(0xFF2A241C);
 const Color yMuted = Color(0xFF7A6F60);
 const Color yAmber = Color(0xFFC7822F);
 const Color yAmber2 = Color(0xFFE29A3A);
+const Color yBorderStrong = Color(0xCC0A0A0A);
+const Color yBorderSoft = Color(0x990A0A0A);
 
 const Color yFight = Color(0xFFC8332C);
 const Color yFlight = Color(0xFF2D3F8C);
@@ -43,15 +45,14 @@ TextStyle yMono({
   Color color = yMuted,
   double tracking = 1.4,
   FontWeight weight = FontWeight.w500,
-}) =>
-    TextStyle(
-      fontFamily: 'monospace',
-      fontSize: size,
-      letterSpacing: tracking,
-      color: color,
-      fontWeight: weight,
-      height: 1.2,
-    );
+}) => TextStyle(
+  fontFamily: 'monospace',
+  fontSize: size,
+  letterSpacing: tracking,
+  color: color,
+  fontWeight: weight,
+  height: 1.2,
+);
 
 TextStyle ySans({
   double size = 16,
@@ -59,29 +60,27 @@ TextStyle ySans({
   double letterSpacing = 0,
   Color color = yInk,
   double height = 1.2,
-}) =>
-    TextStyle(
-      fontFamily: 'SpaceGrotesk',
-      fontSize: size,
-      fontWeight: weight,
-      letterSpacing: letterSpacing,
-      color: color,
-      height: height,
-    );
+}) => TextStyle(
+  fontFamily: 'SpaceGrotesk',
+  fontSize: size,
+  fontWeight: weight,
+  letterSpacing: letterSpacing,
+  color: color,
+  height: height,
+);
 
 TextStyle yBody({
   double size = 13,
   FontWeight weight = FontWeight.w500,
   Color color = yInk,
   double height = 1.4,
-}) =>
-    TextStyle(
-      fontFamily: 'Inter',
-      fontSize: size,
-      fontWeight: weight,
-      color: color,
-      height: height,
-    );
+}) => TextStyle(
+  fontFamily: 'Inter',
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: height,
+);
 
 // ─── MODE HEADER ──────────────────────────────────────────────────────────
 
@@ -106,7 +105,9 @@ class ModeHeader extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: color,
-        border: const Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: const Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
       child: Row(
@@ -121,7 +122,10 @@ class ModeHeader extends StatelessWidget {
                 height: 38,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  border: Border.all(color: yCream, width: yLineMid),
+                  border: Border.all(
+                    color: yCream.withValues(alpha: 0.86),
+                    width: yLineMid,
+                  ),
                 ),
                 child: const Icon(Icons.arrow_back, color: yCream, size: 18),
               ),
@@ -160,10 +164,9 @@ class ModeHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          ...headerRight.map((w) => Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: w,
-              )),
+          ...headerRight.map(
+            (w) => Padding(padding: const EdgeInsets.only(left: 8), child: w),
+          ),
         ],
       ),
     );
@@ -187,7 +190,7 @@ class YuliBottomNav extends ConsumerWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       child: SafeArea(
         top: false,
@@ -198,18 +201,19 @@ class YuliBottomNav extends ConsumerWidget {
             children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () =>
-                    ref.read(currentModeProvider.notifier).state = AppMode.home,
+                onTap:
+                    () =>
+                        ref.read(currentModeProvider.notifier).state =
+                            AppMode.home,
                 child: Container(
                   width: 56,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     border: Border(
-                      right: BorderSide(color: yInk, width: yLineMid),
+                      right: BorderSide(color: yBorderStrong, width: yLineMid),
                     ),
                   ),
-                  child: const Icon(Icons.home_outlined,
-                      color: yInk, size: 22),
+                  child: const Icon(Icons.home_outlined, color: yInk, size: 22),
                 ),
               ),
               for (int i = 0; i < tabs.length; i++)
@@ -218,9 +222,10 @@ class YuliBottomNav extends ConsumerWidget {
                     tab: tabs[i],
                     active: tabs[i].mode == current,
                     showBorder: i < tabs.length - 1,
-                    onTap: () => ref
-                        .read(currentModeProvider.notifier)
-                        .state = tabs[i].mode,
+                    onTap:
+                        () =>
+                            ref.read(currentModeProvider.notifier).state =
+                                tabs[i].mode,
                   ),
                 ),
             ],
@@ -235,8 +240,7 @@ class _NavTab {
   final AppMode mode;
   final String label;
   final Color color;
-  const _NavTab(
-      {required this.mode, required this.label, required this.color});
+  const _NavTab({required this.mode, required this.label, required this.color});
 }
 
 class _NavTabButton extends StatelessWidget {
@@ -261,10 +265,11 @@ class _NavTabButton extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: active ? tab.color : Colors.transparent,
-              border: showBorder
+          border:
+              showBorder
                   ? const Border(
-                      right: BorderSide(color: yInk, width: yLineMid),
-                    )
+                    right: BorderSide(color: yBorderStrong, width: yLineMid),
+                  )
                   : null,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -298,11 +303,7 @@ class _NavTabButton extends StatelessWidget {
             if (active)
               Text(
                 '● activo',
-                style: yMono(
-                  size: 9,
-                  color: yCream,
-                  tracking: 1.4,
-                ),
+                style: yMono(size: 9, color: yCream, tracking: 1.4),
               ),
           ],
         ),
@@ -334,12 +335,7 @@ Widget buildMentionText({
 }) {
   final matches = _mentionRegex.allMatches(content).toList();
   if (matches.isEmpty || folderColor == null) {
-    return Text(
-      content,
-      style: style,
-      maxLines: maxLines,
-      overflow: overflow,
-    );
+    return Text(content, style: style, maxLines: maxLines, overflow: overflow);
   }
 
   final spans = <InlineSpan>[];
@@ -348,21 +344,28 @@ Widget buildMentionText({
     if (m.start > last) {
       spans.add(TextSpan(text: content.substring(last, m.start), style: style));
     }
-    spans.add(WidgetSpan(
-      alignment: PlaceholderAlignment.middle,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
-        decoration: BoxDecoration(
-          color: folderColor,
-          border: Border.all(color: yInk, width: 1.5),
-        ),
-        child: Text(
-          '@${m.group(1)}',
-          style: yMono(size: 10, weight: FontWeight.w700, color: yCream, tracking: 0.3),
+    spans.add(
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
+          decoration: BoxDecoration(
+            color: folderColor,
+            border: Border.all(color: yBorderStrong, width: 1.5),
+          ),
+          child: Text(
+            '@${m.group(1)}',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              color: yCream,
+              tracking: 0.3,
+            ),
+          ),
         ),
       ),
-    ));
+    );
     last = m.end;
   }
   if (last < content.length) {
@@ -396,7 +399,7 @@ class BrutalSlab extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        border: border ?? Border.all(color: yInk, width: yLineHeavy),
+        border: border ?? Border.all(color: yBorderStrong, width: yLineHeavy),
       ),
       padding: padding,
       child: child,
@@ -424,7 +427,7 @@ class YBadge extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 4, 10, 5),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: yLineMid),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
       ),
       child: Text(
         label,
@@ -468,10 +471,9 @@ class IconSquareBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: fill ? color : Colors.transparent,
-          border: Border.all(color: fill ? yInk : color, width: yLineMid),
+          border: Border.all(color: fill ? yBorderStrong : color, width: yLineMid),
         ),
-        child: Icon(icon,
-            size: size * 0.45, color: fill ? yInk : color),
+        child: Icon(icon, size: size * 0.45, color: fill ? yInk : color),
       ),
     );
   }
@@ -508,7 +510,7 @@ class CapChip extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
         decoration: BoxDecoration(
           color: active ? color : Colors.transparent,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -584,10 +586,7 @@ class ModeSection extends StatelessWidget {
                   color: yInk.withValues(alpha: 0.15),
                 ),
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: 12),
-                trailing!,
-              ],
+              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
             ],
           ),
         ),
@@ -618,7 +617,7 @@ class PillTab extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 7, 14, 8),
         decoration: BoxDecoration(
           color: active ? yLab : Colors.transparent,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Text(
           label,
@@ -655,30 +654,32 @@ class ToolChip extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(label.toUpperCase(),
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yMuted,
-                )),
+            Text(
+              label.toUpperCase(),
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yMuted,
+              ),
+            ),
             const SizedBox(width: 8),
-            Text(value,
-                style: yBody(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  color: yInk,
-                )),
+            Text(
+              value,
+              style: yBody(size: 12, weight: FontWeight.w700, color: yInk),
+            ),
             const SizedBox(width: 6),
-            const Text('▾',
-                style: TextStyle(fontSize: 10, color: yInk, height: 1.0)),
+            const Text(
+              '▾',
+              style: TextStyle(fontSize: 10, color: yInk, height: 1.0),
+            ),
           ],
         ),
       ),
@@ -709,7 +710,7 @@ class ViewToggleBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? yFlight : yCream,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Text(
           glyph,
@@ -746,7 +747,7 @@ class ViewHead extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: yInk, width: 2)),
+        border: Border(bottom: BorderSide(color: yBorderStrong, width: 2)),
       ),
       padding: const EdgeInsets.fromLTRB(28, 14, 28, 14),
       child: Row(
@@ -791,10 +792,7 @@ class ViewHead extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          for (final w in right) ...[
-            w,
-            const SizedBox(width: 6),
-          ],
+          for (final w in right) ...[w, const SizedBox(width: 6)],
         ],
       ),
     );
@@ -825,22 +823,23 @@ class HeadBtn extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
         decoration: BoxDecoration(
           color: primary ? yLab : yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (leadingIcon != null) ...[
-              Icon(leadingIcon,
-                  size: 14, color: primary ? yCream : yInk),
+              Icon(leadingIcon, size: 14, color: primary ? yCream : yInk),
               const SizedBox(width: 6),
             ],
-            Text(label,
-                style: yBody(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  color: primary ? yCream : yInk,
-                ).copyWith(letterSpacing: 1.2)),
+            Text(
+              label,
+              style: yBody(
+                size: 12,
+                weight: FontWeight.w700,
+                color: primary ? yCream : yInk,
+              ).copyWith(letterSpacing: 1.2),
+            ),
           ],
         ),
       ),
@@ -866,15 +865,11 @@ class NavBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Text(
           glyph,
-          style: const TextStyle(
-            fontSize: 16,
-            color: yInk,
-            height: 1.0,
-          ),
+          style: const TextStyle(fontSize: 16, color: yInk, height: 1.0),
         ),
       ),
     );

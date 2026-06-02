@@ -92,12 +92,40 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>,
-      List<CanvasTaskBlock>, List<CanvasTextBlock>)>> _undoStack = [];
-  final List<Map<int, (List<DrawingStroke>, List<CanvasImage>,
-      List<CanvasTaskBlock>, List<CanvasTextBlock>)>> _redoStack = [];
-  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
-      List<CanvasTextBlock>)>? _gestureBefore;
+  final List<
+    Map<
+      int,
+      (
+        List<DrawingStroke>,
+        List<CanvasImage>,
+        List<CanvasTaskBlock>,
+        List<CanvasTextBlock>,
+      )
+    >
+  >
+  _undoStack = [];
+  final List<
+    Map<
+      int,
+      (
+        List<DrawingStroke>,
+        List<CanvasImage>,
+        List<CanvasTaskBlock>,
+        List<CanvasTextBlock>,
+      )
+    >
+  >
+  _redoStack = [];
+  Map<
+    int,
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+  >?
+  _gestureBefore;
   bool _gestureChanged = false;
   bool _isDrawing = false;
   bool _stylusActive = false;
@@ -178,10 +206,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _drawerSlide = Tween<Offset>(
       begin: const Offset(1.0, 0.0),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _drawerAnimCtrl,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(
+      CurvedAnimation(parent: _drawerAnimCtrl, curve: Curves.easeOutCubic),
+    );
     _lassoCtrl.onChanged = () => setState(() {});
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
@@ -263,8 +290,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         final dir = Directory(dirPath);
         if (!await dir.exists()) return;
         await for (final entity in dir.list()) {
-          if (entity is File &&
-              !referenced.contains(p.basename(entity.path))) {
+          if (entity is File && !referenced.contains(p.basename(entity.path))) {
             try {
               await entity.delete();
             } catch (_) {}
@@ -279,8 +305,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Future<void> _loadPages() async {
     final repo = ref.read(noteBlockRepositoryProvider);
     final blocks = await repo.getByNote(widget.note.id);
-    final drawingBlocks = blocks.whereType<DrawingBlock>().toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+    final drawingBlocks =
+        blocks.whereType<DrawingBlock>().toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
 
     if (drawingBlocks.isEmpty) {
       await _ensurePageAt(0);
@@ -308,8 +335,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _applyInitialScroll() {
     if (_scrollApplied || _pageBlockIds.isEmpty) return;
     _scrollApplied = true;
-    final lastPageTop = (_pageBlockIds.length - 1) *
-        (kNotebookPageHeight + kNotebookPageGap);
+    final lastPageTop =
+        (_pageBlockIds.length - 1) * (kNotebookPageHeight + kNotebookPageGap);
     final vw = MediaQuery.of(context).size.width;
     final dx = (vw - kNotebookPageWidth) / 2;
     final dy = -lastPageTop + 40;
@@ -347,16 +374,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Future<void> _ensurePageAt(int pageIndex) async {
     final repo = ref.read(noteBlockRepositoryProvider);
     while (_pageBlockIds.length <= pageIndex) {
-      final block = await repo.insertAtEnd(
-        widget.note.id,
-        NoteBlockType.drawing,
-        payload: {
-          'h': kNotebookPageHeight,
-          's': [],
-          'bg': _lastBg.toDbString(),
-          if (_lastBgColor != null) 'bgc': _lastBgColor,
-        },
-      ) as DrawingBlock;
+      final block =
+          await repo.insertAtEnd(
+                widget.note.id,
+                NoteBlockType.drawing,
+                payload: {
+                  'h': kNotebookPageHeight,
+                  's': [],
+                  'bg': _lastBg.toDbString(),
+                  if (_lastBgColor != null) 'bgc': _lastBgColor,
+                },
+              )
+              as DrawingBlock;
       _pageBlockIds.add(block.id);
       _pageData[block.id] = DrawingData(
         height: kNotebookPageHeight,
@@ -370,8 +399,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _addPageAtEnd() {
     if (_pendingPageAdd) return;
     _pendingPageAdd = true;
-    _ensurePageAt(_pageBlockIds.length)
-        .then((_) => _pendingPageAdd = false);
+    _ensurePageAt(_pageBlockIds.length).then((_) => _pendingPageAdd = false);
   }
 
   Future<void> _persistPage(int pageIndex) async {
@@ -433,8 +461,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final data = _pageData[_pageBlockIds[pageIdx]];
       if (data == null) return;
       final local = _worldToPageLocal(
-          _screenToWorld(Offset(screen.width / 2, screen.height / 2)),
-          pageIdx);
+        _screenToWorld(Offset(screen.width / 2, screen.height / 2)),
+        pageIdx,
+      );
       final w = kNotebookPageWidth * 0.5;
       final h = w * ih / iw;
       final img = CanvasImage(
@@ -459,9 +488,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (_colorPickerOpen) {
         _widthPickerOpen = false;
         final v = _color.toARGB32();
-        _pickerFavoriteAnchor = _savedColors
-            .cast<Color?>()
-            .firstWhere((c) => c!.toARGB32() == v, orElse: () => null);
+        _pickerFavoriteAnchor = _savedColors.cast<Color?>().firstWhere(
+          (c) => c!.toARGB32() == v,
+          orElse: () => null,
+        );
       } else {
         _pickerFavoriteAnchor = null;
       }
@@ -515,9 +545,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _savedColors = SavedColorsPrefs.remove(_savedColors, value);
       } else {
         final anchor = _pickerFavoriteAnchor;
-        final anchorIdx = anchor == null
-            ? -1
-            : _savedColors.indexWhere((c) => c.toARGB32() == anchor.toARGB32());
+        final anchorIdx =
+            anchor == null
+                ? -1
+                : _savedColors.indexWhere(
+                  (c) => c.toARGB32() == anchor.toARGB32(),
+                );
         if (anchorIdx >= 0) {
           // A favorite was selected: replace it in place with the new shade.
           final list = List<Color>.from(_savedColors);
@@ -534,12 +567,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _starBgColor(Color value) {
-    final isStarred =
-        _bgSavedColors.any((c) => c.toARGB32() == value.toARGB32());
+    final isStarred = _bgSavedColors.any(
+      (c) => c.toARGB32() == value.toARGB32(),
+    );
     setState(() {
-      _bgSavedColors = isStarred
-          ? SavedBgColorsPrefs.remove(_bgSavedColors, value)
-          : SavedBgColorsPrefs.push(_bgSavedColors, value);
+      _bgSavedColors =
+          isStarred
+              ? SavedBgColorsPrefs.remove(_bgSavedColors, value)
+              : SavedBgColorsPrefs.push(_bgSavedColors, value);
     });
     SavedBgColorsPrefs.save(_bgSavedColors);
     HapticFeedback.selectionClick();
@@ -651,9 +686,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     if (oldUnstarredIdx < 0 || oldUnstarredIdx >= unstarred.length) return;
 
-    final adjusted = newUnstarredIdx > oldUnstarredIdx
-        ? newUnstarredIdx - 1
-        : newUnstarredIdx;
+    final adjusted =
+        newUnstarredIdx > oldUnstarredIdx
+            ? newUnstarredIdx - 1
+            : newUnstarredIdx;
     final movedId = unstarred.removeAt(oldUnstarredIdx);
     unstarred.insert(adjusted.clamp(0, unstarred.length), movedId);
 
@@ -706,10 +742,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final pageBottom = pageTop + kNotebookPageHeight;
       if (worldY >= pageTop && worldY < pageBottom) return i;
     }
-    final lastBottom = _pageBlockIds.isNotEmpty
-        ? (_pageBlockIds.length - 1) * (kNotebookPageHeight + kNotebookPageGap) +
-            kNotebookPageHeight
-        : 0.0;
+    final lastBottom =
+        _pageBlockIds.isNotEmpty
+            ? (_pageBlockIds.length - 1) *
+                    (kNotebookPageHeight + kNotebookPageGap) +
+                kNotebookPageHeight
+            : 0.0;
     if (worldY >= lastBottom) return _pageBlockIds.length;
     return -1;
   }
@@ -766,8 +804,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
       final end = src.points.last;
-      _snapRefDist =
-          (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(1.0, 1e9);
+      _snapRefDist = (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(
+        1.0,
+        1e9,
+      );
     }
     setState(() {
       _active = DrawingStroke(
@@ -788,10 +828,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     } else if (_snapKind == ShapeKind.arrow) {
       pts = buildArrowShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
     } else {
-      final ratio =
-          ((p - _snapCenter!).distance / _snapRefDist).clamp(0.05, 20.0);
+      final ratio = ((p - _snapCenter!).distance / _snapRefDist).clamp(
+        0.05,
+        20.0,
+      );
       pts = scaleShape(
-          _snapBasePoints!, _snapCenter!.dx, _snapCenter!.dy, ratio);
+        _snapBasePoints!,
+        _snapCenter!.dx,
+        _snapCenter!.dy,
+        ratio,
+      );
     }
     setState(() {
       _active = DrawingStroke(
@@ -849,8 +895,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return null;
     }
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop =
-        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    final screenTop = MatrixUtils.transformPoint(
+      _viewCtrl.value,
+      Offset(bb.center.dx, bb.top),
+    );
     return Rect.fromLTWH(screenTop.dx - 110, screenTop.dy - 148, 220, 100);
   }
 
@@ -882,7 +930,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _multiFingerMoved = false;
     }
 
-    final isStylus = e.kind == PointerDeviceKind.stylus ||
+    final isStylus =
+        e.kind == PointerDeviceKind.stylus ||
         e.kind == PointerDeviceKind.invertedStylus;
     if (isStylus) {
       _stylusActive = true;
@@ -910,8 +959,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
     // Paste via long-press
     if (_lassoCtrl.hasClipboard && _activePointers.length == 1) {
-      final canPaste =
-          (isFinger && _palmRejection) || _tool == DrawTool.lasso;
+      final canPaste = (isFinger && _palmRejection) || _tool == DrawTool.lasso;
       if (canPaste && _lassoCtrl.phase == LassoPhase.idle) {
         final p = _screenToWorld(e.localPosition);
         _pastePos = p;
@@ -1003,7 +1051,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
         points: [
-          [sp.dx, sp.dy]
+          [sp.dx, sp.dy],
         ],
       );
     });
@@ -1056,7 +1104,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     setState(() {
       if (_lassoCtrl.tapSelect(
-          p, _allVisibleStrokes, _allVisibleImages, blocks, textBlocks)) {
+        p,
+        _allVisibleStrokes,
+        _allVisibleImages,
+        blocks,
+        textBlocks,
+      )) {
         _toolbarVisible = false;
       } else {
         _lassoCtrl.deselect();
@@ -1144,9 +1197,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     setState(() => _isDrawing = false);
 
     if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
-      final elapsed = _multiFingerDownTime != null
-          ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
-          : 999;
+      final elapsed =
+          _multiFingerDownTime != null
+              ? DateTime.now().difference(_multiFingerDownTime!).inMilliseconds
+              : 999;
       if (!_multiFingerMoved && elapsed < 400) {
         if (_maxSimultaneous == 2) {
           _undo();
@@ -1230,7 +1284,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_snapKind != null) return;
     if (_active == null || _activePageIndex == null) return;
     _active!.points.removeWhere(
-        (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite);
+      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
+    );
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       return;
@@ -1273,7 +1328,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _finishFountainStroke() {
     if (_active == null || _activePageIndex == null) return;
     _active!.points.removeWhere(
-        (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite);
+      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
+    );
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       return;
@@ -1525,9 +1581,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final cornerScale = _lassoCtrl.resizeScale;
       final sideScaleX = _lassoCtrl.resizeScaleX;
       final sideScaleY = _lassoCtrl.resizeScaleY;
-      final moved = side
-          ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
-          : (cornerScale - 1).abs() > 0.02;
+      final moved =
+          side
+              ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
+              : (cornerScale - 1).abs() > 0.02;
       side
           ? _lassoCtrl.finishSideResize(strokes, images, blocks, textBlocks)
           : _lassoCtrl.finishResize(strokes, images, blocks, textBlocks);
@@ -1556,9 +1613,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   /// A transform that moved is synced to the pages and committed; one that
   /// didn't is a tap on the selection → toggle the action toolbar.
-  void _finishTransformOrTap(bool moved, List<DrawingStroke> strokes,
-      List<CanvasImage> images, List<CanvasTaskBlock> blocks,
-      List<CanvasTextBlock> textBlocks) {
+  void _finishTransformOrTap(
+    bool moved,
+    List<DrawingStroke> strokes,
+    List<CanvasImage> images,
+    List<CanvasTaskBlock> blocks,
+    List<CanvasTextBlock> textBlocks,
+  ) {
     if (moved) {
       _syncLassoToPages(strokes, images, blocks, textBlocks);
       _commitGesture();
@@ -1568,9 +1629,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
   }
 
-  void _syncLassoToPages(List<DrawingStroke> worldStrokes,
-      List<CanvasImage> worldImages, List<CanvasTaskBlock> worldBlocks,
-      List<CanvasTextBlock> worldTextBlocks) {
+  void _syncLassoToPages(
+    List<DrawingStroke> worldStrokes,
+    List<CanvasImage> worldImages,
+    List<CanvasTaskBlock> worldBlocks,
+    List<CanvasTextBlock> worldTextBlocks,
+  ) {
     final pages = <int, List<DrawingStroke>>{};
     final imagesByPage = <int, List<CanvasImage>>{};
     final blocksByPage = <int, List<CanvasTaskBlock>>{};
@@ -1600,20 +1664,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final im in worldImages) {
       final idx = _nearestPageIndex(im.y + im.h / 2);
       if (idx < 0) continue;
-      imagesByPage[_pageBlockIds[idx]]!
-          .add(im.clone()..y -= _pageOffsetY(idx));
+      imagesByPage[_pageBlockIds[idx]]!.add(im.clone()..y -= _pageOffsetY(idx));
     }
     for (final b in worldBlocks) {
       final idx = _nearestPageIndex(b.y + b.h / 2);
       if (idx < 0) continue;
-      blocksByPage[_pageBlockIds[idx]]!
-          .add(b.clone()..y -= _pageOffsetY(idx));
+      blocksByPage[_pageBlockIds[idx]]!.add(b.clone()..y -= _pageOffsetY(idx));
     }
     for (final b in worldTextBlocks) {
       final idx = _nearestPageIndex(b.y + b.h / 2);
       if (idx < 0) continue;
-      textBlocksByPage[_pageBlockIds[idx]]!
-          .add(b.clone()..y -= _pageOffsetY(idx));
+      textBlocksByPage[_pageBlockIds[idx]]!.add(
+        b.clone()..y -= _pageOffsetY(idx),
+      );
     }
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final bid = _pageBlockIds[i];
@@ -1635,9 +1698,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// Run a lasso mutation over the flattened world strokes + images + blocks,
   /// sync back to the pages, and record it as one undoable step.
   void _lassoMutate(
-      void Function(List<DrawingStroke>, List<CanvasImage>,
-              List<CanvasTaskBlock>, List<CanvasTextBlock>)
-          op) {
+    void Function(
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+    op,
+  ) {
     final before = _snapshot();
     final strokes = _allVisibleStrokes;
     final images = _allVisibleImages;
@@ -1649,8 +1717,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _lassoDelete() {
-    _lassoMutate(
-        (s, im, b, tx) => _lassoCtrl.deleteSelected(s, im, b, tx));
+    _lassoMutate((s, im, b, tx) => _lassoCtrl.deleteSelected(s, im, b, tx));
     HapticFeedback.lightImpact();
   }
 
@@ -1665,16 +1732,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_pageBlockIds.isEmpty) return;
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    final pageIdx = _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
+    final pageIdx = _nearestPageIndex(
+      center.dy,
+    ).clamp(0, _pageBlockIds.length - 1);
     final w = (kCanvasTaskBlockDefaultW / _viewScale).clamp(60.0, 600.0);
     final h = (w * 0.375).clamp(40.0, 400.0);
     final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
-    final block = CanvasTaskBlock(
-      x: center.dx - w / 2,
-      y: localY,
-      w: w,
-      h: h,
-    );
+    final block = CanvasTaskBlock(x: center.dx - w / 2, y: localY, w: w, h: h);
     final before = _snapshot();
     setState(() {
       _pageData[_pageBlockIds[pageIdx]]?.taskBlocks.add(block);
@@ -1697,8 +1761,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// Insert a text block at [worldPos] (tap-to-insert in text mode).
   void _insertTextBlockAt(Offset worldPos) {
     if (_pageBlockIds.isEmpty) return;
-    final pageIdx =
-        _nearestPageIndex(worldPos.dy).clamp(0, _pageBlockIds.length - 1);
+    final pageIdx = _nearestPageIndex(
+      worldPos.dy,
+    ).clamp(0, _pageBlockIds.length - 1);
     final w = (240.0 / _viewScale).clamp(60.0, 600.0);
     final h = w / 2;
     final localY = worldPos.dy - _pageOffsetY(pageIdx) - h / 2;
@@ -1723,11 +1788,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_pageBlockIds.isEmpty) return;
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    final pageIdx =
-        _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
-    final screenW = markdown.isNotEmpty
-        ? (200.0 + markdown.length * 0.35).clamp(120.0, 800.0)
-        : 200.0;
+    final pageIdx = _nearestPageIndex(
+      center.dy,
+    ).clamp(0, _pageBlockIds.length - 1);
+    final screenW =
+        markdown.isNotEmpty
+            ? (200.0 + markdown.length * 0.35).clamp(120.0, 800.0)
+            : 200.0;
     final w = (screenW / _viewScale).clamp(60.0, 600.0);
     final h = markdown.isNotEmpty ? w : w / 2;
     final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
@@ -1749,8 +1816,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           (_pageData[_pageBlockIds[pageIdx]]?.textBlocks.length ?? 1) - 1;
       _tool = DrawTool.lasso;
       _lassoCtrl.hitScale = _viewScale;
-      _lassoCtrl.selectTextBlock(worldIdx, _allVisibleStrokes,
-          _allVisibleImages, _allVisibleTaskBlocks, _allVisibleTextBlocks);
+      _lassoCtrl.selectTextBlock(
+        worldIdx,
+        _allVisibleStrokes,
+        _allVisibleImages,
+        _allVisibleTaskBlocks,
+        _allVisibleTextBlocks,
+      );
       _toolbarVisible = false;
     });
     _commit(before);
@@ -1787,8 +1859,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_pageBlockIds.isEmpty) return;
     final screen = MediaQuery.of(context).size;
     final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
-    final pageIdx =
-        _nearestPageIndex(center.dy).clamp(0, _pageBlockIds.length - 1);
+    final pageIdx = _nearestPageIndex(
+      center.dy,
+    ).clamp(0, _pageBlockIds.length - 1);
     final data = _pageData[_pageBlockIds[pageIdx]];
     if (data == null) return;
     final local = _worldToPageLocal(center, pageIdx);
@@ -1826,7 +1899,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// coords. Bound to the real per-page block so task edits persist; the flat
   /// index matches [_allVisibleTaskBlocks] so lasso selection lines up.
   List<Widget> _buildTaskBlockOverlays() {
-    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+    final gesture =
+        _lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
         _lassoCtrl.phase == LassoPhase.rotating;
     final out = <Widget>[];
@@ -1850,7 +1924,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             folderName: widget.folder.name,
             folderColor: widget.folder.color,
             accent: _accent,
-            interactive: !selected &&
+            interactive:
+                !selected &&
                 !gesture &&
                 (_tool == DrawTool.lasso || _palmRejection),
             onPersist: () => _persistPage(pageIndex),
@@ -1861,7 +1936,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               if (!mounted) return;
               setState(() => b.h = h);
               _lassoCtrl.refreshBoundingBox(
-                  data.strokes, data.images, data.taskBlocks);
+                data.strokes,
+                data.images,
+                data.taskBlocks,
+              );
               _persistPage(pageIndex);
             },
           ),
@@ -1869,12 +1947,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         // Live transform for move/rotate/corner-resize. During side resize
         // (non-uniform scale) the widget stays at original size so text doesn't
         // distort, snapping to the new geometry on release.
-        final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+        final isLiveTransform =
+            _lassoCtrl.phase == LassoPhase.moving ||
             _lassoCtrl.phase == LassoPhase.rotating ||
-            (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
+            (_lassoCtrl.phase == LassoPhase.resizing &&
+                !_lassoCtrl.isSideResize);
         if (isLiveTransform && selected) {
           final off = Offset(b.x, offset + b.y);
-          final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+          final tm =
+              Matrix4.translationValues(-off.dx, -off.dy, 0) *
               _lassoCtrl.liveGestureMatrix() *
               Matrix4.translationValues(off.dx, off.dy, 0);
           overlay = Transform(transform: tm, child: overlay);
@@ -1888,7 +1969,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// Text block overlays. Flat index matches [_allVisibleTextBlocks] so lasso
   /// selection lines up.
   List<Widget> _buildTextBlockOverlays() {
-    final gesture = _lassoCtrl.phase == LassoPhase.moving ||
+    final gesture =
+        _lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
         _lassoCtrl.phase == LassoPhase.rotating;
     final out = <Widget>[];
@@ -1919,8 +2001,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             onHeightMeasured: (h) {
               if (!mounted) return;
               setState(() => b.h = h);
-              _lassoCtrl.refreshBoundingBox(_allVisibleStrokes,
-                  _allVisibleImages, _allVisibleTaskBlocks, _allVisibleTextBlocks);
+              _lassoCtrl.refreshBoundingBox(
+                _allVisibleStrokes,
+                _allVisibleImages,
+                _allVisibleTaskBlocks,
+                _allVisibleTextBlocks,
+              );
               _persistPage(pageIndex);
             },
             onDragStart: () => _gestureBefore = _snapshot(),
@@ -1930,12 +2016,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             },
           ),
         );
-        final isLiveTransform = _lassoCtrl.phase == LassoPhase.moving ||
+        final isLiveTransform =
+            _lassoCtrl.phase == LassoPhase.moving ||
             _lassoCtrl.phase == LassoPhase.rotating ||
-            (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
+            (_lassoCtrl.phase == LassoPhase.resizing &&
+                !_lassoCtrl.isSideResize);
         if (isLiveTransform && selected) {
           final off = Offset(b.x, offset + b.y);
-          final tm = Matrix4.translationValues(-off.dx, -off.dy, 0) *
+          final tm =
+              Matrix4.translationValues(-off.dx, -off.dy, 0) *
               _lassoCtrl.liveGestureMatrix() *
               Matrix4.translationValues(off.dx, off.dy, 0);
           overlay = Transform(transform: tm, child: overlay);
@@ -1978,22 +2067,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Future<void> _recognizeSelection() async {
     final strokes = _selectedWritingStrokes();
-    runOcrFlow(context, ref, strokes,
-        accent: _accent,
-        folderId: widget.note.folderId,
-        noteId: widget.note.id);
+    runOcrFlow(
+      context,
+      ref,
+      strokes,
+      accent: _accent,
+      folderId: widget.note.folderId,
+      noteId: widget.note.id,
+    );
   }
 
   Future<void> _sendSelectionToYuli() async {
     final strokes = _selectedWritingStrokes();
-    runOcrToYuliFlow(context, ref, strokes,
-        accent: _accent, noteId: widget.note.id);
+    runOcrToYuliFlow(
+      context,
+      ref,
+      strokes,
+      accent: _accent,
+      noteId: widget.note.id,
+    );
   }
 
   Future<void> _sendMathSelectionToYuli() async {
     final strokes = _selectedWritingStrokes();
-    runMathToYuliFlow(context, ref, strokes,
-        accent: _accent, noteId: widget.note.id);
+    runMathToYuliFlow(
+      context,
+      ref,
+      strokes,
+      accent: _accent,
+      noteId: widget.note.id,
+    );
   }
 
   /// Map a flattened selected-image index back to (pageIndex, localIndex).
@@ -2019,10 +2122,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final result = await Navigator.of(context).push<CropResult>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => ImageCropScreen(
-          sourcePath: p.join(dirPath, img.filename),
-          accent: _accent,
-        ),
+        builder:
+            (_) => ImageCropScreen(
+              sourcePath: p.join(dirPath, img.filename),
+              accent: _accent,
+            ),
       ),
     );
     if (result == null || !mounted) return;
@@ -2048,12 +2152,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Undo / redo (snapshot history, all pages) ──────────────────────────
 
-  Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
-          List<CanvasTextBlock>)>
-      _snapshot() {
-    final m = <int,
-        (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
-            List<CanvasTextBlock>)>{};
+  Map<
+    int,
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    )
+  >
+  _snapshot() {
+    final m =
+        <
+          int,
+          (
+            List<DrawingStroke>,
+            List<CanvasImage>,
+            List<CanvasTaskBlock>,
+            List<CanvasTextBlock>,
+          )
+        >{};
     for (final entry in _pageData.entries) {
       m[entry.key] = (
         entry.value.strokes.map((s) => s.clone()).toList(),
@@ -2066,9 +2184,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _commit(
-      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
-              List<CanvasTextBlock>)>
-          before) {
+    Map<
+      int,
+      (
+        List<DrawingStroke>,
+        List<CanvasImage>,
+        List<CanvasTaskBlock>,
+        List<CanvasTextBlock>,
+      )
+    >
+    before,
+  ) {
     _undoStack.add(before);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
@@ -2090,9 +2216,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _restore(
-      Map<int, (List<DrawingStroke>, List<CanvasImage>, List<CanvasTaskBlock>,
-              List<CanvasTextBlock>)>
-          snap) {
+    Map<
+      int,
+      (
+        List<DrawingStroke>,
+        List<CanvasImage>,
+        List<CanvasTaskBlock>,
+        List<CanvasTextBlock>,
+      )
+    >
+    snap,
+  ) {
     for (final entry in snap.entries) {
       final data = _pageData[entry.key];
       if (data != null) {
@@ -2140,11 +2274,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_pageBlockIds.isEmpty) return 0;
     final inv = Matrix4.inverted(_viewCtrl.value);
     final center = MatrixUtils.transformPoint(
-        inv,
-        Offset(
-          MediaQuery.of(context).size.width / 2,
-          MediaQuery.of(context).size.height / 2,
-        ));
+      inv,
+      Offset(
+        MediaQuery.of(context).size.width / 2,
+        MediaQuery.of(context).size.height / 2,
+      ),
+    );
     final idx = _pageIndexFromWorldY(center.dy);
     return idx.clamp(0, _pageBlockIds.length - 1);
   }
@@ -2153,9 +2288,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   static const Color _notebookPaper = Color(0xFFFFFDF8);
 
-  DrawingData? get _currentPageData => _pageBlockIds.isEmpty
-      ? null
-      : _pageData[_pageBlockIds[_currentVisiblePage]];
+  DrawingData? get _currentPageData =>
+      _pageBlockIds.isEmpty
+          ? null
+          : _pageData[_pageBlockIds[_currentVisiblePage]];
 
   PageBackground get _currentBg => _currentPageData?.background ?? _lastBg;
 
@@ -2174,9 +2310,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
   }
 
-  List<int> get _bgTargetPages => _bgAllPages
-      ? List.generate(_pageBlockIds.length, (i) => i)
-      : [_currentVisiblePage];
+  List<int> get _bgTargetPages =>
+      _bgAllPages
+          ? List.generate(_pageBlockIds.length, (i) => i)
+          : [_currentVisiblePage];
 
   void _applyBgPattern(PageBackground pb) {
     final targets = _bgTargetPages;
@@ -2255,8 +2392,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop =
-        MatrixUtils.transformPoint(_viewCtrl.value, Offset(bb.center.dx, bb.top));
+    final screenTop = MatrixUtils.transformPoint(
+      _viewCtrl.value,
+      Offset(bb.center.dx, bb.top),
+    );
     // Anchor the toolbar's bottom a fixed screen gap above the selection top
     // (clearing the rotation handle), growing upward — never overlaps the top
     // handles even when zoomed out.
@@ -2270,16 +2409,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
         // Mathpix math OCR is debug-only for now (too costly for current scope).
-        onSendMathToYuli: (kDebugMode && _selectionHasWriting)
-            ? _sendMathSelectionToYuli
-            : null,
+        onSendMathToYuli:
+            (kDebugMode && _selectionHasWriting)
+                ? _sendMathSelectionToYuli
+                : null,
         palette: _palette,
-        onColorChange: (c) =>
-            _lassoMutate((s, im, b, _) => _lassoCtrl.changeColor(s, c.toARGB32())),
-        onWidthChange: (w) =>
-            _lassoMutate((s, im, b, _) => _lassoCtrl.changeWidth(s, w)),
-        onFlipH: () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipHorizontal(s)),
-        onFlipV: () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipVertical(s)),
+        onColorChange:
+            (c) => _lassoMutate(
+              (s, im, b, _) => _lassoCtrl.changeColor(s, c.toARGB32()),
+            ),
+        onWidthChange:
+            (w) => _lassoMutate((s, im, b, _) => _lassoCtrl.changeWidth(s, w)),
+        onFlipH:
+            () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipHorizontal(s)),
+        onFlipV:
+            () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipVertical(s)),
         onCopy: () {
           _lassoCtrl.copySelected(_allVisibleStrokes, _allVisibleImages);
           HapticFeedback.lightImpact();
@@ -2305,15 +2449,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Widget _buildPasteButton() {
-    final screenPos =
-        MatrixUtils.transformPoint(_viewCtrl.value, _showPasteAt!);
+    final screenPos = MatrixUtils.transformPoint(
+      _viewCtrl.value,
+      _showPasteAt!,
+    );
     return Positioned(
       left: screenPos.dx - 40,
       top: screenPos.dy - 40,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
-          _lassoMutate((s, im, b, _) => _lassoCtrl.pasteAt(_showPasteAt!, s, im));
+          _lassoMutate(
+            (s, im, b, _) => _lassoCtrl.pasteAt(_showPasteAt!, s, im),
+          );
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
         },
@@ -2321,16 +2469,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: yCream,
-            border: Border.all(color: yInk, width: yLineMid),
-            boxShadow: const [BoxShadow(color: yInk, offset: Offset(2, 2))],
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+            boxShadow: const [
+              BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+            ],
           ),
           child: Text(
             'PEGAR',
             style: yMono(
-                size: 11,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: yInk),
+              size: 11,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yInk,
+            ),
           ),
         ),
       ),
@@ -2340,10 +2491,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   Widget build(BuildContext context) {
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
-    final aiLinked = (ref
-                .watch(canvasContextSourcesProvider(widget.note.id))
-                .valueOrNull
-                ?.isNotEmpty) ??
+    final aiLinked =
+        (ref
+            .watch(canvasContextSourcesProvider(widget.note.id))
+            .valueOrNull
+            ?.isNotEmpty) ??
         false;
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
@@ -2352,33 +2504,37 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       body: Stack(
         children: [
           Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_headerCollapsed)
-            SafeArea(
-              child: _CollapsedNotebookHeader(
-                folder: widget.folder,
-                pageCount: _pageBlockIds.length,
-                background: _currentBg,
-                accent: _accent,
-                hasAiKey: hasAiKey,
-                aiLinked: aiLinked,
-                onExpand: () => setState(() => _headerCollapsed = false),
-                onOpenPages: _togglePageDrawer,
-                onAi: () => showAiChat(context, ref,
-                    noteId: widget.note.id,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_headerCollapsed)
+                SafeArea(
+                  child: _CollapsedNotebookHeader(
+                    folder: widget.folder,
+                    pageCount: _pageBlockIds.length,
+                    background: _currentBg,
                     accent: _accent,
-                    onSendToCanvas: _insertTextBlock),
-              ),
-            )
-          else ...[
-            SafeArea(
-              child: ModeHeader(
-                mode: 'CUADERNO',
-                subtitle:
-                    'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
-                color: _accent,
-                onBack: () => Navigator.pop(context),
+                    hasAiKey: hasAiKey,
+                    aiLinked: aiLinked,
+                    onExpand: () => setState(() => _headerCollapsed = false),
+                    onOpenPages: _togglePageDrawer,
+                    onAi:
+                        () => showAiChat(
+                          context,
+                          ref,
+                          noteId: widget.note.id,
+                          accent: _accent,
+                          onSendToCanvas: _insertTextBlock,
+                        ),
+                  ),
+                )
+              else ...[
+                SafeArea(
+                  child: ModeHeader(
+                    mode: 'CUADERNO',
+                    subtitle:
+                        'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
+                    color: _accent,
+                    onBack: () => Navigator.pop(context),
                     headerRight: [
                       YBadge(
                         label: '@${widget.folder.name}',
@@ -2394,33 +2550,50 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: yCream,
-                            border: Border.all(color: yInk, width: yLineMid),
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineMid,
+                            ),
                           ),
-                          child: const Icon(Icons.auto_stories, color: yInk, size: 18),
+                          child: const Icon(
+                            Icons.auto_stories,
+                            color: yInk,
+                            size: 18,
+                          ),
                         ),
                       ),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: hasAiKey
-                            ? () => showAiChat(context, ref,
-                                noteId: widget.note.id,
-                                accent: _accent,
-                                onSendToCanvas: _insertTextBlock)
-                            : null,
+                        onTap:
+                            hasAiKey
+                                ? () => showAiChat(
+                                  context,
+                                  ref,
+                                  noteId: widget.note.id,
+                                  accent: _accent,
+                                  onSendToCanvas: _insertTextBlock,
+                                )
+                                : null,
                         child: AiLinkBadge(
                           active: aiLinked,
                           color: _accent,
                           child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: hasAiKey ? _accent : yMuted,
-                            border: Border.all(color: yInk, width: yLineMid),
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: hasAiKey ? _accent : yMuted,
+                              border: Border.all(
+                                color: yBorderStrong,
+                                width: yLineMid,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.auto_awesome,
+                              color: hasAiKey ? yCream : yCream2,
+                              size: 18,
+                            ),
                           ),
-                          child: Icon(Icons.auto_awesome,
-                              color: hasAiKey ? yCream : yCream2, size: 18),
-                        ),
                         ),
                       ),
                       GestureDetector(
@@ -2432,235 +2605,322 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: yCream,
-                            border: Border.all(color: yInk, width: yLineMid),
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineMid,
+                            ),
                           ),
-                          child: const Icon(Icons.keyboard_arrow_up, color: yInk, size: 18),
+                          child: const Icon(
+                            Icons.keyboard_arrow_up,
+                            color: yInk,
+                            size: 18,
+                          ),
                         ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
-          Expanded(
-            child: _pageBlockIds.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : LayoutBuilder(builder: (ctx, c) {
-                    _viewport = Size(c.maxWidth, c.maxHeight);
-                    return AnimatedBuilder(
-                      animation: _viewCtrl,
-                      builder: (_, _) {
-                        final inv = Matrix4.inverted(_viewCtrl.value);
-                        final tl =
-                            MatrixUtils.transformPoint(inv, Offset.zero);
-                        final br = MatrixUtils.transformPoint(
-                            inv, Offset(c.maxWidth, c.maxHeight));
-                        final visibleRect = Rect.fromPoints(tl, br);
-                        _lassoCtrl.hitScale = _viewScale;
+                ),
+              ],
+              Expanded(
+                child:
+                    _pageBlockIds.isEmpty
+                        ? const Center(child: CircularProgressIndicator())
+                        : LayoutBuilder(
+                          builder: (ctx, c) {
+                            _viewport = Size(c.maxWidth, c.maxHeight);
+                            return AnimatedBuilder(
+                              animation: _viewCtrl,
+                              builder: (_, _) {
+                                final inv = Matrix4.inverted(_viewCtrl.value);
+                                final tl = MatrixUtils.transformPoint(
+                                  inv,
+                                  Offset.zero,
+                                );
+                                final br = MatrixUtils.transformPoint(
+                                  inv,
+                                  Offset(c.maxWidth, c.maxHeight),
+                                );
+                                final visibleRect = Rect.fromPoints(tl, br);
+                                _lassoCtrl.hitScale = _viewScale;
 
-                        final lastPageBottom = _pageBlockIds.isNotEmpty
-                            ? (_pageBlockIds.length - 1) *
-                                    (kNotebookPageHeight +
-                                        kNotebookPageGap) +
-                                kNotebookPageHeight
-                            : 0.0;
-                        final overscroll = br.dy - lastPageBottom;
-                        final pull =
-                            (overscroll / 150.0).clamp(0.0, 1.0);
-                        _reachedPullThreshold = pull >= 1.0;
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            ClipRect(
-                              child: GestureDetector(
-                                onTapUp: _onLassoTap,
-                                child: Listener(
-                                behavior: HitTestBehavior.opaque,
-                                onPointerDown: _onDown,
-                                onPointerMove: _onMove,
-                                onPointerUp: _onUp,
-                                onPointerCancel: _onCancel,
-                                child: InteractiveViewer(
-                                  transformationController: _viewCtrl,
-                                  minScale: 0.3,
-                                  maxScale: 4.0,
-                                  boundaryMargin: EdgeInsets.symmetric(
-                                    horizontal: c.maxWidth,
-                                    vertical: _totalCanvasHeight * 0.3,
-                                  ),
-                                  // Text mode: 1-finger drag moves a box (its
-                                  // GestureDetector), so disable pan; 2-finger
-                                  // still navigates.
-                                  panEnabled: _tool == DrawTool.text
-                                      ? false
-                                      : _tool == DrawTool.lasso
-                                          ? (_lassoCtrl.phase ==
-                                                  LassoPhase.idle &&
-                                              !_isDrawing)
-                                          : _palmRejection
-                                              ? !_stylusActive
-                                              : !_isDrawing,
-                                  scaleEnabled: _tool == DrawTool.text
-                                      ? true
-                                      : _tool == DrawTool.lasso
-                                          ? (_lassoCtrl.phase ==
-                                                  LassoPhase.idle &&
-                                              !_isDrawing)
-                                          : !_stylusActive,
-                                  constrained: false,
-                                  child: SizedBox(
-                                    width: kNotebookPageWidth,
-                                    height: _totalCanvasHeight,
-                                    child: Stack(
-                                      children: [
-                                        // Page chrome + images (no strokes).
-                                        RepaintBoundary(
-                                          child: CustomPaint(
-                                            painter: _NotebookCanvasPainter(
-                                              pageBlockIds: _pageBlockIds,
-                                              pageData: _pageData,
-                                              visibleRect: visibleRect,
-                                              accentColor: _accent,
-                                              hiddenImages: _hiddenImages(),
-                                              imageCache: _imgCache,
-                                              drawStrokes: false,
-                                            ),
-                                            size: Size(kNotebookPageWidth,
-                                                _totalCanvasHeight),
-                                          ),
-                                        ),
-                                        // Text blocks BELOW the ink.
-                                        ..._buildTextBlockOverlays(),
-                                        // Strokes above text blocks; IgnorePointer
-                                        // so taps reach the boxes.
-                                        IgnorePointer(
-                                          child: RepaintBoundary(
-                                            child: CustomPaint(
-                                              painter: _NotebookCanvasPainter(
-                                                pageBlockIds: _pageBlockIds,
-                                                pageData: _pageData,
-                                                visibleRect: visibleRect,
-                                                accentColor: _accent,
-                                                hiddenStrokes: _hiddenStrokes(),
-                                                imageCache: _imgCache,
-                                                drawBackground: false,
-                                              ),
-                                              size: Size(kNotebookPageWidth,
-                                                  _totalCanvasHeight),
-                                            ),
-                                          ),
-                                        ),
-                                        IgnorePointer(
-                                          child: RepaintBoundary(
-                                            child: AnimatedBuilder(
-                                              animation: _activeTick,
-                                              builder: (_, _) => CustomPaint(
-                                                painter: _ActiveStrokePainter(
-                                                  active: _active,
-                                                  pageTop: _activePageIndex !=
-                                                          null
-                                                      ? _activePageIndex! *
-                                                          (kNotebookPageHeight +
-                                                              kNotebookPageGap)
-                                                      : 0.0,
+                                final lastPageBottom =
+                                    _pageBlockIds.isNotEmpty
+                                        ? (_pageBlockIds.length - 1) *
+                                                (kNotebookPageHeight +
+                                                    kNotebookPageGap) +
+                                            kNotebookPageHeight
+                                        : 0.0;
+                                final overscroll = br.dy - lastPageBottom;
+                                final pull = (overscroll / 150.0).clamp(
+                                  0.0,
+                                  1.0,
+                                );
+                                _reachedPullThreshold = pull >= 1.0;
+                                return Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    ClipRect(
+                                      child: GestureDetector(
+                                        onTapUp: _onLassoTap,
+                                        child: Listener(
+                                          behavior: HitTestBehavior.opaque,
+                                          onPointerDown: _onDown,
+                                          onPointerMove: _onMove,
+                                          onPointerUp: _onUp,
+                                          onPointerCancel: _onCancel,
+                                          child: InteractiveViewer(
+                                            transformationController: _viewCtrl,
+                                            minScale: 0.3,
+                                            maxScale: 4.0,
+                                            boundaryMargin:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: c.maxWidth,
+                                                  vertical:
+                                                      _totalCanvasHeight * 0.3,
                                                 ),
-                                                size: Size(kNotebookPageWidth,
-                                                    _totalCanvasHeight),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        // Task blocks above the ink.
-                                        ..._buildTaskBlockOverlays(),
-                                        if (_lassoCtrl.phase !=
-                                            LassoPhase.idle)
-                                          AnimatedBuilder(
-                                            animation: _lassoAnimCtrl,
-                                            builder: (_, _) => CustomPaint(
-                                              painter: LassoPainter(
-                                                ctrl: _lassoCtrl,
-                                                animValue:
-                                                    _lassoAnimCtrl.value,
-                                                strokes:
-                                                    _allVisibleStrokes,
-                                                images: _allVisibleImages,
-                                                imageCache: _imgCache,
-                                                visibleRect: visibleRect,
-                                              ),
-                                              size: Size(
-                                                  kNotebookPageWidth,
-                                                  _totalCanvasHeight),
-                                            ),
-                                          ),
-                                          if (pull > 0)
-                                            Positioned(
-                                              top: lastPageBottom + 20,
-                                              left: 0,
-                                              right: 0,
-                                              child: IgnorePointer(
-                                                child: Opacity(
-                                                  opacity: pull,
-                                                  child: Column(
-                                                    children: [
-                                                      Container(
-                                                        width: 40,
-                                                        height: 30,
-                                                        alignment: Alignment.center,
-                                                        decoration: BoxDecoration(
-                                                          color: _accent,
-                                                          border: Border.all(color: yInk, width: yLineMid),
+                                            // Text mode: 1-finger drag moves a box (its
+                                            // GestureDetector), so disable pan; 2-finger
+                                            // still navigates.
+                                            panEnabled:
+                                                _tool == DrawTool.text
+                                                    ? false
+                                                    : _tool == DrawTool.lasso
+                                                    ? (_lassoCtrl.phase ==
+                                                            LassoPhase.idle &&
+                                                        !_isDrawing)
+                                                    : _palmRejection
+                                                    ? !_stylusActive
+                                                    : !_isDrawing,
+                                            scaleEnabled:
+                                                _tool == DrawTool.text
+                                                    ? true
+                                                    : _tool == DrawTool.lasso
+                                                    ? (_lassoCtrl.phase ==
+                                                            LassoPhase.idle &&
+                                                        !_isDrawing)
+                                                    : !_stylusActive,
+                                            constrained: false,
+                                            child: SizedBox(
+                                              width: kNotebookPageWidth,
+                                              height: _totalCanvasHeight,
+                                              child: Stack(
+                                                children: [
+                                                  // Page chrome + images (no strokes).
+                                                  RepaintBoundary(
+                                                    child: CustomPaint(
+                                                      painter:
+                                                          _NotebookCanvasPainter(
+                                                            pageBlockIds:
+                                                                _pageBlockIds,
+                                                            pageData: _pageData,
+                                                            visibleRect:
+                                                                visibleRect,
+                                                            accentColor:
+                                                                _accent,
+                                                            hiddenImages:
+                                                                _hiddenImages(),
+                                                            imageCache:
+                                                                _imgCache,
+                                                            drawStrokes: false,
+                                                          ),
+                                                      size: Size(
+                                                        kNotebookPageWidth,
+                                                        _totalCanvasHeight,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  // Text blocks BELOW the ink.
+                                                  ..._buildTextBlockOverlays(),
+                                                  // Strokes above text blocks; IgnorePointer
+                                                  // so taps reach the boxes.
+                                                  IgnorePointer(
+                                                    child: RepaintBoundary(
+                                                      child: CustomPaint(
+                                                        painter:
+                                                            _NotebookCanvasPainter(
+                                                              pageBlockIds:
+                                                                  _pageBlockIds,
+                                                              pageData:
+                                                                  _pageData,
+                                                              visibleRect:
+                                                                  visibleRect,
+                                                              accentColor:
+                                                                  _accent,
+                                                              hiddenStrokes:
+                                                                  _hiddenStrokes(),
+                                                              imageCache:
+                                                                  _imgCache,
+                                                              drawBackground:
+                                                                  false,
+                                                            ),
+                                                        size: Size(
+                                                          kNotebookPageWidth,
+                                                          _totalCanvasHeight,
                                                         ),
-                                                        child: Text(
-                                                          '+',
-                                                          style: ySans(
-                                                            size: 20,
-                                                            weight: FontWeight.w700,
-                                                            color: yCream,
-                                                            height: 1.0,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  IgnorePointer(
+                                                    child: RepaintBoundary(
+                                                      child: AnimatedBuilder(
+                                                        animation: _activeTick,
+                                                        builder:
+                                                            (
+                                                              _,
+                                                              _,
+                                                            ) => CustomPaint(
+                                                              painter: _ActiveStrokePainter(
+                                                                active: _active,
+                                                                pageTop:
+                                                                    _activePageIndex !=
+                                                                            null
+                                                                        ? _activePageIndex! *
+                                                                            (kNotebookPageHeight +
+                                                                                kNotebookPageGap)
+                                                                        : 0.0,
+                                                              ),
+                                                              size: Size(
+                                                                kNotebookPageWidth,
+                                                                _totalCanvasHeight,
+                                                              ),
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  // Task blocks above the ink.
+                                                  ..._buildTaskBlockOverlays(),
+                                                  if (_lassoCtrl.phase !=
+                                                      LassoPhase.idle)
+                                                    AnimatedBuilder(
+                                                      animation: _lassoAnimCtrl,
+                                                      builder:
+                                                          (_, _) => CustomPaint(
+                                                            painter: LassoPainter(
+                                                              ctrl: _lassoCtrl,
+                                                              animValue:
+                                                                  _lassoAnimCtrl
+                                                                      .value,
+                                                              strokes:
+                                                                  _allVisibleStrokes,
+                                                              images:
+                                                                  _allVisibleImages,
+                                                              imageCache:
+                                                                  _imgCache,
+                                                              visibleRect:
+                                                                  visibleRect,
+                                                            ),
+                                                            size: Size(
+                                                              kNotebookPageWidth,
+                                                              _totalCanvasHeight,
+                                                            ),
+                                                          ),
+                                                    ),
+                                                  if (pull > 0)
+                                                    Positioned(
+                                                      top: lastPageBottom + 20,
+                                                      left: 0,
+                                                      right: 0,
+                                                      child: IgnorePointer(
+                                                        child: Opacity(
+                                                          opacity: pull,
+                                                          child: Column(
+                                                            children: [
+                                                              Container(
+                                                                width: 40,
+                                                                height: 30,
+                                                                alignment:
+                                                                    Alignment
+                                                                        .center,
+                                                                decoration: BoxDecoration(
+                                                                  color:
+                                                                      _accent,
+                                                                  border: Border.all(
+                                                                    color: yBorderStrong,
+                                                                    width:
+                                                                        yLineMid,
+                                                                  ),
+                                                                ),
+                                                                child: Text(
+                                                                  '+',
+                                                                  style: ySans(
+                                                                    size: 20,
+                                                                    weight:
+                                                                        FontWeight
+                                                                            .w700,
+                                                                    color:
+                                                                        yCream,
+                                                                    height: 1.0,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                height: 8,
+                                                              ),
+                                                              Text(
+                                                                'NUEVA PÁGINA',
+                                                                style: TextStyle(
+                                                                  fontSize:
+                                                                      9 +
+                                                                      3 *
+                                                                          _pullAnimCtrl
+                                                                              .value,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  color: yInk
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.3 +
+                                                                            0.4 *
+                                                                                _pullAnimCtrl.value,
+                                                                      ),
+                                                                  fontFamily:
+                                                                      'monospace',
+                                                                  letterSpacing:
+                                                                      1.4,
+                                                                ),
+                                                              ),
+                                                            ],
                                                           ),
                                                         ),
                                                       ),
-                                                      const SizedBox(height: 8),
-                                                      Text(
-                                                        'NUEVA PÁGINA',
-                                                        style: TextStyle(
-                                                          fontSize: 9 + 3 * _pullAnimCtrl.value,
-                                                          fontWeight: FontWeight.w700,
-                                                          color: yInk.withValues(alpha: 0.3 + 0.4 * _pullAnimCtrl.value),
-                                                          fontFamily: 'monospace',
-                                                          letterSpacing: 1.4,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
+                                                    ),
+                                                ],
                                               ),
                                             ),
-                                      ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ),
-                              ),
-                            ),
-                            if (_lassoCtrl.phase == LassoPhase.selected &&
-                                _toolbarVisible)
-                              _buildLassoMiniToolbar(),
-                            if (_showPasteAt != null) _buildPasteButton(),
-                            if (_tool == DrawTool.eraser && _eraserCursor != null)
-                              Positioned(
-                                left: _eraserCursor!.dx - _eraserScreenRadius,
-                                top: _eraserCursor!.dy - _eraserScreenRadius,
-                                child: const EraserCursor(radius: _eraserScreenRadius),
-                              ),
-                          ],
-                        );
-                      },
-                    );
-                  }),
-            ),
-            _toolbar(),
-          ],
-        ),
+                                    if (_lassoCtrl.phase ==
+                                            LassoPhase.selected &&
+                                        _toolbarVisible)
+                                      _buildLassoMiniToolbar(),
+                                    if (_showPasteAt != null)
+                                      _buildPasteButton(),
+                                    if (_tool == DrawTool.eraser &&
+                                        _eraserCursor != null)
+                                      Positioned(
+                                        left:
+                                            _eraserCursor!.dx -
+                                            _eraserScreenRadius,
+                                        top:
+                                            _eraserCursor!.dy -
+                                            _eraserScreenRadius,
+                                        child: const EraserCursor(
+                                          radius: _eraserScreenRadius,
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        ),
+              ),
+              _toolbar(),
+            ],
+          ),
           if (_pageDrawerOpen)
             Positioned.fill(
               child: GestureDetector(
@@ -2704,9 +2964,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               left: 12,
               right: 12,
               top: 12,
-              child: Center(
-                child: _EyedropperHint(onCancel: _exitEyedropper),
-              ),
+              child: Center(child: _EyedropperHint(onCancel: _exitEyedropper)),
             ),
           if (_shapePopupOpen) ...[
             Positioned.fill(
@@ -2787,10 +3045,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   accent: _accent,
                   onPattern: _applyBgPattern,
                   onColor: _applyBgColor,
-                  onMoreColors: () => setState(() {
-                    _bgColorPickerOpen = true;
-                    _bgPopupOpen = false;
-                  }),
+                  onMoreColors:
+                      () => setState(() {
+                        _bgColorPickerOpen = true;
+                        _bgPopupOpen = false;
+                      }),
                   onScope: (all) => setState(() => _bgAllPages = all),
                   onClose: _toggleBgPopup,
                 ),
@@ -2820,10 +3079,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   onCommit: _applyBgColor,
                   onStar: _starBgColor,
                   onEyedropper: () {},
-                  onClose: () => setState(() {
-                    _bgColorPickerOpen = false;
-                    _bgPopupOpen = true;
-                  }),
+                  onClose:
+                      () => setState(() {
+                        _bgColorPickerOpen = false;
+                        _bgPopupOpen = true;
+                      }),
                 ),
               ),
             ),
@@ -2906,7 +3166,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -2936,9 +3196,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: _eraserMode == EraserMode.partial
-                    ? Icons.cleaning_services_outlined
-                    : Icons.auto_fix_high,
+                icon:
+                    _eraserMode == EraserMode.partial
+                        ? Icons.cleaning_services_outlined
+                        : Icons.auto_fix_high,
                 active: _tool == DrawTool.eraser,
                 tooltip: 'Borrador',
                 onTap: () {
@@ -3032,7 +3293,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: _accent,
-                  border: Border.all(color: yInk, width: yLineThin),
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
                 child: Text(
                   'PG ${_currentVisiblePage + 1}/${_pageBlockIds.length}',
@@ -3064,8 +3325,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return Container(
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       padding: const EdgeInsets.all(10),
       child: Wrap(
@@ -3114,11 +3377,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Widget _divider() => Container(
-        width: 1,
-        height: 22,
-        margin: const EdgeInsets.symmetric(horizontal: 10),
-        color: yInk.withValues(alpha: 0.2),
-      );
+    width: 1,
+    height: 22,
+    margin: const EdgeInsets.symmetric(horizontal: 10),
+    color: yInk.withValues(alpha: 0.2),
+  );
 
   Widget _toolBtn({
     required IconData icon,
@@ -3138,7 +3401,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         decoration: BoxDecoration(
           color: active ? _accent : yCream,
           border: Border.all(
-            color: enabled ? yInk : yMuted.withValues(alpha: 0.4),
+            color: enabled ? yBorderStrong : yMuted.withValues(alpha: 0.4),
             width: yLineThin,
           ),
         ),
@@ -3148,21 +3411,24 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             Icon(
               icon,
               size: 15,
-              color: active
-                  ? yCream
-                  : enabled
+              color:
+                  active
+                      ? yCream
+                      : enabled
                       ? yInk
                       : yMuted.withValues(alpha: 0.4),
             ),
             if (label != null) ...[
               const SizedBox(width: 5),
-              Text(label,
-                  style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.2,
-                    color: active ? yCream : yInk,
-                  )),
+              Text(
+                label,
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: active ? yCream : yInk,
+                ),
+              ),
             ],
           ],
         ),
@@ -3177,7 +3443,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     return btn;
   }
-
 }
 
 class _EyedropperHint extends StatelessWidget {
@@ -3190,8 +3455,10 @@ class _EyedropperHint extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: BoxDecoration(
         color: yCream,
-        border: Border.all(color: yInk, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -3215,7 +3482,7 @@ class _EyedropperHint extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
                 color: yInk,
-                border: Border.all(color: yInk, width: 1.5),
+                border: Border.all(color: yBorderStrong, width: 1.5),
               ),
               child: Text(
                 'CANCELAR',
@@ -3262,7 +3529,9 @@ class _CollapsedNotebookHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
@@ -3276,7 +3545,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(Icons.arrow_back, color: yInk, size: 16),
             ),
@@ -3287,7 +3556,13 @@ class _CollapsedNotebookHeader extends StatelessWidget {
           Expanded(
             child: Text(
               'CUADERNO · @${folder.name} · $pageCount PÁG',
-              style: ySans(size: 15, weight: FontWeight.w700, letterSpacing: -0.3, color: accent, height: 1.0),
+              style: ySans(
+                size: 15,
+                weight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: accent,
+                height: 1.0,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -3302,7 +3577,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(Icons.auto_stories, color: yInk, size: 16),
             ),
@@ -3315,16 +3590,19 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               active: aiLinked,
               color: accent,
               child: Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: hasAiKey ? accent : yMuted,
-                border: Border.all(color: yInk, width: yLineMid),
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: hasAiKey ? accent : yMuted,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Icon(
+                  Icons.auto_awesome,
+                  color: hasAiKey ? yCream : yCream2,
+                  size: 16,
+                ),
               ),
-              child: Icon(Icons.auto_awesome,
-                  color: hasAiKey ? yCream : yCream2, size: 16),
-            ),
             ),
           ),
           const SizedBox(width: 6),
@@ -3337,9 +3615,13 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.keyboard_arrow_down, color: yInk, size: 18),
+              child: const Icon(
+                Icons.keyboard_arrow_down,
+                color: yInk,
+                size: 18,
+              ),
             ),
           ),
         ],
@@ -3381,16 +3663,17 @@ class _NotebookCanvasPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (drawBackground) {
       // Background behind pages
-      canvas.drawRect(
-        visibleRect,
-        Paint()..color = const Color(0xFFF0EDE6),
-      );
+      canvas.drawRect(visibleRect, Paint()..color = const Color(0xFFF0EDE6));
     }
 
     for (int i = 0; i < pageBlockIds.length; i++) {
       final pageTop = i * (kNotebookPageHeight + kNotebookPageGap);
       final pageRect = Rect.fromLTWH(
-          0, pageTop, kNotebookPageWidth, kNotebookPageHeight);
+        0,
+        pageTop,
+        kNotebookPageWidth,
+        kNotebookPageHeight,
+      );
 
       if (!pageRect.overlaps(visibleRect)) continue;
 
@@ -3404,11 +3687,17 @@ class _NotebookCanvasPainter extends CustomPainter {
         );
 
         // Paper + pattern (per page).
-        final paper =
-            bgPaper(pageDataItem?.bgColorValue, const Color(0xFFFFFDF8));
+        final paper = bgPaper(
+          pageDataItem?.bgColorValue,
+          const Color(0xFFFFFDF8),
+        );
         canvas.drawRect(pageRect, Paint()..color = paper);
-        paintBgPattern(canvas, pageRect,
-            pageDataItem?.background ?? PageBackground.blank, bgMark(paper));
+        paintBgPattern(
+          canvas,
+          pageRect,
+          pageDataItem?.background ?? PageBackground.blank,
+          bgMark(paper),
+        );
 
         // Page border
         canvas.drawRect(

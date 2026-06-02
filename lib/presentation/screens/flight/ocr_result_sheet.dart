@@ -107,7 +107,7 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
       child: Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+          border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: SafeArea(
@@ -161,15 +161,15 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                     contentPadding: const EdgeInsets.all(10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yInk, width: yLineMid),
+                      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yInk, width: yLineMid),
+                      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yInk, width: yLineMid),
+                      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
                     ),
                     hintText: 'Sin texto reconocido',
                     hintStyle: yBody(size: 15, color: yMuted),
@@ -185,7 +185,7 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: _copied ? yInk : widget.accent,
-                    border: Border.all(color: yInk, width: yLineMid),
+                    border: Border.all(color: yBorderStrong, width: yLineMid),
                   ),
                   child: Text(
                     _copied ? '✓ COPIADO' : 'COPIAR TODO',

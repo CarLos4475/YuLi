@@ -17,8 +17,7 @@ import 'new_lab_space_dialog.dart';
 
 enum LabTab { todos, activos, pausados, completados, archivo }
 
-final labFilterProvider =
-    StateProvider<LabTab>((ref) => LabTab.todos);
+final labFilterProvider = StateProvider<LabTab>((ref) => LabTab.todos);
 
 // ─── Screen ───────────────────────────────────────────────────────────────
 
@@ -56,10 +55,14 @@ class _LabScreenState extends ConsumerState<LabScreen> {
     final allSpaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
     final filter = ref.watch(labFilterProvider);
 
-    final activos = allSpaces.where((s) => s.status == LabSpaceStatus.active).toList();
-    final pausados = allSpaces.where((s) => s.status == LabSpaceStatus.paused).toList();
-    final completados = allSpaces.where((s) => s.status == LabSpaceStatus.completed).toList();
-    final archivo = allSpaces.where((s) => s.status == LabSpaceStatus.archived).toList();
+    final activos =
+        allSpaces.where((s) => s.status == LabSpaceStatus.active).toList();
+    final pausados =
+        allSpaces.where((s) => s.status == LabSpaceStatus.paused).toList();
+    final completados =
+        allSpaces.where((s) => s.status == LabSpaceStatus.completed).toList();
+    final archivo =
+        allSpaces.where((s) => s.status == LabSpaceStatus.archived).toList();
 
     final shown = switch (filter) {
       LabTab.todos => allSpaces,
@@ -67,52 +70,56 @@ class _LabScreenState extends ConsumerState<LabScreen> {
       LabTab.pausados => pausados,
       LabTab.completados => completados,
       LabTab.archivo => archivo,
-    }
-      ..sort((a, b) {
-        final ad = a.dueDate;
-        final bd = b.dueDate;
-        if (ad == null && bd == null) return 0;
-        if (ad == null) return 1;
-        if (bd == null) return -1;
-        return ad.compareTo(bd);
-      });
+    }..sort((a, b) {
+      final ad = a.dueDate;
+      final bd = b.dueDate;
+      if (ad == null && bd == null) return 0;
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      return ad.compareTo(bd);
+    });
 
     return Column(
       children: [
         ModeHeader(
           mode: 'LAB',
-          subtitle:
-              'MODO PROYECTOS · ${activos.length} SPACES ACTIVOS',
+          subtitle: 'MODO PROYECTOS · ${activos.length} SPACES ACTIVOS',
           color: yLab,
-          onBack: () =>
-              ref.read(currentModeProvider.notifier).state = AppMode.home,
+          onBack:
+              () => ref.read(currentModeProvider.notifier).state = AppMode.home,
           headerRight: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => showDialog(
-                context: context,
-                builder: (_) => const NewLabSpaceDialog(),
-              ),
+              onTap:
+                  () => showDialog(
+                    context: context,
+                    builder: (_) => const NewLabSpaceDialog(),
+                  ),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: yCream,
-                  border: Border.all(color: yInk, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('+',
-                        style: TextStyle(
-                            fontSize: 18, color: yInk, height: 1.0)),
+                    const Text(
+                      '+',
+                      style: TextStyle(fontSize: 18, color: yInk, height: 1.0),
+                    ),
                     const SizedBox(width: 8),
-                    Text('NUEVO SPACE',
-                        style: yBody(
-                          size: 13,
-                          weight: FontWeight.w700,
-                          color: yInk,
-                        ).copyWith(letterSpacing: 1.2)),
+                    Text(
+                      'NUEVO SPACE',
+                      style: yBody(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ).copyWith(letterSpacing: 1.2),
+                    ),
                   ],
                 ),
               ),
@@ -130,10 +137,7 @@ class _LabScreenState extends ConsumerState<LabScreen> {
           },
         ),
         Expanded(
-          child: Container(
-            color: yCream,
-            child: _SpacesGrid(spaces: shown),
-          ),
+          child: Container(color: yCream, child: _SpacesGrid(spaces: shown)),
         ),
       ],
     );
@@ -154,7 +158,9 @@ class _LabToolbar extends ConsumerWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(28, 16, 28, 16),
       child: Row(
@@ -189,21 +195,25 @@ class _LabToolbar extends ConsumerWidget {
             onTap: () => notifier.state = LabTab.archivo,
           ),
           const Spacer(),
-          Text('ORDEN:',
-              style: yMono(
-                size: 10,
-                weight: FontWeight.w500,
-                tracking: 1.4,
-                color: yMuted,
-              )),
+          Text(
+            'ORDEN:',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w500,
+              tracking: 1.4,
+              color: yMuted,
+            ),
+          ),
           const SizedBox(width: 8),
-          Text('POR DEADLINE ↑',
-              style: yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: yInk,
-              )),
+          Text(
+            'POR DEADLINE ↑',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yInk,
+            ),
+          ),
         ],
       ),
     );
@@ -219,27 +229,30 @@ class _SpacesGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return LayoutBuilder(builder: (ctx, c) {
-      final cols = c.maxWidth >= 1100
-          ? 3
-          : c.maxWidth >= 700
-              ? 2
-              : 1;
-      return GridView.builder(
-        padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: cols,
-          mainAxisSpacing: 18,
-          crossAxisSpacing: 18,
-          mainAxisExtent: 394,
-        ),
-        itemCount: spaces.length + 1,
-        itemBuilder: (_, i) {
-          if (i >= spaces.length) return const _NewSpaceCard();
-          return _SpaceCard(space: spaces[i]);
-        },
-      );
-    });
+    return LayoutBuilder(
+      builder: (ctx, c) {
+        final cols =
+            c.maxWidth >= 1100
+                ? 3
+                : c.maxWidth >= 700
+                ? 2
+                : 1;
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisSpacing: 18,
+            crossAxisSpacing: 18,
+            mainAxisExtent: 394,
+          ),
+          itemCount: spaces.length + 1,
+          itemBuilder: (_, i) {
+            if (i >= spaces.length) return const _NewSpaceCard();
+            return _SpaceCard(space: spaces[i]);
+          },
+        );
+      },
+    );
   }
 }
 
@@ -248,7 +261,12 @@ class _SheetOption {
   final IconData icon;
   final VoidCallback onTap;
   final bool destructive;
-  const _SheetOption(this.label, this.icon, this.onTap, {this.destructive = false});
+  const _SheetOption(
+    this.label,
+    this.icon,
+    this.onTap, {
+    this.destructive = false,
+  });
 }
 
 // ─── Space card (dossier) ─────────────────────────────────────────────────
@@ -299,45 +317,65 @@ class _SpaceCard extends ConsumerWidget {
   void _showRename(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (_) => EditItemDialog(
-        title: 'Renombrar space',
-        initialName: space.name,
-        initialColor: space.accentColor,
-        onSave: (name, color) async {
-          await ref.read(labSpaceRepositoryProvider).update(space.copyWith(name: name, accentColor: color));
-        },
-        onDelete: () async {
-          await ref.read(labSpaceRepositoryProvider).softDelete(space.id);
-        },
-      ),
+      builder:
+          (_) => EditItemDialog(
+            title: 'Renombrar space',
+            initialName: space.name,
+            initialColor: space.accentColor,
+            onSave: (name, color) async {
+              await ref
+                  .read(labSpaceRepositoryProvider)
+                  .update(space.copyWith(name: name, accentColor: color));
+            },
+            onDelete: () async {
+              await ref.read(labSpaceRepositoryProvider).softDelete(space.id);
+            },
+          ),
     );
   }
 
   void _showColorPicker(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: Text('Color del space', style: ySans(size: 18, weight: FontWeight.w700)),
-        content: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: folderPalette.map((c) => GestureDetector(
-            onTap: () async {
-              await ref.read(labSpaceRepositoryProvider).update(space.copyWith(accentColor: c));
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: c,
-                border: Border.all(color: yInk, width: space.accentColor == c ? 3 : yLineThin),
-              ),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
             ),
-          )).toList(),
-        ),
-      ),
+            title: Text(
+              'Color del space',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children:
+                  folderPalette
+                      .map(
+                        (c) => GestureDetector(
+                          onTap: () async {
+                            await ref
+                                .read(labSpaceRepositoryProvider)
+                                .update(space.copyWith(accentColor: c));
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          },
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: c,
+                              border: Border.all(
+                                color: yBorderStrong,
+                                width: space.accentColor == c ? 3 : yLineThin,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+          ),
     );
   }
 
@@ -351,75 +389,102 @@ class _SpaceCard extends ConsumerWidget {
       builder: (ctx) {
         final options = <_SheetOption>[];
 
-        options.add(_SheetOption('Cambiar nombre', Icons.edit_outlined, () {
-          Navigator.pop(ctx);
-          _showRename(context, ref);
-        }));
+        options.add(
+          _SheetOption('Cambiar nombre', Icons.edit_outlined, () {
+            Navigator.pop(ctx);
+            _showRename(context, ref);
+          }),
+        );
 
-        options.add(_SheetOption('Cambiar color', Icons.palette_outlined, () {
-          Navigator.pop(ctx);
-          _showColorPicker(context, ref);
-        }));
+        options.add(
+          _SheetOption('Cambiar color', Icons.palette_outlined, () {
+            Navigator.pop(ctx);
+            _showColorPicker(context, ref);
+          }),
+        );
 
         if (space.status == LabSpaceStatus.paused) {
-          options.add(_SheetOption('Reanudar', Icons.play_arrow_outlined, () async {
-            Navigator.pop(ctx);
-            await repo.update(space.copyWith(status: LabSpaceStatus.active));
-          }));
+          options.add(
+            _SheetOption('Reanudar', Icons.play_arrow_outlined, () async {
+              Navigator.pop(ctx);
+              await repo.update(space.copyWith(status: LabSpaceStatus.active));
+            }),
+          );
         } else if (space.status == LabSpaceStatus.active) {
-          options.add(_SheetOption('Pausar', Icons.pause_outlined, () async {
-            Navigator.pop(ctx);
-            await repo.update(space.copyWith(status: LabSpaceStatus.paused));
-          }));
+          options.add(
+            _SheetOption('Pausar', Icons.pause_outlined, () async {
+              Navigator.pop(ctx);
+              await repo.update(space.copyWith(status: LabSpaceStatus.paused));
+            }),
+          );
         }
 
         if (space.status != LabSpaceStatus.completed) {
-          options.add(_SheetOption('Completar', Icons.check_circle_outline, () async {
-            Navigator.pop(ctx);
-            await repo.update(space.copyWith(status: LabSpaceStatus.completed));
-          }));
+          options.add(
+            _SheetOption('Completar', Icons.check_circle_outline, () async {
+              Navigator.pop(ctx);
+              await repo.update(
+                space.copyWith(status: LabSpaceStatus.completed),
+              );
+            }),
+          );
         }
 
         if (space.status != LabSpaceStatus.archived) {
-          options.add(_SheetOption('Archivar', Icons.archive_outlined, () async {
-            Navigator.pop(ctx);
-            await repo.update(space.copyWith(status: LabSpaceStatus.archived));
-          }));
+          options.add(
+            _SheetOption('Archivar', Icons.archive_outlined, () async {
+              Navigator.pop(ctx);
+              await repo.update(
+                space.copyWith(status: LabSpaceStatus.archived),
+              );
+            }),
+          );
         }
 
         if (space.status != LabSpaceStatus.active &&
             space.status != LabSpaceStatus.paused) {
-          options.add(_SheetOption('Reactivar', Icons.replay_outlined, () async {
-            Navigator.pop(ctx);
-            await repo.update(space.copyWith(status: LabSpaceStatus.active));
-          }));
+          options.add(
+            _SheetOption('Reactivar', Icons.replay_outlined, () async {
+              Navigator.pop(ctx);
+              await repo.update(space.copyWith(status: LabSpaceStatus.active));
+            }),
+          );
         }
 
-        options.add(_SheetOption('Eliminar', Icons.delete_outline, () async {
-          Navigator.pop(ctx);
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (d) => AlertDialog(
-              backgroundColor: yCream,
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              title: Text('Eliminar space',
-                  style: ySans(size: 18, weight: FontWeight.w700)),
-              content: Text(
-                '¿Eliminar "${space.name}"? Se moverá a la papelera.',
-                style: yBody(size: 14),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(d, false),
-                    child: const Text('Cancelar')),
-                TextButton(
-                    onPressed: () => Navigator.pop(d, true),
-                    child: const Text('Eliminar')),
-              ],
-            ),
-          );
-          if (ok == true) await repo.softDelete(space.id);
-        }, destructive: true));
+        options.add(
+          _SheetOption('Eliminar', Icons.delete_outline, () async {
+            Navigator.pop(ctx);
+            final ok = await showDialog<bool>(
+              context: context,
+              builder:
+                  (d) => AlertDialog(
+                    backgroundColor: yCream,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.zero,
+                    ),
+                    title: Text(
+                      'Eliminar space',
+                      style: ySans(size: 18, weight: FontWeight.w700),
+                    ),
+                    content: Text(
+                      '¿Eliminar "${space.name}"? Se moverá a la papelera.',
+                      style: yBody(size: 14),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(d, false),
+                        child: const Text('Cancelar'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(d, true),
+                        child: const Text('Eliminar'),
+                      ),
+                    ],
+                  ),
+            );
+            if (ok == true) await repo.softDelete(space.id);
+          }, destructive: true),
+        );
 
         return SafeArea(
           child: Column(
@@ -444,26 +509,32 @@ class _SpaceCard extends ConsumerWidget {
                   onTap: opt.onTap,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 14),
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
                     decoration: const BoxDecoration(
                       border: Border(
-                          top: BorderSide(color: yInk, width: 0.5)),
+                        top: BorderSide(color: yBorderSoft, width: 0.5),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        Icon(opt.icon, size: 18,
-                            color: opt.destructive
-                                ? const Color(0xFF8E2D4B)
-                                : yInk),
+                        Icon(
+                          opt.icon,
+                          size: 18,
+                          color:
+                              opt.destructive ? const Color(0xFF8E2D4B) : yInk,
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           opt.label,
                           style: ySans(
                             size: 15,
                             weight: FontWeight.w600,
-                            color: opt.destructive
-                                ? const Color(0xFF8E2D4B)
-                                : yInk,
+                            color:
+                                opt.destructive
+                                    ? const Color(0xFF8E2D4B)
+                                    : yInk,
                           ),
                         ),
                       ],
@@ -480,8 +551,10 @@ class _SpaceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final columns = ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [];
-    final cards = ref.watch(kanbanCardsBySpaceProvider(space.id)).valueOrNull ?? [];
+    final columns =
+        ref.watch(kanbanColumnsProvider(space.id)).valueOrNull ?? [];
+    final cards =
+        ref.watch(kanbanCardsBySpaceProvider(space.id)).valueOrNull ?? [];
     final tabs = ref.watch(labTabsProvider(space.id));
 
     final now = DateTime.now();
@@ -498,8 +571,14 @@ class _SpaceCard extends ConsumerWidget {
     final terminalCols = columns.where((c) => c.isTerminal).toList();
     final vencidoCol = columns.firstWhere(
       (c) => c.isExpired,
-      orElse: () => KanbanColumn(
-          id: -1, labSpaceId: space.id, name: '', position: 0, isDefault: false),
+      orElse:
+          () => KanbanColumn(
+            id: -1,
+            labSpaceId: space.id,
+            name: '',
+            position: 0,
+            isDefault: false,
+          ),
     );
 
     int hechas = 0;
@@ -511,15 +590,18 @@ class _SpaceCard extends ConsumerWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: space)),
-      ),
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LabSpaceDetailScreen(space: space),
+            ),
+          ),
       onLongPress: () => _showOptions(context, ref),
       child: Container(
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -530,7 +612,8 @@ class _SpaceCard extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: space.accentColor,
                 border: const Border(
-                    bottom: BorderSide(color: yInk, width: yLineHeavy)),
+                  bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+                ),
               ),
             ),
             // Header
@@ -546,13 +629,15 @@ class _SpaceCard extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('SPACE',
-                                style: yMono(
-                                  size: 10,
-                                  weight: FontWeight.w700,
-                                  tracking: 1.4,
-                                  color: yMuted,
-                                )),
+                            Text(
+                              'SPACE',
+                              style: yMono(
+                                size: 10,
+                                weight: FontWeight.w700,
+                                tracking: 1.4,
+                                color: yMuted,
+                              ),
+                            ),
                             const SizedBox(height: 4),
                             Text(
                               space.name,
@@ -583,7 +668,12 @@ class _SpaceCard extends ConsumerWidget {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      YBadge(label: stage, bg: _stageColor(stage), fg: yCream, fontSize: 10),
+                      YBadge(
+                        label: stage,
+                        bg: _stageColor(stage),
+                        fg: yCream,
+                        fontSize: 10,
+                      ),
                       if (space.dueDate != null)
                         YBadge(
                           label: _fmtDate(space.dueDate!),
@@ -596,7 +686,7 @@ class _SpaceCard extends ConsumerWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, thickness: 2, color: yInk),
+            const Divider(height: 1, thickness: 2, color: yBorderStrong),
             // Distribution
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
@@ -606,30 +696,43 @@ class _SpaceCard extends ConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('// DISTRIBUCIÓN',
-                          style: yMono(size: 10, color: yMuted, tracking: 1.4)),
-                      Text('$total TAREAS',
-                          style: yMono(
-                            size: 11,
-                            weight: FontWeight.w700,
-                            tracking: 1,
-                            color: yMuted,
-                          )),
+                      Text(
+                        '// DISTRIBUCIÓN',
+                        style: yMono(size: 10, color: yMuted, tracking: 1.4),
+                      ),
+                      Text(
+                        '$total TAREAS',
+                        style: yMono(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          tracking: 1,
+                          color: yMuted,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _StackedBar(columns: columns, counts: colCounts, total: total),
+                  _StackedBar(
+                    columns: columns,
+                    counts: colCounts,
+                    total: total,
+                  ),
                   const SizedBox(height: 8),
                   _ColumnLegend(columns: columns, counts: colCounts),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      _StatPill(value: '$abiertas', label: 'abiertas', color: yInk),
+                      _StatPill(
+                        value: '$abiertas',
+                        label: 'abiertas',
+                        color: yInk,
+                      ),
                       const SizedBox(width: 14),
                       _StatPill(
-                          value: '$vencidas',
-                          label: 'vencidas',
-                          color: vencidas > 0 ? yFight : yInk),
+                        value: '$vencidas',
+                        label: 'vencidas',
+                        color: vencidas > 0 ? yFight : yInk,
+                      ),
                       const SizedBox(width: 14),
                       _StatPill(value: '$hechas', label: 'hechas', color: yInk),
                     ],
@@ -637,7 +740,7 @@ class _SpaceCard extends ConsumerWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, thickness: 2, color: yInk),
+            const Divider(height: 1, thickness: 2, color: yBorderStrong),
             // Capabilities
             Expanded(
               child: Padding(
@@ -646,8 +749,10 @@ class _SpaceCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text('// VISTAS ACTIVAS',
-                        style: yMono(size: 10, color: yMuted, tracking: 1.4)),
+                    Text(
+                      '// VISTAS ACTIVAS',
+                      style: yMono(size: 10, color: yMuted, tracking: 1.4),
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 5,
@@ -657,23 +762,25 @@ class _SpaceCard extends ConsumerWidget {
                           'Kanban',
                           'Horario',
                           'Timeline',
-                          'Calendario'
+                          'Calendario',
                         ])
                           CapChip(
                             kind: cap,
                             active: tabs.contains(cap),
                             color: space.accentColor,
-                            onTap: cap == 'Kanban'
-                                ? null
-                                : () {
-                                    final notifier = ref.read(
-                                        labTabsProvider(space.id).notifier);
-                                    if (tabs.contains(cap)) {
-                                      notifier.removeTab(cap);
-                                    } else {
-                                      notifier.addTab(cap);
-                                    }
-                                  },
+                            onTap:
+                                cap == 'Kanban'
+                                    ? null
+                                    : () {
+                                      final notifier = ref.read(
+                                        labTabsProvider(space.id).notifier,
+                                      );
+                                      if (tabs.contains(cap)) {
+                                        notifier.removeTab(cap);
+                                      } else {
+                                        notifier.addTab(cap);
+                                      }
+                                    },
                           ),
                       ],
                     ),
@@ -685,22 +792,27 @@ class _SpaceCard extends ConsumerWidget {
             Container(
               decoration: const BoxDecoration(
                 color: yCream2,
-                border: Border(top: BorderSide(color: yInk, width: yLineThin)),
+                border: Border(
+                  top: BorderSide(color: yBorderStrong, width: yLineThin),
+                ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('ABRIR SPACE',
-                      style: yMono(
-                        size: 10,
-                        weight: FontWeight.w700,
-                        tracking: 1.4,
-                        color: yInk,
-                      )),
-                  Text('→',
-                      style: TextStyle(
-                          fontSize: 16, color: yInk, height: 1.0)),
+                  Text(
+                    'ABRIR SPACE',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
+                  Text(
+                    '→',
+                    style: TextStyle(fontSize: 16, color: yInk, height: 1.0),
+                  ),
                 ],
               ),
             ),
@@ -709,7 +821,6 @@ class _SpaceCard extends ConsumerWidget {
       ),
     );
   }
-
 }
 
 class _StatPill extends StatelessWidget {
@@ -730,9 +841,10 @@ class _StatPill extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text(value,
-            style: ySans(
-                size: 18, weight: FontWeight.w700, color: color)),
+        Text(
+          value,
+          style: ySans(size: 18, weight: FontWeight.w700, color: color),
+        ),
         const SizedBox(width: 4),
         Text(label, style: yMono(size: 11, color: yMuted, tracking: 0.5)),
       ],
@@ -758,16 +870,18 @@ class _StackedBar extends StatelessWidget {
         height: 22,
         decoration: BoxDecoration(
           color: yCream2,
-          border: Border.all(color: yInk, width: yLineThin),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
-        child: CustomPaint(painter: _DiagonalHatch(color: const Color(0x1A0A0A0A))),
+        child: CustomPaint(
+          painter: _DiagonalHatch(color: const Color(0x1A0A0A0A)),
+        ),
       );
     }
     return Container(
       height: 22,
       decoration: BoxDecoration(
         color: yCream2,
-        border: Border.all(color: yInk, width: yLineThin),
+        border: Border.all(color: yBorderStrong, width: yLineThin),
       ),
       child: Row(
         children: [
@@ -779,7 +893,8 @@ class _StackedBar extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: _colorForColumn(c),
                     border: Border(
-                        right: BorderSide(color: yInk, width: 1.5)),
+                      right: BorderSide(color: yBorderStrong, width: 1.5),
+                    ),
                   ),
                 ),
               ),
@@ -803,16 +918,13 @@ class _DiagonalHatch extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = 1;
+    final p =
+        Paint()
+          ..color = color
+          ..strokeWidth = 1;
     const step = 6.0;
     for (double x = -size.height; x < size.width; x += step) {
-      canvas.drawLine(
-        Offset(x, size.height),
-        Offset(x + size.height, 0),
-        p,
-      );
+      canvas.drawLine(Offset(x, size.height), Offset(x + size.height, 0), p);
     }
   }
 
@@ -841,24 +953,24 @@ class _ColumnLegend extends StatelessWidget {
                 height: 9,
                 decoration: BoxDecoration(
                   color: _colorFor(c),
-                  border: Border.all(color: yInk, width: 1.5),
+                  border: Border.all(color: yBorderStrong, width: 1.5),
                 ),
               ),
               const SizedBox(width: 5),
-              Text(c.name.toUpperCase(),
-                  style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 0.7,
-                    color: yInk,
-                  )),
+              Text(
+                c.name.toUpperCase(),
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 0.7,
+                  color: yInk,
+                ),
+              ),
               const SizedBox(width: 3),
-              Text((counts[c.id] ?? 0).toString().padLeft(2, '0'),
-                  style: yMono(
-                    size: 9,
-                    tracking: 0.7,
-                    color: yMuted,
-                  )),
+              Text(
+                (counts[c.id] ?? 0).toString().padLeft(2, '0'),
+                style: yMono(size: 9, tracking: 0.7, color: yMuted),
+              ),
             ],
           ),
       ],
@@ -881,13 +993,14 @@ class _NewSpaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => showDialog(
-        context: context,
-        builder: (_) => const NewLabSpaceDialog(),
-      ),
+      onTap:
+          () => showDialog(
+            context: context,
+            builder: (_) => const NewLabSpaceDialog(),
+          ),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -898,28 +1011,33 @@ class _NewSpaceCard extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineHeavy),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Text('+',
-                  style: TextStyle(
-                      fontSize: 36, color: yInk, height: 1.0)),
+              child: const Text(
+                '+',
+                style: TextStyle(fontSize: 36, color: yInk, height: 1.0),
+              ),
             ),
             const SizedBox(height: 12),
-            Text('Nuevo space',
-                style: ySans(
-                  size: 18,
-                  weight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  color: yInk,
-                )),
+            Text(
+              'Nuevo space',
+              style: ySans(
+                size: 18,
+                weight: FontWeight.w700,
+                letterSpacing: -0.4,
+                color: yInk,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text('SCOPE + DEADLINE + VISTAS',
-                style: yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yMuted,
-                )),
+            Text(
+              'SCOPE + DEADLINE + VISTAS',
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yMuted,
+              ),
+            ),
           ],
         ),
       ),

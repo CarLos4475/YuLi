@@ -48,7 +48,7 @@ class _AiWorkingPanelState extends State<_AiWorkingPanel>
         padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
         decoration: BoxDecoration(
           color: yCream,
-          border: Border.all(color: yInk, width: yLineHeavy),
+          border: Border.all(color: yBorderStrong, width: yLineHeavy),
           boxShadow: const [BoxShadow(color: yInk, offset: Offset(5, 5))],
         ),
         child: Column(

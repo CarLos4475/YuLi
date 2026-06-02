@@ -35,7 +35,7 @@ class KanbanCardTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isEndState ? yCream2 : yCream,
           border: Border.all(
-            color: isSelected ? accentColor : yInk,
+            color: isSelected ? accentColor : yBorderStrong,
             width: isSelected ? yLineHeavy : 2,
           ),
         ),
@@ -85,7 +85,10 @@ class KanbanCardTile extends StatelessWidget {
                                 margin: const EdgeInsets.only(left: 8),
                                 decoration: BoxDecoration(
                                   color: isSelected ? accentColor : yCream,
-                                  border: Border.all(color: yInk, width: 1.5),
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: 1.5,
+                                  ),
                                 ),
                                 child:
                                     isSelected
@@ -113,7 +116,10 @@ class KanbanCardTile extends StatelessWidget {
                                 padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
                                 decoration: BoxDecoration(
                                   color: folderColor,
-                                  border: Border.all(color: yInk, width: 1.5),
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: 1.5,
+                                  ),
                                 ),
                                 child: Text(
                                   '@${_folderName()}',
@@ -133,7 +139,10 @@ class KanbanCardTile extends StatelessWidget {
                                 padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
                                 decoration: BoxDecoration(
                                   color: yFlight,
-                                  border: Border.all(color: yInk, width: 1.5),
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: 1.5,
+                                  ),
                                 ),
                                 child: Text(
                                   'NOTA',
@@ -212,7 +221,7 @@ class KanbanCardTile extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(6, 1, 6, 2),
       decoration: BoxDecoration(
         color: bg,
-        border: Border.all(color: yInk, width: 1.5),
+        border: Border.all(color: yBorderStrong, width: 1.5),
       ),
       child: Text(
         label,

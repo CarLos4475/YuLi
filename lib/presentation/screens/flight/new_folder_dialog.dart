@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/database_providers.dart';
+import '../../widgets/yuli_design.dart' show yBorderStrong;
 
 class NewFolderDialog extends ConsumerStatefulWidget {
   const NewFolderDialog({super.key});
@@ -38,7 +39,7 @@ class _NewFolderDialogState extends ConsumerState<NewFolderDialog> {
       backgroundColor: paperColor(context),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: ink, width: borderWidthHeavy),
+          border: Border.all(color: yBorderStrong, width: borderWidth),
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -54,6 +55,20 @@ class _NewFolderDialogState extends ConsumerState<NewFolderDialog> {
               decoration: InputDecoration(
                 hintText: 'Nombre',
                 hintStyle: bodyL.copyWith(color: inkGray),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: yBorderStrong,
+                    width: borderWidth,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(
+                    color: yBorderStrong,
+                    width: borderWidth,
+                  ),
+                ),
               ),
               onSubmitted: (_) => _create(),
             ),
@@ -63,23 +78,25 @@ class _NewFolderDialogState extends ConsumerState<NewFolderDialog> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: folderPalette.map((color) {
-                final isSelected = color == _selectedColor;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedColor = color),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: color,
-                      border: Border.all(
-                        color: isSelected ? ink : Colors.transparent,
-                        width: borderWidthHeavy,
+              children:
+                  folderPalette.map((color) {
+                    final isSelected = color == _selectedColor;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedColor = color),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: color,
+                          border: Border.all(
+                            color:
+                                isSelected ? yBorderStrong : Colors.transparent,
+                            width: borderWidth,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              }).toList(),
+                    );
+                  }).toList(),
             ),
             const SizedBox(height: 24),
             Row(
@@ -88,17 +105,29 @@ class _NewFolderDialogState extends ConsumerState<NewFolderDialog> {
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Text('Cancelar', style: labelBold.copyWith(color: inkGray)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      'Cancelar',
+                      style: labelBold.copyWith(color: inkGray),
+                    ),
                   ),
                 ),
                 GestureDetector(
                   onTap: _create,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                     decoration: BoxDecoration(
                       color: ink,
-                      border: Border.all(color: ink, width: borderWidth),
+                      border: Border.all(
+                        color: yBorderStrong,
+                        width: borderWidth,
+                      ),
                     ),
                     child: Text(
                       'Crear',

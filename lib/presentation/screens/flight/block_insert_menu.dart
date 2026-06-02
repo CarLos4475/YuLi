@@ -15,23 +15,30 @@ class BlockInsertMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      _MenuItem(Icons.table_chart_outlined, 'Tabla',
-          panelType: InsertPanelType.table),
+      _MenuItem(
+        Icons.table_chart_outlined,
+        'Tabla',
+        panelType: InsertPanelType.table,
+      ),
       _MenuItem(Icons.code, 'Código', panelType: InsertPanelType.code),
-      _MenuItem(Icons.format_quote_outlined, 'Cita',
-          panelType: InsertPanelType.quote),
+      _MenuItem(
+        Icons.format_quote_outlined,
+        'Cita',
+        panelType: InsertPanelType.quote,
+      ),
       _MenuItem(Icons.functions, 'LaTeX', panelType: InsertPanelType.latex),
-      _MenuItem(Icons.image_outlined, 'Imagen',
-          panelType: InsertPanelType.image),
+      _MenuItem(
+        Icons.image_outlined,
+        'Imagen',
+        panelType: InsertPanelType.image,
+      ),
       _MenuItem(Icons.horizontal_rule, 'Divisor', syntax: '\n\n---\n\n'),
     ];
 
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(
-          top: BorderSide(color: yInk, width: yLineHeavy),
-        ),
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
       ),
       child: SafeArea(
         top: false,
@@ -56,12 +63,13 @@ class BlockInsertMenu extends StatelessWidget {
                 shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 16),
                 itemCount: items.length,
-                separatorBuilder: (_, _) => Divider(
-                  height: 1,
-                  color: yMuted.withValues(alpha: 0.3),
-                  indent: 24,
-                  endIndent: 24,
-                ),
+                separatorBuilder:
+                    (_, _) => Divider(
+                      height: 1,
+                      color: yMuted.withValues(alpha: 0.3),
+                      indent: 24,
+                      endIndent: 24,
+                    ),
                 itemBuilder: (_, i) {
                   final item = items[i];
                   return GestureDetector(
@@ -76,15 +84,14 @@ class BlockInsertMenu extends StatelessWidget {
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 14),
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
                       child: Row(
                         children: [
                           Icon(item.icon, size: 20, color: yMuted),
                           const SizedBox(width: 16),
-                          Text(
-                            item.label,
-                            style: yBody(size: 16, color: yInk),
-                          ),
+                          Text(item.label, style: yBody(size: 16, color: yInk)),
                         ],
                       ),
                     ),

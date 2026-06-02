@@ -55,7 +55,7 @@ class NotebookPageDrawer extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(left: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(left: BorderSide(color: yBorderStrong, width: yLineHeavy)),
       ),
       child: SafeArea(
         left: false,
@@ -168,7 +168,7 @@ class _DrawerHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream2,
-        border: Border(bottom: BorderSide(color: yInk, width: yLineHeavy)),
+        border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineHeavy)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       child: Row(
@@ -212,7 +212,7 @@ class _DrawerHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: accentColor,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -242,7 +242,7 @@ class _DrawerHeader extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
-                border: Border.all(color: yInk, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(Icons.close, color: yInk, size: 16),
             ),
@@ -352,7 +352,7 @@ class _PageTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isCurrent ? accentColor.withValues(alpha: 0.1) : yCream,
           border: const Border(
-            bottom: BorderSide(color: yInk, width: 0.5),
+            bottom: BorderSide(color: yBorderStrong, width: 0.5),
           ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -370,7 +370,7 @@ class _PageTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFFFFDF8),
                 border: Border.all(
-                  color: isCurrent ? accentColor : yInk,
+                  color: isCurrent ? accentColor : yBorderStrong,
                   width: isCurrent ? 2 : 1.2,
                 ),
                 boxShadow: [
@@ -445,7 +445,7 @@ class _PageTile extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: yCream2,
-                    border: Border.all(color: yInk, width: 1.2),
+                    border: Border.all(color: yBorderStrong, width: 1.2),
                   ),
                   child: const Icon(Icons.drag_handle,
                       size: 16, color: yInk),
@@ -475,7 +475,7 @@ class _PageTile extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: yCream,
-            border: Border.all(color: yInk, width: yLineMid),
+            border: Border.all(color: yBorderStrong, width: yLineMid),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -503,7 +503,7 @@ class _PageTile extends StatelessWidget {
                           horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: yCream,
-                        border: Border.all(color: yInk, width: yLineThin),
+                        border: Border.all(color: yBorderStrong, width: yLineThin),
                       ),
                       child: Text('CANCELAR',
                           style: yMono(
@@ -525,7 +525,7 @@ class _PageTile extends StatelessWidget {
                           horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: yFight,
-                        border: Border.all(color: yInk, width: yLineMid),
+                        border: Border.all(color: yBorderStrong, width: yLineMid),
                       ),
                       child: Text('ELIMINAR',
                           style: yMono(
