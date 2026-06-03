@@ -37,6 +37,7 @@ abstract class NoteRepository {
   Future<void> addContextSource(int canvasNoteId, CanvasSourceKind kind,
       String ref, {String? label, DateTime? fetchedAt});
   Future<void> removeContextSource(int id);
+  Future<void> setContextSourceEnabled(int id, bool enabled);
   Future<void> updateContextSourceFetch(int id,
       {String? label, DateTime? fetchedAt});
   Stream<List<CanvasContextSource>> watchContextSources(int canvasNoteId);

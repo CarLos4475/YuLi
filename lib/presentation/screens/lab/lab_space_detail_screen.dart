@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
-import '../../providers/folder_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../providers/ai_providers.dart';
@@ -479,14 +478,6 @@ class _KanbanHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final linkedFolderIdsAsync = ref.watch(linkedFolderIdsProvider(space.id));
-    final linkedIds = linkedFolderIdsAsync.valueOrNull ?? [];
-    final foldersAsync = ref.watch(activeFoldersProvider);
-    final folders = foldersAsync.valueOrNull ?? [];
-
-    final linkedFolders =
-        folders.where((f) => linkedIds.contains(f.id)).toList();
-
     return Container(
       color: y.yCream,
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
@@ -530,26 +521,6 @@ class _KanbanHeader extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (linkedFolders.isNotEmpty) ...[
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Wrap(
-                          spacing: 4,
-                          runSpacing: 4,
-                          children:
-                              linkedFolders
-                                  .map(
-                                    (f) => y.YBadge(
-                                      label: f.name.toUpperCase(),
-                                      bg: f.color,
-                                      fg: y.yCream,
-                                      fontSize: 10,
-                                    ),
-                                  )
-                                  .toList(),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 if (space.startDate != null || space.dueDate != null) ...[

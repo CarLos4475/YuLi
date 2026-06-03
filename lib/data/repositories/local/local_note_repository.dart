@@ -155,6 +155,10 @@ class LocalNoteRepository implements NoteRepository {
       _db.notesDao.removeContextSource(id);
 
   @override
+  Future<void> setContextSourceEnabled(int id, bool enabled) =>
+      _db.notesDao.setContextSourceEnabled(id, enabled);
+
+  @override
   Future<void> updateContextSourceFetch(int id,
           {String? label, DateTime? fetchedAt}) =>
       _db.notesDao
@@ -184,6 +188,7 @@ class LocalNoteRepository implements NoteRepository {
         ref: row.ref,
         label: row.label,
         fetchedAt: row.fetchedAt,
+        enabled: row.enabled,
         createdAt: row.createdAt,
       );
 

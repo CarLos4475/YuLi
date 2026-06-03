@@ -14,6 +14,8 @@ class CanvasContextSources extends Table {
   TextColumn get ref => text()(); // note id / folder id / URL
   TextColumn get label => text().nullable()();
   DateTimeColumn get fetchedAt => dateTime().nullable()();
+  // Whether this source is fed to the AI chat context (user toggle).
+  BoolColumn get enabled => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override

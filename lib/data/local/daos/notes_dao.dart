@@ -158,6 +158,10 @@ class NotesDao extends DatabaseAccessor<AppDatabase> with _$NotesDaoMixin {
   Future<void> removeContextSource(int id) =>
       (delete(canvasContextSources)..where((s) => s.id.equals(id))).go();
 
+  Future<void> setContextSourceEnabled(int id, bool enabled) =>
+      (update(canvasContextSources)..where((s) => s.id.equals(id)))
+          .write(CanvasContextSourcesCompanion(enabled: Value(enabled)));
+
   /// Update a url source's cached label + fetch time after a re-fetch.
   Future<void> updateContextSourceFetch(int id,
           {String? label, DateTime? fetchedAt}) =>

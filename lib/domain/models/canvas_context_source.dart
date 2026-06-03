@@ -30,6 +30,9 @@ class CanvasContextSource {
   /// When a url's content was last fetched. Null for notes/folders.
   final DateTime? fetchedAt;
 
+  /// Whether this source is fed to the AI chat context (user toggle).
+  final bool enabled;
+
   final DateTime createdAt;
 
   const CanvasContextSource({
@@ -40,6 +43,7 @@ class CanvasContextSource {
     required this.ref,
     this.label,
     this.fetchedAt,
+    this.enabled = true,
     required this.createdAt,
   });
 

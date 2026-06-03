@@ -69,7 +69,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -192,6 +192,13 @@ class AppDatabase extends _$AppDatabase {
             "SELECT lab_space_id, 'folder', CAST(folder_id AS TEXT), "
             "strftime('%s','now') FROM space_folder_links",
           );
+        } catch (_) {}
+      }
+      if (from <= 20) {
+        // Toggle por fuente: incluir/excluir del contexto de IA.
+        try {
+          await m.addColumn(canvasContextSources, canvasContextSources.enabled);
+          await m.addColumn(spaceContextSources, spaceContextSources.enabled);
         } catch (_) {}
       }
     },

@@ -170,6 +170,10 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
       _db.labSpacesDao.removeSpaceSource(id);
 
   @override
+  Future<void> setContextSourceEnabled(int id, bool enabled) =>
+      _db.labSpacesDao.setSpaceSourceEnabled(id, enabled);
+
+  @override
   Future<void> updateContextSourceFetch(
     int id, {
     String? label,
@@ -198,6 +202,7 @@ class LocalLabSpaceRepository implements LabSpaceRepository {
         ref: row.ref,
         label: row.label,
         fetchedAt: row.fetchedAt,
+        enabled: row.enabled,
         createdAt: row.createdAt,
       );
 

@@ -5638,6 +5638,21 @@ class $CanvasContextSourcesTable extends CanvasContextSources
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _enabledMeta = const VerificationMeta(
+    'enabled',
+  );
+  @override
+  late final GeneratedColumn<bool> enabled = GeneratedColumn<bool>(
+    'enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -5658,6 +5673,7 @@ class $CanvasContextSourcesTable extends CanvasContextSources
     ref,
     label,
     fetchedAt,
+    enabled,
     createdAt,
   ];
   @override
@@ -5714,6 +5730,12 @@ class $CanvasContextSourcesTable extends CanvasContextSources
         fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
       );
     }
+    if (data.containsKey('enabled')) {
+      context.handle(
+        _enabledMeta,
+        enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -5761,6 +5783,11 @@ class $CanvasContextSourcesTable extends CanvasContextSources
         DriftSqlType.dateTime,
         data['${effectivePrefix}fetched_at'],
       ),
+      enabled:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}enabled'],
+          )!,
       createdAt:
           attachedDatabase.typeMapping.read(
             DriftSqlType.dateTime,
@@ -5783,6 +5810,7 @@ class CanvasContextSourceRow extends DataClass
   final String ref;
   final String? label;
   final DateTime? fetchedAt;
+  final bool enabled;
   final DateTime createdAt;
   const CanvasContextSourceRow({
     required this.id,
@@ -5791,6 +5819,7 @@ class CanvasContextSourceRow extends DataClass
     required this.ref,
     this.label,
     this.fetchedAt,
+    required this.enabled,
     required this.createdAt,
   });
   @override
@@ -5806,6 +5835,7 @@ class CanvasContextSourceRow extends DataClass
     if (!nullToAbsent || fetchedAt != null) {
       map['fetched_at'] = Variable<DateTime>(fetchedAt);
     }
+    map['enabled'] = Variable<bool>(enabled);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -5822,6 +5852,7 @@ class CanvasContextSourceRow extends DataClass
           fetchedAt == null && nullToAbsent
               ? const Value.absent()
               : Value(fetchedAt),
+      enabled: Value(enabled),
       createdAt: Value(createdAt),
     );
   }
@@ -5838,6 +5869,7 @@ class CanvasContextSourceRow extends DataClass
       ref: serializer.fromJson<String>(json['ref']),
       label: serializer.fromJson<String?>(json['label']),
       fetchedAt: serializer.fromJson<DateTime?>(json['fetchedAt']),
+      enabled: serializer.fromJson<bool>(json['enabled']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -5851,6 +5883,7 @@ class CanvasContextSourceRow extends DataClass
       'ref': serializer.toJson<String>(ref),
       'label': serializer.toJson<String?>(label),
       'fetchedAt': serializer.toJson<DateTime?>(fetchedAt),
+      'enabled': serializer.toJson<bool>(enabled),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -5862,6 +5895,7 @@ class CanvasContextSourceRow extends DataClass
     String? ref,
     Value<String?> label = const Value.absent(),
     Value<DateTime?> fetchedAt = const Value.absent(),
+    bool? enabled,
     DateTime? createdAt,
   }) => CanvasContextSourceRow(
     id: id ?? this.id,
@@ -5870,6 +5904,7 @@ class CanvasContextSourceRow extends DataClass
     ref: ref ?? this.ref,
     label: label.present ? label.value : this.label,
     fetchedAt: fetchedAt.present ? fetchedAt.value : this.fetchedAt,
+    enabled: enabled ?? this.enabled,
     createdAt: createdAt ?? this.createdAt,
   );
   CanvasContextSourceRow copyWithCompanion(CanvasContextSourcesCompanion data) {
@@ -5883,6 +5918,7 @@ class CanvasContextSourceRow extends DataClass
       ref: data.ref.present ? data.ref.value : this.ref,
       label: data.label.present ? data.label.value : this.label,
       fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      enabled: data.enabled.present ? data.enabled.value : this.enabled,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -5896,14 +5932,23 @@ class CanvasContextSourceRow extends DataClass
           ..write('ref: $ref, ')
           ..write('label: $label, ')
           ..write('fetchedAt: $fetchedAt, ')
+          ..write('enabled: $enabled, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, canvasNoteId, kind, ref, label, fetchedAt, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    canvasNoteId,
+    kind,
+    ref,
+    label,
+    fetchedAt,
+    enabled,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5914,6 +5959,7 @@ class CanvasContextSourceRow extends DataClass
           other.ref == this.ref &&
           other.label == this.label &&
           other.fetchedAt == this.fetchedAt &&
+          other.enabled == this.enabled &&
           other.createdAt == this.createdAt);
 }
 
@@ -5925,6 +5971,7 @@ class CanvasContextSourcesCompanion
   final Value<String> ref;
   final Value<String?> label;
   final Value<DateTime?> fetchedAt;
+  final Value<bool> enabled;
   final Value<DateTime> createdAt;
   const CanvasContextSourcesCompanion({
     this.id = const Value.absent(),
@@ -5933,6 +5980,7 @@ class CanvasContextSourcesCompanion
     this.ref = const Value.absent(),
     this.label = const Value.absent(),
     this.fetchedAt = const Value.absent(),
+    this.enabled = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   CanvasContextSourcesCompanion.insert({
@@ -5942,6 +5990,7 @@ class CanvasContextSourcesCompanion
     required String ref,
     this.label = const Value.absent(),
     this.fetchedAt = const Value.absent(),
+    this.enabled = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : canvasNoteId = Value(canvasNoteId),
        kind = Value(kind),
@@ -5953,6 +6002,7 @@ class CanvasContextSourcesCompanion
     Expression<String>? ref,
     Expression<String>? label,
     Expression<DateTime>? fetchedAt,
+    Expression<bool>? enabled,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -5962,6 +6012,7 @@ class CanvasContextSourcesCompanion
       if (ref != null) 'ref': ref,
       if (label != null) 'label': label,
       if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (enabled != null) 'enabled': enabled,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -5973,6 +6024,7 @@ class CanvasContextSourcesCompanion
     Value<String>? ref,
     Value<String?>? label,
     Value<DateTime?>? fetchedAt,
+    Value<bool>? enabled,
     Value<DateTime>? createdAt,
   }) {
     return CanvasContextSourcesCompanion(
@@ -5982,6 +6034,7 @@ class CanvasContextSourcesCompanion
       ref: ref ?? this.ref,
       label: label ?? this.label,
       fetchedAt: fetchedAt ?? this.fetchedAt,
+      enabled: enabled ?? this.enabled,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -6007,6 +6060,9 @@ class CanvasContextSourcesCompanion
     if (fetchedAt.present) {
       map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
     }
+    if (enabled.present) {
+      map['enabled'] = Variable<bool>(enabled.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -6022,6 +6078,7 @@ class CanvasContextSourcesCompanion
           ..write('ref: $ref, ')
           ..write('label: $label, ')
           ..write('fetchedAt: $fetchedAt, ')
+          ..write('enabled: $enabled, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -6099,6 +6156,21 @@ class $SpaceContextSourcesTable extends SpaceContextSources
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _enabledMeta = const VerificationMeta(
+    'enabled',
+  );
+  @override
+  late final GeneratedColumn<bool> enabled = GeneratedColumn<bool>(
+    'enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -6119,6 +6191,7 @@ class $SpaceContextSourcesTable extends SpaceContextSources
     ref,
     label,
     fetchedAt,
+    enabled,
     createdAt,
   ];
   @override
@@ -6175,6 +6248,12 @@ class $SpaceContextSourcesTable extends SpaceContextSources
         fetchedAt.isAcceptableOrUnknown(data['fetched_at']!, _fetchedAtMeta),
       );
     }
+    if (data.containsKey('enabled')) {
+      context.handle(
+        _enabledMeta,
+        enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -6222,6 +6301,11 @@ class $SpaceContextSourcesTable extends SpaceContextSources
         DriftSqlType.dateTime,
         data['${effectivePrefix}fetched_at'],
       ),
+      enabled:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}enabled'],
+          )!,
       createdAt:
           attachedDatabase.typeMapping.read(
             DriftSqlType.dateTime,
@@ -6244,6 +6328,7 @@ class SpaceContextSourceRow extends DataClass
   final String ref;
   final String? label;
   final DateTime? fetchedAt;
+  final bool enabled;
   final DateTime createdAt;
   const SpaceContextSourceRow({
     required this.id,
@@ -6252,6 +6337,7 @@ class SpaceContextSourceRow extends DataClass
     required this.ref,
     this.label,
     this.fetchedAt,
+    required this.enabled,
     required this.createdAt,
   });
   @override
@@ -6267,6 +6353,7 @@ class SpaceContextSourceRow extends DataClass
     if (!nullToAbsent || fetchedAt != null) {
       map['fetched_at'] = Variable<DateTime>(fetchedAt);
     }
+    map['enabled'] = Variable<bool>(enabled);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -6283,6 +6370,7 @@ class SpaceContextSourceRow extends DataClass
           fetchedAt == null && nullToAbsent
               ? const Value.absent()
               : Value(fetchedAt),
+      enabled: Value(enabled),
       createdAt: Value(createdAt),
     );
   }
@@ -6299,6 +6387,7 @@ class SpaceContextSourceRow extends DataClass
       ref: serializer.fromJson<String>(json['ref']),
       label: serializer.fromJson<String?>(json['label']),
       fetchedAt: serializer.fromJson<DateTime?>(json['fetchedAt']),
+      enabled: serializer.fromJson<bool>(json['enabled']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -6312,6 +6401,7 @@ class SpaceContextSourceRow extends DataClass
       'ref': serializer.toJson<String>(ref),
       'label': serializer.toJson<String?>(label),
       'fetchedAt': serializer.toJson<DateTime?>(fetchedAt),
+      'enabled': serializer.toJson<bool>(enabled),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -6323,6 +6413,7 @@ class SpaceContextSourceRow extends DataClass
     String? ref,
     Value<String?> label = const Value.absent(),
     Value<DateTime?> fetchedAt = const Value.absent(),
+    bool? enabled,
     DateTime? createdAt,
   }) => SpaceContextSourceRow(
     id: id ?? this.id,
@@ -6331,6 +6422,7 @@ class SpaceContextSourceRow extends DataClass
     ref: ref ?? this.ref,
     label: label.present ? label.value : this.label,
     fetchedAt: fetchedAt.present ? fetchedAt.value : this.fetchedAt,
+    enabled: enabled ?? this.enabled,
     createdAt: createdAt ?? this.createdAt,
   );
   SpaceContextSourceRow copyWithCompanion(SpaceContextSourcesCompanion data) {
@@ -6342,6 +6434,7 @@ class SpaceContextSourceRow extends DataClass
       ref: data.ref.present ? data.ref.value : this.ref,
       label: data.label.present ? data.label.value : this.label,
       fetchedAt: data.fetchedAt.present ? data.fetchedAt.value : this.fetchedAt,
+      enabled: data.enabled.present ? data.enabled.value : this.enabled,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -6355,14 +6448,23 @@ class SpaceContextSourceRow extends DataClass
           ..write('ref: $ref, ')
           ..write('label: $label, ')
           ..write('fetchedAt: $fetchedAt, ')
+          ..write('enabled: $enabled, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, labSpaceId, kind, ref, label, fetchedAt, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    labSpaceId,
+    kind,
+    ref,
+    label,
+    fetchedAt,
+    enabled,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6373,6 +6475,7 @@ class SpaceContextSourceRow extends DataClass
           other.ref == this.ref &&
           other.label == this.label &&
           other.fetchedAt == this.fetchedAt &&
+          other.enabled == this.enabled &&
           other.createdAt == this.createdAt);
 }
 
@@ -6384,6 +6487,7 @@ class SpaceContextSourcesCompanion
   final Value<String> ref;
   final Value<String?> label;
   final Value<DateTime?> fetchedAt;
+  final Value<bool> enabled;
   final Value<DateTime> createdAt;
   const SpaceContextSourcesCompanion({
     this.id = const Value.absent(),
@@ -6392,6 +6496,7 @@ class SpaceContextSourcesCompanion
     this.ref = const Value.absent(),
     this.label = const Value.absent(),
     this.fetchedAt = const Value.absent(),
+    this.enabled = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   SpaceContextSourcesCompanion.insert({
@@ -6401,6 +6506,7 @@ class SpaceContextSourcesCompanion
     required String ref,
     this.label = const Value.absent(),
     this.fetchedAt = const Value.absent(),
+    this.enabled = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : labSpaceId = Value(labSpaceId),
        kind = Value(kind),
@@ -6412,6 +6518,7 @@ class SpaceContextSourcesCompanion
     Expression<String>? ref,
     Expression<String>? label,
     Expression<DateTime>? fetchedAt,
+    Expression<bool>? enabled,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -6421,6 +6528,7 @@ class SpaceContextSourcesCompanion
       if (ref != null) 'ref': ref,
       if (label != null) 'label': label,
       if (fetchedAt != null) 'fetched_at': fetchedAt,
+      if (enabled != null) 'enabled': enabled,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -6432,6 +6540,7 @@ class SpaceContextSourcesCompanion
     Value<String>? ref,
     Value<String?>? label,
     Value<DateTime?>? fetchedAt,
+    Value<bool>? enabled,
     Value<DateTime>? createdAt,
   }) {
     return SpaceContextSourcesCompanion(
@@ -6441,6 +6550,7 @@ class SpaceContextSourcesCompanion
       ref: ref ?? this.ref,
       label: label ?? this.label,
       fetchedAt: fetchedAt ?? this.fetchedAt,
+      enabled: enabled ?? this.enabled,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -6466,6 +6576,9 @@ class SpaceContextSourcesCompanion
     if (fetchedAt.present) {
       map['fetched_at'] = Variable<DateTime>(fetchedAt.value);
     }
+    if (enabled.present) {
+      map['enabled'] = Variable<bool>(enabled.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -6481,6 +6594,7 @@ class SpaceContextSourcesCompanion
           ..write('ref: $ref, ')
           ..write('label: $label, ')
           ..write('fetchedAt: $fetchedAt, ')
+          ..write('enabled: $enabled, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -14890,6 +15004,7 @@ typedef $$CanvasContextSourcesTableCreateCompanionBuilder =
       required String ref,
       Value<String?> label,
       Value<DateTime?> fetchedAt,
+      Value<bool> enabled,
       Value<DateTime> createdAt,
     });
 typedef $$CanvasContextSourcesTableUpdateCompanionBuilder =
@@ -14900,6 +15015,7 @@ typedef $$CanvasContextSourcesTableUpdateCompanionBuilder =
       Value<String> ref,
       Value<String?> label,
       Value<DateTime?> fetchedAt,
+      Value<bool> enabled,
       Value<DateTime> createdAt,
     });
 
@@ -14970,6 +15086,11 @@ class $$CanvasContextSourcesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
@@ -15033,6 +15154,11 @@ class $$CanvasContextSourcesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -15085,6 +15211,9 @@ class $$CanvasContextSourcesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get fetchedAt =>
       $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get enabled =>
+      $composableBuilder(column: $table.enabled, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -15158,6 +15287,7 @@ class $$CanvasContextSourcesTableTableManager
                 Value<String> ref = const Value.absent(),
                 Value<String?> label = const Value.absent(),
                 Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => CanvasContextSourcesCompanion(
                 id: id,
@@ -15166,6 +15296,7 @@ class $$CanvasContextSourcesTableTableManager
                 ref: ref,
                 label: label,
                 fetchedAt: fetchedAt,
+                enabled: enabled,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -15176,6 +15307,7 @@ class $$CanvasContextSourcesTableTableManager
                 required String ref,
                 Value<String?> label = const Value.absent(),
                 Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => CanvasContextSourcesCompanion.insert(
                 id: id,
@@ -15184,6 +15316,7 @@ class $$CanvasContextSourcesTableTableManager
                 ref: ref,
                 label: label,
                 fetchedAt: fetchedAt,
+                enabled: enabled,
                 createdAt: createdAt,
               ),
           withReferenceMapper:
@@ -15264,6 +15397,7 @@ typedef $$SpaceContextSourcesTableCreateCompanionBuilder =
       required String ref,
       Value<String?> label,
       Value<DateTime?> fetchedAt,
+      Value<bool> enabled,
       Value<DateTime> createdAt,
     });
 typedef $$SpaceContextSourcesTableUpdateCompanionBuilder =
@@ -15274,6 +15408,7 @@ typedef $$SpaceContextSourcesTableUpdateCompanionBuilder =
       Value<String> ref,
       Value<String?> label,
       Value<DateTime?> fetchedAt,
+      Value<bool> enabled,
       Value<DateTime> createdAt,
     });
 
@@ -15347,6 +15482,11 @@ class $$SpaceContextSourcesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
@@ -15410,6 +15550,11 @@ class $$SpaceContextSourcesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get enabled => $composableBuilder(
+    column: $table.enabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -15462,6 +15607,9 @@ class $$SpaceContextSourcesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get fetchedAt =>
       $composableBuilder(column: $table.fetchedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get enabled =>
+      $composableBuilder(column: $table.enabled, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -15535,6 +15683,7 @@ class $$SpaceContextSourcesTableTableManager
                 Value<String> ref = const Value.absent(),
                 Value<String?> label = const Value.absent(),
                 Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => SpaceContextSourcesCompanion(
                 id: id,
@@ -15543,6 +15692,7 @@ class $$SpaceContextSourcesTableTableManager
                 ref: ref,
                 label: label,
                 fetchedAt: fetchedAt,
+                enabled: enabled,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -15553,6 +15703,7 @@ class $$SpaceContextSourcesTableTableManager
                 required String ref,
                 Value<String?> label = const Value.absent(),
                 Value<DateTime?> fetchedAt = const Value.absent(),
+                Value<bool> enabled = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => SpaceContextSourcesCompanion.insert(
                 id: id,
@@ -15561,6 +15712,7 @@ class $$SpaceContextSourcesTableTableManager
                 ref: ref,
                 label: label,
                 fetchedAt: fetchedAt,
+                enabled: enabled,
                 createdAt: createdAt,
               ),
           withReferenceMapper:

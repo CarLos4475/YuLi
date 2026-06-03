@@ -35,6 +35,7 @@ abstract class LabSpaceRepository {
     DateTime? fetchedAt,
   });
   Future<void> removeContextSource(int id);
+  Future<void> setContextSourceEnabled(int id, bool enabled);
   Future<void> updateContextSourceFetch(
     int id, {
     String? label,

@@ -110,6 +110,10 @@ class LabSpacesDao extends DatabaseAccessor<AppDatabase>
   Future<void> removeSpaceSource(int id) =>
       (delete(spaceContextSources)..where((s) => s.id.equals(id))).go();
 
+  Future<void> setSpaceSourceEnabled(int id, bool enabled) =>
+      (update(spaceContextSources)..where((s) => s.id.equals(id)))
+          .write(SpaceContextSourcesCompanion(enabled: Value(enabled)));
+
   Future<void> updateSpaceSourceFetch(
     int id, {
     String? label,

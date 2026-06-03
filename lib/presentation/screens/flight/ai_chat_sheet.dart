@@ -18,6 +18,7 @@ import '../../../domain/models/canvas_context_source.dart';
 import '../../../data/services/context_cache.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
 import 'ai_chat_session.dart';
+import 'context_assembler.dart' as ctx;
 import 'ocr_send_to_note.dart' show sendTextToNote;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
@@ -196,7 +197,10 @@ Widget _bigChoice(String label, Color accent, bool filled, VoidCallback onTap) {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: filled ? accent : yCream,
-        border: Border.all(color: filled ? yBorderStrong : accent, width: yLineMid),
+        border: Border.all(
+          color: filled ? yBorderStrong : accent,
+          width: yLineMid,
+        ),
       ),
       child: Text(
         label,
@@ -304,6 +308,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     // Additional sources from DB: URLs for block notes; notes + URLs for canvases.
     final sources = await repo.getContextSources(_s.noteId);
     for (final s in sources) {
+      if (!s.enabled) continue; // user-toggled off
       if (s.isNote && s.ref == _s.noteId.toString()) continue; // skip self-ref
       String raw;
       String label;
@@ -344,37 +349,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   /// Compact a single source if it's long, caching the result by content hash
   /// (one compaction per source version, reused thereafter). Short → as-is.
-  Future<String> _compactPiece(String key, String raw) async {
-    if (raw.length <= kAnchorLongChars) return raw;
-    final cached = await readCompactCache(key, raw);
-    if (cached != null) return cached;
-    final limiter = ref.read(aiUsageLimiterProvider);
-    if (!await limiter.canSend()) {
-      return raw.length > 4000 ? raw.substring(0, 4000) : raw;
-    }
-    await limiter.record();
-    final buf = StringBuffer();
-    try {
-      final prompt =
-          raw.length > kLongDocThreshold ? kSynthesizePrompt : kCompactPrompt;
-      await for (final tok in ref
-          .read(aiAssistantProvider)
-          .streamReply(
-            [AiMessage(AiRole.system, prompt), AiMessage(AiRole.user, raw)],
-            model: AiModel.flash,
-            maxTokens: 4096,
-            temperature: 0.2,
-          )) {
-        buf.write(tok);
-      }
-    } catch (_) {
-      return raw;
-    }
-    final compacted = buf.toString().trim();
-    if (compacted.isEmpty || compacted.length >= raw.length) return raw;
-    await writeCompactCache(key, raw, compacted);
-    return compacted;
-  }
+  Future<String> _compactPiece(String key, String raw) =>
+      ctx.compactPiece(ref, key, raw);
 
   /// Open the "Fuentes" manager (add/remove notes + urls; refetch a url).
   Future<void> _showSourcesSheet() async {
@@ -692,23 +668,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   /// Extract a plain-text context from a note's blocks (same rules as the
   /// note editor: text + bullets + math; skip tasks & drawings).
-  String _extractNoteContext(List<NoteBlock> blocks) {
-    final buf = StringBuffer();
-    for (final b in blocks) {
-      if (b is TextBlock) {
-        if (b.markdown.trim().isNotEmpty) buf.writeln('${b.markdown}\n');
-      } else if (b is BulletsBlock) {
-        for (final it in b.items) {
-          if (it.trim().isNotEmpty) buf.writeln('- $it');
-        }
-        buf.writeln();
-      } else if (b is MathBlock) {
-        if (b.latex.trim().isNotEmpty) buf.writeln('\$\$${b.latex}\$\$\n');
-      }
-      // TareasBlock and DrawingBlock are skipped.
-    }
-    return buf.toString().trim();
-  }
+  String _extractNoteContext(List<NoteBlock> blocks) =>
+      ctx.extractNoteContext(blocks);
 
   Widget _buildChat() {
     return Column(
@@ -2548,6 +2509,13 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     await widget.onChanged();
   }
 
+  Future<void> _toggle(CanvasContextSource s) async {
+    await ref
+        .read(noteRepositoryProvider)
+        .setContextSourceEnabled(s.id, !s.enabled);
+    await widget.onChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
     final sources =
@@ -2710,10 +2678,22 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
         ),
         child: Row(
           children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _busy ? null : () => _toggle(s),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(
+                  s.enabled ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 18,
+                  color: s.enabled ? widget.accent : yMuted,
+                ),
+              ),
+            ),
             Icon(
               s.isNote ? Icons.description_outlined : Icons.link,
               size: 16,
-              color: yInk,
+              color: s.enabled ? widget.accent : yMuted,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -2727,7 +2707,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
                     style: ySans(
                       size: 14,
                       weight: FontWeight.w700,
-                      color: yInk,
+                      color: s.enabled ? yInk : yMuted,
                     ),
                   ),
                   if (s.isUrl)

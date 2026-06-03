@@ -57,27 +57,58 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
   List<CanvasContextSource> get _sources =>
       ref.read(spaceContextSourcesProvider(_spaceId)).valueOrNull ?? const [];
 
+  // A1: una carpeta es un atajo de selección — eliges qué notas entran y se
+  // guardan como fuentes 'note' sueltas (no hay volcado dinámico de la carpeta).
   Future<void> _addFolder() async {
     final folders =
         ref.read(activeFoldersProvider).valueOrNull ?? const <Folder>[];
-    final existing =
-        _sources.where((s) => s.isFolder).map((s) => s.ref).toSet();
-    final candidates =
-        folders.where((f) => !existing.contains(f.id.toString())).toList();
-    if (candidates.isEmpty) {
-      _snack('No hay más carpetas para agregar.');
+    if (folders.isEmpty) {
+      _snack('No hay carpetas.');
       return;
     }
-    final picked = await _pickFolder('AGREGAR CARPETA', candidates);
-    if (picked == null) return;
-    await ref
-        .read(labSpaceRepositoryProvider)
-        .addContextSource(
-          _spaceId,
-          CanvasSourceKind.folder,
-          picked.id.toString(),
-          label: picked.name,
-        );
+    final folder = await _pickFolder('ELIGE CARPETA', folders);
+    if (folder == null || !mounted) return;
+    final notes = await ref.read(noteRepositoryProvider).getByFolder(folder.id);
+    final existing = _sources.where((s) => s.isNote).map((s) => s.ref).toSet();
+    final candidates =
+        notes
+            .where(
+              (n) =>
+                  n.isActive &&
+                  n.kind == NoteKind.block &&
+                  !existing.contains(n.id.toString()),
+            )
+            .toList();
+    if (candidates.isEmpty) {
+      _snack('No hay notas para agregar en esa carpeta.');
+      return;
+    }
+    if (!mounted) return;
+    final picked = await _pickNotesMulti(folder.name, candidates);
+    if (picked == null || picked.isEmpty) return;
+    final repo = ref.read(labSpaceRepositoryProvider);
+    for (final n in picked) {
+      await repo.addContextSource(
+        _spaceId,
+        CanvasSourceKind.note,
+        n.id.toString(),
+        label: n.displayTitle,
+      );
+    }
+  }
+
+  Future<List<Note>?> _pickNotesMulti(String folderName, List<Note> notes) {
+    return showModalBottomSheet<List<Note>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder:
+          (_) => _MultiNotePickerSheet(
+            folderName: folderName,
+            notes: notes,
+            accent: widget.space.accentColor,
+          ),
+    );
   }
 
   Future<void> _addNote() async {
@@ -348,7 +379,22 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: accent),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap:
+                () => ref
+                    .read(labSpaceRepositoryProvider)
+                    .setContextSourceEnabled(s.id, !s.enabled),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Icon(
+                s.enabled ? Icons.check_box : Icons.check_box_outline_blank,
+                size: 18,
+                color: s.enabled ? accent : yMuted,
+              ),
+            ),
+          ),
+          Icon(icon, size: 16, color: s.enabled ? accent : yMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -358,7 +404,11 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
+                  style: yBody(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: s.enabled ? yInk : yMuted,
+                  ),
                 ),
                 Text(
                   s.isUrl ? '$kindLabel · ${_ago(s.fetchedAt)}' : kindLabel,
@@ -493,6 +543,142 @@ class _PickerRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: ySans(size: 14, weight: FontWeight.w700, color: yInk),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Multi-select de notas de una carpeta (A1): arranca sin nada marcado;
+/// devuelve las elegidas al tocar "Agregar (N)".
+class _MultiNotePickerSheet extends StatefulWidget {
+  final String folderName;
+  final List<Note> notes;
+  final Color accent;
+  const _MultiNotePickerSheet({
+    required this.folderName,
+    required this.notes,
+    required this.accent,
+  });
+
+  @override
+  State<_MultiNotePickerSheet> createState() => _MultiNotePickerSheetState();
+}
+
+class _MultiNotePickerSheetState extends State<_MultiNotePickerSheet> {
+  final Set<int> _picked = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream,
+        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'NOTAS DE @${widget.folderName.toUpperCase()}',
+              style: yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 1.4,
+                color: yInk,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: widget.notes.length,
+                itemBuilder: (_, i) {
+                  final n = widget.notes[i];
+                  final on = _picked.contains(n.id);
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap:
+                        () => setState(
+                          () => on ? _picked.remove(n.id) : _picked.add(n.id),
+                        ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineThin,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            on
+                                ? Icons.check_box
+                                : Icons.check_box_outline_blank,
+                            size: 18,
+                            color: on ? widget.accent : yMuted,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              n.displayTitle.isEmpty
+                                  ? 'Sin título'
+                                  : n.displayTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ySans(
+                                size: 14,
+                                weight: FontWeight.w700,
+                                color: yInk,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap:
+                  _picked.isEmpty
+                      ? null
+                      : () => Navigator.of(context).pop(
+                        widget.notes
+                            .where((n) => _picked.contains(n.id))
+                            .toList(),
+                      ),
+              child: Container(
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _picked.isEmpty ? yCream2 : widget.accent,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Text(
+                  _picked.isEmpty
+                      ? 'ELIGE NOTAS'
+                      : 'AGREGAR (${_picked.length})',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: _picked.isEmpty ? yMuted : yCream,
+                  ),
+                ),
               ),
             ),
           ],

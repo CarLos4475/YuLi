@@ -15,6 +15,7 @@ import '../../../domain/services/ai_assistant.dart';
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
 import '../flight/ai_chat_sheet.dart' show showLabChat;
+import '../flight/context_assembler.dart' show assembleEnabledSources;
 
 // ─── YuLi · LAB — one-shot AI actions for a space ──────────────────────────
 // (Chat about the space is phase 2; this same sheet will host it later.)
@@ -62,7 +63,13 @@ Future<void> showLabAiSheet(
           final cards = await ref.read(
             kanbanCardsBySpaceProvider(space.id).future,
           );
-          return _serializeBoard(space, cols, cards);
+          final board = _serializeBoard(space, cols, cards);
+          // Fuentes prendidas (notas/enlaces) se suman al board.
+          final sources = await ref
+              .read(labSpaceRepositoryProvider)
+              .getContextSources(space.id);
+          final extra = await assembleEnabledSources(ref, sources);
+          return extra.isEmpty ? board : '$board\n\n---\n\n$extra';
         },
       );
   }
