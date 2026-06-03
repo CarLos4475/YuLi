@@ -4,6 +4,18 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 
 ---
 
+## ⚡ Optimización de render canvas (calor) — probado en general en TGR, OK
+
+Pizarra/cuaderno optimizados contra el sobrecalentamiento (solo capa `flight`, sin tocar datos/lab): caché de `Path` por-trazo, histéresis de repaint en pan (cuaderno simétrico 0.5, pizarra **predictiva** sesgada a la dirección, `_renderRectFor`), chrome de página cacheado, y el `InteractiveViewer` del cuaderno ya no se reconstruye en pan (#10). El calor bajó mucho y el feeling es bueno en ambos.
+
+**Por si sale algo en una prueba más larga:**
+- Pizarra: micro-tirón esperado al **invertir el sentido del pan** de golpe (1 repaint). Si molesta, subir `trail` en `_renderRectFor`.
+- Vigilar que en pan/zoom rápido no aparezcan **gaps** de tinta/papel ni **blur**.
+- Pendiente NO hecho (#3): `_allVisibleStrokes` clona todo por gesto de **lasso pesado** — solo atacar si esa operación con muchos trazos se siente caliente/lenta.
+- Opcional: portar el margen predictivo al cuaderno (lo dejaría aún más frío; hoy va perfecto a 0.5).
+
+---
+
 ## ✅ Headless audit validado (no requiere test manual de lógica)
 
 `test/audit_test.dart` ejecuta **14/14** contra BD en memoria. Cubre la parte crítica que no podíamos validar por bloqueos de toolchain (Dev Mode / ATL):

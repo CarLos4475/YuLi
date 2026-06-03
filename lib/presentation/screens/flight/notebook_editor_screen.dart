@@ -42,6 +42,7 @@ import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
 import 'shape_picker_popup.dart';
+import 'stroke_bounds.dart';
 import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
 
@@ -66,6 +67,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final List<int> _pageBlockIds = [];
 
   final TransformationController _viewCtrl = TransformationController();
+  int _paintVersion = 0;
+  Rect? _renderRect;
   Color _color = yInk;
   double _strokeW = 3.0;
   DrawTool _tool = DrawTool.pen;
@@ -154,6 +157,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   DateTime? _multiFingerDownTime;
   final Map<int, Offset> _pointerDownPos = {};
 
+  @override
+  void setState(VoidCallback fn) {
+    _paintVersion++;
+    super.setState(fn);
+  }
+
   Timer? _pasteTimer;
   Offset? _pastePos;
   Offset? _showPasteAt;
@@ -194,11 +203,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _lassoAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
-    )..repeat();
+    );
     _pullAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
-    )..repeat(reverse: true);
+    );
     _drawerAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
@@ -209,7 +218,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     ).animate(
       CurvedAnimation(parent: _drawerAnimCtrl, curve: Curves.easeOutCubic),
     );
-    _lassoCtrl.onChanged = () => setState(() {});
+    _lassoCtrl.onChanged = () {
+      _syncLassoTicker();
+      setState(() {});
+    };
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
       setState(() => _recentWidths = widths);
@@ -726,6 +738,64 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // ─── Coordinate transforms ────────────────────────────────────────────
 
   double get _viewScale => _viewCtrl.value.getMaxScaleOnAxis();
+
+  void _syncLassoTicker() {
+    final shouldRun = _lassoCtrl.phase != LassoPhase.idle;
+    if (shouldRun) {
+      if (!_lassoAnimCtrl.isAnimating) _lassoAnimCtrl.repeat();
+      return;
+    }
+    if (_lassoAnimCtrl.isAnimating) _lassoAnimCtrl.stop();
+    if (_lassoAnimCtrl.value != 0) _lassoAnimCtrl.value = 0;
+  }
+
+  void _syncPullTicker(bool visible) {
+    if (visible) {
+      if (!_pullAnimCtrl.isAnimating) _pullAnimCtrl.repeat(reverse: true);
+      return;
+    }
+    if (_pullAnimCtrl.isAnimating) _pullAnimCtrl.stop();
+    if (_pullAnimCtrl.value != 0) _pullAnimCtrl.value = 0;
+  }
+
+  Rect _visibleRectFor(Size viewport) {
+    final inv = Matrix4.inverted(_viewCtrl.value);
+    final tl = MatrixUtils.transformPoint(inv, Offset.zero);
+    final br = MatrixUtils.transformPoint(
+      inv,
+      Offset(viewport.width, viewport.height),
+    );
+    _lassoCtrl.hitScale = _viewScale;
+    return Rect.fromPoints(tl, br);
+  }
+
+  /// Padded render rect with hysteresis. The stroke/background painters cull and
+  /// cache against a rect inflated by ~half a viewport, and it only grows (→ a
+  /// repaint) once the live visible rect leaves it. A short pan or a draw while
+  /// slightly scrolled then reuses the [RepaintBoundary] raster instead of
+  /// re-rasterizing the visible ink every frame (the main sustained-heat source
+  /// during pan, since per-frame culling defeats the boundary's caching).
+  Rect _renderRectFor(Size viewport) {
+    final visible = _visibleRectFor(viewport);
+    final current = _renderRect;
+    if (current != null &&
+        current.left <= visible.left &&
+        current.top <= visible.top &&
+        current.right >= visible.right &&
+        current.bottom >= visible.bottom) {
+      return current;
+    }
+    final padX = visible.width * 0.5;
+    final padY = visible.height * 0.5;
+    final next = Rect.fromLTRB(
+      visible.left - padX,
+      visible.top - padY,
+      visible.right + padX,
+      visible.bottom + padY,
+    );
+    _renderRect = next;
+    return next;
+  }
 
   Offset _screenToWorld(Offset screen) {
     final inv = Matrix4.copy(_viewCtrl.value)..invert();
@@ -2270,6 +2340,146 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Color get _accent => widget.note.color ?? widget.folder.color;
 
+  Widget _buildNotebookBackgroundLayer(Size viewport, Size canvasSize) {
+    return AnimatedBuilder(
+      animation: _viewCtrl,
+      builder: (_, _) {
+        final visibleRect = _renderRectFor(viewport);
+        return RepaintBoundary(
+          child: CustomPaint(
+            painter: _NotebookCanvasPainter(
+              pageBlockIds: _pageBlockIds,
+              pageData: _pageData,
+              visibleRect: visibleRect,
+              paintVersion: _paintVersion,
+              accentColor: _accent,
+              hiddenImages: _hiddenImages(),
+              imageCache: _imgCache,
+              drawStrokes: false,
+            ),
+            size: canvasSize,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNotebookStrokeLayer(Size viewport, Size canvasSize) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _viewCtrl,
+        builder: (_, _) {
+          final visibleRect = _renderRectFor(viewport);
+          return RepaintBoundary(
+            child: CustomPaint(
+              painter: _NotebookCanvasPainter(
+                pageBlockIds: _pageBlockIds,
+                pageData: _pageData,
+                visibleRect: visibleRect,
+                paintVersion: _paintVersion,
+                accentColor: _accent,
+                hiddenStrokes: _hiddenStrokes(),
+                imageCache: _imgCache,
+                drawBackground: false,
+              ),
+              size: canvasSize,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Overscroll "NUEVA PÁGINA" pull affordance. Isolated AnimatedBuilder(_viewCtrl)
+  // so the pull amount + its side effects (_reachedPullThreshold / pull ticker)
+  // recompute on pan without rebuilding the canvas. `top` is build-time constant
+  // (depends only on page count), so the Positioned stays static and only the
+  // content fades/animates.
+  Widget _buildPullIndicator(Size viewport, double lastPageBottom) {
+    return Positioned(
+      top: lastPageBottom + 20,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _viewCtrl,
+          builder: (_, _) {
+            final overscroll =
+                _visibleRectFor(viewport).bottom - lastPageBottom;
+            final pull = (overscroll / 150.0).clamp(0.0, 1.0);
+            _reachedPullThreshold = pull >= 1.0;
+            _syncPullTicker(pull > 0);
+            if (pull <= 0) return const SizedBox.shrink();
+            return Opacity(
+              opacity: pull,
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 30,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _accent,
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    ),
+                    child: Text(
+                      '+',
+                      style: ySans(
+                        size: 20,
+                        weight: FontWeight.w700,
+                        color: yCream,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'NUEVA PÁGINA',
+                    style: TextStyle(
+                      fontSize: 9 + 3 * _pullAnimCtrl.value,
+                      fontWeight: FontWeight.w700,
+                      color: yInk.withValues(
+                        alpha: 0.3 + 0.4 * _pullAnimCtrl.value,
+                      ),
+                      fontFamily: 'monospace',
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotebookLassoLayer(
+    Size viewport,
+    Size canvasSize,
+    List<DrawingStroke> strokes,
+    List<CanvasImage> images,
+  ) {
+    if (_lassoCtrl.phase == LassoPhase.idle) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: Listenable.merge([_viewCtrl, _lassoAnimCtrl]),
+      builder: (_, _) {
+        final visibleRect = _visibleRectFor(viewport);
+        return CustomPaint(
+          painter: LassoPainter(
+            ctrl: _lassoCtrl,
+            animValue: _lassoAnimCtrl.value,
+            strokes: strokes,
+            images: images,
+            imageCache: _imgCache,
+            visibleRect: visibleRect,
+          ),
+          size: canvasSize,
+        );
+      },
+    );
+  }
+
   int get _currentVisiblePage {
     if (_pageBlockIds.isEmpty) return 0;
     final inv = Matrix4.inverted(_viewCtrl.value);
@@ -2343,12 +2553,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Map<int, Set<int>> _hiddenStrokes() {
+    // Canonical const empty map (stable identity) when nothing is hidden, so the
+    // painter's shouldRepaint doesn't see a "changed" map every pan frame and
+    // defeat the render-rect hysteresis.
     if (_lassoCtrl.phase != LassoPhase.moving &&
         _lassoCtrl.phase != LassoPhase.resizing &&
         _lassoCtrl.phase != LassoPhase.rotating) {
-      return {};
+      return const {};
     }
-    if (_lassoCtrl.selectedIndices.isEmpty) return {};
+    if (_lassoCtrl.selectedIndices.isEmpty) return const {};
     final hidden = <int, Set<int>>{};
     int globalIdx = 0;
     for (int i = 0; i < _pageBlockIds.length; i++) {
@@ -2370,9 +2583,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_lassoCtrl.phase != LassoPhase.moving &&
         _lassoCtrl.phase != LassoPhase.resizing &&
         _lassoCtrl.phase != LassoPhase.rotating) {
-      return {};
+      return const {};
     }
-    if (_lassoCtrl.selectedImageIndices.isEmpty) return {};
+    if (_lassoCtrl.selectedImageIndices.isEmpty) return const {};
     final hidden = <int, Set<int>>{};
     int globalIdx = 0;
     for (int i = 0; i < _pageBlockIds.length; i++) {
@@ -2627,293 +2840,180 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                         ? const Center(child: CircularProgressIndicator())
                         : LayoutBuilder(
                           builder: (ctx, c) {
-                            _viewport = Size(c.maxWidth, c.maxHeight);
-                            return AnimatedBuilder(
-                              animation: _viewCtrl,
-                              builder: (_, _) {
-                                final inv = Matrix4.inverted(_viewCtrl.value);
-                                final tl = MatrixUtils.transformPoint(
-                                  inv,
-                                  Offset.zero,
-                                );
-                                final br = MatrixUtils.transformPoint(
-                                  inv,
-                                  Offset(c.maxWidth, c.maxHeight),
-                                );
-                                final visibleRect = Rect.fromPoints(tl, br);
-                                _lassoCtrl.hitScale = _viewScale;
-
-                                final lastPageBottom =
-                                    _pageBlockIds.isNotEmpty
-                                        ? (_pageBlockIds.length - 1) *
-                                                (kNotebookPageHeight +
-                                                    kNotebookPageGap) +
-                                            kNotebookPageHeight
-                                        : 0.0;
-                                final overscroll = br.dy - lastPageBottom;
-                                final pull = (overscroll / 150.0).clamp(
-                                  0.0,
-                                  1.0,
-                                );
-                                _reachedPullThreshold = pull >= 1.0;
-                                return Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    ClipRect(
-                                      child: GestureDetector(
-                                        onTapUp: _onLassoTap,
-                                        child: Listener(
-                                          behavior: HitTestBehavior.opaque,
-                                          onPointerDown: _onDown,
-                                          onPointerMove: _onMove,
-                                          onPointerUp: _onUp,
-                                          onPointerCancel: _onCancel,
-                                          child: InteractiveViewer(
-                                            transformationController: _viewCtrl,
-                                            minScale: 0.3,
-                                            maxScale: 4.0,
-                                            boundaryMargin:
-                                                EdgeInsets.symmetric(
-                                                  horizontal: c.maxWidth,
-                                                  vertical:
-                                                      _totalCanvasHeight * 0.3,
+                            final viewport = Size(c.maxWidth, c.maxHeight);
+                            _viewport = viewport;
+                            final textBlockOverlays = _buildTextBlockOverlays();
+                            final taskBlockOverlays = _buildTaskBlockOverlays();
+                            final lassoActive =
+                                _lassoCtrl.phase != LassoPhase.idle;
+                            final lassoStrokes =
+                                lassoActive
+                                    ? _allVisibleStrokes
+                                    : const <DrawingStroke>[];
+                            final lassoImages =
+                                lassoActive
+                                    ? _allVisibleImages
+                                    : const <CanvasImage>[];
+                            // The canvas subtree below is built ONCE per build()
+                            // — NOT wrapped in an AnimatedBuilder(_viewCtrl), so
+                            // panning no longer reconstructs the InteractiveViewer
+                            // + every layer each frame. Pan-driven repaints happen
+                            // inside each layer's own AnimatedBuilder (render-rect
+                            // hysteresis) and the isolated pull indicator.
+                            final lastPageBottom =
+                                _pageBlockIds.isNotEmpty
+                                    ? (_pageBlockIds.length - 1) *
+                                            (kNotebookPageHeight +
+                                                kNotebookPageGap) +
+                                        kNotebookPageHeight
+                                    : 0.0;
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                ClipRect(
+                                  child: GestureDetector(
+                                    onTapUp: _onLassoTap,
+                                    child: Listener(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPointerDown: _onDown,
+                                      onPointerMove: _onMove,
+                                      onPointerUp: _onUp,
+                                      onPointerCancel: _onCancel,
+                                      child: InteractiveViewer(
+                                        transformationController: _viewCtrl,
+                                        minScale: 0.3,
+                                        maxScale: 4.0,
+                                        boundaryMargin: EdgeInsets.symmetric(
+                                          horizontal: c.maxWidth,
+                                          vertical: _totalCanvasHeight * 0.3,
+                                        ),
+                                        // Text mode: 1-finger drag moves a box (its
+                                        // GestureDetector), so disable pan; 2-finger
+                                        // still navigates.
+                                        panEnabled:
+                                            _tool == DrawTool.text
+                                                ? false
+                                                : _tool == DrawTool.lasso
+                                                ? (_lassoCtrl.phase ==
+                                                        LassoPhase.idle &&
+                                                    !_isDrawing)
+                                                : _palmRejection
+                                                ? !_stylusActive
+                                                : !_isDrawing,
+                                        scaleEnabled:
+                                            _tool == DrawTool.text
+                                                ? true
+                                                : _tool == DrawTool.lasso
+                                                ? (_lassoCtrl.phase ==
+                                                        LassoPhase.idle &&
+                                                    !_isDrawing)
+                                                : !_stylusActive,
+                                        constrained: false,
+                                        child: SizedBox(
+                                          width: kNotebookPageWidth,
+                                          height: _totalCanvasHeight,
+                                          child: Stack(
+                                            children: [
+                                              _buildNotebookBackgroundLayer(
+                                                viewport,
+                                                Size(
+                                                  kNotebookPageWidth,
+                                                  _totalCanvasHeight,
                                                 ),
-                                            // Text mode: 1-finger drag moves a box (its
-                                            // GestureDetector), so disable pan; 2-finger
-                                            // still navigates.
-                                            panEnabled:
-                                                _tool == DrawTool.text
-                                                    ? false
-                                                    : _tool == DrawTool.lasso
-                                                    ? (_lassoCtrl.phase ==
-                                                            LassoPhase.idle &&
-                                                        !_isDrawing)
-                                                    : _palmRejection
-                                                    ? !_stylusActive
-                                                    : !_isDrawing,
-                                            scaleEnabled:
-                                                _tool == DrawTool.text
-                                                    ? true
-                                                    : _tool == DrawTool.lasso
-                                                    ? (_lassoCtrl.phase ==
-                                                            LassoPhase.idle &&
-                                                        !_isDrawing)
-                                                    : !_stylusActive,
-                                            constrained: false,
-                                            child: SizedBox(
-                                              width: kNotebookPageWidth,
-                                              height: _totalCanvasHeight,
-                                              child: Stack(
-                                                children: [
-                                                  // Page chrome + images (no strokes).
-                                                  RepaintBoundary(
-                                                    child: CustomPaint(
-                                                      painter:
-                                                          _NotebookCanvasPainter(
-                                                            pageBlockIds:
-                                                                _pageBlockIds,
-                                                            pageData: _pageData,
-                                                            visibleRect:
-                                                                visibleRect,
-                                                            accentColor:
-                                                                _accent,
-                                                            hiddenImages:
-                                                                _hiddenImages(),
-                                                            imageCache:
-                                                                _imgCache,
-                                                            drawStrokes: false,
-                                                          ),
-                                                      size: Size(
-                                                        kNotebookPageWidth,
-                                                        _totalCanvasHeight,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  // Text blocks BELOW the ink.
-                                                  ..._buildTextBlockOverlays(),
-                                                  // Strokes above text blocks; IgnorePointer
-                                                  // so taps reach the boxes.
-                                                  IgnorePointer(
-                                                    child: RepaintBoundary(
-                                                      child: CustomPaint(
-                                                        painter:
-                                                            _NotebookCanvasPainter(
-                                                              pageBlockIds:
-                                                                  _pageBlockIds,
-                                                              pageData:
-                                                                  _pageData,
-                                                              visibleRect:
-                                                                  visibleRect,
-                                                              accentColor:
-                                                                  _accent,
-                                                              hiddenStrokes:
-                                                                  _hiddenStrokes(),
-                                                              imageCache:
-                                                                  _imgCache,
-                                                              drawBackground:
-                                                                  false,
-                                                            ),
-                                                        size: Size(
-                                                          kNotebookPageWidth,
-                                                          _totalCanvasHeight,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  IgnorePointer(
-                                                    child: RepaintBoundary(
-                                                      child: AnimatedBuilder(
-                                                        animation: _activeTick,
-                                                        builder:
-                                                            (
-                                                              _,
-                                                              _,
-                                                            ) => CustomPaint(
-                                                              painter: _ActiveStrokePainter(
-                                                                active: _active,
-                                                                pageTop:
-                                                                    _activePageIndex !=
-                                                                            null
-                                                                        ? _activePageIndex! *
-                                                                            (kNotebookPageHeight +
-                                                                                kNotebookPageGap)
-                                                                        : 0.0,
-                                                              ),
-                                                              size: Size(
-                                                                kNotebookPageWidth,
-                                                                _totalCanvasHeight,
-                                                              ),
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  // Task blocks above the ink.
-                                                  ..._buildTaskBlockOverlays(),
-                                                  if (_lassoCtrl.phase !=
-                                                      LassoPhase.idle)
-                                                    AnimatedBuilder(
-                                                      animation: _lassoAnimCtrl,
-                                                      builder:
-                                                          (_, _) => CustomPaint(
-                                                            painter: LassoPainter(
-                                                              ctrl: _lassoCtrl,
-                                                              animValue:
-                                                                  _lassoAnimCtrl
-                                                                      .value,
-                                                              strokes:
-                                                                  _allVisibleStrokes,
-                                                              images:
-                                                                  _allVisibleImages,
-                                                              imageCache:
-                                                                  _imgCache,
-                                                              visibleRect:
-                                                                  visibleRect,
-                                                            ),
-                                                            size: Size(
-                                                              kNotebookPageWidth,
-                                                              _totalCanvasHeight,
-                                                            ),
-                                                          ),
-                                                    ),
-                                                  if (pull > 0)
-                                                    Positioned(
-                                                      top: lastPageBottom + 20,
-                                                      left: 0,
-                                                      right: 0,
-                                                      child: IgnorePointer(
-                                                        child: Opacity(
-                                                          opacity: pull,
-                                                          child: Column(
-                                                            children: [
-                                                              Container(
-                                                                width: 40,
-                                                                height: 30,
-                                                                alignment:
-                                                                    Alignment
-                                                                        .center,
-                                                                decoration: BoxDecoration(
-                                                                  color:
-                                                                      _accent,
-                                                                  border: Border.all(
-                                                                    color: yBorderStrong,
-                                                                    width:
-                                                                        yLineMid,
-                                                                  ),
-                                                                ),
-                                                                child: Text(
-                                                                  '+',
-                                                                  style: ySans(
-                                                                    size: 20,
-                                                                    weight:
-                                                                        FontWeight
-                                                                            .w700,
-                                                                    color:
-                                                                        yCream,
-                                                                    height: 1.0,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                              const SizedBox(
-                                                                height: 8,
-                                                              ),
-                                                              Text(
-                                                                'NUEVA PÁGINA',
-                                                                style: TextStyle(
-                                                                  fontSize:
-                                                                      9 +
-                                                                      3 *
-                                                                          _pullAnimCtrl
-                                                                              .value,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w700,
-                                                                  color: yInk
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.3 +
-                                                                            0.4 *
-                                                                                _pullAnimCtrl.value,
-                                                                      ),
-                                                                  fontFamily:
-                                                                      'monospace',
-                                                                  letterSpacing:
-                                                                      1.4,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                ],
                                               ),
-                                            ),
+                                              // Text blocks BELOW the ink.
+                                              ...textBlockOverlays,
+                                              _buildNotebookStrokeLayer(
+                                                viewport,
+                                                Size(
+                                                  kNotebookPageWidth,
+                                                  _totalCanvasHeight,
+                                                ),
+                                              ),
+                                              IgnorePointer(
+                                                child: RepaintBoundary(
+                                                  child: AnimatedBuilder(
+                                                    animation: _activeTick,
+                                                    builder:
+                                                        (_, _) => CustomPaint(
+                                                          painter: _ActiveStrokePainter(
+                                                            active: _active,
+                                                            tick:
+                                                                _activeTick
+                                                                    .value,
+                                                            pageTop:
+                                                                _activePageIndex !=
+                                                                        null
+                                                                    ? _activePageIndex! *
+                                                                        (kNotebookPageHeight +
+                                                                            kNotebookPageGap)
+                                                                    : 0.0,
+                                                          ),
+                                                          size: Size(
+                                                            kNotebookPageWidth,
+                                                            _totalCanvasHeight,
+                                                          ),
+                                                        ),
+                                                  ),
+                                                ),
+                                              ),
+                                              // Task blocks above the ink.
+                                              ...taskBlockOverlays,
+                                              _buildNotebookLassoLayer(
+                                                viewport,
+                                                Size(
+                                                  kNotebookPageWidth,
+                                                  _totalCanvasHeight,
+                                                ),
+                                                lassoStrokes,
+                                                lassoImages,
+                                              ),
+                                              _buildPullIndicator(
+                                                viewport,
+                                                lastPageBottom,
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
                                     ),
-                                    if (_lassoCtrl.phase ==
-                                            LassoPhase.selected &&
-                                        _toolbarVisible)
-                                      _buildLassoMiniToolbar(),
-                                    if (_showPasteAt != null)
-                                      _buildPasteButton(),
-                                    if (_tool == DrawTool.eraser &&
-                                        _eraserCursor != null)
-                                      Positioned(
-                                        left:
-                                            _eraserCursor!.dx -
-                                            _eraserScreenRadius,
-                                        top:
-                                            _eraserCursor!.dy -
-                                            _eraserScreenRadius,
-                                        child: const EraserCursor(
-                                          radius: _eraserScreenRadius,
+                                  ),
+                                ),
+                                // Screen-space overlays that track the view
+                                // transform — their own tiny AnimatedBuilder
+                                // so they still follow pan, without dragging
+                                // the heavy canvas subtree into a rebuild.
+                                Positioned.fill(
+                                  child: AnimatedBuilder(
+                                    animation: _viewCtrl,
+                                    builder:
+                                        (_, _) => Stack(
+                                          clipBehavior: Clip.none,
+                                          children: [
+                                            if (_lassoCtrl.phase ==
+                                                    LassoPhase.selected &&
+                                                _toolbarVisible)
+                                              _buildLassoMiniToolbar(),
+                                            if (_showPasteAt != null)
+                                              _buildPasteButton(),
+                                            if (_tool == DrawTool.eraser &&
+                                                _eraserCursor != null)
+                                              Positioned(
+                                                left:
+                                                    _eraserCursor!.dx -
+                                                    _eraserScreenRadius,
+                                                top:
+                                                    _eraserCursor!.dy -
+                                                    _eraserScreenRadius,
+                                                child: const EraserCursor(
+                                                  radius: _eraserScreenRadius,
+                                                ),
+                                              ),
+                                          ],
                                         ),
-                                      ),
-                                  ],
-                                );
-                              },
+                                  ),
+                                ),
+                              ],
                             );
                           },
                         ),
@@ -3632,10 +3732,43 @@ class _CollapsedNotebookHeader extends StatelessWidget {
 
 // ─── Canvas painter ──────────────────────────────────────────────────────
 
+// Reused across painter instances/frames — constant page chrome (never
+// mutated, drawn read-only) and laid-out page-number labels (text shaping is
+// not cheap; the number + style for a given page never change).
+final Paint _pageBgPaint = Paint()..color = const Color(0xFFF0EDE6);
+final Paint _pageShadowPaint = Paint()..color = yInk.withValues(alpha: 0.12);
+final Paint _pageBorderPaint =
+    Paint()
+      ..color = yInk.withValues(alpha: 0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+final Map<int, TextPainter> _pageNumberPainters = {};
+
+TextPainter _pageNumberPainter(int page) {
+  final cached = _pageNumberPainters[page];
+  if (cached != null) return cached;
+  final tp = TextPainter(
+    text: TextSpan(
+      text: '$page',
+      style: TextStyle(
+        fontSize: 10,
+        color: yMuted.withValues(alpha: 0.4),
+        fontFamily: 'monospace',
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  _pageNumberPainters[page] = tp;
+  return tp;
+}
+
 class _NotebookCanvasPainter extends CustomPainter {
   final List<int> pageBlockIds;
   final Map<int, DrawingData> pageData;
   final Rect visibleRect;
+  final int paintVersion;
   final Color accentColor;
   final Map<int, Set<int>> hiddenStrokes;
   final Map<int, Set<int>> hiddenImages;
@@ -3651,6 +3784,7 @@ class _NotebookCanvasPainter extends CustomPainter {
     required this.pageBlockIds,
     required this.pageData,
     required this.visibleRect,
+    required this.paintVersion,
     required this.accentColor,
     this.hiddenStrokes = const {},
     this.hiddenImages = const {},
@@ -3663,7 +3797,7 @@ class _NotebookCanvasPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (drawBackground) {
       // Background behind pages
-      canvas.drawRect(visibleRect, Paint()..color = const Color(0xFFF0EDE6));
+      canvas.drawRect(visibleRect, _pageBgPaint);
     }
 
     for (int i = 0; i < pageBlockIds.length; i++) {
@@ -3681,10 +3815,7 @@ class _NotebookCanvasPainter extends CustomPainter {
 
       if (drawBackground) {
         // Page shadow
-        canvas.drawRect(
-          pageRect.shift(const Offset(4, 4)),
-          Paint()..color = yInk.withValues(alpha: 0.12),
-        );
+        canvas.drawRect(pageRect.shift(const Offset(4, 4)), _pageShadowPaint);
 
         // Paper + pattern (per page).
         final paper = bgPaper(
@@ -3700,27 +3831,10 @@ class _NotebookCanvasPainter extends CustomPainter {
         );
 
         // Page border
-        canvas.drawRect(
-          pageRect,
-          Paint()
-            ..color = yInk.withValues(alpha: 0.3)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.0,
-        );
+        canvas.drawRect(pageRect, _pageBorderPaint);
 
         // Page number
-        final tp = TextPainter(
-          text: TextSpan(
-            text: '${i + 1}',
-            style: TextStyle(
-              fontSize: 10,
-              color: yMuted.withValues(alpha: 0.4),
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
+        final tp = _pageNumberPainter(i + 1);
         tp.paint(
           canvas,
           Offset(
@@ -3761,7 +3875,7 @@ class _NotebookCanvasPainter extends CustomPainter {
         if (drawStrokes) {
           for (int si = 0; si < data.strokes.length; si++) {
             if (skip != null && skip.contains(si)) continue;
-            if (!_strokeInRect(data.strokes[si], pageVisible)) continue;
+            if (!strokeOverlapsRect(data.strokes[si], pageVisible)) continue;
             drawStroke(canvas, data.strokes[si]);
           }
         }
@@ -3771,15 +3885,15 @@ class _NotebookCanvasPainter extends CustomPainter {
     }
   }
 
-  bool _strokeInRect(DrawingStroke s, Rect r) {
-    for (final p in s.points) {
-      if (r.contains(Offset(p[0], p[1]))) return true;
-    }
-    return false;
-  }
-
   @override
-  bool shouldRepaint(_NotebookCanvasPainter old) => true;
+  bool shouldRepaint(_NotebookCanvasPainter old) =>
+      old.paintVersion != paintVersion ||
+      old.visibleRect != visibleRect ||
+      old.accentColor != accentColor ||
+      old.drawBackground != drawBackground ||
+      old.drawStrokes != drawStrokes ||
+      old.hiddenStrokes != hiddenStrokes ||
+      old.hiddenImages != hiddenImages;
 }
 
 /// Paints only the in-progress stroke, in its own RepaintBoundary, so live
@@ -3787,9 +3901,14 @@ class _NotebookCanvasPainter extends CustomPainter {
 /// the page-local stroke coords into canvas space.
 class _ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? active;
+  final int tick;
   final double pageTop;
 
-  _ActiveStrokePainter({required this.active, required this.pageTop});
+  _ActiveStrokePainter({
+    required this.active,
+    required this.tick,
+    required this.pageTop,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -3801,5 +3920,6 @@ class _ActiveStrokePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ActiveStrokePainter old) => true;
+  bool shouldRepaint(_ActiveStrokePainter old) =>
+      old.active != active || old.tick != tick || old.pageTop != pageTop;
 }

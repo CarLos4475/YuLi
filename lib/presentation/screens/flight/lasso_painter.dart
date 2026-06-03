@@ -60,16 +60,13 @@ class LassoPainter extends CustomPainter {
     final path = ctrl.lassoPath;
     if (path.length < 2) return;
 
-    final tracePath = Path()..moveTo(path.first.dx, path.first.dy);
-    for (int i = 1; i < path.length; i++) {
-      tracePath.lineTo(path[i].dx, path[i].dy);
-    }
-    _drawDashedPath(canvas, tracePath, const Color(0x99111111), 1.5);
-
-    final closePath = Path()
-      ..moveTo(path.last.dx, path.last.dy)
-      ..lineTo(path.first.dx, path.first.dy);
-    _drawDashedPath(canvas, closePath, const Color(0x55111111), 1.0);
+    _drawDashedPolyline(canvas, path, const Color(0x99111111), 1.5);
+    _drawDashedPolyline(
+      canvas,
+      [path.last, path.first],
+      const Color(0x55111111),
+      1.0,
+    );
   }
 
   // ─── Selection ─────────────────────────────────────────────────────────
@@ -79,9 +76,10 @@ class LassoPainter extends CustomPainter {
       if (i >= images.length) continue;
       final im = images[i];
       if (ctrl.phase == LassoPhase.moving) {
-        final ghost = im.clone()
-          ..x += offset.dx
-          ..y += offset.dy;
+        final ghost =
+            im.clone()
+              ..x += offset.dx
+              ..y += offset.dy;
         drawCanvasImage(canvas, _img(im), ghost);
       }
       canvas.drawRect(
@@ -117,11 +115,12 @@ class LassoPainter extends CustomPainter {
     for (final i in ctrl.selectedImageIndices) {
       if (i >= images.length) continue;
       final im = images[i];
-      final ghost = im.clone()
-        ..x = pivot.dx + (im.x - pivot.dx) * scX
-        ..y = pivot.dy + (im.y - pivot.dy) * scY
-        ..w = im.w * scX
-        ..h = im.h * scY;
+      final ghost =
+          im.clone()
+            ..x = pivot.dx + (im.x - pivot.dx) * scX
+            ..y = pivot.dy + (im.y - pivot.dy) * scY
+            ..w = im.w * scX
+            ..h = im.h * scY;
       drawCanvasImage(canvas, _img(im), ghost);
       canvas.drawRect(
         Rect.fromLTWH(ghost.x, ghost.y, ghost.w, ghost.h),
@@ -139,33 +138,51 @@ class LassoPainter extends CustomPainter {
     if (ctrl.boundingBox != null) {
       final bb = ctrl.boundingBox!;
       final scaledBox = Rect.fromPoints(
-        Offset(pivot.dx + (bb.left - pivot.dx) * scX, pivot.dy + (bb.top - pivot.dy) * scY),
-        Offset(pivot.dx + (bb.right - pivot.dx) * scX, pivot.dy + (bb.bottom - pivot.dy) * scY),
+        Offset(
+          pivot.dx + (bb.left - pivot.dx) * scX,
+          pivot.dy + (bb.top - pivot.dy) * scY,
+        ),
+        Offset(
+          pivot.dx + (bb.right - pivot.dx) * scX,
+          pivot.dy + (bb.bottom - pivot.dy) * scY,
+        ),
       );
       _drawBoundingBox(canvas, scaledBox);
     }
   }
 
-  void _drawStrokeXY(Canvas canvas, DrawingStroke stroke, Offset pivot,
-      double scX, double scY, {required bool highlight}) {
+  void _drawStrokeXY(
+    Canvas canvas,
+    DrawingStroke stroke,
+    Offset pivot,
+    double scX,
+    double scY, {
+    required bool highlight,
+  }) {
     if (stroke.points.isEmpty) return;
     final avgScale = (scX + scY) / 2;
-    final paint = Paint()
-      ..color = highlight ? const Color(0x402D4B8E) : Color(stroke.colorValue)
-      ..strokeWidth = highlight
-          ? (stroke.strokeWidth + 6) * avgScale
-          : stroke.strokeWidth * avgScale
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color =
+              highlight ? const Color(0x402D4B8E) : Color(stroke.colorValue)
+          ..strokeWidth =
+              highlight
+                  ? (stroke.strokeWidth + 6) * avgScale
+                  : stroke.strokeWidth * avgScale
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke;
     if (!highlight) _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
       final p = stroke.points[0];
       final px = pivot.dx + (p[0] - pivot.dx) * scX;
       final py = pivot.dy + (p[1] - pivot.dy) * scY;
-      canvas.drawCircle(Offset(px, py), paint.strokeWidth / 2,
-          paint..style = PaintingStyle.fill);
+      canvas.drawCircle(
+        Offset(px, py),
+        paint.strokeWidth / 2,
+        paint..style = PaintingStyle.fill,
+      );
       return;
     }
 
@@ -173,7 +190,12 @@ class LassoPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  Path _buildScaledPathXY(DrawingStroke stroke, Offset pivot, double scX, double scY) {
+  Path _buildScaledPathXY(
+    DrawingStroke stroke,
+    Offset pivot,
+    double scX,
+    double scY,
+  ) {
     final pts = stroke.points;
     double tx(double x) => pivot.dx + (x - pivot.dx) * scX;
     double ty(double y) => pivot.dy + (y - pivot.dy) * scY;
@@ -199,12 +221,13 @@ class LassoPainter extends CustomPainter {
 
   void _drawHighlight(Canvas canvas, DrawingStroke stroke, Offset offset) {
     if (stroke.points.isEmpty) return;
-    final paint = Paint()
-      ..color = const Color(0x402D4B8E)
-      ..strokeWidth = stroke.strokeWidth + 6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = const Color(0x402D4B8E)
+          ..strokeWidth = stroke.strokeWidth + 6
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke;
 
     if (stroke.points.length == 1) {
       final p = stroke.points[0];
@@ -220,14 +243,19 @@ class LassoPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  void _drawStrokeWithOffset(Canvas canvas, DrawingStroke stroke, Offset offset) {
+  void _drawStrokeWithOffset(
+    Canvas canvas,
+    DrawingStroke stroke,
+    Offset offset,
+  ) {
     if (stroke.points.isEmpty) return;
-    final paint = Paint()
-      ..color = Color(stroke.colorValue)
-      ..strokeWidth = stroke.strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color = Color(stroke.colorValue)
+          ..strokeWidth = stroke.strokeWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke;
     _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
@@ -246,8 +274,7 @@ class LassoPainter extends CustomPainter {
 
   Path _buildStrokePath(DrawingStroke stroke, Offset offset) {
     final pts = stroke.points;
-    final path = Path()
-      ..moveTo(pts[0][0] + offset.dx, pts[0][1] + offset.dy);
+    final path = Path()..moveTo(pts[0][0] + offset.dx, pts[0][1] + offset.dy);
     if (stroke.isShape) {
       for (int i = 1; i < pts.length; i++) {
         path.lineTo(pts[i][0] + offset.dx, pts[i][1] + offset.dy);
@@ -281,53 +308,74 @@ class LassoPainter extends CustomPainter {
       final icx = im.x + im.w / 2;
       final icy = im.y + im.h / 2;
       final r = _rotatePoint(Offset(icx, icy), center, cos, sin);
-      final ghost = im.clone()
-        ..x = r.dx - im.w / 2
-        ..y = r.dy - im.h / 2
-        ..rotation = im.rotation + angle;
+      final ghost =
+          im.clone()
+            ..x = r.dx - im.w / 2
+            ..y = r.dy - im.h / 2
+            ..rotation = im.rotation + angle;
       drawCanvasImage(canvas, _img(im), ghost);
     }
 
     for (final i in ctrl.selectedIndices) {
       if (i >= strokes.length) continue;
       _drawStrokeRotated(canvas, strokes[i], center, cos, sin, highlight: true);
-      _drawStrokeRotated(canvas, strokes[i], center, cos, sin, highlight: false);
+      _drawStrokeRotated(
+        canvas,
+        strokes[i],
+        center,
+        cos,
+        sin,
+        highlight: false,
+      );
     }
 
     if (ctrl.boundingBox != null) {
       final bb = ctrl.boundingBox!;
-      final corners = [bb.topLeft, bb.topRight, bb.bottomRight, bb.bottomLeft]
-          .map((c) => _rotatePoint(c, center, cos, sin))
-          .toList();
-      final path = Path()
-        ..moveTo(corners[0].dx, corners[0].dy)
-        ..lineTo(corners[1].dx, corners[1].dy)
-        ..lineTo(corners[2].dx, corners[2].dy)
-        ..lineTo(corners[3].dx, corners[3].dy)
-        ..close();
-      _drawDashedPath(canvas, path, const Color(0x802D4B8E),
-          1.5 / (ctrl.hitScale <= 0 ? 1.0 : ctrl.hitScale));
+      final corners =
+          [
+            bb.topLeft,
+            bb.topRight,
+            bb.bottomRight,
+            bb.bottomLeft,
+          ].map((c) => _rotatePoint(c, center, cos, sin)).toList();
+      _drawDashedPolyline(
+        canvas,
+        corners,
+        const Color(0x802D4B8E),
+        1.5 / (ctrl.hitScale <= 0 ? 1.0 : ctrl.hitScale),
+        close: true,
+      );
     }
   }
 
-  void _drawStrokeRotated(Canvas canvas, DrawingStroke stroke, Offset center,
-      double cos, double sin, {required bool highlight}) {
+  void _drawStrokeRotated(
+    Canvas canvas,
+    DrawingStroke stroke,
+    Offset center,
+    double cos,
+    double sin, {
+    required bool highlight,
+  }) {
     if (stroke.points.isEmpty) return;
-    final paint = Paint()
-      ..color = highlight
-          ? const Color(0x402D4B8E)
-          : Color(stroke.colorValue)
-      ..strokeWidth = highlight ? stroke.strokeWidth + 6 : stroke.strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
+    final paint =
+        Paint()
+          ..color =
+              highlight ? const Color(0x402D4B8E) : Color(stroke.colorValue)
+          ..strokeWidth =
+              highlight ? stroke.strokeWidth + 6 : stroke.strokeWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..style = PaintingStyle.stroke;
     if (!highlight) _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
       final p = stroke.points[0];
       final r = _rotatePoint(Offset(p[0], p[1]), center, cos, sin);
-      canvas.drawCircle(r, paint.strokeWidth / 2,
-          paint..style = PaintingStyle.fill);
+      canvas.drawCircle(
+        r,
+        paint.strokeWidth / 2,
+        paint..style = PaintingStyle.fill,
+      );
       return;
     }
 
@@ -335,9 +383,15 @@ class LassoPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  Path _buildRotatedPath(DrawingStroke stroke, Offset center, double cos, double sin) {
+  Path _buildRotatedPath(
+    DrawingStroke stroke,
+    Offset center,
+    double cos,
+    double sin,
+  ) {
     final pts = stroke.points;
-    Offset r(int i) => _rotatePoint(Offset(pts[i][0], pts[i][1]), center, cos, sin);
+    Offset r(int i) =>
+        _rotatePoint(Offset(pts[i][0], pts[i][1]), center, cos, sin);
     final first = r(0);
     final path = Path()..moveTo(first.dx, first.dy);
     if (stroke.isShape) {
@@ -350,7 +404,12 @@ class LassoPainter extends CustomPainter {
     for (int i = 1; i < pts.length - 1; i++) {
       final p0 = r(i);
       final p1 = r(i + 1);
-      path.quadraticBezierTo(p0.dx, p0.dy, (p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
+      path.quadraticBezierTo(
+        p0.dx,
+        p0.dy,
+        (p0.dx + p1.dx) / 2,
+        (p0.dy + p1.dy) / 2,
+      );
     }
     final last = r(pts.length - 1);
     path.lineTo(last.dx, last.dy);
@@ -360,27 +419,39 @@ class LassoPainter extends CustomPainter {
   static Offset _rotatePoint(Offset p, Offset center, double cos, double sin) {
     final dx = p.dx - center.dx;
     final dy = p.dy - center.dy;
-    return Offset(center.dx + dx * cos - dy * sin, center.dy + dx * sin + dy * cos);
+    return Offset(
+      center.dx + dx * cos - dy * sin,
+      center.dy + dx * sin + dy * cos,
+    );
   }
 
   void _drawBoundingBox(Canvas canvas, Rect box) {
     // Everything below is drawn at a constant SIZE ON SCREEN (÷ scale) so the
     // box, handles and rotation knob stay visible and aimable when zoomed out.
     final s = ctrl.hitScale <= 0 ? 1.0 : ctrl.hitScale;
-    final path = Path()
-      ..moveTo(box.left, box.top)
-      ..lineTo(box.right, box.top)
-      ..lineTo(box.right, box.bottom)
-      ..lineTo(box.left, box.bottom)
-      ..close();
-    _drawDashedPath(canvas, path, const Color(0x802D4B8E), 1.5 / s);
+    _drawDashedPolyline(
+      canvas,
+      [
+        Offset(box.left, box.top),
+        Offset(box.right, box.top),
+        Offset(box.right, box.bottom),
+        Offset(box.left, box.bottom),
+      ],
+      const Color(0x802D4B8E),
+      1.5 / s,
+      close: true,
+    );
 
-    final handlePaint = Paint()
-      ..color = const Color(0xFF2D4B8E)
-      ..style = PaintingStyle.fill;
+    final handlePaint =
+        Paint()
+          ..color = const Color(0xFF2D4B8E)
+          ..style = PaintingStyle.fill;
     final hs = 7.0 / s;
     for (final corner in [
-      box.topLeft, box.topRight, box.bottomLeft, box.bottomRight,
+      box.topLeft,
+      box.topRight,
+      box.bottomLeft,
+      box.bottomRight,
     ]) {
       canvas.drawRect(
         Rect.fromCenter(center: corner, width: hs, height: hs),
@@ -390,17 +461,18 @@ class LassoPainter extends CustomPainter {
     final ss = 6.0 / s;
     // Text-only selections can't resize vertically → omit the top/bottom side
     // handles (matches hitTestSideHandle).
-    final sideHandles = ctrl.blocksOnlySelection
-        ? [
-            Offset(box.right, box.center.dy),
-            Offset(box.left, box.center.dy),
-          ]
-        : [
-            Offset(box.center.dx, box.top),
-            Offset(box.right, box.center.dy),
-            Offset(box.center.dx, box.bottom),
-            Offset(box.left, box.center.dy),
-          ];
+    final sideHandles =
+        ctrl.blocksOnlySelection
+            ? [
+              Offset(box.right, box.center.dy),
+              Offset(box.left, box.center.dy),
+            ]
+            : [
+              Offset(box.center.dx, box.top),
+              Offset(box.right, box.center.dy),
+              Offset(box.center.dx, box.bottom),
+              Offset(box.left, box.center.dy),
+            ];
     for (final side in sideHandles) {
       canvas.drawRect(
         Rect.fromCenter(center: side, width: ss, height: ss),
@@ -420,26 +492,53 @@ class LassoPainter extends CustomPainter {
 
   // ─── Dashed path utility ───────────────────────────────────────────────
 
-  void _drawDashedPath(Canvas canvas, Path source, Color color, double width) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
+  void _drawDashedPolyline(
+    Canvas canvas,
+    List<Offset> points,
+    Color color,
+    double width, {
+    bool close = false,
+  }) {
+    if (points.length < 2) return;
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = width
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
 
-    final metrics = source.computeMetrics();
     final phaseOffset = animValue * _kDashTotal;
+    var dashStart = -phaseOffset;
+    var segmentStart = 0.0;
+    final count = close ? points.length : points.length - 1;
 
-    for (final metric in metrics) {
-      double dist = -phaseOffset;
-      while (dist < metric.length) {
-        final start = dist.clamp(0.0, metric.length);
-        final end = (dist + _kDash).clamp(0.0, metric.length);
-        if (end > start) {
-          canvas.drawPath(metric.extractPath(start, end), paint);
-        }
-        dist += _kDashTotal;
+    for (int i = 0; i < count; i++) {
+      final a = points[i];
+      final b = points[(i + 1) % points.length];
+      final delta = b - a;
+      final length = delta.distance;
+      if (length <= 0) continue;
+      final segmentEnd = segmentStart + length;
+      while (dashStart + _kDash <= segmentStart) {
+        dashStart += _kDashTotal;
       }
+      var currentDash = dashStart;
+      while (currentDash < segmentEnd) {
+        final start = currentDash.clamp(segmentStart, segmentEnd);
+        final end = (currentDash + _kDash).clamp(segmentStart, segmentEnd);
+        if (end > start) {
+          final localStart = (start - segmentStart) / length;
+          final localEnd = (end - segmentStart) / length;
+          canvas.drawLine(
+            Offset.lerp(a, b, localStart)!,
+            Offset.lerp(a, b, localEnd)!,
+            paint,
+          );
+        }
+        currentDash += _kDashTotal;
+      }
+      dashStart = currentDash - _kDashTotal;
+      segmentStart = segmentEnd;
     }
   }
 

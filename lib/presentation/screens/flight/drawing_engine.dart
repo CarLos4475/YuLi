@@ -2,6 +2,9 @@ import 'dart:ui';
 
 import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
+import 'stroke_bounds.dart';
+
+final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
 
 /// Draw a canvas image (behind strokes) honoring its position/size/rotation.
 /// While the bitmap is still decoding, [image] is null and a light placeholder
@@ -19,8 +22,7 @@ void drawCanvasImage(Canvas canvas, Image? image, CanvasImage ci) {
   if (image != null) {
     final src = Rect.fromLTWH(
         0, 0, image.width.toDouble(), image.height.toDouble());
-    canvas.drawImageRect(
-        image, src, rect, Paint()..filterQuality = FilterQuality.medium);
+    canvas.drawImageRect(image, src, rect, _imagePaint);
   } else {
     canvas.drawRect(rect, Paint()..color = const Color(0x14000000));
     canvas.drawRect(
@@ -83,7 +85,7 @@ void drawStroke(Canvas canvas, DrawingStroke stroke) {
     );
     return;
   }
-  canvas.drawPath(buildStrokePath(stroke), paint);
+  canvas.drawPath(cachedStrokePath(stroke, () => buildStrokePath(stroke)), paint);
 }
 
 /// Build the outline path for a non-fountain stroke. Recognized shapes
