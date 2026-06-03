@@ -777,7 +777,7 @@ class _TareasStrip extends StatelessWidget {
           Row(
             children: [
               Text(
-                '── TAREAS PENDIENTES',
+                'TAREAS PENDIENTES',
                 style: yMono(
                   size: 11,
                   weight: FontWeight.w700,
@@ -788,7 +788,7 @@ class _TareasStrip extends StatelessWidget {
               const SizedBox(width: 10),
               YBadge(
                 label: '@${folder.name} · ${tasks.length}',
-                bg: yFight,
+                bg: folder.color,
                 fg: yCream,
                 fontSize: 10,
               ),
@@ -855,7 +855,39 @@ class _TareaStripRow extends ConsumerWidget {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () async {
-              await setTaskDone(ref, task.id, done: true);
+              // This row disappears the instant the task is completed (it's no
+              // longer pending), disposing its `ref`/`context`. Capture the
+              // messenger + repos NOW (while alive) so both the snackbar and the
+              // undo survive the disposal.
+              final messenger = ScaffoldMessenger.of(context);
+              final taskRepo = ref.read(taskRepositoryProvider);
+              final kanbanRepo = ref.read(kanbanCardRepositoryProvider);
+              final labRepo = ref.read(labSpaceRepositoryProvider);
+              await setTaskDoneWith(
+                taskRepo: taskRepo,
+                kanbanRepo: kanbanRepo,
+                labRepo: labRepo,
+                taskId: task.id,
+                done: true,
+              );
+              messenger.showSnackBar(
+                SnackBar(
+                  content: const Text('Tarea completada'),
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: 'Deshacer',
+                    onPressed: () {
+                      setTaskDoneWith(
+                        taskRepo: taskRepo,
+                        kanbanRepo: kanbanRepo,
+                        labRepo: labRepo,
+                        taskId: task.id,
+                        done: false,
+                      );
+                    },
+                  ),
+                ),
+              );
             },
             child: Container(
               width: 16,

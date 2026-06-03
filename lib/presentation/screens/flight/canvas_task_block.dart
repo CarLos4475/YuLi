@@ -45,7 +45,6 @@ class CanvasTaskBlockOverlay extends ConsumerStatefulWidget {
   final int noteId;
   final int? folderId;
   final String folderName;
-  final Color folderColor;
   final Color accent;
 
   /// True when the user can tap tasks / use the block's buttons. False while a
@@ -71,7 +70,6 @@ class CanvasTaskBlockOverlay extends ConsumerStatefulWidget {
     required this.noteId,
     required this.folderId,
     required this.folderName,
-    required this.folderColor,
     required this.accent,
     required this.interactive,
     required this.onPersist,
@@ -208,7 +206,7 @@ class _CanvasTaskBlockOverlayState
                   width: 6,
                   height: 34,
                   margin: const EdgeInsets.only(right: 10),
-                  color: widget.folderColor,
+                  color: widget.accent,
                 ),
                 Expanded(
                   child: TextField(
@@ -399,7 +397,7 @@ class _CanvasTaskBlockOverlayState
       ),
       child: Container(
         decoration: BoxDecoration(
-          border: Border(left: BorderSide(color: widget.folderColor, width: 6)),
+          border: Border(left: BorderSide(color: widget.accent, width: 6)),
         ),
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(

@@ -142,6 +142,16 @@ El resto (colores, vencida/fin-de-día, transiciones, completar/reabrir, calenda
 - **OCR:** "Enviar a Yuli" con 1 nota fuente → escribe en ella; con ≥2 → diálogo "¿a qué nota?"; con 0 notas (solo URLs) → ancla puntual.
 - Sin red al agregar/refetch URL → aviso claro, usa lo cacheado.
 
+### Exportar canvas a PDF/PNG (pizarra + cuaderno) — NUEVO, sin probar en dispositivo
+
+Módulo aislado del hot-path de render: `canvas_export.dart` re-pinta en frío un `PictureRecorder` reusando `drawStroke`/`drawCanvasImage`/`paintBgPattern` (mismos primitivos que pantalla → fidelidad 1:1). Bloques texto/tarea se rasterizan offscreen (`canvas_block_raster.dart`) montando los MISMOS overlays con `interactive:false` en un `OverlayEntry` fuera de pantalla y capturando su `RepaintBoundary`. Sheets de opciones en `canvas_export_sheet.dart`. Entrada en el "more popup" (⋯) de ambos editores.
+
+- **Pizarra:** ⋯ → EXPORTAR → sheet (TODO / ÁREA, PDF/PNG, incluir tareas). **ÁREA** = recuadro: **1 dedo dibuja, 2 dedos mueven/zoom** (el rect queda anclado en mundo y sigue al pan/zoom); levantar el dedo **NO** exporta — se puede reajustar y se confirma con el botón "EXPORTAR ESTA ÁREA". Usa el mismo `_screenToWorld` del dibujo → coords exactas. **TODO** = bbox automático de todo el contenido (+24px).
+- **Cuaderno:** el export vive en el **visor de páginas** (drawer). Botón EXPORTAR en el header → modo selección con **checkbox por página** (elegir 1,2,10… o TODAS) → confirmar → sheet (PDF/PNG; "una página PDF por hoja" si >1; incluir tareas). PNG multi-página = apilado vertical en una sola imagen. PDF multipágina = una hoja A4 (595×842 pt) por página.
+- **Verificar en Android:** (1) fidelidad — color de fondo + patrón + trazos (incl. estilográfica/marcador/relleno/figuras) + imágenes + bloques de texto/tarea salen idénticos; (2) bloques rotados no se recortan; (3) toggle de tareas las incluye/excluye; (4) `Share` abre el diálogo nativo y el archivo se abre bien en un visor; (5) selección enorme no revienta memoria (tope 4096px de lado); (6) **que NO haya regresión de calor/render** tras exportar (volver a dibujar sigue fluido). 
+- **Miniaturas del drawer del cuaderno arregladas:** `_PageThumbnailPainter` ahora usa `paintBgPattern` + papel/patrón **por página** (`data.background`/`bgColorValue`) + imágenes — antes usaba un fondo hardcodeado y un solo bg global. Verificar que las miniaturas se ven como la página real.
+- **`pdf_export.dart` (viejo, editor de notas por celdas) NO se tocó** — sigue para ese editor; el canvas usa el módulo nuevo.
+
 ### Cajas de TEXTO en canvas (pizarra + cuaderno)
 
 - **MODO TEXTO:** toca **Texto** (icono notas) → inserta caja Y se queda en modo texto. Tamaño adaptado al zoom.

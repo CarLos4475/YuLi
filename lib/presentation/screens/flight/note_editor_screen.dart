@@ -560,7 +560,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: widget.folder.color,
+                          color: _accent,
                           border: Border.all(
                             color: yBorderStrong,
                             width: yLineMid,

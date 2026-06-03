@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../../../domain/models/page_background.dart';
 import '../../widgets/yuli_design.dart';
+import 'background_paint.dart';
+import 'canvas_image_cache.dart';
 import 'drawing_engine.dart';
 import 'note_cell_model.dart';
 import 'notebook_constants.dart';
 
-class NotebookPageDrawer extends StatelessWidget {
+class NotebookPageDrawer extends StatefulWidget {
   final List<int> pageBlockIds;
   final Map<int, DrawingData> pageData;
   final Set<int> starredBlockIds;
-  final PageBackground background;
   final Color accentColor;
+  final CanvasImageCache? imageCache;
   final int currentPageIndex;
   final void Function(int pageIndex) onNavigate;
   final void Function(int blockId) onToggleStar;
@@ -20,13 +21,17 @@ class NotebookPageDrawer extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onAddPage;
 
+  /// Export the chosen page indices (0-based, sorted ascending). The editor
+  /// closes the drawer and runs the format sheet + render.
+  final void Function(List<int> pageIndices) onExport;
+
   const NotebookPageDrawer({
     super.key,
     required this.pageBlockIds,
     required this.pageData,
     required this.starredBlockIds,
-    required this.background,
     required this.accentColor,
+    this.imageCache,
     required this.currentPageIndex,
     required this.onNavigate,
     required this.onToggleStar,
@@ -34,23 +39,73 @@ class NotebookPageDrawer extends StatelessWidget {
     required this.onReorder,
     required this.onClose,
     required this.onAddPage,
+    required this.onExport,
   });
+
+  @override
+  State<NotebookPageDrawer> createState() => _NotebookPageDrawerState();
+}
+
+class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
+  bool _exportMode = false;
+  final Set<int> _selected = {};
+
+  void _enterExport() {
+    setState(() {
+      _exportMode = true;
+      _selected
+        ..clear()
+        ..add(widget.currentPageIndex);
+    });
+  }
+
+  void _exitExport() {
+    setState(() {
+      _exportMode = false;
+      _selected.clear();
+    });
+  }
+
+  void _toggleSelect(int pageIndex) {
+    setState(() {
+      if (!_selected.remove(pageIndex)) _selected.add(pageIndex);
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      if (_selected.length == widget.pageBlockIds.length) {
+        _selected.clear();
+      } else {
+        _selected
+          ..clear()
+          ..addAll([for (int i = 0; i < widget.pageBlockIds.length; i++) i]);
+      }
+    });
+  }
+
+  void _confirmExport() {
+    if (_selected.isEmpty) return;
+    final indices = _selected.toList()..sort();
+    _exitExport();
+    widget.onExport(indices);
+  }
 
   @override
   Widget build(BuildContext context) {
     final starred = <_PageRef>[];
     final unstarred = <_PageRef>[];
-    for (int i = 0; i < pageBlockIds.length; i++) {
-      final id = pageBlockIds[i];
+    for (int i = 0; i < widget.pageBlockIds.length; i++) {
+      final id = widget.pageBlockIds[i];
       final ref = _PageRef(pageIndex: i, blockId: id);
-      if (starredBlockIds.contains(id)) {
+      if (widget.starredBlockIds.contains(id)) {
         starred.add(ref);
       } else {
         unstarred.add(ref);
       }
     }
 
-    final canDelete = pageBlockIds.length > 1;
+    final canDelete = widget.pageBlockIds.length > 1;
 
     return Container(
       decoration: const BoxDecoration(
@@ -63,10 +118,17 @@ class NotebookPageDrawer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _DrawerHeader(
-              pageCount: pageBlockIds.length,
-              accentColor: accentColor,
-              onClose: onClose,
-              onAddPage: onAddPage,
+              pageCount: widget.pageBlockIds.length,
+              accentColor: widget.accentColor,
+              exportMode: _exportMode,
+              selectedCount: _selected.length,
+              allSelected: _selected.length == widget.pageBlockIds.length,
+              onClose: widget.onClose,
+              onAddPage: widget.onAddPage,
+              onEnterExport: _enterExport,
+              onExitExport: _exitExport,
+              onSelectAll: _selectAll,
+              onConfirmExport: _confirmExport,
             ),
             Expanded(
               child: CustomScrollView(
@@ -87,16 +149,20 @@ class NotebookPageDrawer extends StatelessWidget {
                             key: ValueKey('s-${ref.blockId}'),
                             pageIndex: ref.pageIndex,
                             blockId: ref.blockId,
-                            data: pageData[ref.blockId],
-                            background: background,
-                            accentColor: accentColor,
+                            data: widget.pageData[ref.blockId],
+                            accentColor: widget.accentColor,
+                            imageCache: widget.imageCache,
                             isStarred: true,
-                            isCurrent: ref.pageIndex == currentPageIndex,
+                            isCurrent: ref.pageIndex == widget.currentPageIndex,
                             canDelete: canDelete,
                             showDragHandle: false,
-                            onTap: () => onNavigate(ref.pageIndex),
-                            onToggleStar: () => onToggleStar(ref.blockId),
-                            onDelete: () => onDelete(ref.pageIndex),
+                            exportMode: _exportMode,
+                            isSelected: _selected.contains(ref.pageIndex),
+                            onTap: _exportMode
+                                ? () => _toggleSelect(ref.pageIndex)
+                                : () => widget.onNavigate(ref.pageIndex),
+                            onToggleStar: () => widget.onToggleStar(ref.blockId),
+                            onDelete: () => widget.onDelete(ref.pageIndex),
                           );
                         },
                         childCount: starred.length,
@@ -112,24 +178,28 @@ class NotebookPageDrawer extends StatelessWidget {
                   ),
                   SliverReorderableList(
                     itemCount: unstarred.length,
-                    onReorder: onReorder,
+                    onReorder: widget.onReorder,
                     itemBuilder: (ctx, i) {
                       final ref = unstarred[i];
                       return _PageTile(
                         key: ValueKey('u-${ref.blockId}'),
                         pageIndex: ref.pageIndex,
                         blockId: ref.blockId,
-                        data: pageData[ref.blockId],
-                        background: background,
-                        accentColor: accentColor,
+                        data: widget.pageData[ref.blockId],
+                        accentColor: widget.accentColor,
+                        imageCache: widget.imageCache,
                         isStarred: false,
-                        isCurrent: ref.pageIndex == currentPageIndex,
+                        isCurrent: ref.pageIndex == widget.currentPageIndex,
                         canDelete: canDelete,
-                        showDragHandle: true,
+                        showDragHandle: !_exportMode,
                         dragIndex: i,
-                        onTap: () => onNavigate(ref.pageIndex),
-                        onToggleStar: () => onToggleStar(ref.blockId),
-                        onDelete: () => onDelete(ref.pageIndex),
+                        exportMode: _exportMode,
+                        isSelected: _selected.contains(ref.pageIndex),
+                        onTap: _exportMode
+                            ? () => _toggleSelect(ref.pageIndex)
+                            : () => widget.onNavigate(ref.pageIndex),
+                        onToggleStar: () => widget.onToggleStar(ref.blockId),
+                        onDelete: () => widget.onDelete(ref.pageIndex),
                       );
                     },
                   ),
@@ -153,14 +223,28 @@ class _PageRef {
 class _DrawerHeader extends StatelessWidget {
   final int pageCount;
   final Color accentColor;
+  final bool exportMode;
+  final int selectedCount;
+  final bool allSelected;
   final VoidCallback onClose;
   final VoidCallback onAddPage;
+  final VoidCallback onEnterExport;
+  final VoidCallback onExitExport;
+  final VoidCallback onSelectAll;
+  final VoidCallback onConfirmExport;
 
   const _DrawerHeader({
     required this.pageCount,
     required this.accentColor,
+    required this.exportMode,
+    required this.selectedCount,
+    required this.allSelected,
     required this.onClose,
     required this.onAddPage,
+    required this.onEnterExport,
+    required this.onExitExport,
+    required this.onSelectAll,
+    required this.onConfirmExport,
   });
 
   @override
@@ -171,83 +255,189 @@ class _DrawerHeader extends StatelessWidget {
         border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineHeavy)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Row(
-        children: [
-          Container(width: 4, height: 28, color: accentColor),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'PÁGINAS',
-                  style: ySans(
-                    size: 16,
-                    weight: FontWeight.w700,
-                    letterSpacing: -0.3,
-                    color: yInk,
-                    height: 1.0,
-                  ),
+      child: exportMode ? _exportRow() : _normalRow(),
+    );
+  }
+
+  Widget _normalRow() {
+    return Row(
+      children: [
+        Container(width: 4, height: 28, color: accentColor),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'PÁGINAS',
+                style: ySans(
+                  size: 16,
+                  weight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: yInk,
+                  height: 1.0,
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  '$pageCount EN TOTAL',
-                  style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '$pageCount EN TOTAL',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yMuted,
                 ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onAddPage,
-            child: Container(
-              height: 32,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: accentColor,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.add, size: 14, color: yCream),
-                  const SizedBox(width: 4),
-                  Text(
-                    'NUEVA',
-                    style: yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      tracking: 1.2,
-                      color: yCream,
-                    ),
-                  ),
-                ],
+            ],
+          ),
+        ),
+        _HeaderBtn(
+          icon: Icons.ios_share,
+          label: 'EXPORTAR',
+          filled: false,
+          accentColor: accentColor,
+          onTap: onEnterExport,
+        ),
+        const SizedBox(width: 8),
+        _HeaderBtn(
+          icon: Icons.add,
+          label: 'NUEVA',
+          filled: true,
+          accentColor: accentColor,
+          onTap: onAddPage,
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onClose,
+          child: Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: yCream,
+              border: Border.all(color: yBorderStrong, width: yLineMid),
+            ),
+            child: const Icon(Icons.close, color: yInk, size: 16),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _exportRow() {
+    return Row(
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onExitExport,
+          child: Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: yCream,
+              border: Border.all(color: yBorderStrong, width: yLineMid),
+            ),
+            child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'EXPORTAR',
+                style: ySans(
+                  size: 16,
+                  weight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: yInk,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '$selectedCount SELECCIONADA${selectedCount == 1 ? '' : 'S'}',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _HeaderBtn(
+          icon: allSelected ? Icons.deselect : Icons.select_all,
+          label: allSelected ? 'NINGUNA' : 'TODAS',
+          filled: false,
+          accentColor: accentColor,
+          onTap: onSelectAll,
+        ),
+        const SizedBox(width: 8),
+        Opacity(
+          opacity: selectedCount == 0 ? 0.4 : 1,
+          child: _HeaderBtn(
+            icon: Icons.check,
+            label: 'LISTO',
+            filled: true,
+            accentColor: accentColor,
+            onTap: selectedCount == 0 ? () {} : onConfirmExport,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeaderBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool filled;
+  final Color accentColor;
+  final VoidCallback onTap;
+  const _HeaderBtn({
+    required this.icon,
+    required this.label,
+    required this.filled,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: filled ? accentColor : yCream,
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: filled ? yCream : yInk),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.2,
+                color: filled ? yCream : yInk,
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onClose,
-            child: Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-              ),
-              child: const Icon(Icons.close, color: yInk, size: 16),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -310,13 +500,15 @@ class _PageTile extends StatelessWidget {
   final int pageIndex;
   final int blockId;
   final DrawingData? data;
-  final PageBackground background;
   final Color accentColor;
+  final CanvasImageCache? imageCache;
   final bool isStarred;
   final bool isCurrent;
   final bool canDelete;
   final bool showDragHandle;
   final int? dragIndex;
+  final bool exportMode;
+  final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onToggleStar;
   final VoidCallback onDelete;
@@ -326,13 +518,15 @@ class _PageTile extends StatelessWidget {
     required this.pageIndex,
     required this.blockId,
     required this.data,
-    required this.background,
     required this.accentColor,
+    this.imageCache,
     required this.isStarred,
     required this.isCurrent,
     required this.canDelete,
     required this.showDragHandle,
     this.dragIndex,
+    this.exportMode = false,
+    this.isSelected = false,
     required this.onTap,
     required this.onToggleStar,
     required this.onDelete,
@@ -350,7 +544,11 @@ class _PageTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: isCurrent ? accentColor.withValues(alpha: 0.1) : yCream,
+          color: isSelected
+              ? accentColor.withValues(alpha: 0.18)
+              : isCurrent
+                  ? accentColor.withValues(alpha: 0.1)
+                  : yCream,
           border: const Border(
             bottom: BorderSide(color: yBorderStrong, width: 0.5),
           ),
@@ -359,11 +557,25 @@ class _PageTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (isCurrent)
+            if (exportMode) ...[
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected ? accentColor : yCream,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: isSelected
+                    ? const Icon(Icons.check, size: 15, color: yCream)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+            ] else if (isCurrent)
               Container(width: 3, height: thumbH, color: accentColor)
             else
               const SizedBox(width: 3),
-            const SizedBox(width: 8),
+            if (!exportMode) const SizedBox(width: 8),
             Container(
               width: thumbW,
               height: thumbH,
@@ -383,14 +595,18 @@ class _PageTile extends StatelessWidget {
               child: ClipRect(
                 child: data == null
                     ? const SizedBox()
-                    : CustomPaint(
-                        painter: _PageThumbnailPainter(
-                          data: data!,
-                          background: background,
-                          accentColor: accentColor,
-                          scale: thumbW / kNotebookPageWidth,
+                    // Own layer: rasterized once, so the drawer's slide-in
+                    // animation just offsets it instead of re-painting strokes.
+                    : RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _PageThumbnailPainter(
+                            data: data!,
+                            accentColor: accentColor,
+                            imageCache: imageCache,
+                            scale: thumbW / kNotebookPageWidth,
+                          ),
+                          size: const Size(thumbW, thumbH),
                         ),
-                        size: const Size(thumbW, thumbH),
                       ),
               ),
             ),
@@ -424,18 +640,20 @@ class _PageTile extends StatelessWidget {
                 ],
               ),
             ),
-            _IconBtn(
-              icon: isStarred ? Icons.bookmark : Icons.bookmark_border,
-              color: isStarred ? accentColor : yMuted,
-              onTap: onToggleStar,
-            ),
-            const SizedBox(width: 6),
-            _IconBtn(
-              icon: Icons.delete_outline,
-              color: canDelete ? yInk : yMuted.withValues(alpha: 0.3),
-              onTap: canDelete ? () => _confirmDelete(context) : null,
-            ),
-            if (showDragHandle && dragIndex != null) ...[
+            if (!exportMode) ...[
+              _IconBtn(
+                icon: isStarred ? Icons.bookmark : Icons.bookmark_border,
+                color: isStarred ? accentColor : yMuted,
+                onTap: onToggleStar,
+              ),
+              const SizedBox(width: 6),
+              _IconBtn(
+                icon: Icons.delete_outline,
+                color: canDelete ? yInk : yMuted.withValues(alpha: 0.3),
+                onTap: canDelete ? () => _confirmDelete(context) : null,
+              ),
+            ],
+            if (!exportMode && showDragHandle && dragIndex != null) ...[
               const SizedBox(width: 6),
               ReorderableDragStartListener(
                 index: dragIndex!,
@@ -571,16 +789,19 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
+/// Renders a page thumbnail with the SAME primitives as [_NotebookCanvasPainter]
+/// (paper color + pattern + images + strokes), per-page background, so a tile
+/// looks like a shrunk page instead of the old hand-rolled approximation.
 class _PageThumbnailPainter extends CustomPainter {
   final DrawingData data;
-  final PageBackground background;
   final Color accentColor;
+  final CanvasImageCache? imageCache;
   final double scale;
 
   _PageThumbnailPainter({
     required this.data,
-    required this.background,
     required this.accentColor,
+    required this.imageCache,
     required this.scale,
   });
 
@@ -591,11 +812,20 @@ class _PageThumbnailPainter extends CustomPainter {
 
     final pageRect =
         Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight);
-
-    canvas.drawRect(pageRect, Paint()..color = const Color(0xFFFFFDF8));
-    _drawBackground(canvas, pageRect);
-
     canvas.clipRect(pageRect);
+
+    final paper = bgPaper(data.bgColorValue, const Color(0xFFFFFDF8));
+    canvas.drawRect(pageRect, Paint()..color = paper);
+    paintBgPattern(canvas, pageRect, data.background, bgMark(paper));
+
+    for (final im in data.images) {
+      drawCanvasImage(canvas, imageCache?.get(im.filename), im);
+    }
+    // Text/task blocks are widget overlays (never painted) — at thumbnail scale
+    // their text is illegible, so draw a representative card box at each block's
+    // position so the page preview isn't missing content. Above images, below
+    // strokes (matches the live layer order).
+    _drawBlocks(canvas);
     for (final stroke in data.strokes) {
       drawStroke(canvas, stroke);
     }
@@ -603,58 +833,66 @@ class _PageThumbnailPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _drawBackground(Canvas canvas, Rect page) {
-    switch (background) {
-      case PageBackground.blank:
-        break;
-      case PageBackground.lined:
-        final paint = Paint()
-          ..color = const Color(0xFFD6D1C8)
-          ..strokeWidth = 0.5;
-        const step = 28.0;
-        for (double y = page.top + 60; y < page.bottom - 20; y += step) {
-          canvas.drawLine(
-            Offset(page.left + 40, y),
-            Offset(page.right - 20, y),
-            paint,
-          );
-        }
-        canvas.drawLine(
-          Offset(page.left + 36, page.top + 40),
-          Offset(page.left + 36, page.bottom - 20),
-          Paint()
-            ..color = accentColor.withValues(alpha: 0.45)
-            ..strokeWidth = 0.8,
+  void _drawBlocks(Canvas canvas) {
+    // World-unit width so it renders ~constant px after the canvas scale.
+    final bw = 0.7 / scale;
+    final fill = Paint()..color = yCream;
+    final border = Paint()
+      ..color = yBorderStrong
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = bw;
+    final hint = Paint()..color = yInk.withValues(alpha: 0.28);
+    final accent = Paint()..color = accentColor;
+
+    for (final b in data.textBlocks) {
+      final rect = Rect.fromLTWH(b.x, b.y, b.w, b.h);
+      canvas.drawRect(rect, fill);
+      // Accent left stripe (mirrors the card's left border).
+      final stripeW = (b.w * 0.06).clamp(4.0, 18.0);
+      canvas.drawRect(
+        Rect.fromLTWH(b.x, b.y, stripeW, b.h),
+        accent,
+      );
+      canvas.drawRect(rect, border);
+      // A few faint lines to suggest text.
+      final pad = stripeW + b.w * 0.06;
+      final lh = b.h / 5;
+      for (int i = 1; i <= 3; i++) {
+        final y = b.y + lh * i;
+        if (y > b.y + b.h - lh * 0.5) break;
+        canvas.drawRect(
+          Rect.fromLTWH(b.x + pad, y, (b.w - pad - b.w * 0.08), bw * 1.5),
+          hint,
         );
-      case PageBackground.grid:
-      case PageBackground.gridSmall:
-        final paint = Paint()
-          ..color = const Color(0xFFDAD6CE)
-          ..strokeWidth = 0.4;
-        final step = background == PageBackground.gridSmall ? 14.0 : 28.0;
-        for (double y = page.top + step; y < page.bottom; y += step) {
-          canvas.drawLine(
-              Offset(page.left, y), Offset(page.right, y), paint);
-        }
-        for (double x = page.left + step; x < page.right; x += step) {
-          canvas.drawLine(
-              Offset(x, page.top), Offset(x, page.bottom), paint);
-        }
-      case PageBackground.dotted:
-        final dot = Paint()..color = yMuted.withValues(alpha: 0.2);
-        const step = 28.0;
-        for (double x = page.left + step; x < page.right; x += step) {
-          for (double y = page.top + step; y < page.bottom; y += step) {
-            canvas.drawCircle(Offset(x, y), 1.0, dot);
-          }
-        }
+      }
+    }
+
+    for (final b in data.taskBlocks) {
+      final rect = Rect.fromLTWH(b.x, b.y, b.w, b.h);
+      canvas.drawRect(rect, fill);
+      canvas.drawRect(rect, border);
+      // Rows of [checkbox + line] to suggest a checklist.
+      final rowH = (b.h / 4).clamp(1.0, b.h);
+      final box = (rowH * 0.5).clamp(2.0, 40.0);
+      final left = b.x + b.w * 0.08;
+      for (int i = 0; i < 3; i++) {
+        final cy = b.y + rowH * (i + 0.6);
+        if (cy + box > b.y + b.h) break;
+        final sq = Rect.fromLTWH(left, cy, box, box);
+        canvas.drawRect(sq, accent);
+        canvas.drawRect(
+          Rect.fromLTWH(left + box * 1.6, cy + box * 0.2,
+              b.w - (left - b.x) - box * 1.6 - b.w * 0.08, box * 0.6),
+          hint,
+        );
+      }
     }
   }
 
   @override
   bool shouldRepaint(_PageThumbnailPainter old) =>
       old.data != data ||
-      old.background != background ||
       old.accentColor != accentColor ||
+      old.imageCache != imageCache ||
       old.scale != scale;
 }

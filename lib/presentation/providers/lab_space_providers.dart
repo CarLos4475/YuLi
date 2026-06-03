@@ -3,6 +3,9 @@ import '../../domain/models/lab_space.dart';
 import '../../domain/models/kanban_card.dart';
 import '../../domain/models/kanban_column.dart';
 import '../../domain/models/canvas_context_source.dart';
+import '../../domain/repositories/task_repository.dart';
+import '../../domain/repositories/kanban_card_repository.dart';
+import '../../domain/repositories/lab_space_repository.dart';
 import 'database_providers.dart';
 
 final activeLabSpacesProvider = StreamProvider<List<LabSpace>>((ref) {
@@ -61,8 +64,32 @@ Future<void> setTaskDone(
   WidgetRef ref,
   int taskId, {
   required bool done,
+}) {
+  // Resolve the repos synchronously (the ref is alive at call time) and delegate
+  // to the repo-based core. The core never touches `ref`, so it's safe even if
+  // the caller's widget is disposed mid-flight (e.g. the folder task bar item,
+  // which disappears the moment the task is completed → "Cannot use ref after
+  // the widget was disposed"). Callers that also need to UNDO later (after the
+  // widget is gone) should capture the repos themselves and call
+  // [setTaskDoneWith] directly.
+  return setTaskDoneWith(
+    taskRepo: ref.read(taskRepositoryProvider),
+    kanbanRepo: ref.read(kanbanCardRepositoryProvider),
+    labRepo: ref.read(labSpaceRepositoryProvider),
+    taskId: taskId,
+    done: done,
+  );
+}
+
+/// Repo-based core of [setTaskDone] — holds no widget reference, so it survives
+/// the caller's disposal (used for undo from a transient widget).
+Future<void> setTaskDoneWith({
+  required TaskRepository taskRepo,
+  required KanbanCardRepository kanbanRepo,
+  required LabSpaceRepository labRepo,
+  required int taskId,
+  required bool done,
 }) async {
-  final taskRepo = ref.read(taskRepositoryProvider);
   // Flip the task itself first — must happen even with no linked card.
   if (done) {
     await taskRepo.markDone(taskId);
@@ -70,13 +97,10 @@ Future<void> setTaskDone(
     await taskRepo.rescueToday(taskId);
   }
 
-  final kanbanRepo = ref.read(kanbanCardRepositoryProvider);
   final card = await kanbanRepo.getByOriginTaskId(taskId);
   if (card == null) return;
 
-  final columns = await ref
-      .read(labSpaceRepositoryProvider)
-      .getColumns(card.labSpaceId);
+  final columns = await labRepo.getColumns(card.labSpaceId);
   final target = done ? _terminalColumn(columns) : _firstOpenColumn(columns);
   if (target == null || target.id == card.columnId) return;
 

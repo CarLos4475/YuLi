@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -37,6 +38,9 @@ import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
 import 'ai_chat_sheet.dart';
+import 'canvas_export_sheet.dart';
+import '../../utils/canvas_block_raster.dart';
+import '../../utils/canvas_export.dart';
 import 'ocr_flow.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
@@ -151,6 +155,23 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Offset? _pastePos;
   Offset? _showPasteAt;
 
+  // Export: when a marquee selection is requested, the chosen options are held
+  // until the user confirms. The selection [_marqueeWorld] is a WORLD-space rect
+  // (captured through the same pointer pipeline + `_screenToWorld` as drawing, so
+  // it lines up exactly). One finger draws/adjusts; two fingers pan/zoom (the
+  // rect stays anchored in world space). After drawing it shows lasso-style
+  // handles to resize/move; lifting a finger never exports — confirm with the
+  // button.
+  bool _exportMarquee = false;
+  Rect? _marqueeWorld;
+  CanvasExportOptions? _pendingExport;
+  final Set<int> _marqueePointers = {};
+  _MarqueeHandle? _marqueeDrag;
+  Offset? _marqueeDragAnchorWorld; // world pos where the current drag began
+  Rect? _marqueeRectAtDragStart; // rect when the resize/move drag began
+  Offset? _marqueeDrawStart; // world anchor of a fresh draw
+  Rect? _marqueeRectBackup; // restored if a fresh draw ends up too small
+
   // Lasso action toolbar is summoned by tapping the selection, not shown on
   // select. Tap outside hides it (selection kept); tap outside again deselects.
   bool _toolbarVisible = false;
@@ -187,7 +208,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   @override
   void initState() {
     super.initState();
-    _palette = buildPenPalette(widget.folder.color);
+    _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -915,6 +936,44 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _onDown(PointerDownEvent e) {
+    if (_exportMarquee) {
+      _marqueePointers.add(e.pointer);
+      if (_marqueePointers.length >= 2) {
+        // Second finger → hand the gesture to the InteractiveViewer (pan/zoom);
+        // abandon any in-progress drag, keep the committed rect.
+        _marqueeDrag = null;
+        return;
+      }
+      final p = e.localPosition;
+      final rect = _marqueeWorld;
+      if (rect != null) {
+        final sr = _worldRectToScreen(rect);
+        final handle = _hitMarqueeHandle(p, sr);
+        if (handle != null) {
+          _marqueeDrag = handle;
+          _marqueeRectAtDragStart = rect;
+          _marqueeDragAnchorWorld = _screenToWorld(p);
+          return;
+        }
+        if (sr.contains(p)) {
+          _marqueeDrag = _MarqueeHandle.move;
+          _marqueeRectAtDragStart = rect;
+          _marqueeDragAnchorWorld = _screenToWorld(p);
+          return;
+        }
+      }
+      // Fresh draw, anchored exactly at the touch point.
+      _marqueeDrag = _MarqueeHandle.draw;
+      _marqueeRectBackup = rect;
+      _marqueeDrawStart = _screenToWorld(p);
+      setState(
+        () => _marqueeWorld = Rect.fromPoints(
+          _marqueeDrawStart!,
+          _marqueeDrawStart!,
+        ),
+      );
+      return;
+    }
     if (_eyedropperMode) {
       _sampleAt(_screenToWorld(e.localPosition));
       return;
@@ -1124,6 +1183,23 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   static const _minDist2 = 9.0; // 3px squared
 
   void _onMove(PointerMoveEvent e) {
+    if (_exportMarquee) {
+      // Only a single finger draws/adjusts; with 2+ the InteractiveViewer pans.
+      if (_marqueePointers.length != 1 || _marqueeDrag == null) return;
+      final w = _screenToWorld(e.localPosition);
+      final drag = _marqueeDrag!;
+      if (drag == _MarqueeHandle.draw) {
+        setState(() => _marqueeWorld = Rect.fromPoints(_marqueeDrawStart!, w));
+      } else if (drag == _MarqueeHandle.move) {
+        final d = w - _marqueeDragAnchorWorld!;
+        setState(() => _marqueeWorld = _marqueeRectAtDragStart!.shift(d));
+      } else {
+        setState(
+          () => _marqueeWorld = _resizeMarquee(_marqueeRectAtDragStart!, drag, w),
+        );
+      }
+      return;
+    }
     if (_activePointers.length >= 2 && !_multiFingerMoved) {
       final start = _pointerDownPos[e.pointer];
       if (start != null && (e.localPosition - start).distance > 15) {
@@ -1185,6 +1261,24 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _onUp(PointerUpEvent e) {
+    if (_exportMarquee) {
+      // Lifting a finger never exports — the rect stays (with handles) for
+      // adjustment until the user taps confirm.
+      _marqueePointers.remove(e.pointer);
+      final wasDraw = _marqueeDrag == _MarqueeHandle.draw;
+      _marqueeDrag = null;
+      if (wasDraw) {
+        _marqueeDrawStart = null;
+        final r = _marqueeWorld;
+        if (r == null || r.width < 8 || r.height < 8) {
+          setState(() => _marqueeWorld = _marqueeRectBackup);
+        }
+        _marqueeRectBackup = null;
+      } else {
+        setState(() {}); // refresh handle positions after move/resize
+      }
+      return;
+    }
     _activePointers.remove(e.pointer);
     _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
@@ -1255,6 +1349,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _onCancel(PointerCancelEvent e) {
+    if (_exportMarquee) {
+      _marqueePointers.remove(e.pointer);
+      _marqueeDrag = null;
+      _marqueeDrawStart = null;
+      return;
+    }
     _activePointers.remove(e.pointer);
     _pointerDownPos.remove(e.pointer);
     _holdTimer?.cancel();
@@ -1724,7 +1824,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           noteId: widget.note.id,
           folderId: widget.note.folderId,
           folderName: widget.folder.name,
-          folderColor: widget.folder.color,
           accent: _accent,
           interactive:
               !selected &&
@@ -2464,7 +2563,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 // a box (its GestureDetector), so disable pan;
                                 // 2-finger still zooms/navigates.
                                 panEnabled:
-                                    _tool == DrawTool.text
+                                    _exportMarquee
+                                        ? false
+                                        : _tool == DrawTool.text
                                         ? false
                                         : _tool == DrawTool.lasso
                                         ? (_lassoCtrl.phase ==
@@ -2474,7 +2575,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                         ? !_stylusActive
                                         : !_isDrawing,
                                 scaleEnabled:
-                                    _tool == DrawTool.text
+                                    _exportMarquee
+                                        ? true
+                                        : _tool == DrawTool.text
                                         ? true
                                         : _tool == DrawTool.lasso
                                         ? (_lassoCtrl.phase ==
@@ -2737,8 +2840,261 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
             ),
           ],
+          if (_exportMarquee)
+            Positioned.fill(
+              child: _ExportMarqueeOverlay(
+                accent: _accent,
+                viewCtrl: _viewCtrl,
+                worldRect: _marqueeWorld,
+                onConfirm: _confirmMarquee,
+                onCancel: _cancelMarquee,
+              ),
+            ),
         ],
       ),
+    );
+  }
+
+  // ─── Export ────────────────────────────────────────────────────────────
+
+  /// World-space rects of the blocks that will be exported (text always; tasks
+  /// only when [includeTasks]). Used to grow the "export everything" bounds.
+  List<Rect> _exportBlockRects(bool includeTasks) {
+    final rects = <Rect>[
+      for (final b in _data.textBlocks) Rect.fromLTWH(b.x, b.y, b.w, b.h),
+    ];
+    if (includeTasks) {
+      for (final b in _data.taskBlocks) {
+        rects.add(Rect.fromLTWH(b.x, b.y, b.w, b.h));
+      }
+    }
+    return rects;
+  }
+
+  /// Off-screen raster specs for the visible blocks (rotation-zeroed clones; the
+  /// rotation is re-applied at composite time).
+  List<BlockRasterSpec> _exportBlockSpecs(bool includeTasks) {
+    final specs = <BlockRasterSpec>[];
+    for (final b in _data.textBlocks) {
+      final clone = b.clone()..rotation = 0;
+      specs.add(
+        BlockRasterSpec(
+          worldPos: Offset(b.x, b.y),
+          rotation: b.rotation,
+          child: CanvasTextBlockOverlay(
+            block: clone,
+            accent: _accent,
+            interactive: false,
+            onPersist: () async {},
+            onChanged: () {},
+            onHeightMeasured: (_) {},
+          ),
+        ),
+      );
+    }
+    if (includeTasks) {
+      for (final b in _data.taskBlocks) {
+        final clone = b.clone()..rotation = 0;
+        specs.add(
+          BlockRasterSpec(
+            worldPos: Offset(b.x, b.y),
+            rotation: b.rotation,
+            child: CanvasTaskBlockOverlay(
+              block: clone,
+              noteId: widget.note.id,
+              folderId: widget.note.folderId,
+              folderName: widget.folder.name,
+              accent: _accent,
+              interactive: false,
+              onPersist: () async {},
+              onTasksChanged: () {},
+              onHeightMeasured: (_) {},
+            ),
+          ),
+        );
+      }
+    }
+    return specs;
+  }
+
+  Future<void> _startExport() async {
+    setState(() => _morePopupOpen = false);
+    final hasTasks = _data.taskBlocks.isNotEmpty;
+    final opts = await showWhiteboardExportSheet(
+      context,
+      accent: _accent,
+      hasTasks: hasTasks,
+    );
+    if (opts == null || !mounted) return;
+    if (opts.region == WhiteboardRegion.marquee) {
+      setState(() {
+        _pendingExport = opts;
+        _exportMarquee = true;
+        _marqueeWorld = null;
+        _marqueePointers.clear();
+        _marqueeDrag = null;
+        _marqueeDrawStart = null;
+        _marqueeRectBackup = null;
+      });
+      HapticFeedback.lightImpact();
+      return;
+    }
+    final bounds = contentBounds(
+      _data,
+      blockRects: _exportBlockRects(opts.includeTasks),
+    );
+    if (bounds == null || bounds.isEmpty) {
+      _showExportEmpty();
+      return;
+    }
+    _runExport(opts, bounds.inflate(24));
+  }
+
+  void _cancelMarquee() {
+    setState(() {
+      _exportMarquee = false;
+      _marqueeWorld = null;
+      _pendingExport = null;
+      _marqueePointers.clear();
+      _marqueeDrag = null;
+      _marqueeDrawStart = null;
+      _marqueeRectBackup = null;
+    });
+  }
+
+  void _confirmMarquee() {
+    final opts = _pendingExport;
+    final region = _marqueeWorld;
+    if (opts == null || region == null) return;
+    if (region.width < 8 || region.height < 8) {
+      _showExportEmpty(message: 'Área demasiado pequeña');
+      return;
+    }
+    setState(() {
+      _exportMarquee = false;
+      _marqueeWorld = null;
+      _pendingExport = null;
+      _marqueePointers.clear();
+      _marqueeDrag = null;
+      _marqueeDrawStart = null;
+      _marqueeRectBackup = null;
+    });
+    _runExport(opts, region);
+  }
+
+  /// Selection rect (world) → screen, normalized (left<right, top<bottom).
+  Rect _worldRectToScreen(Rect world) {
+    final tl = MatrixUtils.transformPoint(_viewCtrl.value, world.topLeft);
+    final br = MatrixUtils.transformPoint(_viewCtrl.value, world.bottomRight);
+    return Rect.fromPoints(tl, br);
+  }
+
+  /// Which handle (if any) is under [p] for the on-screen selection [sr].
+  /// Corners win over sides. ~24px touch tolerance.
+  _MarqueeHandle? _hitMarqueeHandle(Offset p, Rect sr) {
+    const tol = 24.0;
+    bool near(Offset h) => (p - h).distance <= tol;
+    if (near(sr.topLeft)) return _MarqueeHandle.tl;
+    if (near(sr.topRight)) return _MarqueeHandle.tr;
+    if (near(sr.bottomLeft)) return _MarqueeHandle.bl;
+    if (near(sr.bottomRight)) return _MarqueeHandle.br;
+    if (near(sr.topCenter)) return _MarqueeHandle.t;
+    if (near(sr.bottomCenter)) return _MarqueeHandle.b;
+    if (near(sr.centerLeft)) return _MarqueeHandle.l;
+    if (near(sr.centerRight)) return _MarqueeHandle.r;
+    return null;
+  }
+
+  /// Resize [base] (world) by moving the edge(s) of [handle] to world point [w].
+  Rect _resizeMarquee(Rect base, _MarqueeHandle handle, Offset w) {
+    var l = base.left, t = base.top, r = base.right, b = base.bottom;
+    switch (handle) {
+      case _MarqueeHandle.tl:
+        l = w.dx;
+        t = w.dy;
+      case _MarqueeHandle.tr:
+        r = w.dx;
+        t = w.dy;
+      case _MarqueeHandle.bl:
+        l = w.dx;
+        b = w.dy;
+      case _MarqueeHandle.br:
+        r = w.dx;
+        b = w.dy;
+      case _MarqueeHandle.t:
+        t = w.dy;
+      case _MarqueeHandle.b:
+        b = w.dy;
+      case _MarqueeHandle.l:
+        l = w.dx;
+      case _MarqueeHandle.r:
+        r = w.dx;
+      case _MarqueeHandle.move:
+      case _MarqueeHandle.draw:
+        break;
+    }
+    return Rect.fromLTRB(l < r ? l : r, t < b ? t : b, l < r ? r : l, t < b ? b : t);
+  }
+
+  Future<void> _runExport(CanvasExportOptions opts, Rect region) async {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ExportProgressDialog(accent: _accent),
+    );
+    final images = <String, ui.Image>{};
+    final blocks = <ExportBlockImage>[];
+    ui.Image? rendered;
+    try {
+      final pr = exportPixelRatio(region);
+      final specs = _exportBlockSpecs(opts.includeTasks);
+      blocks.addAll(
+        await rasterizeCanvasBlocks(
+          context: context,
+          specs: specs,
+          pixelRatio: pr,
+        ),
+      );
+      images.addAll(await loadExportImages(_imageDirPath, _data.images));
+      rendered = await renderCanvasRegion(
+        data: _data,
+        region: region,
+        pixelRatio: pr,
+        paper: bgPaper(_data.bgColorValue, yCream),
+        images: images,
+        blocks: blocks,
+      );
+      final name = sanitizeFilename(
+        widget.note.title?.isNotEmpty == true
+            ? widget.note.title!
+            : widget.folder.name,
+      );
+      if (opts.format == ExportFormat.png) {
+        final png = await imageToPngBytes(rendered);
+        await shareExportBytes(png, '$name.png', text: 'Pizarra · YuLi');
+      } else {
+        final pdf = await buildCanvasPdf([
+          ExportPage(image: rendered, worldSize: region.size),
+        ]);
+        await shareExportBytes(pdf, '$name.pdf', text: 'Pizarra · YuLi');
+      }
+    } catch (_) {
+      if (mounted) _showExportEmpty(message: 'No se pudo exportar');
+    } finally {
+      rendered?.dispose();
+      for (final b in blocks) {
+        b.image.dispose();
+      }
+      disposeExportImages(images);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
+  void _showExportEmpty({String message = 'Nada que exportar'}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -2952,6 +3308,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// button so the main row stays uncluttered and edge-to-edge.
   Widget _buildMorePopup() {
     return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
       decoration: BoxDecoration(
         color: yCream,
         border: Border.all(color: yBorderStrong, width: yLineMid),
@@ -3014,6 +3371,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               setState(() => _morePopupOpen = false);
               _zoomToFit();
             },
+          ),
+          _toolBtn(
+            icon: Icons.ios_share,
+            active: false,
+            label: 'EXPORTAR',
+            onTap: _startExport,
           ),
           _toolBtn(
             icon: Icons.delete_outline,
@@ -3494,4 +3857,198 @@ class _BrutalBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Full-screen overlay shown while choosing a rectangular export region. The
+/// drag is handled by the canvas pointer pipeline (1 finger draws/adjusts, 2
+/// fingers pan/zoom — coords match the drawing space exactly); this only paints
+/// the dimmed area + selection + lasso-style resize handles ([worldRect] mapped
+/// through [viewCtrl], so it stays anchored while panning/zooming) and offers
+/// cancel / confirm. Lifting a finger does not export.
+class _ExportMarqueeOverlay extends StatelessWidget {
+  final Color accent;
+  final TransformationController viewCtrl;
+  final Rect? worldRect;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const _ExportMarqueeOverlay({
+    required this.accent,
+    required this.viewCtrl,
+    required this.worldRect,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRect = worldRect != null;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: ListenableBuilder(
+              listenable: viewCtrl,
+              builder: (_, _) {
+                Rect? rect;
+                if (hasRect) {
+                  final a = MatrixUtils.transformPoint(
+                      viewCtrl.value, worldRect!.topLeft);
+                  final b = MatrixUtils.transformPoint(
+                      viewCtrl.value, worldRect!.bottomRight);
+                  rect = Rect.fromPoints(a, b);
+                }
+                return CustomPaint(
+                  painter: _MarqueePainter(rect: rect, accent: accent),
+                );
+              },
+            ),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: yInk,
+                        border: Border.all(color: yBorderStrong, width: yLineMid),
+                      ),
+                      child: Text(
+                        '1 dedo: dibuja y ajusta con las manijas · 2 dedos: mover / zoom',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.0,
+                          color: yCream,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onCancel,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: yCream,
+                        border: Border.all(color: yBorderStrong, width: yLineMid),
+                      ),
+                      child: const Icon(Icons.close, color: yInk, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (hasRect)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onConfirm,
+                  child: Container(
+                    height: 50,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      border: Border.all(color: yBorderStrong, width: yLineHeavy),
+                      boxShadow: const [
+                        BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+                      ],
+                    ),
+                    child: Text(
+                      'EXPORTAR ESTA ÁREA',
+                      style: yMono(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yCream,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Which part of the export marquee a drag is manipulating.
+enum _MarqueeHandle { tl, tr, bl, br, t, b, l, r, move, draw }
+
+class _MarqueePainter extends CustomPainter {
+  final Rect? rect;
+  final Color accent;
+  _MarqueePainter({required this.rect, required this.accent});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final full = Offset.zero & size;
+    final dim = Paint()..color = yInk.withValues(alpha: 0.32);
+    if (rect == null) {
+      canvas.drawRect(full, dim);
+      return;
+    }
+    final sel = rect!;
+    // Dim everything outside the selection (4 bands around it).
+    canvas.drawRect(Rect.fromLTRB(0, 0, size.width, sel.top), dim);
+    canvas.drawRect(
+        Rect.fromLTRB(0, sel.bottom, size.width, size.height), dim);
+    canvas.drawRect(Rect.fromLTRB(0, sel.top, sel.left, sel.bottom), dim);
+    canvas.drawRect(
+        Rect.fromLTRB(sel.right, sel.top, size.width, sel.bottom), dim);
+    canvas.drawRect(
+      sel,
+      Paint()
+        ..color = accent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+    // Lasso-style square handles at corners + side midpoints.
+    final handles = <Offset>[
+      sel.topLeft,
+      sel.topRight,
+      sel.bottomLeft,
+      sel.bottomRight,
+      sel.topCenter,
+      sel.bottomCenter,
+      sel.centerLeft,
+      sel.centerRight,
+    ];
+    final fill = Paint()..color = yCream;
+    final border = Paint()
+      ..color = accent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    const r = 6.0;
+    for (final h in handles) {
+      final box = Rect.fromCenter(center: h, width: r * 2, height: r * 2);
+      canvas.drawRect(box, fill);
+      canvas.drawRect(box, border);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MarqueePainter old) =>
+      old.rect != rect || old.accent != accent;
 }

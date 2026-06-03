@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -20,9 +21,12 @@ import '../../providers/note_providers.dart';
 import '../../widgets/ai_link_badge.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../utils/canvas_block_raster.dart';
+import '../../utils/canvas_export.dart';
 import 'ai_chat_sheet.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
+import 'canvas_export_sheet.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
 import 'canvas_text_block.dart';
@@ -199,7 +203,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   void initState() {
     super.initState();
-    _palette = buildPenPalette(widget.folder.color);
+    _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -1992,7 +1996,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             noteId: widget.note.id,
             folderId: widget.note.folderId,
             folderName: widget.folder.name,
-            folderColor: widget.folder.color,
             accent: _accent,
             interactive:
                 !selected &&
@@ -3044,8 +3047,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   pageBlockIds: _pageBlockIds,
                   pageData: _pageData,
                   starredBlockIds: _starredBlockIds,
-                  background: _currentBg,
                   accentColor: _accent,
+                  imageCache: _imgCache,
                   currentPageIndex: _drawerSnapshotPage,
                   onNavigate: _navigateToPage,
                   onToggleStar: _toggleStarred,
@@ -3055,6 +3058,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   onAddPage: () {
                     _addPageAtEnd();
                     HapticFeedback.lightImpact();
+                  },
+                  onExport: (indices) {
+                    _togglePageDrawer();
+                    _exportPages(indices);
                   },
                 ),
               ),
@@ -3421,8 +3428,185 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   /// Secondary / occasional controls behind the toolbar's "more" (⋯) button so
   /// the main row stays uncluttered and edge-to-edge.
+  // ─── Export ────────────────────────────────────────────────────────────
+
+  /// Off-screen raster specs for one page's blocks (page-local coords; rotation
+  /// captured at 0 and re-applied at composite).
+  List<BlockRasterSpec> _pageBlockSpecs(
+    DrawingData data,
+    int pageIndex,
+    bool includeTasks,
+  ) {
+    final specs = <BlockRasterSpec>[];
+    for (final b in data.textBlocks) {
+      final clone = b.clone()..rotation = 0;
+      specs.add(
+        BlockRasterSpec(
+          worldPos: Offset(b.x, b.y),
+          rotation: b.rotation,
+          child: CanvasTextBlockOverlay(
+            block: clone,
+            accent: _accent,
+            interactive: false,
+            onPersist: () async {},
+            onChanged: () {},
+            onHeightMeasured: (_) {},
+          ),
+        ),
+      );
+    }
+    if (includeTasks) {
+      for (final b in data.taskBlocks) {
+        final clone = b.clone()..rotation = 0;
+        specs.add(
+          BlockRasterSpec(
+            worldPos: Offset(b.x, b.y),
+            rotation: b.rotation,
+            child: CanvasTaskBlockOverlay(
+              block: clone,
+              noteId: widget.note.id,
+              folderId: widget.note.folderId,
+              folderName: widget.folder.name,
+              accent: _accent,
+              interactive: false,
+              onPersist: () async {},
+              onTasksChanged: () {},
+              onHeightMeasured: (_) {},
+            ),
+          ),
+        );
+      }
+    }
+    return specs;
+  }
+
+  /// Entry from the page drawer: [indices] are the pages the user checked.
+  Future<void> _exportPages(List<int> indices) async {
+    if (indices.isEmpty || !mounted) return;
+    final hasTasks = indices.any((i) {
+      if (i < 0 || i >= _pageBlockIds.length) return false;
+      final d = _pageData[_pageBlockIds[i]];
+      return d != null && d.taskBlocks.isNotEmpty;
+    });
+    final opts = await showNotebookExportSheet(
+      context,
+      accent: _accent,
+      selectedCount: indices.length,
+      hasTasks: hasTasks,
+    );
+    if (opts == null || !mounted) return;
+    _runExport(indices, opts);
+  }
+
+  Future<void> _runExport(List<int> indices, CanvasExportOptions opts) async {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ExportProgressDialog(accent: _accent),
+    );
+
+    final region = Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight);
+    final pr = exportPixelRatio(region);
+
+    final pageImages = <ui.Image>[];
+    final pageSizes = <Size>[];
+    final blockImgs = <ExportBlockImage>[];
+    final images = <String, ui.Image>{};
+    ui.Image? combined;
+    try {
+      for (final i in indices) {
+        if (i < 0 || i >= _pageBlockIds.length) continue;
+        final data = _pageData[_pageBlockIds[i]];
+        if (data == null) continue;
+        images.addAll(await loadExportImages(_imageDirPath, data.images));
+        if (!mounted) return;
+        final specs = _pageBlockSpecs(data, i, opts.includeTasks);
+        final blocks = await rasterizeCanvasBlocks(
+          context: context,
+          specs: specs,
+          pixelRatio: pr,
+        );
+        blockImgs.addAll(blocks);
+        final paper = bgPaper(data.bgColorValue, const Color(0xFFFFFDF8));
+        final img = await renderCanvasRegion(
+          data: data,
+          region: region,
+          pixelRatio: pr,
+          paper: paper,
+          images: images,
+          blocks: blocks,
+        );
+        pageImages.add(img);
+        pageSizes.add(region.size);
+      }
+      if (pageImages.isEmpty) return;
+
+      final name = sanitizeFilename(
+        widget.note.title?.isNotEmpty == true
+            ? widget.note.title!
+            : widget.folder.name,
+      );
+
+      if (opts.format == ExportFormat.png) {
+        final single = pageImages.length == 1;
+        final out = single
+            ? pageImages.first
+            : (combined = await stackImagesVertically(
+                pageImages,
+                gap: 18 * pr,
+                background: yCream2,
+              ));
+        final png = await imageToPngBytes(out);
+        await shareExportBytes(png, '$name.png', text: 'Cuaderno · YuLi');
+      } else if (opts.onePagePerSheet && pageImages.length > 1) {
+        final pdf = await buildCanvasPdf([
+          for (int k = 0; k < pageImages.length; k++)
+            ExportPage(image: pageImages[k], worldSize: pageSizes[k]),
+        ]);
+        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi');
+      } else {
+        final single = pageImages.length == 1;
+        final out = single
+            ? pageImages.first
+            : (combined = await stackImagesVertically(
+                pageImages,
+                gap: 18 * pr,
+                background: yCream2,
+              ));
+        final pdf = await buildCanvasPdf([
+          ExportPage(
+            image: out,
+            worldSize: Size(out.width / pr, out.height / pr),
+          ),
+        ]);
+        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi');
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo exportar'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      combined?.dispose();
+      for (final img in pageImages) {
+        img.dispose();
+      }
+      for (final b in blockImgs) {
+        b.image.dispose();
+      }
+      disposeExportImages(images);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
   Widget _buildMorePopup() {
     return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
       decoration: BoxDecoration(
         color: yCream,
         border: Border.all(color: yBorderStrong, width: yLineMid),
