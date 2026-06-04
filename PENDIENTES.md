@@ -4,6 +4,25 @@ Cosas implementadas que faltan **verificar en dispositivo físico** (no se puede
 
 ---
 
+## 🕸️ Grafo de Conexiones (tab nueva en lab space) — lógica validada headless, falta GUI + CALOR
+
+Nueva tab **Grafo** por defecto junto a Kanban (`feature/grafo`). Mapa visual force-directed **vivo** (física D3-like) de las conexiones cross-mode del espacio. **Lógica cubierta headless** (`test/graph_assembler_test.dart` 10/10 + `test/graph_simulation_test.dart` 6/6): assembler (nodos/aristas, 4 estados de task, 3 tipos de arista, BFS/dedup, global, vacío, **sin URLs**) + simulación (determinista, sin NaN, se enfría, raíz pinneada, drag jala vecinos).
+
+**Falta verificar en TGR:**
+- **CALOR (gate crítico, ver historial):** la simulación **tickea solo mientras está caliente** (settle de carga + durante/después de un drag) y el `Ticker` se DETIENE al enfriarse (`alpha<min`) → sin física en reposo. Única animación perpetua = pulso del nodo urgente, aislado en `_UrgentPainter` (se crea solo si hay urgentes). Confirmar que en reposo NO calienta. Si calienta sin urgentes: el `Ticker` no se está deteniendo (revisar `_onTick`).
+- **Drag jala el grafo** (como la referencia): arrastrar un nodo lo fija y los vecinos lo siguen con resortes; al soltar se reacomoda y congela. Verificar que se siente bien.
+- Settle de carga animado (nodos parten agrupados cerca del centro y se expanden). NO se repite en reposo.
+- Gestos: 1 dedo sobre nodo = arrastrar; sobre vacío = pan; 2 dedos = zoom al foco; tap = sheet. Verificar tap vs drag (slop).
+- **ClipRect**: el grafo ya NO debe salirse al header al panear.
+- Navegación real desde el sheet: nota→Flight, carpeta→Flight, "Ver tarjeta"→detalle de card, tarea→"Marcar hecha" (refresca). Confirmar pop del space detail + cambio de modo.
+- **Espaciado**: fuerza de **colisión** (D3 forceCollide en `graph_simulation._resolveCollisions`) → los nodos NO se enciman (regresión "super pegado" arreglada; test la cubre). Si se ve muy junto/separado, tunear `_linkDist/_charge/_gravity/_collidePad`.
+- **Labels DENTRO** del nodo (como la referencia), no chip debajo. **Dot grid** de fondo (mundo, panea con el grafo). Glows **cuadrados** (sol = 2 cuadrados blurreados), estructura sólida / **tarea dashed** / **IA punteada azul**. Toggle IA on/off, ESTE/TODO. Leyenda abajo-izq (sin URL).
+- sol = `accentColor` del space, card = `labCardAccent` (KanbanColumn NO tiene color — decisión consciente).
+- Migración de prefs: spaces **existentes** reciben la tab Grafo inyectada tras Kanban (`lab_tab_providers._load`).
+- **Tuning de la física** (`graph_simulation.dart` consts `_linkDist/_charge/_gravity`): si se ve muy junto/separado, ajustar ahí.
+
+---
+
 ## ⚡ Optimización de render canvas (calor) — probado en general en TGR, OK
 
 Pizarra/cuaderno optimizados contra el sobrecalentamiento (solo capa `flight`, sin tocar datos/lab): caché de `Path` por-trazo, histéresis de repaint en pan (cuaderno simétrico 0.5, pizarra **predictiva** sesgada a la dirección, `_renderRectFor`), chrome de página cacheado, y el `InteractiveViewer` del cuaderno ya no se reconstruye en pan (#10). El calor bajó mucho y el feeling es bueno en ambos.

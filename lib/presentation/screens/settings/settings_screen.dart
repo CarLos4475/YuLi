@@ -10,6 +10,7 @@ import '../../../data/services/image_storage.dart';
 import '../../widgets/app_section_divider.dart';
 import 'image_storage_screen.dart';
 import 'crash_log_screen.dart';
+import '../trash/trash_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -173,6 +174,17 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'PAPELERA'),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _TrashBlock(),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
               child: AppSectionDivider(label: 'INFO'),
             ),
             const SizedBox(height: 12),
@@ -288,6 +300,58 @@ class _CrashLogBlock extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Ver y compartir errores registrados',
+                    style: bodyS.copyWith(color: inkGray),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: inkGray),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrashBlock extends StatelessWidget {
+  const _TrashBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const TrashScreen()),
+          ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.delete_outline, size: 20, color: ink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'PAPELERA',
+                    style: labelBold.copyWith(
+                      color: ink,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Ver y restaurar elementos eliminados',
                     style: bodyS.copyWith(color: inkGray),
                   ),
                 ],

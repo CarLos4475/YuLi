@@ -7,7 +7,7 @@ final labTabsProvider =
   (ref, spaceId) => LabTabsNotifier(spaceId),
 );
 
-const _baseTabs = ['Kanban'];
+const _baseTabs = ['Kanban', 'Grafo'];
 const _availableTabs = ['Calendario', 'Timeline', 'Horario'];
 
 class LabTabsNotifier extends StateNotifier<List<String>> {
@@ -23,7 +23,17 @@ class LabTabsNotifier extends StateNotifier<List<String>> {
     final raw = _prefs!.getString(_key);
     if (raw != null) {
       final decoded = jsonDecode(raw) as List<dynamic>;
-      state = List<String>.from(decoded);
+      final tabs = List<String>.from(decoded);
+      // Migration: spaces saved before the Grafo tab existed don't have it.
+      // Inject it right after Kanban so it shows by default.
+      if (!tabs.contains('Grafo')) {
+        final i = tabs.indexOf('Kanban');
+        tabs.insert(i >= 0 ? i + 1 : 0, 'Grafo');
+        state = tabs;
+        _save();
+        return;
+      }
+      state = tabs;
     }
   }
 
@@ -45,7 +55,7 @@ class LabTabsNotifier extends StateNotifier<List<String>> {
   }
 
   void removeTab(String tab) {
-    if (tab == 'Kanban') return; // Kanban nunca se quita
+    if (_baseTabs.contains(tab)) return; // Kanban y Grafo nunca se quitan
     if (state.contains(tab)) {
       state = state.where((t) => t != tab).toList();
       _save();
@@ -53,11 +63,10 @@ class LabTabsNotifier extends StateNotifier<List<String>> {
   }
 
   void setTabs(List<String> tabs) {
-    // Asegurar que Kanban siempre esté primero
-    final hasKanban = tabs.contains('Kanban');
+    // Kanban y Grafo siempre presentes y primero (tabs base).
     final ordered = [
-      if (hasKanban) 'Kanban',
-      ...tabs.where((t) => t != 'Kanban' && _availableTabs.contains(t)),
+      ..._baseTabs,
+      ...tabs.where((t) => _availableTabs.contains(t)),
     ];
     state = ordered;
     _save();

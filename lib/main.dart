@@ -16,6 +16,7 @@ import 'presentation/screens/fight/fight_screen.dart';
 import 'presentation/screens/flight/flight_screen.dart';
 import 'presentation/screens/lab/lab_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
+import 'presentation/screens/trash/trash_screen.dart';
 import 'presentation/providers/navigation_provider.dart';
 
 void main() {
@@ -184,7 +185,13 @@ class _AppShellState extends ConsumerState<AppShell> {
                     '${widget.archivedTaskCount} tarea${widget.archivedTaskCount == 1 ? '' : 's'} archivada${widget.archivedTaskCount == 1 ? '' : 's'}',
                 accentColor: accentFight,
                 actionLabel: 'ver',
-                onAction: () {},
+                onAction:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const TrashScreen(),
+                      ),
+                    ),
                 onDismiss: () => setState(() => _bannerDismissed = true),
               ),
             Expanded(child: _ModeContent(currentMode: currentMode)),

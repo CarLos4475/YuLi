@@ -17,6 +17,7 @@ import 'kanban_card_detail.dart';
 import 'calendar_tab.dart';
 import 'timeline_tab.dart';
 import 'schedule_tab.dart';
+import 'graph_tab.dart';
 import 'lab_ai_sheet.dart';
 import 'lab_space_sources_sheet.dart';
 
@@ -187,6 +188,15 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
         );
       case 'Horario':
         return ScheduleTab(space: widget.space);
+      case 'Grafo':
+        return GraphTab(
+          space: widget.space,
+          onOpenCard: (cardId) async {
+            final card =
+                await ref.read(kanbanCardRepositoryProvider).getById(cardId);
+            if (card != null && mounted) _showCardDetail(card);
+          },
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -248,7 +258,7 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                               ? null
                               : () => setState(() => _tabIndex = e.key),
                       onClose:
-                          e.value == 'Kanban'
+                          (e.value == 'Kanban' || e.value == 'Grafo')
                               ? null
                               : () {
                                 final notifier = ref.read(
