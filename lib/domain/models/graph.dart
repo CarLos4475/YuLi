@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'kanban_card.dart';
 
 /// Visual graph model (the "Grafo de Conexiones"). Pure data: an assembler
 /// builds [GraphData] from the existing repositories and the render layer
@@ -34,6 +35,9 @@ class GraphNode {
   /// Set only for [GraphNodeKind.task].
   final TaskGraphState? taskState;
 
+  /// Set only for [GraphNodeKind.card].
+  final CardPriority? cardPriority;
+
   /// Set only for [GraphNodeKind.note].
   final NoteVariant? noteVariant;
 
@@ -47,6 +51,7 @@ class GraphNode {
     required this.color,
     this.refId,
     this.taskState,
+    this.cardPriority,
     this.noteVariant,
     this.isRoot = false,
   });
@@ -94,4 +99,19 @@ class GraphData {
 
   bool get hasUrgentTask =>
       nodes.any((n) => n.taskState == TaskGraphState.urgente);
+
+  Set<String> get aiSourceNodeIds {
+    final eligibleKinds = {
+      for (final n in nodes)
+        if (n.kind == GraphNodeKind.note || n.kind == GraphNodeKind.folder) n.id,
+    };
+    final ids = <String>{};
+    for (final e in edges) {
+      if (e.kind != GraphEdgeKind.ai) continue;
+      if (!eligibleKinds.contains(e.to)) continue;
+      if (e.from == e.to) continue;
+      ids.add(e.to);
+    }
+    return ids;
+  }
 }

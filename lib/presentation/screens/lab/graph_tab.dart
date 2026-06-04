@@ -12,11 +12,14 @@ import '../../widgets/yuli_design.dart';
 import 'graph_assembler.dart';
 import 'graph_simulation.dart';
 import 'graph_node_detail.dart';
+import 'lab_card_colors.dart';
+
+const _urgentStroke = Color(0xFFC8332C);
 
 /// The "Grafo de Conexiones" tab. A live force-directed poster of how a lab
 /// space connects across the three modes. Heat-aware: the simulation ticks only
 /// while warm (load settle + during/after a drag) and STOPS at rest; the only
-/// perpetual animation is the urgent-task pulse, isolated in its own painter.
+/// perpetual animation is the alert pulse layer, isolated in its own painter.
 /// Dragging a node pulls the whole graph with it (springs).
 class GraphTab extends ConsumerStatefulWidget {
   const GraphTab({super.key, required this.space, this.onOpenCard});
@@ -116,7 +119,7 @@ class _GraphTabState extends ConsumerState<GraphTab>
     if (previous == null) _needsFit = true; // frame a freshly-built graph
     _ticker.stop();
     if (data.nodes.length > 1) _ensureTicking(); // animate the settle/reflow
-    if (data.hasUrgentTask) {
+    if (data.nodes.isNotEmpty) {
       _pulse ??= AnimationController(
           vsync: this, duration: const Duration(milliseconds: 1500))
         ..repeat();
@@ -293,7 +296,7 @@ class _GraphTabState extends ConsumerState<GraphTab>
                     Positioned.fill(
                       child: IgnorePointer(
                         child: CustomPaint(
-                          painter: _UrgentPainter(
+                          painter: _AlertPainter(
                             data: data,
                             sim: _sim!,
                             xf: _xf,
@@ -386,6 +389,7 @@ class _GraphPainter extends CustomPainter {
   final bool showAi;
 
   final Map<String, TextPainter> _labelCache = {};
+  late final Set<String> _aiSourceNodeIds = data.aiSourceNodeIds;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -434,11 +438,14 @@ class _GraphPainter extends CustomPainter {
 
   void _label(Canvas canvas, GraphNode n, Offset p) {
     if (n.kind == GraphNodeKind.url || n.label.trim().isEmpty) return;
-    final tp = _labelCache.putIfAbsent(n.id, () => _buildLabel(n));
+    final tp =
+        _labelCache.putIfAbsent(n.id, () => _buildLabel(n, isAiSource: _isAiSourceNode(n.id)));
     tp.paint(canvas, p - Offset(tp.width / 2, tp.height / 2));
   }
 
-  TextPainter _buildLabel(GraphNode n) {
+  bool _isAiSourceNode(String id) => _aiSourceNodeIds.contains(id);
+
+  TextPainter _buildLabel(GraphNode n, {required bool isAiSource}) {
     final filled = switch (n.kind) {
       GraphNodeKind.space ||
       GraphNodeKind.folder ||
@@ -454,27 +461,61 @@ class _GraphPainter extends CustomPainter {
     } else if (n.taskState == TaskGraphState.fantasma) {
       col = yMuted;
     } else if (n.taskState == TaskGraphState.ayer) {
-      col = yInk.withValues(alpha: 0.7);
+      col = yMuted.withValues(alpha: 0.9);
     } else if (filled) {
       col = yCream;
     } else {
       col = yInk;
     }
     final size = switch (n.kind) {
-      GraphNodeKind.space => 10.5,
-      GraphNodeKind.folder => 10.0,
-      _ => 8.5,
+      GraphNodeKind.space => 9.6,
+      GraphNodeKind.folder => isAiSource ? 8.6 : 8.4,
+      GraphNodeKind.card => 8.4,
+      GraphNodeKind.note => isAiSource ? 7.0 : 6.8,
+      GraphNodeKind.task => 6.5,
+      GraphNodeKind.url => 8.5,
     };
+    final weight = switch (n.kind) {
+      GraphNodeKind.space || GraphNodeKind.folder || GraphNodeKind.card =>
+        FontWeight.w700,
+      GraphNodeKind.note => isAiSource ? FontWeight.w700 : FontWeight.w600,
+      GraphNodeKind.task => FontWeight.w600,
+      GraphNodeKind.url => FontWeight.w700,
+    };
+    final tracking = switch (n.kind) {
+      GraphNodeKind.space => 0.15,
+      GraphNodeKind.folder || GraphNodeKind.card => 0.1,
+      _ => 0.0,
+    };
+    final lineHeight = switch (n.kind) {
+      GraphNodeKind.space => 1.0,
+      GraphNodeKind.folder || GraphNodeKind.card => 1.04,
+      GraphNodeKind.note || GraphNodeKind.task => 1.08,
+      GraphNodeKind.url => 1.0,
+    };
+    final maxWidth = graphNodeRadius(n.kind) *
+        switch (n.kind) {
+          GraphNodeKind.space => 1.38,
+          GraphNodeKind.folder => isAiSource ? 1.7 : 1.62,
+          GraphNodeKind.card => 1.62,
+          GraphNodeKind.note => isAiSource ? 1.62 : 1.5,
+          GraphNodeKind.task => 1.58,
+          GraphNodeKind.url => 1.5,
+        };
     return TextPainter(
       text: TextSpan(
           text: n.label,
           style: yMono(
-              size: size, weight: FontWeight.w700, tracking: 0.2, color: col)),
+                  size: size,
+                  weight: weight,
+                  tracking: tracking,
+                  color: col)
+              .copyWith(height: lineHeight)),
       textAlign: TextAlign.center,
       textDirection: TextDirection.ltr,
       maxLines: 2,
       ellipsis: '…',
-    )..layout(maxWidth: graphNodeRadius(n.kind) * 1.85);
+    )..layout(maxWidth: maxWidth);
   }
 
   void _edge(Canvas canvas, Offset a, Offset b, GraphEdgeKind kind) {
@@ -498,17 +539,59 @@ class _GraphPainter extends CustomPainter {
             dash: 5,
             gap: 4);
       case GraphEdgeKind.ai:
-        // Reference style: subtle dashed blue line (no glow blob).
-        _dashedLine(
-            canvas,
-            a,
-            b,
-            Paint()
-              ..color = yFlight.withValues(alpha: 0.85)
-              ..strokeWidth = 1.8
-              ..strokeCap = StrokeCap.round,
-            dash: 6,
-            gap: 5);
+        _aiEdge(canvas, a, b);
+    }
+  }
+
+  void _aiEdge(Canvas canvas, Offset a, Offset b) {
+    final total = (b - a).distance;
+    if (total < 0.5) return;
+    final dir = (b - a) / total;
+    final normal = Offset(-dir.dy, dir.dx);
+    final lift = normal * 1.0;
+    canvas.drawLine(
+        a + lift,
+        b + lift,
+        Paint()
+          ..color = yFlight.withValues(alpha: 0.14)
+          ..strokeWidth = 3.2
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
+    _dashedLine(
+        canvas,
+        a + lift,
+        b + lift,
+        Paint()
+          ..color = yFlight.withValues(alpha: 0.88)
+          ..strokeWidth = 1.35
+          ..strokeCap = StrokeCap.round,
+        dash: 2.2,
+        gap: 5.4);
+    final steps = math.max(1, (total / 26).floor());
+    for (var i = 1; i < steps; i++) {
+      final t = i / steps;
+      final p = Offset(
+        a.dx + (b.dx - a.dx) * t,
+        a.dy + (b.dy - a.dy) * t,
+      );
+      canvas.drawCircle(
+          p - lift * 0.35,
+          1.0,
+          Paint()..color = yFlight.withValues(alpha: 0.45));
+    }
+  }
+
+  void _dashedLine(Canvas canvas, Offset a, Offset b, Paint paint,
+      {double dash = 6, double gap = 4}) {
+    final total = (b - a).distance;
+    if (total < 0.5) return;
+    final dir = (b - a) / total;
+    var d = 0.0;
+    while (d < total) {
+      final s = a + dir * d;
+      final e = a + dir * math.min(d + dash, total);
+      canvas.drawLine(s, e, paint);
+      d += dash + gap;
     }
   }
 
@@ -518,14 +601,17 @@ class _GraphPainter extends CustomPainter {
       case GraphNodeKind.space:
         _sun(canvas, p, r, n.color);
       case GraphNodeKind.folder:
-        _slab(canvas, p, r, n.color);
+        _folder(canvas, n, p, r, isAiSource: _isAiSourceNode(n.id));
       case GraphNodeKind.card:
         _slab(canvas, p, r, n.color);
         canvas.drawRect(
             Rect.fromLTWH(p.dx - r * 0.6, p.dy - r * 0.6, r * 1.2, r * 0.24),
-            Paint()..color = yCream.withValues(alpha: 0.9));
+            Paint()
+              ..color = n.cardPriority == null
+                  ? yCream.withValues(alpha: 0.9)
+                  : labPriorityColor(n.cardPriority!));
       case GraphNodeKind.note:
-        _note(canvas, n, p, r);
+        _note(canvas, n, p, r, isAiSource: _isAiSourceNode(n.id));
       case GraphNodeKind.task:
         _task(canvas, n, p, r);
       case GraphNodeKind.url:
@@ -544,26 +630,69 @@ class _GraphPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = bw
-          ..color = border ?? yInk);
+          ..color = border ?? yBorderSoft);
   }
 
   void _sun(Canvas canvas, Offset p, double r, Color accent) {
-    // Square glow: two soft blurred SQUARES (not a circle).
+    final rect = Rect.fromCenter(center: p, width: r * 2, height: r * 2);
     canvas.drawRect(
-        Rect.fromCenter(center: p, width: r * 3.0, height: r * 3.0),
+        rect,
         Paint()
-          ..color = accent.withValues(alpha: 0.20)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10));
-    canvas.drawRect(
-        Rect.fromCenter(center: p, width: r * 2.3, height: r * 2.3),
-        Paint()
-          ..color = accent.withValues(alpha: 0.32)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
-    _slab(canvas, p, r, accent, bw: 3.5);
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.5
+          ..color = accent.withValues(alpha: 0.8)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+    _slab(canvas, p, r, accent, border: accent, bw: 3.5);
   }
 
-  void _note(Canvas canvas, GraphNode n, Offset p, double r) {
+  void _folder(Canvas canvas, GraphNode n, Offset p, double r,
+      {required bool isAiSource}) {
+    if (isAiSource) {
+      final outer = Rect.fromCenter(
+          center: p, width: r * 2 + 10, height: r * 2 + 10);
+      canvas.drawRect(
+          outer,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.0
+            ..color = n.color.withValues(alpha: 0.82));
+    }
+    _slab(canvas, p, r, n.color);
+  }
+
+  void _note(Canvas canvas, GraphNode n, Offset p, double r,
+      {required bool isAiSource}) {
+    if (isAiSource) {
+      final outer = Rect.fromCenter(
+          center: p, width: r * 2 + 8, height: r * 2 + 8);
+      canvas.drawRect(
+          outer,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.8
+            ..color = n.color.withValues(alpha: 0.8));
+    }
     _slab(canvas, p, r, yCream, border: n.color, bw: 3);
+    final glyph = switch (n.noteVariant) {
+      NoteVariant.block || null => 'Tt',
+      NoteVariant.notebook => '\u25A4',
+      NoteVariant.whiteboard => '\u270E',
+    };
+    final glyphPainter = TextPainter(
+      text: TextSpan(
+          text: glyph,
+          style: ySans(
+            size: n.noteVariant == NoteVariant.block ? 7.5 : 8.5,
+            weight: FontWeight.w700,
+            color: n.color.withValues(alpha: 0.9),
+            height: 1.0,
+          )),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    glyphPainter.paint(
+        canvas, Offset(p.dx - r * 0.68, p.dy - r * 0.82));
   }
 
   void _task(Canvas canvas, GraphNode n, Offset p, double r) {
@@ -576,16 +705,24 @@ class _GraphPainter extends CustomPainter {
               ..strokeWidth = 2
               ..color = yMuted.withValues(alpha: 0.55));
       case TaskGraphState.ayer:
-        final gray = Color.lerp(n.color, yMuted, 0.7)!;
-        canvas.drawRect(rect, Paint()..color = gray.withValues(alpha: 0.48));
+        final fill = yMuted.withValues(alpha: 0.16);
+        final border = yMuted.withValues(alpha: 0.42);
+        canvas.drawRect(rect, Paint()..color = fill);
         canvas.drawRect(
             rect,
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = 2.4
-              ..color = yMuted.withValues(alpha: 0.6));
+              ..color = border);
       case TaskGraphState.urgente:
-        _slab(canvas, p, r, n.color, border: yFight, bw: 4);
+        canvas.drawRect(
+            rect,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 3.5
+              ..color = _urgentStroke.withValues(alpha: 0.8)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+        _slab(canvas, p, r, n.color, border: _urgentStroke, bw: 3.5);
       case TaskGraphState.fresca:
       case null:
         _slab(canvas, p, r, n.color, bw: 3);
@@ -596,21 +733,11 @@ class _GraphPainter extends CustomPainter {
         ..lineTo(p.dx + r, p.dy - r)
         ..lineTo(p.dx + r, p.dy - r * 0.45)
         ..close();
-      canvas.drawPath(path, Paint()..color = yFight);
-    }
-  }
-
-  void _dashedLine(Canvas canvas, Offset a, Offset b, Paint paint,
-      {double dash = 6, double gap = 4}) {
-    final total = (b - a).distance;
-    if (total < 0.5) return;
-    final dir = (b - a) / total;
-    var d = 0.0;
-    while (d < total) {
-      final s = a + dir * d;
-      final e = a + dir * math.min(d + dash, total);
-      canvas.drawLine(s, e, paint);
-      d += dash + gap;
+      final cornerColor = switch (n.taskState) {
+        TaskGraphState.ayer => yMuted.withValues(alpha: 0.62),
+        _ => yFight,
+      };
+      canvas.drawPath(path, Paint()..color = cornerColor);
     }
   }
 
@@ -630,8 +757,8 @@ class _GraphPainter extends CustomPainter {
       old.showAi != showAi || !identical(old.data, data);
 }
 
-class _UrgentPainter extends CustomPainter {
-  _UrgentPainter({
+class _AlertPainter extends CustomPainter {
+  _AlertPainter({
     required this.data,
     required this.sim,
     required this.xf,
@@ -642,31 +769,57 @@ class _UrgentPainter extends CustomPainter {
   final GraphSimulation sim;
   final _ViewTransform xf;
   final Animation<double> anim;
+  late final Set<String> _aiSourceNodeIds = data.aiSourceNodeIds;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Reference: scale 1→1.10, opacity .35→.9, 1.5s.
-    final pulse = (math.sin(anim.value * 2 * math.pi) + 1) / 2; // 0..1
+    final phase = anim.value <= 0.5 ? anim.value * 2 : (1 - anim.value) * 2;
+    final pulse = Curves.easeInOut.transform(phase);
+    final aiPhase =
+        ((anim.value + 0.18) % 1.0) <= 0.5 ? ((anim.value + 0.18) % 1.0) * 2 : (1 - ((anim.value + 0.18) % 1.0)) * 2;
+    final aiPulse = Curves.easeInOutCubic.transform(aiPhase);
     canvas.save();
     canvas.translate(size.width / 2 + xf.pan.dx, size.height / 2 + xf.pan.dy);
     canvas.scale(xf.scale);
     for (final n in data.nodes) {
-      if (n.taskState != TaskGraphState.urgente) continue;
+      final isUrgent = n.taskState == TaskGraphState.urgente;
+      final isSun = n.kind == GraphNodeKind.space;
+      final isAiSource = _aiSourceNodeIds.contains(n.id);
+      if (!isUrgent && !isSun && !isAiSource) continue;
       final p = sim.posOf(n.id);
       if (p == null) continue;
-      final half = 17 * (1.05 + 0.10 * pulse);
+      final pulseValue = isAiSource ? aiPulse : pulse;
+      final base = graphNodeRadius(n.kind) +
+          switch (n.kind) {
+            GraphNodeKind.space => 6.0,
+            GraphNodeKind.folder => 8.0,
+            GraphNodeKind.note => 7.0,
+            _ => 6.0,
+          };
+      final scaleBoost = isAiSource
+          ? (n.kind == GraphNodeKind.folder ? 0.055 : 0.07)
+          : 0.10;
+      final half = base * (1 + scaleBoost * pulseValue);
       canvas.drawRect(
           Rect.fromCenter(center: p, width: half * 2, height: half * 2),
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 2.5
-            ..color = yFight.withValues(alpha: 0.35 + 0.55 * pulse));
+            ..strokeWidth = isAiSource
+                ? (n.kind == GraphNodeKind.folder ? 1.6 : 1.4)
+                : 1.8
+            ..color = (isSun || isAiSource ? n.color : _urgentStroke)
+                .withValues(
+                    alpha: isAiSource
+                        ? (n.kind == GraphNodeKind.folder
+                            ? 0.18 + 0.22 * pulseValue
+                            : 0.22 + 0.28 * pulseValue)
+                        : 0.35 + 0.55 * pulseValue));
     }
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_UrgentPainter old) => true;
+  bool shouldRepaint(_AlertPainter old) => true;
 }
 
 // ─── Overlay chrome ──────────────────────────────────────────────────────────
@@ -728,7 +881,8 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gray = Color.lerp(accent, yMuted, 0.7)!.withValues(alpha: 0.55);
+    final yesterdayFill = yMuted.withValues(alpha: 0.16);
+    final yesterdayBorder = yMuted.withValues(alpha: 0.42);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 9, 16, 11),
       decoration: BoxDecoration(
@@ -750,14 +904,21 @@ class _Legend extends StatelessWidget {
                 height: 13,
                 child: CustomPaint(painter: _SwatchPainter(_SwatchKind.task, accent))),
             'Tarea fresca'),
-        _row(_box(fill: accent, border: yFight, bw: 2), 'Tarea urgente'),
-        _row(_box(fill: gray, border: yMuted), 'Tarea de ayer'),
+        _row(_box(fill: accent, border: _urgentStroke, bw: 2), 'Tarea urgente'),
+        _row(_box(fill: yesterdayFill, border: yesterdayBorder), 'Tarea de ayer'),
         _row(
             SizedBox(
                 width: 13,
                 height: 13,
                 child: CustomPaint(painter: _SwatchPainter(_SwatchKind.ghost, accent))),
             'Tarea fantasma'),
+        _row(
+            SizedBox(
+                width: 13,
+                height: 13,
+                child: CustomPaint(
+                    painter: _SwatchPainter(_SwatchKind.contextNode, yFlight))),
+            'Nodo de contexto IA'),
         const SizedBox(height: 6),
         _row(
             CustomPaint(
@@ -773,14 +934,14 @@ class _Legend extends StatelessWidget {
           _row(
               CustomPaint(
                   size: const Size(15, 8),
-                  painter: _SwatchPainter(_SwatchKind.dashed, yFlight)),
-              'Conexión IA'),
+                  painter: _SwatchPainter(_SwatchKind.ai, yFlight)),
+              'Conexión de contexto'),
       ]),
     );
   }
 }
 
-enum _SwatchKind { task, ghost, solid, dashed }
+enum _SwatchKind { task, ghost, solid, dashed, ai, contextNode }
 
 class _SwatchPainter extends CustomPainter {
   _SwatchPainter(this.kind, this.color);
@@ -821,10 +982,45 @@ class _SwatchPainter extends CustomPainter {
       case _SwatchKind.dashed:
         _dash(canvas, Offset(0, size.height / 2),
             Offset(size.width, size.height / 2));
+      case _SwatchKind.ai:
+        final a = Offset(0, size.height / 2 - 0.5);
+        final b = Offset(size.width, size.height / 2 - 0.5);
+        canvas.drawLine(
+            a,
+            b,
+            Paint()
+              ..color = color.withValues(alpha: 0.16)
+              ..strokeWidth = 3
+              ..strokeCap = StrokeCap.round
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
+        _dash(canvas, a, b, dash: 2, gap: 4.8);
+        for (final dx in [3.0, 8.0, 13.0]) {
+          if (dx >= size.width) break;
+          canvas.drawCircle(
+              Offset(dx, size.height / 2 + 1.2),
+              0.9,
+              Paint()..color = color.withValues(alpha: 0.5));
+        }
+      case _SwatchKind.contextNode:
+        final outer = Rect.fromLTWH(0, 0, size.width, size.height);
+        final inner = Rect.fromLTWH(2, 2, size.width - 4, size.height - 4);
+        canvas.drawRect(
+            outer,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.4
+              ..color = color.withValues(alpha: 0.82));
+        canvas.drawRect(
+            inner,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.6
+              ..color = color);
     }
   }
 
-  void _dash(Canvas canvas, Offset a, Offset b) {
+  void _dash(Canvas canvas, Offset a, Offset b,
+      {double dash = 3, double gap = 5}) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 2;
@@ -833,9 +1029,9 @@ class _SwatchPainter extends CustomPainter {
     var d = 0.0;
     while (d < total) {
       final s = a + dir * d;
-      final e = a + dir * (d + 3 < total ? d + 3 : total);
+      final e = a + dir * (d + dash < total ? d + dash : total);
       canvas.drawLine(s, e, paint);
-      d += 5;
+      d += dash + gap;
     }
   }
 

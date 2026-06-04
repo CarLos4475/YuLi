@@ -6,11 +6,11 @@ import '../../../domain/models/graph.dart';
 /// Visual radius (world units) of a node by kind. Shared by the simulation
 /// (collision) and the painter so spacing and drawing stay consistent.
 double graphNodeRadius(GraphNodeKind k) => switch (k) {
-      GraphNodeKind.space => 32,
-      GraphNodeKind.folder => 27,
-      GraphNodeKind.card => 23,
-      GraphNodeKind.note => 21,
-      GraphNodeKind.task => 20,
+      GraphNodeKind.space => 46,
+      GraphNodeKind.folder => 28,
+      GraphNodeKind.card => 28,
+      GraphNodeKind.note => 18,
+      GraphNodeKind.task => 15,
       GraphNodeKind.url => 14,
     };
 
@@ -264,7 +264,8 @@ class GraphSimulation {
         final ra = _radius[nodes[i].id]!;
         for (var j = i + 1; j < n; j++) {
           final b = _bodies[nodes[j].id]!;
-          final minD = ra + _radius[nodes[j].id]! + _collidePad;
+          final rb = _radius[nodes[j].id]!;
+          final minD = ra + rb + _pairCollidePad(nodes[i].kind, nodes[j].kind);
           var dx = a.pos.dx - b.pos.dx;
           var dy = a.pos.dy - b.pos.dy;
           var d = math.sqrt(dx * dx + dy * dy);
@@ -296,6 +297,28 @@ class GraphSimulation {
     var i = 0;
     while (i++ < maxSteps && step()) {}
     return positions;
+  }
+
+  double _pairCollidePad(GraphNodeKind a, GraphNodeKind b) {
+    if (a == GraphNodeKind.note && b == GraphNodeKind.note) return 24;
+    if (a == GraphNodeKind.task && b == GraphNodeKind.task) return 24;
+    if ((a == GraphNodeKind.note && b == GraphNodeKind.task) ||
+        (a == GraphNodeKind.task && b == GraphNodeKind.note)) {
+      return 26;
+    }
+    if ((a == GraphNodeKind.note &&
+            (b == GraphNodeKind.folder || b == GraphNodeKind.card)) ||
+        (b == GraphNodeKind.note &&
+            (a == GraphNodeKind.folder || a == GraphNodeKind.card))) {
+      return 20;
+    }
+    if ((a == GraphNodeKind.task &&
+            (b == GraphNodeKind.folder || b == GraphNodeKind.card)) ||
+        (b == GraphNodeKind.task &&
+            (a == GraphNodeKind.folder || a == GraphNodeKind.card))) {
+      return 20;
+    }
+    return _collidePad;
   }
 }
 

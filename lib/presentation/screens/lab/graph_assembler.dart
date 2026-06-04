@@ -20,7 +20,16 @@ import 'lab_card_colors.dart';
 /// own sun). Otherwise a per-space graph rooted at that space, expanded via a
 /// bounded BFS (cards → their task/note origins; space sources; schedule
 /// folders; folders → notes; notes → linked tasks + AI-context links).
-final graphDataProvider = FutureProvider.family<GraphData, int?>((ref, spaceId) {
+///
+/// autoDispose: this is a SNAPSHOT (no streams kept alive), so while the tab is
+/// open it only stays fresh via the GraphTab's explicit invalidations. The
+/// moment the tab unmounts those invalidations stop — if the result were cached
+/// (the keepAlive default), any change made elsewhere (new task, due date, card
+/// moved) would never reach the cache and you'd see a stale graph until an app
+/// restart rebuilt the container. autoDispose drops the cache when nobody is
+/// watching, so re-entering the tab recomputes from the live DB.
+final graphDataProvider =
+    FutureProvider.autoDispose.family<GraphData, int?>((ref, spaceId) {
   final builder = _GraphBuilder(ref);
   return spaceId == null
       ? builder.buildGlobal()
@@ -151,7 +160,7 @@ class _GraphBuilder {
 
     final sources = await _labRepo.getContextSources(space.id);
     for (final s in sources) {
-      await _addSource(s, rootId, GraphEdgeKind.structure);
+      await _addSource(s, rootId, GraphEdgeKind.ai);
     }
 
     final blocks = await _scheduleRepo.watchBySpace(space.id).first;
@@ -172,6 +181,7 @@ class _GraphBuilder {
         label: card.title,
         color: labCardAccent(card, inExpiredColumn: inExpired),
         refId: card.id,
+        cardPriority: card.priority,
       ),
     );
     _edge(rootId, cardId, GraphEdgeKind.structure);

@@ -6,6 +6,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../flight/context_assembler.dart' show kMaxFolderNotes;
 import '../../../data/services/context_cache.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
 import '../../../domain/models/canvas_context_source.dart';
@@ -52,6 +53,25 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
     if (d.inMinutes < 60) return 'hace ${d.inMinutes} min';
     if (d.inHours < 24) return 'hace ${d.inHours} h';
     return 'hace ${d.inDays} d';
+  }
+
+  /// Subtitle under a source's name. Folders show their block-note count and a
+  /// "top N al chat" note when the folder exceeds the cap, so the user knows the
+  /// folder may not feed every note to the AI.
+  String _subtitle(CanvasContextSource s, String kindLabel) {
+    if (s.isUrl) return '$kindLabel · ${_ago(s.fetchedAt)}';
+    if (s.isFolder) {
+      final fid = s.folderId;
+      final count = fid == null
+          ? null
+          : ref.watch(folderBlockNoteCountProvider(fid)).valueOrNull;
+      if (count == null) return kindLabel;
+      final notas = '$count ${count == 1 ? 'nota' : 'notas'}';
+      return count > kMaxFolderNotes
+          ? '$kindLabel · $notas · top $kMaxFolderNotes al chat'
+          : '$kindLabel · $notas';
+    }
+    return kindLabel;
   }
 
   List<CanvasContextSource> get _sources =>
@@ -384,7 +404,7 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
                   ),
                 ),
                 Text(
-                  s.isUrl ? '$kindLabel · ${_ago(s.fetchedAt)}' : kindLabel,
+                  _subtitle(s, kindLabel),
                   style: yMono(size: 8, color: yMuted, tracking: 1),
                 ),
               ],
