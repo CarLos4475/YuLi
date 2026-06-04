@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/services/crash_logger.dart';
 import 'presentation/theme/app_tokens.dart';
@@ -25,6 +26,11 @@ void main() {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      // Edge-to-edge: the app paints behind the status & nav bars. Content stays
+      // put (every shell is wrapped in SafeArea); only the background colour
+      // floods into the system bars. The transparent bars + icon brightness are
+      // applied per-theme via the MaterialApp builder below.
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       await CrashLogger.instance.init();
 
       // Framework (build/layout/paint) errors.
@@ -69,6 +75,24 @@ class YuLiApp extends ConsumerWidget {
       theme: lightTheme(),
       darkTheme: darkTheme(),
       themeMode: themeMode,
+      // Transparent system bars so the app background floods them. Icon
+      // brightness tracks the active theme (dark icons on cream, light on ink).
+      // Wraps the navigator → applies app-wide, across every pushed route.
+      builder: (context, child) {
+        final isLight = Theme.of(context).brightness == Brightness.light;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
+            statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness:
+                isLight ? Brightness.dark : Brightness.light,
+            systemNavigationBarContrastEnforced: false,
+          ),
+          child: child!,
+        );
+      },
       home: const _AppInit(),
     );
   }
@@ -172,34 +196,75 @@ class _AppShellState extends ConsumerState<AppShell> {
         !_bannerDismissed &&
         currentMode == AppMode.fight;
 
-    return Scaffold(
-      backgroundColor: paperColor(context),
-      resizeToAvoidBottomInset: currentMode != AppMode.home,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
+    // Colour that floods the status bar (edge-to-edge): the active mode's
+    // ModeHeader colour, so the bar continues seamlessly into the header band.
+    // Painted as a thin strip (NOT the scaffold background — Fight & co. don't
+    // paint their own bg, so a coloured scaffold turned the whole view red).
+    // Home has no coloured header → cream.
+    final statusBg = switch (currentMode) {
+      AppMode.home => paperColor(context),
+      AppMode.fight => yFight,
+      AppMode.flight => yFlight,
+      AppMode.lab => yLab,
+    };
+    final lightStatusBg = statusBg.computeLuminance() > 0.5;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Status-bar icons must contrast the flooded mode colour: light icons on
+      // the dark Fight/Flight/Lab headers, dark on cream Home. Bottom nav is
+      // cream → dark icons. Overrides the app-wide default for this route.
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness:
+            lightStatusBg ? Brightness.dark : Brightness.light,
+        statusBarBrightness: lightStatusBg ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: Scaffold(
+        backgroundColor: paperColor(context),
+        resizeToAvoidBottomInset: currentMode != AppMode.home,
+        body: Column(
           children: [
-            if (showBanner)
-              AppBanner(
-                message:
-                    '${widget.archivedTaskCount} tarea${widget.archivedTaskCount == 1 ? '' : 's'} archivada${widget.archivedTaskCount == 1 ? '' : 's'}',
-                accentColor: accentFight,
-                actionLabel: 'ver',
-                onAction:
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const TrashScreen(),
+            // Strip that floods ONLY the status-bar inset with the mode colour;
+            // the rest of the body stays on the cream scaffold. Continues
+            // seamlessly into the ModeHeader band directly below it.
+            Container(
+              height: MediaQuery.paddingOf(context).top,
+              color: statusBg,
+            ),
+            Expanded(
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                child: Column(
+                  children: [
+                    if (showBanner)
+                      AppBanner(
+                        message:
+                            '${widget.archivedTaskCount} tarea${widget.archivedTaskCount == 1 ? '' : 's'} archivada${widget.archivedTaskCount == 1 ? '' : 's'}',
+                        accentColor: accentFight,
+                        actionLabel: 'ver',
+                        onAction:
+                            () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const TrashScreen(),
+                              ),
+                            ),
+                        onDismiss:
+                            () => setState(() => _bannerDismissed = true),
                       ),
-                    ),
-                onDismiss: () => setState(() => _bannerDismissed = true),
+                    Expanded(child: _ModeContent(currentMode: currentMode)),
+                  ],
+                ),
               ),
-            Expanded(child: _ModeContent(currentMode: currentMode)),
+            ),
           ],
         ),
+        bottomNavigationBar:
+            currentMode != AppMode.home ? const YuliBottomNav() : null,
       ),
-      bottomNavigationBar:
-          currentMode != AppMode.home ? const YuliBottomNav() : null,
     );
   }
 }

@@ -11,6 +11,7 @@ import '../../providers/note_providers.dart';
 import '../../utils/pdf_export.dart';
 import '../../widgets/fight_panel.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/status_bar_flood.dart';
 import '../../widgets/ai_link_badge.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/kanban_card.dart';
@@ -349,8 +350,12 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
     return Scaffold(
       backgroundColor: yCream,
-      body: SafeArea(
-        child: Stack(
+      body: StatusBarFlood(
+        // Header is the note accent when expanded, cream2 when collapsed.
+        color: _headerCollapsed ? yCream2 : _accent,
+        child: SafeArea(
+          top: false,
+          child: Stack(
           children: [
             Column(
               children: [
@@ -536,6 +541,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }

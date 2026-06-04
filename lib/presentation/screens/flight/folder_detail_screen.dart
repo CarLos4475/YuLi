@@ -11,6 +11,7 @@ import '../../providers/task_propagation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/status_bar_flood.dart';
 import '../../widgets/edit_item_dialog.dart';
 
 import '../../../domain/models/folder.dart';
@@ -124,10 +125,14 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
 
     return Scaffold(
       backgroundColor: yCream,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _FolderHero(
+      body: StatusBarFlood(
+        color: yCream2, // matches the _FolderHero header
+        leadingColor: widget.folder.color, // continue its left accent stripe
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              _FolderHero(
               folder: widget.folder,
               onBack: () => Navigator.pop(context),
               noteCount: notes.length,
@@ -168,6 +173,7 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }

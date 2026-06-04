@@ -13,13 +13,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/folder.dart';
+import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../widgets/ai_link_badge.dart';
+import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../utils/canvas_block_raster.dart';
 import '../../utils/canvas_export.dart';
@@ -40,6 +43,7 @@ import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
 import 'lasso_mini_toolbar.dart';
 import 'ocr_flow.dart';
+import '../lab/lab_space_detail_screen.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'notebook_constants.dart';
@@ -2713,131 +2717,161 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             .valueOrNull
             ?.isNotEmpty) ??
         false;
+    final spaces =
+        ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
+    final linkedCards =
+        ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
+    final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
+    final linkedSpaces =
+        spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
     // Pin the per-note AI session to this view's lifetime (discarded on leave).
     ref.watch(aiSessionProvider(widget.note.id));
     return Scaffold(
       backgroundColor: yCream,
-      body: Stack(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: StatusBarFlood(
+        color: _headerCollapsed ? yCream2 : _accent,
+        child: SafeArea(
+          top: false,
+          child: Stack(
             children: [
-              if (_headerCollapsed)
-                SafeArea(
-                  child: _CollapsedNotebookHeader(
-                    folder: widget.folder,
-                    pageCount: _pageBlockIds.length,
-                    background: _currentBg,
-                    accent: _accent,
-                    hasAiKey: hasAiKey,
-                    aiLinked: aiLinked,
-                    onExpand: () => setState(() => _headerCollapsed = false),
-                    onOpenPages: _togglePageDrawer,
-                    onAi:
-                        () => showAiChat(
-                          context,
-                          ref,
-                          noteId: widget.note.id,
-                          accent: _accent,
-                          onSendToCanvas: _insertTextBlock,
-                        ),
-                  ),
-                )
-              else ...[
-                SafeArea(
-                  child: ModeHeader(
-                    mode: 'CUADERNO',
-                    subtitle:
-                        'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
-                    color: _accent,
-                    onBack: () => Navigator.pop(context),
-                    headerRight: [
-                      YBadge(
-                        label: '@${widget.folder.name}',
-                        bg: widget.folder.color,
-                        fg: yCream,
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _togglePageDrawer,
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: yCream,
-                            border: Border.all(
-                              color: yBorderStrong,
-                              width: yLineMid,
-                            ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_headerCollapsed)
+                    _CollapsedNotebookHeader(
+                      folder: widget.folder,
+                      pageCount: _pageBlockIds.length,
+                      background: _currentBg,
+                      accent: _accent,
+                      hasAiKey: hasAiKey,
+                      aiLinked: aiLinked,
+                      onExpand: () => setState(() => _headerCollapsed = false),
+                      onOpenPages: _togglePageDrawer,
+                      onAi:
+                          () => showAiChat(
+                            context,
+                            ref,
+                            noteId: widget.note.id,
+                            accent: _accent,
+                            onSendToCanvas: _insertTextBlock,
                           ),
-                          child: const Icon(
-                            Icons.auto_stories,
-                            color: yInk,
-                            size: 18,
-                          ),
+                    )
+                  else ...[
+                    ModeHeader(
+                      mode: 'CUADERNO',
+                      subtitle:
+                          'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
+                      color: _accent,
+                      onBack: () => Navigator.pop(context),
+                      headerRight: [
+                        YBadge(
+                          label: '@${widget.folder.name}',
+                          bg: widget.folder.color,
+                          fg: yCream,
                         ),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap:
-                            hasAiKey
-                                ? () => showAiChat(
-                                  context,
-                                  ref,
-                                  noteId: widget.note.id,
-                                  accent: _accent,
-                                  onSendToCanvas: _insertTextBlock,
-                                )
-                                : null,
-                        child: AiLinkBadge(
-                          active: aiLinked,
-                          color: _accent,
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _togglePageDrawer,
                           child: Container(
                             width: 34,
                             height: 34,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: hasAiKey ? _accent : yMuted,
+                              color: yCream,
                               border: Border.all(
                                 color: yBorderStrong,
                                 width: yLineMid,
                               ),
                             ),
-                            child: Icon(
-                              Icons.auto_awesome,
-                              color: hasAiKey ? yCream : yCream2,
+                            child: const Icon(
+                              Icons.auto_stories,
+                              color: yInk,
                               size: 18,
                             ),
                           ),
                         ),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => setState(() => _headerCollapsed = true),
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: yCream,
-                            border: Border.all(
-                              color: yBorderStrong,
-                              width: yLineMid,
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap:
+                              hasAiKey
+                                  ? () => showAiChat(
+                                    context,
+                                    ref,
+                                    noteId: widget.note.id,
+                                    accent: _accent,
+                                    onSendToCanvas: _insertTextBlock,
+                                  )
+                                  : null,
+                          child: AiLinkBadge(
+                            active: aiLinked,
+                            color: _accent,
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: hasAiKey ? _accent : yMuted,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.auto_awesome,
+                                color: hasAiKey ? yCream : yCream2,
+                                size: 18,
+                              ),
                             ),
                           ),
-                          child: const Icon(
-                            Icons.keyboard_arrow_up,
-                            color: yInk,
-                            size: 18,
+                        ),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _linkToLab(spaces),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: yLab,
+                              border: Border.all(
+                                color: yBorderStrong,
+                                width: yLineMid,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.all_inclusive,
+                              color: yCream,
+                              size: 18,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              Expanded(
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => _headerCollapsed = true),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: yCream,
+                              border: Border.all(
+                                color: yBorderStrong,
+                                width: yLineMid,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.keyboard_arrow_up,
+                              color: yInk,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (linkedSpaces.isNotEmpty)
+                      _LinkedSpacesBar(spaces: linkedSpaces),
+                  ],
+                  Expanded(
                 child:
                     _pageBlockIds.isEmpty
                         ? const Center(child: CircularProgressIndicator())
@@ -3261,11 +3295,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 child: _eraserModePopup(),
               ),
             ),
-          ],
-        ],
-      ),
-    );
-  }
+             ],
+           ],
+         ),
+       ),
+     ),
+   );
+    }
 
   // ─── Toolbar ───────────────────────────────────────────────────────────
 
@@ -3726,6 +3762,197 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       );
     }
     return btn;
+  }
+
+  Future<void> _linkToLab(List<LabSpace> spaces) async {
+    if (spaces.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay spaces activos'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    final picked = await showDialog<LabSpace>(
+      context: context,
+      builder: (ctx) => _SpacePickerDialog(spaces: spaces),
+    );
+    if (picked == null || !mounted) return;
+    final kanbanRepo = ref.read(kanbanCardRepositoryProvider);
+    final existing =
+        await kanbanRepo.watchBySourceNoteId(widget.note.id).first;
+    if (existing.any((c) => c.labSpaceId == picked.id)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ya vinculada a ${picked.name}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+    final labRepo = ref.read(labSpaceRepositoryProvider);
+    final columns = await labRepo.getColumns(picked.id);
+    if (columns.isEmpty) return;
+    final backlog = columns.firstWhere(
+      (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
+      orElse:
+          () => columns.firstWhere(
+            (c) => !c.isTerminal && !c.isExpired,
+            orElse: () => columns.first,
+          ),
+    );
+    final title =
+        (widget.note.title?.trim().isNotEmpty == true)
+            ? widget.note.title!
+            : 'Cuaderno ${widget.folder.name}';
+    await kanbanRepo.create(
+      labSpaceId: picked.id,
+      columnId: backlog.id,
+      title: title,
+      sourceNoteId: widget.note.id,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Vinculada a ${picked.name}'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+}
+
+class _LinkedSpacesBar extends ConsumerWidget {
+  final List<LabSpace> spaces;
+  const _LinkedSpacesBar({required this.spaces});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream2,
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineThin),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: Row(
+        children: [
+          Text(
+            'VINCULADA A',
+            style: yMono(
+              size: 9,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yMuted,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final s in spaces) ...[
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (_) => LabSpaceDetailScreen(space: s),
+                          ),
+                          (route) => route.isFirst,
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
+                        decoration: BoxDecoration(
+                          color: s.accentColor,
+                          border: Border.all(color: yBorderStrong, width: 1.5),
+                        ),
+                        child: Text(
+                          '→ ${s.name.toUpperCase()}',
+                          style: yMono(
+                            size: 9,
+                            weight: FontWeight.w700,
+                            tracking: 1.2,
+                            color: yCream,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpacePickerDialog extends StatelessWidget {
+  final List<LabSpace> spaces;
+  const _SpacePickerDialog({required this.spaces});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 360),
+        decoration: BoxDecoration(
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Vincular cuaderno a LAB',
+              style: ySans(size: 20, weight: FontWeight.w700, color: yInk),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Aparecerá como tarjeta en el kanban del space.',
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w500,
+                tracking: 1.2,
+                color: yMuted,
+              ),
+            ),
+            const SizedBox(height: 14),
+            for (final s in spaces)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.pop(context, s),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Container(width: 12, height: 12, color: s.accentColor),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          s.name,
+                          style: ySans(size: 16, color: yInk),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

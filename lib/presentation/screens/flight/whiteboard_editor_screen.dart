@@ -15,9 +15,9 @@ import 'package:uuid/uuid.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../widgets/ai_link_badge.dart';
+import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
-import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
@@ -2418,55 +2418,89 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
     return Scaffold(
       backgroundColor: yCream,
-      body: Stack(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: StatusBarFlood(
+        color: _headerCollapsed ? yCream2 : _accent,
+        child: SafeArea(
+          top: false,
+          child: Stack(
             children: [
-              if (_headerCollapsed)
-                SafeArea(
-                  child: _CollapsedWhiteboardHeader(
-                    folder: widget.folder,
-                    spaces: spaces,
-                    accent: _accent,
-                    hasAiKey: hasAiKey,
-                    aiLinked: aiLinked,
-                    onExpand: () => setState(() => _headerCollapsed = false),
-                    onReset: _resetView,
-                    onLink: () => _linkToLab(spaces),
-                    onAi:
-                        () => showAiChat(
-                          context,
-                          ref,
-                          noteId: widget.note.id,
-                          accent: _accent,
-                          onSendToCanvas: _insertTextBlock,
-                        ),
-                  ),
-                )
-              else ...[
-                SafeArea(
-                  child: Column(
-                    children: [
-                      ModeHeader(
-                        mode: 'PIZARRA',
-                        subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
-                        color: _accent,
-                        onBack: () => Navigator.pop(context),
-                        headerRight: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_headerCollapsed)
+                    _CollapsedWhiteboardHeader(
+                      folder: widget.folder,
+                      spaces: spaces,
+                      accent: _accent,
+                      hasAiKey: hasAiKey,
+                      aiLinked: aiLinked,
+                      onExpand: () => setState(() => _headerCollapsed = false),
+                      onReset: _resetView,
+                      onLink: () => _linkToLab(spaces),
+                      onAi:
+                          () => showAiChat(
+                            context,
+                            ref,
+                            noteId: widget.note.id,
+                            accent: _accent,
+                            onSendToCanvas: _insertTextBlock,
+                          ),
+                    )
+                  else ...[
+                    Column(
+                      children: [
+                        ModeHeader(
+                          mode: 'PIZARRA',
+                          subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
+                          color: _accent,
+                          onBack: () => Navigator.pop(context),
+                          headerRight: [
                           YBadge(
                             label: '@${widget.folder.name}',
                             bg: widget.folder.color,
                             fg: yCream,
                           ),
-                          _BrutalBtn(
-                            icon: Icons.center_focus_strong,
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: _resetView,
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: yCream,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.center_focus_strong,
+                                color: yInk,
+                                size: 16,
+                              ),
+                            ),
                           ),
-                          _BrutalBtn(
-                            icon: Icons.all_inclusive,
-                            color: yLab,
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
                             onTap: () => _linkToLab(spaces),
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: yLab,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.all_inclusive,
+                                color: yCream,
+                                size: 16,
+                              ),
+                            ),
                           ),
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
@@ -2484,8 +2518,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                               active: aiLinked,
                               color: _accent,
                               child: Container(
-                                width: 34,
-                                height: 34,
+                                width: 32,
+                                height: 32,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   color: hasAiKey ? _accent : yMuted,
@@ -2497,7 +2531,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 child: Icon(
                                   Icons.auto_awesome,
                                   color: hasAiKey ? yCream : yCream2,
-                                  size: 18,
+                                  size: 16,
                                 ),
                               ),
                             ),
@@ -2507,8 +2541,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                             onTap:
                                 () => setState(() => _headerCollapsed = true),
                             child: Container(
-                              width: 34,
-                              height: 34,
+                              width: 32,
+                              height: 32,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: yCream,
@@ -2528,11 +2562,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                       ),
                       if (linkedSpaces.isNotEmpty)
                         _LinkedSpacesBar(spaces: linkedSpaces),
-                    ],
-                  ),
-                ),
-              ],
-              Expanded(
+                      ],
+                    ),
+                  ],
+                Expanded(
                 child: LayoutBuilder(
                   builder: (ctx, c) {
                     _viewport = Size(c.maxWidth, c.maxHeight);
@@ -2850,7 +2883,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 onCancel: _cancelMarquee,
               ),
             ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -3818,42 +3853,6 @@ class _SpacePickerDialog extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _BrutalBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  const _BrutalBtn({
-    required this.icon,
-    this.color = yCream,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: yBorderStrong, width: yLineMid),
-          boxShadow: const [
-            BoxShadow(
-              color: inkBlack,
-              offset: shadowOffset,
-              blurRadius: shadowBlurRadius,
-            ),
-          ],
-        ),
-        child: Icon(icon, size: 18, color: color == yCream ? yInk : yCream),
       ),
     );
   }

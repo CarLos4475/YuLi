@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
 // Light mode
-const Color paperLight = Color(0xFFF5F2EC);
+const Color paperLight = Color(0xFFF2EFE6);
 const Color inkBlack = Color(0xFF111111);
 const Color inkGray = Color(0xFF888888);
 const Color borderColor = Color(0xFF111111);
