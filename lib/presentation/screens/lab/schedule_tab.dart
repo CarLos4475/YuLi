@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart' as y;
+import '../../widgets/color_palette_picker.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/navigation_provider.dart';
@@ -1771,50 +1772,10 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             const SizedBox(height: 16),
             Text('Color', style: labelBold.copyWith(color: inkGray)),
             const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children:
-                  [
-                    '#3D6B4F',
-                    '#2D4B8E',
-                    '#E02B2B',
-                    '#C17F3A',
-                    '#4A7C59',
-                    '#5B6ABF',
-                    '#D9805A',
-                    '#7B4B8A',
-                    '#3A7F7F',
-                    '#8F6B3A',
-                  ].map((hex) {
-                    final c = _parseHex(hex);
-                    final isSelected = _selectedColor == hex;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedColor = hex),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: c,
-                          border: Border.all(
-                            color:
-                                isSelected
-                                    ? y.yBorderStrong
-                                    : Colors.transparent,
-                            width: borderWidthHeavy,
-                          ),
-                        ),
-                        child:
-                            isSelected
-                                ? const Icon(
-                                  Icons.check,
-                                  size: 14,
-                                  color: paperLight,
-                                )
-                                : null,
-                      ),
-                    );
-                  }).toList(),
+            ColorPalettePicker(
+              selected: _parseHex(_selectedColor),
+              onChanged: (c) =>
+                  setState(() => _selectedColor = _colorToHex(c)),
             ),
           ],
           if (_selectedFolderId != null) ...[

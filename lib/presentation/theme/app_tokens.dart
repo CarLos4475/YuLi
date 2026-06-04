@@ -19,18 +19,79 @@ const Color accentFlight = Color(0xFF2D4B8E);
 const Color accentLab = Color(0xFF3D6B4F);
 const Color accentJournal = Color(0xFFC17F3A);
 
-// Curated folder/space palette
+// Curated folder/space palette. Brutalist rule: every colour must have BODY on
+// the cream paper (#F5F2EC) and carry cream text — medium-to-dark, saturated, or
+// muted/earthy (café, mocha…). No pastels or near-paper neutrals (they vanish).
+// Organised by hue family, each a tonal ramp (light-but-valid → deep) so the
+// picker shows them "classically": by category and by tone. The canonical mode
+// accents (#E02B2B/#C17F3A/#3D6B4F/#2D4B8E) live in here so existing items light
+// up as selected.
+
+class FolderPaletteSection {
+  final String label;
+  final List<Color> colors;
+  const FolderPaletteSection({required this.label, required this.colors});
+}
+
+const List<Color> _palRojos = [
+  Color(0xFFEF4B4B), Color(0xFFE02B2B), Color(0xFFC92626),
+  Color(0xFFA81F1F), Color(0xFF8E2D2D), Color(0xFF761818), Color(0xFF5C1414),
+];
+const List<Color> _palNaranjas = [
+  Color(0xFFF07A2B), Color(0xFFE06A1E), Color(0xFFC85718),
+  Color(0xFF9C4A24), Color(0xFF7E3A1C), Color(0xFF6B341A),
+];
+const List<Color> _palAmbar = [
+  Color(0xFFE0A92B), Color(0xFFC9961F), Color(0xFFC17F3A),
+  Color(0xFFA8761A), Color(0xFF8F6B3A), Color(0xFF6E5A22),
+];
+const List<Color> _palVerdes = [
+  Color(0xFF5CA62E), Color(0xFF4B8E2D), Color(0xFF3E7A28), Color(0xFF2E8B57),
+  Color(0xFF2F7A4C), Color(0xFF3D6B4F), Color(0xFF2F5E4F), Color(0xFF244A3A),
+];
+const List<Color> _palTeal = [
+  Color(0xFF2E9E94), Color(0xFF21998C), Color(0xFF2E6F6D), Color(0xFF1F7A8C),
+  Color(0xFF1C6B7A), Color(0xFF274D5E), Color(0xFF1E3E4A),
+];
+const List<Color> _palAzules = [
+  Color(0xFF3A86E0), Color(0xFF2B7BE0), Color(0xFF2566C4), Color(0xFF2D4B8E),
+  Color(0xFF25406F), Color(0xFF253A73), Color(0xFF1E2F5E), Color(0xFF182748),
+];
+const List<Color> _palMorados = [
+  Color(0xFF6A4FC0), Color(0xFF4C3B8F), Color(0xFF6B2D8E), Color(0xFF5A2E8E),
+  Color(0xFF5A2E73), Color(0xFF3A2E6B), Color(0xFF2E2552),
+];
+const List<Color> _palRosas = [
+  Color(0xFFD14C92), Color(0xFFC2186F), Color(0xFFB5326E), Color(0xFFA0285E),
+  Color(0xFF8E2D4B), Color(0xFF7A2540), Color(0xFF6B2038), Color(0xFF5A1A2E),
+];
+const List<Color> _palTierra = [
+  Color(0xFFA0623A), Color(0xFF8E5A34), Color(0xFF6F4E37), Color(0xFF8B6F5C),
+  Color(0xFF7C6F64), Color(0xFF6B7A2D), Color(0xFF7A7A4A), Color(0xFF5E6E66),
+  Color(0xFFA35C5C), Color(0xFF6E5168),
+];
+const List<Color> _palNeutros = [
+  Color(0xFF6F6A64), Color(0xFF55504B), Color(0xFF45403C),
+  Color(0xFF2B2927), Color(0xFF1F1E1C), Color(0xFF1A1A1A),
+];
+
+const List<FolderPaletteSection> folderPaletteSections = [
+  FolderPaletteSection(label: 'ROJOS', colors: _palRojos),
+  FolderPaletteSection(label: 'NARANJAS', colors: _palNaranjas),
+  FolderPaletteSection(label: 'ÁMBAR', colors: _palAmbar),
+  FolderPaletteSection(label: 'VERDES', colors: _palVerdes),
+  FolderPaletteSection(label: 'TEAL · CIAN', colors: _palTeal),
+  FolderPaletteSection(label: 'AZULES', colors: _palAzules),
+  FolderPaletteSection(label: 'MORADOS', colors: _palMorados),
+  FolderPaletteSection(label: 'ROSAS · VINO', colors: _palRosas),
+  FolderPaletteSection(label: 'TIERRA · MOCHA', colors: _palTierra),
+  FolderPaletteSection(label: 'NEUTROS', colors: _palNeutros),
+];
+
+// Flat view (back-compat for code reading a single list).
 const List<Color> folderPalette = [
-  Color(0xFFE02B2B), // rojo
-  Color(0xFF2D4B8E), // azul pizarra
-  Color(0xFF3D6B4F), // verde musgo
-  Color(0xFFC17F3A), // ocre
-  Color(0xFF6B2D8E), // morado
-  Color(0xFF1A1A1A), // negro
-  Color(0xFFE07B2B), // naranja
-  Color(0xFF2B7BE0), // azul eléctrico
-  Color(0xFF8E2D4B), // vino
-  Color(0xFF4B8E2D), // verde lima
+  ..._palRojos, ..._palNaranjas, ..._palAmbar, ..._palVerdes, ..._palTeal,
+  ..._palAzules, ..._palMorados, ..._palRosas, ..._palTierra, ..._palNeutros,
 ];
 
 // ─── Borders & Spacing ───────────────────────────────────────────────────────

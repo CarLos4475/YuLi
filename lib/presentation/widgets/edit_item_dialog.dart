@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
+import 'color_palette_picker.dart';
 
 class EditItemDialog extends StatefulWidget {
   final String title;
@@ -50,7 +51,8 @@ class _EditItemDialogState extends State<EditItemDialog> {
           border: Border.all(color: ink, width: borderWidthHeavy),
         ),
         padding: const EdgeInsets.all(24),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -68,26 +70,9 @@ class _EditItemDialogState extends State<EditItemDialog> {
             const SizedBox(height: 20),
             Text('Color', style: labelBold.copyWith(color: inkGray)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: folderPalette.map((color) {
-                final isSelected = color == _selectedColor;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedColor = color),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: color,
-                      border: Border.all(
-                        color: isSelected ? ink : Colors.transparent,
-                        width: borderWidthHeavy,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
+            ColorPalettePicker(
+              selected: _selectedColor,
+              onChanged: (c) => setState(() => _selectedColor = c),
             ),
             const SizedBox(height: 24),
             Row(
@@ -145,6 +130,7 @@ class _EditItemDialogState extends State<EditItemDialog> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

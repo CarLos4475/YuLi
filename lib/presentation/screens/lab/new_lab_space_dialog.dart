@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart' show yBorderStrong;
+import '../../widgets/color_palette_picker.dart';
 
 class NewLabSpaceDialog extends ConsumerStatefulWidget {
   const NewLabSpaceDialog({super.key});
@@ -13,7 +14,7 @@ class NewLabSpaceDialog extends ConsumerStatefulWidget {
 
 class _NewLabSpaceDialogState extends ConsumerState<NewLabSpaceDialog> {
   final _nameController = TextEditingController();
-  Color _selectedColor = folderPalette[1]; // azul pizarra default
+  Color _selectedColor = accentFlight; // azul pizarra default
 
   @override
   void dispose() {
@@ -42,7 +43,8 @@ class _NewLabSpaceDialogState extends ConsumerState<NewLabSpaceDialog> {
           border: Border.all(color: yBorderStrong, width: borderWidth),
         ),
         padding: const EdgeInsets.all(24),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -75,28 +77,9 @@ class _NewLabSpaceDialogState extends ConsumerState<NewLabSpaceDialog> {
             const SizedBox(height: 20),
             Text('Color de acento', style: labelBold.copyWith(color: inkGray)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children:
-                  folderPalette.map((color) {
-                    final isSelected = color == _selectedColor;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedColor = color),
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: color,
-                          border: Border.all(
-                            color:
-                                isSelected ? yBorderStrong : Colors.transparent,
-                            width: borderWidth,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+            ColorPalettePicker(
+              selected: _selectedColor,
+              onChanged: (c) => setState(() => _selectedColor = c),
             ),
             const SizedBox(height: 24),
             Row(
@@ -138,6 +121,7 @@ class _NewLabSpaceDialogState extends ConsumerState<NewLabSpaceDialog> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

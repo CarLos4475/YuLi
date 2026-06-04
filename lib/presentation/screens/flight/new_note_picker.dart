@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../widgets/color_palette_picker.dart';
 import '../../theme/app_tokens.dart';
 import '../../../domain/models/note.dart';
 
@@ -200,7 +201,7 @@ class _NewNoteDetails extends StatefulWidget {
 
 class _NewNoteDetailsState extends State<_NewNoteDetails> {
   final _nameCtrl = TextEditingController();
-  Color _selectedColor = folderPalette[1];
+  Color _selectedColor = accentFlight; // azul pizarra default
 
   @override
   void dispose() {
@@ -230,7 +231,8 @@ class _NewNoteDetailsState extends State<_NewNoteDetails> {
           border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         padding: const EdgeInsets.all(20),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -305,27 +307,9 @@ class _NewNoteDetailsState extends State<_NewNoteDetails> {
               ),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children:
-                  folderPalette.map((c) {
-                    final sel = c == _selectedColor;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedColor = c),
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: c,
-                          border: Border.all(
-                            color: sel ? yBorderStrong : Colors.transparent,
-                            width: yLineHeavy,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+            ColorPalettePicker(
+              selected: _selectedColor,
+              onChanged: (c) => setState(() => _selectedColor = c),
             ),
             const SizedBox(height: 18),
             Row(
@@ -374,6 +358,7 @@ class _NewNoteDetailsState extends State<_NewNoteDetails> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

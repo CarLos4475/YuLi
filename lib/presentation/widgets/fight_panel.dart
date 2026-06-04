@@ -159,7 +159,7 @@ class PanelTaskTile extends ConsumerWidget {
     final diff = due.difference(today).inDays;
 
     if (diff < 0) return accentFight;
-    if (diff <= 1) return folderPalette[3];
+    if (diff <= 1) return accentJournal; // ocre "vence pronto"
     return inkGray;
   }
 
