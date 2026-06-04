@@ -1456,7 +1456,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     _endTime = widget.initialEndTime;
     _selectedDays = List.from(widget.initialDays);
     _selectedFolderId = b?.folderId;
-    _selectedColor = b?.color ?? '#3D6B4F';
+    _selectedColor = b?.color ?? _colorToHex(widget.space.accentColor);
     _useFolderColor = b?.useFolderColor ?? false;
   }
 
@@ -1527,7 +1527,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     final foldersAsync = ref.read(activeFoldersProvider);
     final folders = foldersAsync.valueOrNull ?? [];
     final folder = folders.where((f) => f.id == folderId).firstOrNull;
-    return folder?.color ?? const Color(0xFF3D6B4F);
+    return folder?.color ?? widget.space.accentColor;
   }
 
   @override

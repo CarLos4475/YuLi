@@ -432,6 +432,7 @@ class _GraphTabState extends ConsumerState<GraphTab>
                         sim: _sim!,
                         xf: _xf,
                         selectedNodeId: selectedVisibleId,
+                        accent: _accent,
                         repaint: _repaint,
                       ),
                     ),
@@ -593,6 +594,7 @@ class _GraphPainter extends CustomPainter {
     required this.sim,
     required this.xf,
     required this.selectedNodeId,
+    required this.accent,
     required Listenable repaint,
   }) : super(repaint: repaint);
 
@@ -600,6 +602,7 @@ class _GraphPainter extends CustomPainter {
   final GraphSimulation sim;
   final _ViewTransform xf;
   final String? selectedNodeId;
+  final Color accent;
 
   final Map<String, TextPainter> _labelCache = {};
   late final Set<String> _aiSourceNodeIds = data.aiSourceNodeIds;
@@ -974,14 +977,14 @@ class _GraphPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.2
-          ..color = yFlight.withValues(alpha: 0.55)
+          ..color = accent.withValues(alpha: 0.55)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
     canvas.drawRect(
         outer,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.8
-          ..color = yFlight.withValues(alpha: 0.92));
+          ..color = accent.withValues(alpha: 0.92));
   }
 
   @override

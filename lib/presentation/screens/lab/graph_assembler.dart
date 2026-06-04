@@ -153,9 +153,14 @@ class _GraphBuilder {
 
     final cards = await _cardRepo.watchBySpace(space.id).first;
     for (final card in cards) {
-      if (terminalColIds.contains(card.columnId) ||
-          expiredColIds.contains(card.columnId)) continue;
-      await _addCard(card, rootId, false);
+      final inExpired = expiredColIds.contains(card.columnId);
+      final isFinished = inExpired || terminalColIds.contains(card.columnId);
+      // Hide finished cards to declutter — EXCEPT an expired card whose origin
+      // task is still alive (de ayer/fantasma): hiding it would orphan the
+      // withering task, so keep the card and let the pair die together. Entregado
+      // cards always hide cleanly (their task is done → no node to orphan).
+      if (isFinished && !await _hasLivingOriginTask(card)) continue;
+      await _addCard(card, rootId, inExpired);
     }
 
     final sources = await _labRepo.getContextSources(space.id);
@@ -196,6 +201,16 @@ class _GraphBuilder {
         _edge(cardId, noteId, GraphEdgeKind.bridge);
       }
     }
+  }
+
+  /// A card has a "living" origin task if that task still produces a graph node
+  /// (pending/yesterday/archived_failed). Done/trash → null state → not living.
+  /// Used to decide whether a finished card may hide without orphaning its task.
+  Future<bool> _hasLivingOriginTask(KanbanCard card) async {
+    final id = card.originTaskId;
+    if (id == null) return false;
+    final t = await _taskRepo.getById(id);
+    return t != null && taskGraphState(t) != null;
   }
 
   // ── Tasks ─────────────────────────────────────────────────────────────────

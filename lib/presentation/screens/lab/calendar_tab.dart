@@ -819,7 +819,7 @@ class _MonthView extends StatelessWidget {
                           decoration: BoxDecoration(
                             color:
                                 isToday
-                                    ? y.yFlight
+                                    ? accentColor
                                     : candidateData.isNotEmpty
                                     ? y.yInk.withAlpha(20)
                                     : (isWeekend ? y.yCream2 : y.yCream),
