@@ -271,6 +271,66 @@ void main() {
       expect(data.nodes.any((n) => n.kind == GraphNodeKind.note), isTrue);
     });
 
+    test('vencido: card se conserva con tarea viva, se oculta sin ella',
+        () async {
+      final space = await labRepo.create('S', '#3D6B4F');
+      final cols = await labRepo.getColumns(space.id);
+      final vencido = cols.firstWhere((c) => c.isExpired);
+      final entregado = cols.firstWhere((c) => c.isTerminal);
+
+      // (1) Card en Vencido con tarea VIVA (fantasma) → se CONSERVA el par.
+      final tAlive = await taskRepo.save(newTask(TaskStatus.archivedFailed));
+      await kanbanRepo.create(
+        labSpaceId: space.id,
+        columnId: vencido.id,
+        title: 'VivoEnVencido',
+        originTaskId: tAlive.id,
+      );
+      // (2) Card en Vencido con tarea MUERTA (done) → card oculto.
+      final tDead = await taskRepo.save(newTask(TaskStatus.done));
+      await kanbanRepo.create(
+        labSpaceId: space.id,
+        columnId: vencido.id,
+        title: 'MuertoEnVencido',
+        originTaskId: tDead.id,
+      );
+      // (3) Card en Entregado (tarea done) → oculto limpio.
+      final tDelivered = await taskRepo.save(newTask(TaskStatus.done));
+      await kanbanRepo.create(
+        labSpaceId: space.id,
+        columnId: entregado.id,
+        title: 'Entregado',
+        originTaskId: tDelivered.id,
+      );
+
+      final data = await container.read(graphDataProvider(space.id).future);
+      bool hasCard(String label) => data.nodes
+          .any((n) => n.kind == GraphNodeKind.card && n.label == label);
+      bool hasTask(int refId) => data.nodes
+          .any((n) => n.kind == GraphNodeKind.task && n.refId == refId);
+
+      // (1) El par vencido-vivo se conserva: card + tarea fantasma + puente.
+      expect(hasCard('VivoEnVencido'), isTrue);
+      final cardNode = data.nodes.firstWhere(
+          (n) => n.kind == GraphNodeKind.card && n.label == 'VivoEnVencido');
+      final taskNode = data.nodes.firstWhere(
+          (n) => n.kind == GraphNodeKind.task && n.refId == tAlive.id);
+      expect(taskNode.taskState, TaskGraphState.fantasma);
+      expect(
+        data.edges.any((e) =>
+            e.kind == GraphEdgeKind.bridge &&
+            ((e.from == cardNode.id && e.to == taskNode.id) ||
+                (e.to == cardNode.id && e.from == taskNode.id))),
+        isTrue,
+      );
+
+      // (2) y (3): sin tarea viva → card oculto, y la tarea done no tiene nodo.
+      expect(hasCard('MuertoEnVencido'), isFalse);
+      expect(hasCard('Entregado'), isFalse);
+      expect(hasTask(tDead.id), isFalse);
+      expect(hasTask(tDelivered.id), isFalse);
+    });
+
     test('space vacío → solo el sol, sin crash', () async {
       final space = await labRepo.create('Vacio', '#3D6B4F');
       final data = await container.read(graphDataProvider(space.id).future);
