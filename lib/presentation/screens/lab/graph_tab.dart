@@ -16,6 +16,22 @@ import 'lab_card_colors.dart';
 
 const _urgentStroke = Color(0xFFC8332C);
 
+/// The full "everything visible" filter state. Node kinds exclude `url` (never
+/// rendered). Single source of truth for the default sets, the "show all" reset
+/// and the "are filters narrowed?" check.
+const _kAllNodeKinds = {
+  GraphNodeKind.space,
+  GraphNodeKind.card,
+  GraphNodeKind.folder,
+  GraphNodeKind.note,
+  GraphNodeKind.task,
+};
+const _kAllEdgeKinds = {
+  GraphEdgeKind.structure,
+  GraphEdgeKind.bridge,
+  GraphEdgeKind.ai,
+};
+
 /// The "Grafo de Conexiones" tab. A live force-directed poster of how a lab
 /// space connects across the three modes. Heat-aware: the simulation ticks only
 /// while warm (load settle + during/after a drag) and STOPS at rest; the only
@@ -33,14 +49,17 @@ class GraphTab extends ConsumerStatefulWidget {
 class _GraphTabState extends ConsumerState<GraphTab>
     with TickerProviderStateMixin {
   bool _global = false;
-  bool _showAi = true;
+  GraphNode? _selectedNode;
+  final Set<GraphNodeKind> _visibleNodeKinds = {..._kAllNodeKinds};
+  final Set<GraphEdgeKind> _visibleEdgeKinds = {..._kAllEdgeKinds};
 
   final _xf = _ViewTransform();
   final _repaint = ValueNotifier<int>(0);
   late final Ticker _ticker;
   AnimationController? _pulse;
 
-  GraphData? _rendered;
+  GraphData? _rendered; // full graph from the provider
+  GraphData _filtered = GraphData.empty; // visible subset the sim is built on
   GraphSimulation? _sim;
 
   // gesture state
@@ -80,8 +99,8 @@ class _GraphTabState extends ConsumerState<GraphTab>
   /// without manually zooming out). Skipped once the user pans/zooms/drags.
   void _fitToView() {
     final sim = _sim;
-    final data = _rendered;
-    if (sim == null || data == null || _size == Size.zero) return;
+    final data = _filtered;
+    if (sim == null || _size == Size.zero) return;
     var minX = double.infinity, minY = double.infinity;
     var maxX = -double.infinity, maxY = -double.infinity;
     for (final n in data.nodes) {
@@ -110,16 +129,44 @@ class _GraphTabState extends ConsumerState<GraphTab>
 
   void _applyData(GraphData data) {
     if (identical(data, _rendered)) return;
-    // Carry positions over so real-time data updates nudge the layout instead
-    // of teleporting everything (the sim reheats gently when given `previous`).
-    final previous = _sim?.positions;
     _rendered = data;
-    _sim = GraphSimulation(data, previous: previous);
+    // Keep the selection pointing at the fresh node instance (or drop it if the
+    // node vanished after a real-time update — e.g. a task that got completed).
+    if (_selectedNode != null) {
+      GraphNode? selected;
+      for (final node in data.nodes) {
+        if (node.id == _selectedNode!.id) {
+          selected = node;
+          break;
+        }
+      }
+      _selectedNode = selected;
+    }
+    _rebuildSim(reframe: _sim == null);
+  }
+
+  /// (Re)build the simulation from the *filtered* view so the layout reflows to
+  /// exactly what's visible (no gaps where hidden nodes used to be). Carries
+  /// previous positions so the change is a gentle nudge, not a teleport. Called
+  /// on data updates AND on filter changes — filtering IS a re-layout.
+  void _rebuildSim({bool reframe = false}) {
+    final rendered = _rendered;
+    if (rendered == null) return;
+    final previous = _sim?.positions;
+    _filtered = _filteredData(rendered);
+    _sim = GraphSimulation(_filtered, previous: previous);
     _dragId = null;
-    if (previous == null) _needsFit = true; // frame a freshly-built graph
+    if (reframe || previous == null) _needsFit = true; // frame a fresh graph
     _ticker.stop();
-    if (data.nodes.length > 1) _ensureTicking(); // animate the settle/reflow
-    if (data.nodes.isNotEmpty) {
+    if (_filtered.nodes.length > 1) _ensureTicking(); // animate the settle
+    _updatePulse();
+  }
+
+  void _updatePulse() {
+    // Runs while there's anything to pulse (sun/AI-source/urgent → effectively
+    // whenever the graph is non-empty). Cheap: the pulse layer is isolated in a
+    // RepaintBoundary, so this perpetual repaint doesn't touch the main graph.
+    if (_filtered.nodes.isNotEmpty) {
       _pulse ??= AnimationController(
           vsync: this, duration: const Duration(milliseconds: 1500))
         ..repeat();
@@ -130,6 +177,30 @@ class _GraphTabState extends ConsumerState<GraphTab>
   }
 
   Color get _accent => widget.space.accentColor;
+  bool get _showAi => _visibleEdgeKinds.contains(GraphEdgeKind.ai);
+  bool get _hasCustomFilters =>
+      _visibleNodeKinds.length != _kAllNodeKinds.length ||
+      _visibleEdgeKinds.length != _kAllEdgeKinds.length;
+
+  /// WYSIWYG filter: keep every node whose kind is enabled, and every edge whose
+  /// kind is enabled that joins two visible nodes. No orphan-pruning — a kind you
+  /// enable always shows (even with no visible edges); [_rebuildSim] reflows the
+  /// layout so isolated nodes settle cleanly instead of leaving holes.
+  GraphData _filteredData(GraphData data) {
+    final nodes = [
+      for (final n in data.nodes)
+        if (_visibleNodeKinds.contains(n.kind)) n,
+    ];
+    final ids = {for (final n in nodes) n.id};
+    final edges = [
+      for (final e in data.edges)
+        if (_visibleEdgeKinds.contains(e.kind) &&
+            ids.contains(e.from) &&
+            ids.contains(e.to))
+          e,
+    ];
+    return GraphData(nodes: nodes, edges: edges);
+  }
 
   Offset _screenToWorld(Offset s) => Offset(
         (s.dx - _size.width / 2 - _xf.pan.dx) / _xf.scale,
@@ -139,9 +210,10 @@ class _GraphTabState extends ConsumerState<GraphTab>
   String? _hitNode(Offset world) {
     final sim = _sim;
     if (sim == null) return null;
+    final filtered = _filtered;
     String? best;
     double bestD = double.infinity;
-    for (final n in _rendered!.nodes) {
+    for (final n in filtered.nodes) {
       final p = sim.posOf(n.id);
       if (p == null) continue;
       final d = (p - world).distance;
@@ -197,32 +269,76 @@ class _GraphTabState extends ConsumerState<GraphTab>
     if (dragged != null) {
       if (!_moved) {
         final node = _rendered!.nodes.firstWhere((n) => n.id == dragged);
-        _handleTap(node, _rendered!);
+        _handleTap(node);
       }
       _sim?.dragActive = false; // full forces resume → graph re-settles
       _sim?.unpin(dragged);
       _sim?.reheat(0.32);
       _ensureTicking();
+      return;
+    }
+    if (!_moved && _selectedNode != null) {
+      setState(() {
+        _selectedNode = null;
+      });
     }
   }
 
-  Future<void> _handleTap(GraphNode node, GraphData data) async {
-    final action =
-        await showGraphNodeDetail(context, node, data, accent: _accent);
-    if (action == null || !mounted) return;
-    switch (action) {
-      case GraphNodeAction.openNote:
-        ref.read(pendingNoteNavigationProvider.notifier).state = node.refId;
-        Navigator.of(context).pop();
-      case GraphNodeAction.openFolder:
-        ref.read(pendingFolderNavigationProvider.notifier).state = node.refId;
-        Navigator.of(context).pop();
-      case GraphNodeAction.openCard:
-        widget.onOpenCard?.call(node.refId!);
-      case GraphNodeAction.markTaskDone:
-        await setTaskDone(ref, node.refId!, done: true);
-        ref.invalidate(graphDataProvider(_global ? null : widget.space.id));
-    }
+  void _handleTap(GraphNode node) {
+    setState(() {
+      _selectedNode = node;
+    });
+  }
+
+  Future<void> _showFilters() async {
+    final result = await showModalBottomSheet<_GraphFilterSelection>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true, // size to content (was clipping in landscape)
+      builder: (ctx) => _GraphFilterSheet(
+        initialNodes: _visibleNodeKinds,
+        initialEdges: _visibleEdgeKinds,
+        accent: _accent,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _visibleNodeKinds
+        ..clear()
+        ..addAll(result.nodeKinds);
+      _visibleEdgeKinds
+        ..clear()
+        ..addAll(result.edgeKinds);
+      if (_selectedNode != null &&
+          !_visibleNodeKinds.contains(_selectedNode!.kind)) {
+        _selectedNode = null;
+      }
+      _rebuildSim(); // reflow the visible subset
+    });
+  }
+
+  Future<void> _openNoteFromInspector(int noteId) async {
+    ref.read(pendingNoteNavigationProvider.notifier).state = noteId;
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _openFolderFromInspector(int folderId) async {
+    ref.read(pendingFolderNavigationProvider.notifier).state = folderId;
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _openCardFromInspector(int cardId) async {
+    setState(() {
+      _selectedNode = null;
+    });
+    widget.onOpenCard?.call(cardId);
+  }
+
+  Future<void> _markTaskDoneFromInspector(int taskId) async {
+    await setTaskDone(ref, taskId, done: true);
+    ref.invalidate(graphDataProvider(_global ? null : widget.space.id));
   }
 
   void _refresh(int? scope) => ref.invalidate(graphDataProvider(scope));
@@ -233,7 +349,18 @@ class _GraphTabState extends ConsumerState<GraphTab>
     // Real-time: re-assemble the graph the moment underlying data changes while
     // the tab is open (cards moved/added/done, columns, sources, spaces).
     if (_global) {
+      // Global graph pulls cards/columns/sources from EVERY active space, so
+      // listen to each space's reactive providers (the family ones are per-id —
+      // there's no single global stream). The space list itself is watched so
+      // adding/removing a space re-registers the set and refreshes.
       ref.listen(activeLabSpacesProvider, (_, _) => _refresh(scope));
+      final spaces =
+          ref.watch(activeLabSpacesProvider).valueOrNull ?? const <LabSpace>[];
+      for (final s in spaces) {
+        ref.listen(kanbanCardsBySpaceProvider(s.id), (_, _) => _refresh(scope));
+        ref.listen(kanbanColumnsProvider(s.id), (_, _) => _refresh(scope));
+        ref.listen(spaceContextSourcesProvider(s.id), (_, _) => _refresh(scope));
+      }
     } else {
       ref.listen(
           kanbanCardsBySpaceProvider(widget.space.id), (_, _) => _refresh(scope));
@@ -261,14 +388,31 @@ class _GraphTabState extends ConsumerState<GraphTab>
                   style: yMono(size: 12, color: yMuted))),
           data: (data) {
             _applyData(data);
-            return _buildStack(data);
+            return _buildStack();
           },
         ),
       ),
     );
   }
 
-  Widget _buildStack(GraphData data) {
+  Widget _buildStack() {
+    final filtered = _filtered;
+    final full = _rendered;
+    // The inspector resolves against the FULL graph (so it shows real totals and
+    // stays open even when you navigate to a node whose kind is filtered off the
+    // canvas). The canvas selection outline only applies when it's visible.
+    GraphNode? selectedForPanel;
+    String? selectedVisibleId;
+    if (_selectedNode != null) {
+      final id = _selectedNode!.id;
+      for (final node in (full ?? filtered).nodes) {
+        if (node.id == id) {
+          selectedForPanel = node;
+          break;
+        }
+      }
+      if (filtered.nodes.any((n) => n.id == id)) selectedVisibleId = id;
+    }
     return Stack(
       children: [
         Positioned.fill(
@@ -284,10 +428,10 @@ class _GraphTabState extends ConsumerState<GraphTab>
                   Positioned.fill(
                     child: CustomPaint(
                       painter: _GraphPainter(
-                        data: data,
+                        data: filtered,
                         sim: _sim!,
                         xf: _xf,
-                        showAi: _showAi,
+                        selectedNodeId: selectedVisibleId,
                         repaint: _repaint,
                       ),
                     ),
@@ -295,12 +439,16 @@ class _GraphTabState extends ConsumerState<GraphTab>
                   if (_pulse != null)
                     Positioned.fill(
                       child: IgnorePointer(
-                        child: CustomPaint(
-                          painter: _AlertPainter(
-                            data: data,
-                            sim: _sim!,
-                            xf: _xf,
-                            anim: _pulse!,
+                        // Isolated layer: the 60fps pulse repaint stays here and
+                        // doesn't re-rasterise the main graph painter behind it.
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: _AlertPainter(
+                              data: filtered,
+                              sim: _sim!,
+                              xf: _xf,
+                              anim: _pulse!,
+                            ),
                           ),
                         ),
                       ),
@@ -310,12 +458,31 @@ class _GraphTabState extends ConsumerState<GraphTab>
             );
           }),
         ),
-        if (data.isEmpty) _emptyState(),
+        if (filtered.isEmpty)
+          (full == null || full.isEmpty)
+              ? _emptyState()
+              : _filteredEmptyState(),
         Positioned(top: 12, right: 12, child: _controls()),
         Positioned(
             left: 12,
             bottom: 12,
             child: _Legend(showAi: _showAi, accent: _accent)),
+        if (selectedForPanel != null && full != null)
+          GraphNodeInspector(
+            node: selectedForPanel,
+            data: full,
+            accent: _accent,
+            onClose: () => setState(() {
+              _selectedNode = null;
+            }),
+            onOpenNote: _openNoteFromInspector,
+            onOpenFolder: _openFolderFromInspector,
+            onOpenCard: _openCardFromInspector,
+            onMarkTaskDone: _markTaskDoneFromInspector,
+            onSelectNode: (node) => setState(() {
+              _selectedNode = node;
+            }),
+          ),
       ],
     );
   }
@@ -342,6 +509,48 @@ class _GraphTabState extends ConsumerState<GraphTab>
         ),
       );
 
+  // Shown when the graph HAS nodes but the active filter hides them all — so the
+  // user knows it's the filter, not an empty space, and can clear it in one tap.
+  Widget _filteredEmptyState() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('NADA CON ESTE FILTRO',
+                  style: yMono(
+                      size: 12, weight: FontWeight.w700, tracking: 1.6)),
+              const SizedBox(height: 12),
+              _ToggleBtn(
+                label: 'QUITAR FILTROS',
+                active: true,
+                activeColor: _accent,
+                onTap: _resetFilters,
+              ),
+            ],
+          ),
+        ),
+      );
+
+  /// Re-frame the whole graph in the viewport (no way to do this otherwise once
+  /// the user has panned/zoomed). Applies immediately — no need to reheat.
+  void _recenter() {
+    _fitToView();
+    _repaint.value++;
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _visibleNodeKinds
+        ..clear()
+        ..addAll(_kAllNodeKinds);
+      _visibleEdgeKinds
+        ..clear()
+        ..addAll(_kAllEdgeKinds);
+      _rebuildSim();
+    });
+  }
+
   Widget _controls() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -354,13 +563,17 @@ class _GraphTabState extends ConsumerState<GraphTab>
         ),
         const SizedBox(height: 8),
         _ToggleBtn(
-          label: 'IA',
-          active: _showAi,
-          activeColor: yFlight,
-          onTap: () => setState(() {
-            _showAi = !_showAi;
-            _repaint.value++;
-          }),
+          label: 'FILTRO',
+          active: _hasCustomFilters,
+          activeColor: yInk,
+          onTap: _showFilters,
+        ),
+        const SizedBox(height: 8),
+        _ToggleBtn(
+          label: 'CENTRAR',
+          active: false,
+          activeColor: _accent,
+          onTap: _recenter,
         ),
       ],
     );
@@ -379,14 +592,14 @@ class _GraphPainter extends CustomPainter {
     required this.data,
     required this.sim,
     required this.xf,
-    required this.showAi,
+    required this.selectedNodeId,
     required Listenable repaint,
   }) : super(repaint: repaint);
 
   final GraphData data;
   final GraphSimulation sim;
   final _ViewTransform xf;
-  final bool showAi;
+  final String? selectedNodeId;
 
   final Map<String, TextPainter> _labelCache = {};
   late final Set<String> _aiSourceNodeIds = data.aiSourceNodeIds;
@@ -399,7 +612,6 @@ class _GraphPainter extends CustomPainter {
 
     _grid(canvas, size);
     for (final e in data.edges) {
-      if (e.kind == GraphEdgeKind.ai && !showAi) continue;
       final a = sim.posOf(e.from);
       final b = sim.posOf(e.to);
       if (a == null || b == null) continue;
@@ -617,6 +829,9 @@ class _GraphPainter extends CustomPainter {
       case GraphNodeKind.url:
         break; // URLs are not drawn
     }
+    if (selectedNodeId == n.id) {
+      _selectedNodeOutline(canvas, p, r);
+    }
   }
 
   double _r(GraphNodeKind k) => graphNodeRadius(k);
@@ -752,9 +967,27 @@ class _GraphPainter extends CustomPainter {
     }
   }
 
+  void _selectedNodeOutline(Canvas canvas, Offset p, double r) {
+    final outer = Rect.fromCenter(center: p, width: r * 2 + 12, height: r * 2 + 12);
+    canvas.drawRect(
+        outer,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2
+          ..color = yFlight.withValues(alpha: 0.55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
+    canvas.drawRect(
+        outer,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..color = yFlight.withValues(alpha: 0.92));
+  }
+
   @override
   bool shouldRepaint(_GraphPainter old) =>
-      old.showAi != showAi || !identical(old.data, data);
+      old.selectedNodeId != selectedNodeId ||
+      !identical(old.data, data);
 }
 
 class _AlertPainter extends CustomPainter {
@@ -773,10 +1006,14 @@ class _AlertPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Pulses the sun, AI-source nodes and urgent tasks. Perpetual but cheap: a
+    // handful of stroke rects, and the layer lives in its own RepaintBoundary so
+    // these 60fps repaints DON'T re-rasterise the main graph. (Balance kept on
+    // purpose — the user likes the pulse and it barely costs anything.)
     final phase = anim.value <= 0.5 ? anim.value * 2 : (1 - anim.value) * 2;
     final pulse = Curves.easeInOut.transform(phase);
-    final aiPhase =
-        ((anim.value + 0.18) % 1.0) <= 0.5 ? ((anim.value + 0.18) % 1.0) * 2 : (1 - ((anim.value + 0.18) % 1.0)) * 2;
+    final aiRaw = (anim.value + 0.18) % 1.0;
+    final aiPhase = aiRaw <= 0.5 ? aiRaw * 2 : (1 - aiRaw) * 2;
     final aiPulse = Curves.easeInOutCubic.transform(aiPhase);
     canvas.save();
     canvas.translate(size.width / 2 + xf.pan.dx, size.height / 2 + xf.pan.dy);
@@ -853,6 +1090,349 @@ class _ToggleBtn extends StatelessWidget {
                 weight: FontWeight.w700,
                 tracking: 1.4,
                 color: active ? yCream : yInk)),
+      ),
+    );
+  }
+}
+
+class _GraphFilterSelection {
+  const _GraphFilterSelection({
+    required this.nodeKinds,
+    required this.edgeKinds,
+  });
+
+  final Set<GraphNodeKind> nodeKinds;
+  final Set<GraphEdgeKind> edgeKinds;
+}
+
+class _GraphFilterSheet extends StatefulWidget {
+  const _GraphFilterSheet({
+    required this.initialNodes,
+    required this.initialEdges,
+    required this.accent,
+  });
+
+  final Set<GraphNodeKind> initialNodes;
+  final Set<GraphEdgeKind> initialEdges;
+  final Color accent;
+
+  @override
+  State<_GraphFilterSheet> createState() => _GraphFilterSheetState();
+}
+
+class _GraphFilterSheetState extends State<_GraphFilterSheet> {
+  late final Set<GraphNodeKind> _nodes = {...widget.initialNodes};
+  late final Set<GraphEdgeKind> _edges = {...widget.initialEdges};
+
+  void _toggleNode(GraphNodeKind kind) {
+    setState(() {
+      if (_nodes.contains(kind)) {
+        if (_nodes.length > 1) _nodes.remove(kind);
+      } else {
+        _nodes.add(kind);
+      }
+    });
+  }
+
+  void _toggleEdge(GraphEdgeKind kind) {
+    setState(() {
+      if (_edges.contains(kind)) {
+        if (_edges.length > 1) _edges.remove(kind);
+      } else {
+        _edges.add(kind);
+      }
+    });
+  }
+
+  int get _hiddenCount =>
+      (_kAllNodeKinds.length - _nodes.length) +
+      (_kAllEdgeKinds.length - _edges.length);
+
+  @override
+  Widget build(BuildContext context) {
+    final hidden = _hiddenCount;
+    return Container(
+      decoration: const BoxDecoration(
+        color: yCream,
+        border: Border(top: BorderSide(color: yInk, width: yLineHeavy)),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header: accent tile + title + live hidden-count badge.
+            Row(
+              children: [
+                Container(width: 16, height: 16, color: widget.accent),
+                const SizedBox(width: 10),
+                Text('> FILTRO',
+                    style: yMono(
+                        size: 12, weight: FontWeight.w700, tracking: 1.8)),
+                const Spacer(),
+                Text(
+                  hidden == 0
+                      ? 'TODO VISIBLE'
+                      : '$hidden OCULTO${hidden == 1 ? '' : 'S'}',
+                  style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: hidden == 0 ? yMuted : yFight),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _label('> NODOS'),
+            const SizedBox(height: 8),
+            _group([
+              _nodeRow(GraphNodeKind.space, 'ESPACIO'),
+              _nodeRow(GraphNodeKind.card, 'TARJETA'),
+              _nodeRow(GraphNodeKind.folder, 'CARPETA'),
+              _nodeRow(GraphNodeKind.note, 'NOTA'),
+              _nodeRow(GraphNodeKind.task, 'TAREA', last: true),
+            ]),
+            const SizedBox(height: 16),
+            _label('> CONEXIONES'),
+            const SizedBox(height: 8),
+            _group([
+              _edgeRow(GraphEdgeKind.structure, 'ESTRUCTURA'),
+              _edgeRow(GraphEdgeKind.bridge, 'PUENTE TAREA'),
+              _edgeRow(GraphEdgeKind.ai, 'CONTEXTO IA', last: true),
+            ]),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: _FilterActionBtn(
+                    label: 'TODO',
+                    fill: false,
+                    onTap: () => setState(() {
+                      _nodes
+                        ..clear()
+                        ..addAll(_kAllNodeKinds);
+                      _edges
+                        ..clear()
+                        ..addAll(_kAllEdgeKinds);
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _FilterActionBtn(
+                    label: 'APLICAR',
+                    fill: true,
+                    onTap: () => Navigator.of(context).pop(
+                      _GraphFilterSelection(
+                        nodeKinds: {..._nodes},
+                        edgeKinds: {..._edges},
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        ),
+      ),
+    );
+  }
+
+  Widget _label(String t) => Text(t,
+      style: yMono(
+          size: 10, weight: FontWeight.w700, tracking: 1.6, color: yMuted));
+
+  Widget _group(List<Widget> rows) => Container(
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yInk, width: yLineMid),
+        ),
+        child: Column(children: rows),
+      );
+
+  Widget _nodeRow(GraphNodeKind kind, String label, {bool last = false}) =>
+      _FilterToggleRow(
+        swatch: _nodeSwatch(kind),
+        label: label,
+        active: _nodes.contains(kind),
+        last: last,
+        onTap: () => _toggleNode(kind),
+      );
+
+  Widget _edgeRow(GraphEdgeKind kind, String label, {bool last = false}) =>
+      _FilterToggleRow(
+        swatch: _edgeSwatch(kind),
+        label: label,
+        active: _edges.contains(kind),
+        last: last,
+        onTap: () => _toggleEdge(kind),
+      );
+
+  /// Mini node swatch mirroring how the painter draws each kind, so the row
+  /// reads as the thing it toggles (not a generic colored pill).
+  Widget _nodeSwatch(GraphNodeKind kind) {
+    switch (kind) {
+      case GraphNodeKind.space:
+        return Container(width: 15, height: 15, color: widget.accent);
+      case GraphNodeKind.card:
+        return SizedBox(
+          width: 15,
+          height: 15,
+          child: Stack(children: [
+            Container(width: 15, height: 15, color: yFlight),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 2,
+              child:
+                  Container(height: 3, color: yCream.withValues(alpha: 0.9)),
+            ),
+          ]),
+        );
+      case GraphNodeKind.folder:
+        return Container(width: 15, height: 15, color: yLab);
+      case GraphNodeKind.note:
+        return Container(
+          width: 15,
+          height: 15,
+          decoration: BoxDecoration(
+              color: yCream,
+              border: Border.all(color: widget.accent, width: 2)),
+        );
+      case GraphNodeKind.task:
+        return SizedBox(
+          width: 15,
+          height: 15,
+          child: CustomPaint(
+              painter: _SwatchPainter(_SwatchKind.task, widget.accent)),
+        );
+      case GraphNodeKind.url:
+        return const SizedBox(width: 15, height: 15);
+    }
+  }
+
+  Widget _edgeSwatch(GraphEdgeKind kind) {
+    final (sw, color) = switch (kind) {
+      GraphEdgeKind.structure => (_SwatchKind.solid, yInk),
+      GraphEdgeKind.bridge => (_SwatchKind.dashed, yInk),
+      GraphEdgeKind.ai => (_SwatchKind.dashed, yFlight),
+    };
+    return SizedBox(
+      width: 18,
+      height: 10,
+      child: CustomPaint(painter: _SwatchPainter(sw, color)),
+    );
+  }
+}
+
+class _FilterToggleRow extends StatelessWidget {
+  const _FilterToggleRow({
+    required this.swatch,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.last = false,
+  });
+
+  final Widget swatch;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: yCream,
+          border: last
+              ? null
+              : const Border(
+                  bottom: BorderSide(color: yBorderSoft, width: yLineThin)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 18, child: Center(child: swatch)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.2,
+                  color: active ? yInk : yMuted,
+                ),
+              ),
+            ),
+            // Brutalist checkbox: filled ink + crema check when on, hollow off.
+            Container(
+              width: 20,
+              height: 20,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: active ? yInk : yCream,
+                border: Border.all(
+                  color: active ? yInk : yBorderStrong,
+                  width: yLineThin,
+                ),
+              ),
+              child: active
+                  ? const Icon(Icons.check, size: 14, color: yCream)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterActionBtn extends StatelessWidget {
+  const _FilterActionBtn({
+    required this.label,
+    required this.fill,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool fill;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: fill ? yInk : yCream,
+          border: Border.all(color: yInk, width: yLineMid),
+          boxShadow: fill
+              ? const [
+                  BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0)
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: yMono(
+            size: 12,
+            weight: FontWeight.w700,
+            tracking: 1.4,
+            color: fill ? yCream : yInk,
+          ),
+        ),
       ),
     );
   }

@@ -223,7 +223,8 @@ class _GraphBuilder {
       ),
     );
     if (fromId != null && edgeKind != null) _edge(fromId, taskId, edgeKind);
-    if (t.folderId != null) {
+    final hasLinkedNotes = (await _noteRepo.getLinkedNoteIds(t.id)).isNotEmpty;
+    if (t.folderId != null && !hasLinkedNotes) {
       await _addFolder(t.folderId!, taskId, GraphEdgeKind.bridge);
     }
   }

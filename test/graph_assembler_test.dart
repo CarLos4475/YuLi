@@ -200,7 +200,8 @@ void main() {
       expect(node(n2Id).noteVariant, NoteVariant.whiteboard);
       expect(edge(folderId, n1Id, GraphEdgeKind.structure), isTrue);
       expect(edge(folderId, n2Id, GraphEdgeKind.structure), isTrue);
-      expect(edge(spaceId, n2Id, GraphEdgeKind.structure), isTrue);
+      // A space context source (note) is an AI-context link, not structure.
+      expect(edge(spaceId, n2Id, GraphEdgeKind.ai), isTrue);
 
       // AI edge between notes
       expect(edge(n1Id, n2Id, GraphEdgeKind.ai), isTrue);
@@ -224,7 +225,7 @@ void main() {
       expect(data.hasAiEdges, isTrue);
     });
 
-    test('carpeta vinculada: línea estructural sol→carpeta + tareas @carpeta',
+    test('carpeta vinculada: arista IA sol→carpeta + tareas @carpeta',
         () async {
       final space = await labRepo.create('S', '#3D6B4F');
       final folder = await folderRepo.create('Mate', '#6B2D8E');
@@ -244,8 +245,8 @@ void main() {
           ((e.from == a && e.to == b) || (e.from == b && e.to == a)) &&
           e.kind == k);
 
-      // línea estructural sol→carpeta
-      expect(edge(spaceId, folderId, GraphEdgeKind.structure), isTrue);
+      // sol→carpeta como fuente de contexto = arista IA (la carpeta nutre la IA)
+      expect(edge(spaceId, folderId, GraphEdgeKind.ai), isTrue);
       // notas de la carpeta por contención
       expect(data.nodes.any((n) => n.kind == GraphNodeKind.note), isTrue);
       // la tarea @carpeta aparece y queda conectada a la carpeta (puente)

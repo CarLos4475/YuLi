@@ -23,6 +23,20 @@ Nueva tab **Grafo** por defecto junto a Kanban (`feature/grafo`). Mapa visual fo
 
 ---
 
+## 🔁 Tarea de AYER completada → ¿el card sale de "Vencidas" a "Entregado"? — NECESITA ESPERAR ~1 DÍA
+
+Reporte del user: una tarea enlazada Fight↔Lab que vence va a **de ayer** (Fight) y a **Vencidas** (Lab). Si la completas desde *de ayer*, el card **se queda en Vencidas** en vez de pasar a **Entregado**.
+
+**Diagnóstico (estático): el código YA está escrito para mover el card a Entregado.** Toda vía de completar pasa por `setTaskDone`/`setTaskDoneWith` (`lab_space_providers.dart`) — no hay `markDone` suelto. Ese flujo: `markDone(task)` → `getByOriginTaskId` (encuentra el card, sin filtro de columna) → `_terminalColumn` (Entregado, flag `isTerminal`) → `update` → `_applyColumnTransition` estampa done. El card llega a Vencidas vía sección 5 de `runExpiryQueries` (hereda `task.dueDate`, `originTaskDoneAt=null` → elegible para salir). En papel, funciona.
+
+**Por confirmar en TGR (requiere que una tarea con dueDate llegue a estado `yesterday`, ~1 día):**
+- Completar una tarea de AYER, **cerrar y reabrir la app**, mirar el **tablero Lab** (no el grafo):
+  - Si aparece en **Entregado** → era vista stale (familia del bug de tiempo real ya mitigado con el `autoDispose` del `graphDataProvider`).
+  - Si **sigue en Vencidas** tras restart → bug real. Sospechoso #1: `_terminalColumn` devuelve null en ese espacio (sin columna `isTerminal` ni una llamada "Entregado" → `setTaskDoneWith` hace `return` silencioso y deja el card). Revisar las columnas de ese espacio.
+- Si hace falta: log temporal en `setTaskDoneWith` (qué card encontró, a qué columna apuntó).
+
+---
+
 ## ⚡ Optimización de render canvas (calor) — probado en general en TGR, OK
 
 Pizarra/cuaderno optimizados contra el sobrecalentamiento (solo capa `flight`, sin tocar datos/lab): caché de `Path` por-trazo, histéresis de repaint en pan (cuaderno simétrico 0.5, pizarra **predictiva** sesgada a la dirección, `_renderRectFor`), chrome de página cacheado, y el `InteractiveViewer` del cuaderno ya no se reconstruye en pan (#10). El calor bajó mucho y el feeling es bueno en ambos.

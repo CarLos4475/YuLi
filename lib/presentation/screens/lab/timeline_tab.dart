@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart' as y;
@@ -72,19 +71,11 @@ class _TimelineTabState extends ConsumerState<TimelineTab>
             final withDate = cards.where((c) => c.dueDate != null).toList();
             final noDate = cards.where((c) => c.dueDate == null).toList();
 
-            const tH = 40.0;
-            const lH = 100.0;
-            final totalH = tH + (columns.length * lH);
-            final availH = MediaQuery.of(context).size.height * 0.5;
-            final zoom = (availH / totalH).clamp(1.2, 2.0);
-            SchedulerBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              _transformationController.value = Matrix4.diagonal3Values(
-                zoom,
-                zoom,
-                1,
-              );
-            });
+            // No forced zoom: the viewer starts at natural 1:1 (the day width
+            // already fits the viewport, see `_TimelineViewer.dayW`) and the
+            // controller keeps whatever the user pinches to. The old per-build
+            // auto-zoom slammed everything to ≥1.2× and reset the user's zoom on
+            // every rebuild — hence "se reajusta solo / todo muy grande".
 
             return Column(
               children: [
@@ -380,7 +371,10 @@ class _TimelineViewer extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (card.dueDate != null)
+                    // Only show the date chip when the bar is wide enough for
+                    // it alongside the (Expanded) title — otherwise it has no
+                    // flex and overflows narrow 1-day bars.
+                    if (card.dueDate != null && cardWidth > 80)
                       Padding(
                         padding: const EdgeInsets.only(left: 4),
                         child: Text(
@@ -403,15 +397,23 @@ class _TimelineViewer extends StatelessWidget {
       }
     }
 
-    return InteractiveViewer(
-      transformationController: transformationController,
-      boundaryMargin: const EdgeInsets.all(0),
-      minScale: 0.5,
-      maxScale: 5.0,
-      constrained: false,
-      child: SizedBox(
-        width: totalWidth,
-        height: totalHeight,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Pad the canvas to AT LEAST the viewport height so the child always
+        // covers the viewport. That lets boundaryMargin be zero (content can't
+        // be flung into the void) WHILE avoiding the "child smaller than
+        // viewport" snap-zoom on the first pinch. minScale 1.0 forbids shrinking
+        // below the natural 1:1 fit (which would re-open the void).
+        final canvasH = math.max(totalHeight, constraints.maxHeight);
+        return InteractiveViewer(
+          transformationController: transformationController,
+          boundaryMargin: EdgeInsets.zero,
+          minScale: 1.0,
+          maxScale: 5.0,
+          constrained: false,
+          child: SizedBox(
+            width: totalWidth,
+            height: canvasH,
         child: Stack(
           children: [
             CustomPaint(
@@ -431,6 +433,8 @@ class _TimelineViewer extends StatelessWidget {
           ],
         ),
       ),
+        );
+      },
     );
   }
 }
