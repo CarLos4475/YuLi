@@ -55,6 +55,9 @@ user_profile.md
 feedback_style.md
 feedback_workflow.md
 PENDIENTES.md
+DECISIONS.md
+KNOWN_ISSUES.md
+ONLINE_FEATURES.md
 
 # Node.js local dev dependencies (codegraph better-sqlite3, not part of Flutter)
 package.json
