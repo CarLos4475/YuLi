@@ -12,6 +12,46 @@ YuLi es una aplicacion de organizacion personal que funciona como un segundo cer
 
 ---
 
+## Requisitos previos
+
+- **Flutter 3.27+** (Dart 3.7)
+- **Android Studio** o **VS Code** con extension Flutter
+- **Git**
+- **(Opcional)** API key de DeepSeek para funciones de IA
+
+## Inicio rapido
+
+```bash
+# Clonar el repositorio
+git clone https://github.com/tuusuario/yuli.git
+cd yuli
+
+# Obtener dependencias
+flutter pub get
+
+# Generar codigo Drift (DAOs, tablas, database)
+dart run build_runner build --delete-conflicting-outputs
+
+# Ejecutar en modo debug
+flutter run
+```
+
+> **Nota:** Las funciones de IA requieren una API key de DeepSeek. Se configura desde la app en Ajustes → YuLi AI. La key se almacena cifrada con `flutter_secure_storage`.
+
+## Ejecutar tests
+
+```bash
+# Tests headless (no requiere emulador/dispositivo)
+flutter test
+
+# Test de regresión de la auditoría (Lab, cascadas, expiry)
+flutter test test/audit_test.dart
+```
+
+---
+
+
+
 ## YuLi AI — Powered by DeepSeek
 
 YuLi integra un asistente de inteligencia artificial basado en **DeepSeek V4** (modelos Flash y Pro), accesible desde cualquier nota, pizarra o cuaderno. El chat es contextual: toma el contenido de tu nota como punto de partida y mantiene el hilo de la conversacion por nota.
@@ -30,6 +70,19 @@ YuLi integra un asistente de inteligencia artificial basado en **DeepSeek V4** (
 
 ---
 
+## Home — Panel central
+
+Home es el centro de comando con los tres pilares de YuLi.
+
+- **Triptico Fight / Flight / Lab** con contadores de tareas pendientes, notas activas y espacios en curso.
+- **Captura rapida** inline desde el panel Fight sin salir del home.
+- **Barra de progreso** con relleno hatchado por espacio.
+- **Widget "Proxima clase"** agrega el bloque de horario mas proximo.
+- **Cubo animado de YuLi** como cabecera.
+- **Saludo** segun la hora del dia y reloj en vivo.
+
+---
+
 ## Fight — Captura rapida de tareas
 
 Fight es tu bandeja de entrada para tareas. Escribe al vuelo con un limite de 280 caracteres y asigna categorias usando menciones con `@`.
@@ -40,6 +93,15 @@ Fight es tu bandeja de entrada para tareas. Escribe al vuelo con un limite de 28
 - **Propagacion a Kanban**: long-press envia la tarea a un tablero Lab con su fecha limite.
 - **Ciclo de vida**: pendiente → ayer → archivada → papelera → borrado definitivo a los 7 dias.
 - **Vinculacion bidireccional**: completar una tarea mueve su tarjeta Kanban; mover la tarjeta completa la tarea.
+
+### Recordatorios
+
+Sistema completo de recordatorios con presets programables.
+
+- **Presets**: al vencimiento, 30 min antes, 1 dia antes, o personalizado.
+- **Resumen diario**: notificacion configurable con tareas del dia.
+- **Notificaciones exactas**: con permiso y canal dedicado.
+- **Sincronizacion automatica**: recordatorios se re-sincronizan al editar fechas.
 
 ---
 
@@ -84,6 +146,8 @@ Lienzo virtual de 10000x10000px con pan + zoom (0.3x–4x). Disenado para pensam
 
 **Background:** patrones Blank, Lined, Grid, GridSmall, Dotted + color de papel (blanco, crema, gris, negro).
 
+**Exportacion a PNG/PDF:** renderizado offline fiel del canvas completo o region seleccionada, con opcion de incluir bloques de tareas.
+
 ### Modo Cuaderno (Notebook)
 
 Multi-pagina A4 con scroll vertical, transiciones animadas y page drawer con miniaturas.
@@ -92,6 +156,8 @@ Multi-pagina A4 con scroll vertical, transiciones animadas y page drawer con min
 - **Paginas infinitas**: pull-to-add, auto-creacion al dibujar fuera, drag-to-reorder.
 - **Fondo por pagina**: patron + color independiente por pagina.
 - **Paginas destacadas** (star) aparecen primero en el drawer.
+- **Historial de versiones** por nota (snapshots automaticos).
+- **Vinculacion nota ↔ tarea** many-to-many: las notas pueden referenciar tareas FIGHT.
 
 ### OCR (Google ML Kit Digital Ink)
 
@@ -108,14 +174,47 @@ Reconocimiento de escritura a mano on-device (descarga bajo demanda del modelo d
 
 Lab organiza proyectos en tableros Kanban con arrastrar y soltar, respaldados por cuatro vistas.
 
+### Vista de espacios
+
+La pantalla principal de Lab lista todos tus espacios con filtros y resumen visual.
+
+- **Filtros por estado**: Todos, En Proceso, Pausados, Completados, Archivo.
+- **Tarjetas de espacio** con barra de distribucion apilada por columna, etapa actual, dias restantes y accesos directos a vistas.
+- **Hoja de opciones**: renombrar, cambiar color, pausar/reanudar, completar, archivar, reactivar o eliminar.
+- **Columna de legendas** con indicador de color por columna Kanban.
+
 ### Kanban Board
 
 - **Columnas configurables**: posicion, default, terminal, expiracion.
-- **Cards** con titulo, descripcion markdown, prioridad (none/low/medium/high), deadline, color de carpeta origen.
+- **Cards** con titulo, descripcion markdown, prioridad (none/low/medium/high), deadline, color de carpeta origen, badges de origen (TAREA / NOTA / HECHO / VENCIDO) y chip de carpeta mencionada.
 - **Multi-seleccion** para borrado batch.
 - **Drag & drop** entre columnas.
-- **Card detail**: editor de titulo, descripcion con preview, prioridad, deadline, links a nota fuente y tarea FIGHT.
+- **Card detail**: editor de titulo, descripcion con preview en vivo y toggle edicion/vista, selector de columna, selector de prioridad, fecha de inicio (auto/fijo), fecha limite con hora, selector de recordatorio con flujo de permisos, boton "Ver nota de origen" y chips "Aparece en" (Kanban, Calendar, Timeline, FIGHT, FLIGHT).
 - **Propagacion automatica**: tarjetas vencidas se mueven a columna de vencidos; completar desde FIGHT mueve a terminal.
+- **Quick-add**: dialogo para crear tarjetas rapidamente.
+- **Gestion de columnas**: renombrar, recolorar, reordenar, toggle de flags (isTerminal, isExpired, isInProgress) y eliminar desde popover.
+- **Editor de fechas de proyecto**: rango inicio-fin del espacio con control granular.
+- **Pestañas multiples**: Kanban, Calendario, Timeline, Horario y Grafo — pestañas persistidas y reordenables.
+
+### Lab AI
+
+YuLi LAB integra un asistente de IA especifico para el proyecto.
+
+- **Generar tarjetas**: describe tareas en lenguaje natural y la IA las desglosa en tarjetas Kanban con prioridad y columna sugerida. Revision y aprobacion antes de crear.
+- **Resumir/triar**: la IA analiza el estado del tablero, identifica bloqueos y sugiere acciones.
+- **Chatear sobre el proyecto**: sesion de chat contextual con todo el tablero como fuente.
+- **Contexto enriquecido**: el AI recibe la serializacion completa del board (columnas, tarjetas, prioridades, fechas).
+
+### Fuentes de contexto
+
+Cada espacio Lab puede alimentarse de contenido externo para enriquecer el AI y el grafo de conexiones.
+
+- **Carpetas Flight**: vincula una carpeta entera — todas sus notas y tareas aparecen en el grafo.
+- **Notas individuales**: selecciona notas especificas como fuente.
+- **URLs externas**: ingresa un enlace y YuLi lo fetchea via Jina Reader para usarlo como contexto.
+- **Habilitar/deshabilitar fuentes**: cada fuente tiene un toggle individual.
+- **Cache de URLs**: el contenido fetcheado se persiste en disco por hash; refetch disponible.
+- **Cache de contexto**: compactacion por hash de contenido para evitar re-procesar fuentes identicas.
 
 ### Schedule (Horario Semanal)
 
@@ -127,16 +226,67 @@ Grid hora × dia con bloques de horario por proyecto.
 - Vinculacion de bloques con carpetas de Flight.
 - Notas semanales por espacio.
 - Asignacion automatica de lanes para resolucion de overlap.
+- **Drag-to-create**: arrastre vertical en una columna de dia para crear bloques.
+- **Bloque "EN VIVO"**: badge que identifica el bloque actualmente en curso.
+- **Linea de hora actual** con marcador "HOY".
+- **Detalle de bloque**: hoja con edicion de titulo, ubicacion, hora, dias, carpeta vinculada y color.
 
 ### Calendar
 
-Vista semanal y mensual con tarjetas Kanban organizadas por deadline. Navegacion entre semanas/meses.
+Vista semanal y mensual con tarjetas Kanban organizadas por deadline.
+
+- Navegacion entre semanas/meses con toggle de vista.
+- **Drag-and-drop de tarjetas** a diferentes dias: cambia la fecha limite automaticamente.
+- **Dialogo de dia**: muestra todas las tarjetas con deadline en esa fecha.
+- **Seccion "Sin fecha"**: scroll horizontal de tarjetas sin deadline asignado.
 
 ### Timeline
 
-Linea de tiempo horizontal con pan + zoom. Cards organizadas por deadline para vision general del proyecto.
+Linea de tiempo horizontal tipo Gantt con pan + zoom.
+
+- Cards organizadas por deadline para vision general del proyecto.
+- **Lane packing**: filas apiladas por columna con resolucion automatica de overlap.
+- **Indicador "Hoy"**: linea vertical + etiqueta en la fecha actual.
+- **Grid con cabeceras**: fecha y mes en el eje superior.
+- **Seccion "Sin fecha"**: tarjetas sin deadline agrupadas al final.
+
+### Grafo de conexiones
+
+Grafo dirigido por fuerzas que visualiza las relaciones entre todos los elementos de YuLi.
+
+- **5 tipos de nodo**: espacio (sol), tarjeta Kanban, carpeta, nota, tarea.
+- **3 tipos de arista**: estructura (contiene), puente (cross-mode), IA (alimenta contexto).
+- **Filtros**: activar/desactivar tipos de nodo y arista visibles.
+- **Grafo global** vs **grafo por espacio**.
+- **Simulacion fisica** tipo D3 con deteccion de colisiones y layout deterministico.
+- **Pan, zoom, arrastre** de nodos con InteractiveViewer.
+- **Inspector de nodo**: panel lateral con detalles segun el tipo (tarea: fecha, carpeta, enlaces; nota: tipo, bloques, conexiones; etc.).
+- **Capa de pulso**: animacion para tarjetas urgentes.
+- **Ajuste automatico** (fit-to-view) al estabilizarse la simulacion.
 
 ---
+
+## Settings — Ajustes
+
+- **Tema**: alternar modo claro/oscuro con bloques de previsualizacion en vivo.
+- **YuLi AI**: configurar API key de DeepSeek, seleccionar modelo (Flash/Pro), limite diario de requests (150/dia por defecto).
+- **Jina Reader**: configurar API key para fetching de URLs como contexto.
+- **Recordatorio diario**: habilitar/deshabilitar resumen diario y configurar hora.
+- **Almacenamiento de imagenes**: explorar imagenes almacenadas por nota con tamanos y opcion de limpieza.
+- **Logs de crash**: visualizar, compartir y limpiar el registro de errores Dart en diagnostics/crash.log.
+
+## Trash — Papelera
+
+Tres columnas para gestion de elementos eliminados.
+
+- **Flight**: carpetas y notas eliminadas con opciones de restaurar o borrado definitivo.
+- **Lab**: espacios eliminados con restaurar o borrado definitivo.
+- **Fight**: tareas eliminadas (sin restauracion, borrado definitivo tras 7 dias).
+- **Cascadas**: al borrar una carpeta se eliminan sus notas; al borrar un espacio se eliminan sus tarjetas y bloques de horario.
+
+## Coach Marks — Tutorial interactivo
+
+Guias de una sola vez que aparecen en la primera interaccion con cada seccion principal, almacenadas en la tabla `onboarding_flags`.
 
 ## Diseno neobrutalista
 
@@ -161,9 +311,11 @@ Sin bordes redondeados, bordes negros marcados, sombras solidas. Colores de acen
 | Imagenes | `image_picker`, `photo_manager`, `flutter_image_compress` |
 | PDF | `pdf` + `share_plus` |
 | Seguridad | `flutter_secure_storage` (API key cifrada) |
+| Notificaciones | `flutter_local_notifications` + `timezone` |
+| Web fetching | Jina Reader API |
 | Fuentes | Space Grotesk, Inter (local TTF) |
 
-17 tablas SQLite modeladas con Drift, repositorios con interfaces abstractas preparadas para futura migracion a servidor (PostgreSQL-compatible). 100% offline-first.
+19 tablas SQLite modeladas con Drift, repositorios con interfaces abstractas preparadas para futura migracion a servidor (PostgreSQL-compatible). 100% offline-first.
 
 ---
 
@@ -171,18 +323,25 @@ Sin bordes redondeados, bordes negros marcados, sombras solidas. Colores de acen
 
 ```
 lib/
-├── data/           # Implementaciones concretas (Drift, DeepSeek, ML Kit)
-│   ├── local/      # DAOs, tablas, repositorios locales
-│   └── services/   # DeepSeek Assistant, ML Kit recognizer, key store
-├── domain/         # Capa de dominio pura
-│   ├── models/     # 12 modelos (Task, Note, NoteBlock, LabSpace, KanbanCard…)
-│   ├── repositories/  # Interfaces abstractas
-│   └── services/   # Contratos de servicio (AiAssistant, InkRecognizer)
-└── presentation/   # UI con Riverpod
-    ├── providers/  # Estado (database, theme, navigation, AI session…)
-    ├── screens/    # Fight, Flight, Lab, Settings, Trash, Home
-    ├── theme/      # Tokens de diseno, colores, tipografia
-    └── widgets/    # Componentes reutilizables (brutalist design system)
+├── data/                # Implementaciones concretas (Drift, DeepSeek, ML Kit)
+│   ├── local/
+│   │   ├── daos/        # DAOs Drift (folders, notes, kanban, tasks, schedule…)
+│   │   ├── tables/      # 19 tablas SQLite modeladas con Drift
+│   │   ├── database.dart
+│   │   └── repositories/  # Implementaciones locales de repositorios
+│   └── services/        # DeepSeek Assistant, ML Kit recognizer, reminder coordinator,
+│                        # web reader, context cache, crash logger, image storage
+├── domain/              # Capa de dominio pura
+│   ├── models/          # Task, Note, NoteBlock, LabSpace, KanbanCard, Graph,
+│   │                    # ScheduleBlock, ReminderPreset, CanvasContextSource…
+│   ├── repositories/    # Interfaces abstractas (nota, folder, task, kanban…)
+│   └── services/        # Contratos (AiAssistant, InkRecognizer, ReminderScheduler)
+└── presentation/        # UI con Riverpod
+    ├── providers/       # Estado (database, theme, navigation, AI session, lab tabs…)
+    ├── screens/         # Home (dashboard), Fight, Flight (editor/whiteboard/notebook),
+    │                    # Lab (kanban/calendar/timeline/schedule/graph), Settings, Trash
+    ├── theme/           # Tokens de diseno neobrutalista
+    └── widgets/         # Sistema de diseno reutilizable (ModeHeader, YBadge, PillTab…)
 ```
 
 ---

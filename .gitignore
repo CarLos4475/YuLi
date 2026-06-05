@@ -27,7 +27,9 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
 /build/
@@ -48,6 +50,16 @@ app.*.map.json
 .claude/
 CLAUDE.md
 AGENTS.md
+MEMORY.md
+user_profile.md
+feedback_style.md
+feedback_workflow.md
+PENDIENTES.md
+
+# Node.js local dev dependencies (codegraph better-sqlite3, not part of Flutter)
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
 
 # CodeGraph index (local database)
 .codegraph/*.db
