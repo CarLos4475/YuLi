@@ -556,17 +556,55 @@ class _GraphTabState extends ConsumerState<GraphTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        _ToggleBtn(
-          label: _global ? 'TODO' : 'ESTE',
-          active: _global,
-          activeColor: _accent,
-          onTap: () => setState(() => _global = !_global),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: yInk, width: yLineMid),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _global = false),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  color: !_global ? _accent : yCream,
+                  child: Text('ESTE',
+                      style: yMono(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: !_global ? yCream : yInk)),
+                ),
+              ),
+              Container(width: yLineMid, color: yInk),
+              GestureDetector(
+                onTap: () => setState(() => _global = true),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  color: _global ? _accent : yCream,
+                  child: Text('TODO',
+                      style: yMono(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: _global ? yCream : yInk)),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
         _ToggleBtn(
           label: 'FILTRO',
           active: _hasCustomFilters,
           activeColor: yInk,
+          icon: Icon(
+            Icons.filter_alt_outlined,
+            size: 16,
+            color: _hasCustomFilters ? yCream : yInk,
+          ),
           onTap: _showFilters,
         ),
         const SizedBox(height: 8),
@@ -574,6 +612,7 @@ class _GraphTabState extends ConsumerState<GraphTab>
           label: 'CENTRAR',
           active: false,
           activeColor: _accent,
+          icon: const Icon(Icons.center_focus_strong, size: 16, color: yInk),
           onTap: _recenter,
         ),
       ],
@@ -1070,11 +1109,13 @@ class _ToggleBtn extends StatelessWidget {
     required this.active,
     required this.activeColor,
     required this.onTap,
+    this.icon,
   });
   final String label;
   final bool active;
   final Color activeColor;
   final VoidCallback onTap;
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -1087,12 +1128,13 @@ class _ToggleBtn extends StatelessWidget {
           color: active ? activeColor : yCream,
           border: Border.all(color: yInk, width: yLineMid),
         ),
-        child: Text(label,
-            style: yMono(
-                size: 11,
-                weight: FontWeight.w700,
-                tracking: 1.4,
-                color: active ? yCream : yInk)),
+        child: icon ??
+            Text(label,
+                style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: active ? yCream : yInk)),
       ),
     );
   }
