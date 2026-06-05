@@ -253,6 +253,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
               onToday: _today,
               onSettings: () => _showSettings(context, settings),
               creatingMode: _creatingMode,
+              accentColor: widget.space.accentColor,
               onToggleCreate:
                   () => setState(() => _creatingMode = !_creatingMode),
             ),
@@ -748,6 +749,7 @@ class _ScheduleHeader extends StatelessWidget {
   final VoidCallback onSettings;
   final bool creatingMode;
   final VoidCallback onToggleCreate;
+  final Color accentColor;
 
   const _ScheduleHeader({
     required this.weekLabel,
@@ -757,12 +759,14 @@ class _ScheduleHeader extends StatelessWidget {
     required this.onSettings,
     this.creatingMode = false,
     required this.onToggleCreate,
+    required this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return y.ViewHead(
       title: 'Horario',
+      titleColor: accentColor,
       kicker: weekLabel.toUpperCase(),
       right: [
         y.NavBtn(glyph: '‹', onTap: onPrev),
@@ -789,6 +793,7 @@ class _ScheduleHeader extends StatelessWidget {
         y.HeadBtn(
           label: creatingMode ? '✕ SALIR' : '+ CREAR',
           primary: !creatingMode,
+          color: !creatingMode ? accentColor : null,
           onTap: onToggleCreate,
         ),
         const SizedBox(width: 6),
@@ -1454,7 +1459,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
   late List<String> _selectedDays;
   int? _selectedFolderId;
   late String _selectedColor;
-  bool _useFolderColor = false;
+
 
   @override
   void initState() {
@@ -1467,7 +1472,6 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     _selectedDays = List.from(widget.initialDays);
     _selectedFolderId = b?.folderId;
     _selectedColor = b?.color ?? _colorToHex(widget.space.accentColor);
-    _useFolderColor = b?.useFolderColor ?? false;
   }
 
   @override
@@ -1490,7 +1494,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     if (title.isEmpty || _selectedDays.isEmpty) return;
 
     final color =
-        _useFolderColor && _selectedFolderId != null
+        _selectedFolderId != null
             ? _colorToHex(_folderColor(_selectedFolderId!))
             : _selectedColor;
 
@@ -1508,7 +1512,6 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
           days: List.from(_selectedDays),
           color: color,
           folderId: _selectedFolderId,
-          useFolderColor: _useFolderColor,
         ),
       );
     } else {
@@ -1524,7 +1527,6 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
         endTime: _endTime,
         days: List.from(_selectedDays),
         color: color,
-        useFolderColor: _useFolderColor,
       );
     }
     if (mounted) Navigator.pop(context);
@@ -1583,9 +1585,6 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
                   onTap:
                       () => setState(() {
                         _selectedFolderId = isSelected ? null : f.id;
-                        if (_selectedFolderId != null) {
-                          _useFolderColor = true;
-                        }
                       }),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -1596,9 +1595,9 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
                       color: f.color,
                       border: Border.all(
                         color: y.yBorderStrong,
-                        width: isSelected ? borderWidthHeavy : borderWidth,
+                        width: borderWidth,
                       ),
-                      boxShadow: shadowM,
+                      boxShadow: isSelected ? shadowM : null,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1785,44 +1784,6 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             ColorPalettePicker(
               selected: _parseHex(_selectedColor),
               onChanged: (c) => setState(() => _selectedColor = _colorToHex(c)),
-            ),
-          ],
-          if (_selectedFolderId != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                GestureDetector(
-                  onTap:
-                      () => setState(() => _useFolderColor = !_useFolderColor),
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color:
-                          _useFolderColor
-                              ? _folderColor(_selectedFolderId!)
-                              : Colors.transparent,
-                      border: Border.all(
-                        color: y.yBorderStrong,
-                        width: borderWidth,
-                      ),
-                    ),
-                    child:
-                        _useFolderColor
-                            ? const Icon(
-                              Icons.check,
-                              size: 10,
-                              color: paperLight,
-                            )
-                            : null,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Usar color de carpeta',
-                  style: bodyS.copyWith(color: ink),
-                ),
-              ],
             ),
           ],
           const SizedBox(height: 24),

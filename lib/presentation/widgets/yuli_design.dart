@@ -811,6 +811,7 @@ class HeadBtn extends StatelessWidget {
   final bool primary;
   final IconData? leadingIcon;
   final VoidCallback? onTap;
+  final Color? color;
 
   const HeadBtn({
     super.key,
@@ -818,6 +819,7 @@ class HeadBtn extends StatelessWidget {
     this.primary = false,
     this.leadingIcon,
     this.onTap,
+    this.color,
   });
 
   @override
@@ -828,7 +830,7 @@ class HeadBtn extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 9),
         decoration: BoxDecoration(
-          color: primary ? yLab : yCream,
+          color: color ?? (primary ? yLab : yCream),
           border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
         child: Row(

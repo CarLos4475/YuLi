@@ -8,7 +8,7 @@ import '../../../domain/models/graph.dart';
 double graphNodeRadius(GraphNodeKind k) => switch (k) {
       GraphNodeKind.space => 46,
       GraphNodeKind.folder => 28,
-      GraphNodeKind.card => 28,
+      GraphNodeKind.card => 22,
       GraphNodeKind.note => 18,
       GraphNodeKind.task => 15,
       GraphNodeKind.url => 14,

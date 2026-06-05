@@ -894,6 +894,7 @@ class _KanbanBoard extends ConsumerWidget {
             y.HeadBtn(
               label: '+ TAREA',
               primary: true,
+              color: space.accentColor,
               onTap: () => _showQuickAdd(context, ref),
             ),
           ],
