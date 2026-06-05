@@ -376,7 +376,6 @@ class _ThreeBuckets extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          flex: 23,
           child: _BucketColumn(
             title: 'HOY',
             subtitle: 'capturadas hoy',
@@ -388,7 +387,6 @@ class _ThreeBuckets extends StatelessWidget {
           ),
         ),
         Expanded(
-          flex: 20,
           child: _BucketColumn(
             title: 'AYER',
             subtitle: 'sin terminar de ayer',
@@ -399,7 +397,6 @@ class _ThreeBuckets extends StatelessWidget {
           ),
         ),
         Expanded(
-          flex: 19,
           child: _BucketColumn(
             title: 'VENCIDAS',
             subtitle: 'se borran pronto',
@@ -1102,53 +1099,9 @@ class _TaskCardBody extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              if (task.dueDate != null && !done) ...[
-                Container(
-                  padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
-                  decoration: BoxDecoration(
-                    color: _dueDateColor(task.dueDate!),
-                    border: Border.all(color: yBorderStrong, width: 1.5),
-                  ),
-                  child: Text(
-                    _formatDueDate(task.dueDate!),
-                    style: yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      color: yCream,
-                      tracking: 0.8,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              if (task.remindAt != null && !done) ...[
-                Container(
-                  padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
-                  decoration: BoxDecoration(
-                    color: yFight,
-                    border: Border.all(color: yBorderStrong, width: 1.5),
-                  ),
-                  child: Text(
-                    'REC ${formatReminderTime(task.remindAt!)}',
-                    style: yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      color: yCream,
-                      tracking: 0.8,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              if (folder != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: _FolderMention(folder: folder),
-                ),
-              const Spacer(),
-              Text(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final timestamp = Text(
                 expiring
                     ? 'BORRA EN ${_deleteIn(task.dueDate ?? task.createdAt).toUpperCase()}'
                     : _captured(task.createdAt),
@@ -1158,8 +1111,85 @@ class _TaskCardBody extends ConsumerWidget {
                   color: expiring ? yFight : yMuted,
                   weight: expiring ? FontWeight.w700 : FontWeight.w500,
                 ),
-              ),
-            ],
+              );
+              final dueBadge =
+                  task.dueDate == null || done
+                      ? null
+                      : Container(
+                        padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+                        decoration: BoxDecoration(
+                          color: _dueDateColor(task.dueDate!),
+                          border: Border.all(color: yBorderStrong, width: 1.5),
+                        ),
+                        child: Text(
+                          _formatDueDate(task.dueDate!),
+                          style: yMono(
+                            size: 9,
+                            weight: FontWeight.w700,
+                            color: yCream,
+                            tracking: 0.8,
+                          ),
+                        ),
+                      );
+              final reminderBadge =
+                  task.remindAt == null || done
+                      ? null
+                      : Container(
+                        padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
+                        decoration: BoxDecoration(
+                          color: yFight,
+                          border: Border.all(color: yBorderStrong, width: 1.5),
+                        ),
+                        child: Text(
+                          'REC ${formatReminderTime(task.remindAt!)}',
+                          style: yMono(
+                            size: 9,
+                            weight: FontWeight.w700,
+                            color: yCream,
+                            tracking: 0.8,
+                          ),
+                        ),
+                      );
+              final folderBadge =
+                  folder == null ? null : _FolderMention(folder: folder);
+              final badges = <Widget>[
+                if (dueBadge != null) dueBadge,
+                if (reminderBadge != null) reminderBadge,
+                if (folderBadge != null) folderBadge,
+              ];
+
+              if (constraints.maxWidth >= 260) {
+                return Row(
+                  children: [
+                    if (dueBadge != null) ...[
+                      dueBadge,
+                      const SizedBox(width: 6),
+                    ],
+                    if (reminderBadge != null) ...[
+                      reminderBadge,
+                      const SizedBox(width: 6),
+                    ],
+                    if (folderBadge != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: folderBadge,
+                      ),
+                    const Spacer(),
+                    timestamp,
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (badges.isNotEmpty)
+                    Wrap(spacing: 6, runSpacing: 6, children: badges),
+                  if (badges.isNotEmpty) const SizedBox(height: 4),
+                  Align(alignment: Alignment.centerRight, child: timestamp),
+                ],
+              );
+            },
           ),
           if (prop.hasNoteLinks || prop.spaceName != null) ...[
             const SizedBox(height: 6),
@@ -1408,21 +1438,38 @@ class _LabSpaceRow extends ConsumerWidget {
               behavior: HitTestBehavior.opaque,
               onTap: () async {
                 int? folderColor;
+                int? sourceNoteId;
+                var cardTitle = task.content;
                 if (task.folderId != null) {
                   final folder = await ref
                       .read(folderRepositoryProvider)
                       .getById(task.folderId!);
                   folderColor = folder?.color.toARGB32();
+                  if (folder != null &&
+                      !RegExp(
+                        r'@([a-zA-Z0-9_áéíóúÁÉÍÓÚñÑüÜ]+)',
+                      ).hasMatch(cardTitle)) {
+                    cardTitle = '@${folder.name} $cardTitle';
+                  }
+                }
+                final linkedNoteIds = await ref
+                    .read(noteRepositoryProvider)
+                    .getLinkedNoteIds(task.id);
+                if (linkedNoteIds.length == 1) {
+                  sourceNoteId = linkedNoteIds.first;
                 }
                 await ref
                     .read(kanbanCardRepositoryProvider)
                     .create(
                       labSpaceId: space.id,
                       columnId: col.id,
-                      title: task.content,
+                      title: cardTitle,
+                      sourceNoteId: sourceNoteId,
                       originTaskId: task.id,
                       originFolderColor: folderColor,
                       dueDate: task.dueDate,
+                      remindAt: task.remindAt,
+                      reminderPreset: task.reminderPreset,
                     );
                 if (context.mounted) Navigator.pop(context);
               },

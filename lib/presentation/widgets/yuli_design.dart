@@ -326,6 +326,9 @@ String cleanMention(String content) {
 String extractMentions(String content) =>
     _mentionRegex.allMatches(content).map((m) => m.group(0)!).join(' ');
 
+String ensureFolderMention(String content, String folderName) =>
+    extractMentions(content).isEmpty ? '@$folderName $content' : content;
+
 Widget buildMentionText({
   required String content,
   required TextStyle style,
@@ -471,7 +474,10 @@ class IconSquareBtn extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: fill ? color : Colors.transparent,
-          border: Border.all(color: fill ? yBorderStrong : color, width: yLineMid),
+          border: Border.all(
+            color: fill ? yBorderStrong : color,
+            width: yLineMid,
+          ),
         ),
         child: Icon(icon, size: size * 0.45, color: fill ? yInk : color),
       ),

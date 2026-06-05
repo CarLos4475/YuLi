@@ -235,6 +235,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       backgroundColor: _yCream,
       resizeToAvoidBottomInset: false,
       body: SafeArea(
+        top: false,
         child: LayoutBuilder(
           builder: (ctx, constraints) {
             return Column(

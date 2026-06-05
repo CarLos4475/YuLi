@@ -9,6 +9,7 @@ import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
+import '../../widgets/yuli_design.dart' show ensureFolderMention;
 
 class NoteBlockActions {
   final WidgetRef ref;
@@ -23,10 +24,11 @@ class NoteBlockActions {
 
   /// Create a real Task from a TareasBlock + link it (note_task_links +
   /// block.taskIds payload). Inherits folder from note.
-  Future<Task> createTaskInBlock(
-      TareasBlock block, String content) async {
+  Future<Task> createTaskInBlock(TareasBlock block, String content) async {
     final now = DateTime.now();
-    final task = await ref.read(taskRepositoryProvider).save(
+    final task = await ref
+        .read(taskRepositoryProvider)
+        .save(
           Task(
             id: 0,
             content: content,
@@ -38,9 +40,9 @@ class NoteBlockActions {
         );
     await ref.read(noteRepositoryProvider).linkTask(noteId, task.id);
     final updatedIds = [...block.taskIds, task.id];
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .updatePayload(block.id, {'taskIds': updatedIds});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(block.id, {
+      'taskIds': updatedIds,
+    });
     return task;
   }
 
@@ -53,8 +55,9 @@ class NoteBlockActions {
   /// present). Creates a KanbanCard with `originTaskId` so the link is
   /// bidirectional.
   Future<KanbanCard?> linkTaskToSpace(Task task, int labSpaceId) async {
-    final existing =
-        await ref.read(kanbanCardRepositoryProvider).getByOriginTaskId(task.id);
+    final existing = await ref
+        .read(kanbanCardRepositoryProvider)
+        .getByOriginTaskId(task.id);
     if (existing != null) return existing;
 
     final labRepo = ref.read(labSpaceRepositoryProvider);
@@ -62,16 +65,37 @@ class NoteBlockActions {
     if (columns.isEmpty) return null;
     final backlog = columns.firstWhere(
       (c) => c.name == 'Backlog' || c.name.toLowerCase() == 'backlog',
-      orElse: () => columns.firstWhere((c) => !c.isTerminal && !c.isExpired,
-          orElse: () => columns.first),
+      orElse:
+          () => columns.firstWhere(
+            (c) => !c.isTerminal && !c.isExpired,
+            orElse: () => columns.first,
+          ),
     );
 
-    return ref.read(kanbanCardRepositoryProvider).create(
+    int? originFolderColor;
+    var cardTitle = task.content;
+    if (task.folderId != null) {
+      final folder = await ref
+          .read(folderRepositoryProvider)
+          .getById(task.folderId!);
+      originFolderColor = folder?.color.toARGB32();
+      if (folder != null) {
+        cardTitle = ensureFolderMention(cardTitle, folder.name);
+      }
+    }
+
+    return ref
+        .read(kanbanCardRepositoryProvider)
+        .create(
           labSpaceId: labSpaceId,
           columnId: backlog.id,
-          title: task.content,
+          title: cardTitle,
           dueDate: task.dueDate,
+          remindAt: task.remindAt,
+          reminderPreset: task.reminderPreset,
+          sourceNoteId: noteId,
           originTaskId: task.id,
+          originFolderColor: originFolderColor,
         );
   }
 
@@ -80,9 +104,9 @@ class NoteBlockActions {
   Future<void> unlinkFromBlock(TareasBlock block, Task task) async {
     await ref.read(noteRepositoryProvider).unlinkTask(noteId, task.id);
     final updatedIds = block.taskIds.where((id) => id != task.id).toList();
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .updatePayload(block.id, {'taskIds': updatedIds});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(block.id, {
+      'taskIds': updatedIds,
+    });
   }
 
   /// Hard delete: moves task to trash globally. note_task_links rows cascade
@@ -90,8 +114,8 @@ class NoteBlockActions {
   Future<void> hardDeleteTask(TareasBlock block, Task task) async {
     await ref.read(taskRepositoryProvider).moveToTrash(task.id);
     final updatedIds = block.taskIds.where((id) => id != task.id).toList();
-    await ref
-        .read(noteBlockRepositoryProvider)
-        .updatePayload(block.id, {'taskIds': updatedIds});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(block.id, {
+      'taskIds': updatedIds,
+    });
   }
 }

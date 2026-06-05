@@ -90,6 +90,12 @@ class LocalTaskRepository implements TaskRepository {
         completedAt: Value(task.completedAt),
       ),
     );
+    await _syncLinkedCardFromTask(
+      task.id,
+      dueDate: task.dueDate,
+      remindAt: task.remindAt,
+      reminderPreset: task.reminderPreset,
+    );
     if (previous?.dueDate != task.dueDate) {
       await _reminders?.taskDueDateChanged(task.id, task.dueDate);
     } else {
@@ -131,6 +137,13 @@ class LocalTaskRepository implements TaskRepository {
   @override
   Future<void> updateDueDate(int id, DateTime? dueDate) async {
     await _db.tasksDao.updateDueDate(id, dueDate);
+    final row = await _db.tasksDao.getById(id);
+    await _syncLinkedCardFromTask(
+      id,
+      dueDate: dueDate,
+      remindAt: row?.remindAt,
+      reminderPreset: ReminderPreset.fromDb(row?.reminderPreset),
+    );
     await _reminders?.taskDueDateChanged(id, dueDate);
   }
 
@@ -141,7 +154,47 @@ class LocalTaskRepository implements TaskRepository {
     ReminderPreset? preset,
   ) async {
     await _db.tasksDao.updateReminder(id, remindAt, preset?.toDbString());
+    final row = await _db.tasksDao.getById(id);
+    await _syncLinkedCardFromTask(
+      id,
+      dueDate: row?.dueDate,
+      remindAt: remindAt,
+      reminderPreset: preset,
+    );
     await _reminders?.syncTask(id);
+  }
+
+  Future<void> _syncLinkedCardFromTask(
+    int taskId, {
+    required DateTime? dueDate,
+    required DateTime? remindAt,
+    required ReminderPreset? reminderPreset,
+  }) async {
+    final reminderPresetDb = reminderPreset?.toDbString();
+    final cards = await _db.kanbanDao.getAllByOriginTaskId(taskId);
+    if (cards.isEmpty) return;
+
+    for (final card in cards) {
+      final dueChanged = card.dueDate != dueDate;
+      final reminderChanged =
+          card.remindAt != remindAt || card.reminderPreset != reminderPresetDb;
+      if (!dueChanged && !reminderChanged) continue;
+
+      await _db.kanbanDao.updateCard(
+        KanbanCardsCompanion(
+          id: Value(card.id),
+          dueDate: Value(dueDate),
+          remindAt: Value(remindAt),
+          reminderPreset: Value(reminderPresetDb),
+        ),
+      );
+
+      if (dueChanged) {
+        await _reminders?.cardDueDateChanged(card.id, dueDate);
+      } else {
+        await _reminders?.syncCard(card.id);
+      }
+    }
   }
 
   Task _rowToTask(TaskRow row) => Task(

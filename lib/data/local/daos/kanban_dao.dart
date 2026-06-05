@@ -82,11 +82,30 @@ class KanbanDao extends DatabaseAccessor<AppDatabase> with _$KanbanDaoMixin {
       (select(kanbanCards)
         ..where((c) => c.sourceNoteId.equals(noteId))).watch();
 
-  Future<KanbanCardRow?> getByOriginTaskId(int taskId) =>
+  Future<List<KanbanCardRow>> getAllByOriginTaskId(int taskId) =>
       (select(kanbanCards)
-        ..where((c) => c.originTaskId.equals(taskId))).getSingleOrNull();
+            ..where((c) => c.originTaskId.equals(taskId))
+            ..orderBy([
+              (c) => OrderingTerm.desc(c.createdAt),
+              (c) => OrderingTerm.desc(c.id),
+            ]))
+          .get();
 
-  Stream<KanbanCardRow?> watchByOriginTaskId(int taskId) =>
-      (select(kanbanCards)
-        ..where((c) => c.originTaskId.equals(taskId))).watchSingleOrNull();
+  Future<KanbanCardRow?> getByOriginTaskId(int taskId) => (select(kanbanCards)
+        ..where((c) => c.originTaskId.equals(taskId))
+        ..orderBy([
+          (c) => OrderingTerm.desc(c.createdAt),
+          (c) => OrderingTerm.desc(c.id),
+        ]))
+      .get()
+      .then((rows) => rows.firstOrNull);
+
+  Stream<KanbanCardRow?> watchByOriginTaskId(int taskId) => (select(kanbanCards)
+        ..where((c) => c.originTaskId.equals(taskId))
+        ..orderBy([
+          (c) => OrderingTerm.desc(c.createdAt),
+          (c) => OrderingTerm.desc(c.id),
+        ]))
+      .watch()
+      .map((rows) => rows.firstOrNull);
 }

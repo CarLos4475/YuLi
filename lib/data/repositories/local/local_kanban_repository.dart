@@ -45,6 +45,36 @@ class LocalKanbanRepository implements KanbanCardRepository {
     int? originTaskId,
     int? originFolderColor,
   }) async {
+    if (originTaskId != null) {
+      final existing = await getByOriginTaskId(originTaskId);
+      if (existing != null) {
+        final targetPosition =
+            existing.columnId == columnId
+                ? existing.position
+                : await _db.kanbanDao.getNextPositionInColumn(columnId);
+        final updated = existing.copyWith(
+          labSpaceId: labSpaceId,
+          columnId: columnId,
+          title: title,
+          description: description,
+          priority: priority,
+          position: targetPosition,
+          dueDate: dueDate,
+          clearDueDate: dueDate == null,
+          remindAt: remindAt,
+          clearRemindAt: remindAt == null,
+          reminderPreset: reminderPreset,
+          clearReminderPreset: reminderPreset == null,
+          startDate: startDate,
+          sourceNoteId: sourceNoteId,
+          sourceAnchor: sourceAnchor,
+          originFolderColor: originFolderColor,
+        );
+        await update(updated);
+        return (await getById(existing.id))!;
+      }
+    }
+
     final position = await _db.kanbanDao.getNextPositionInColumn(columnId);
     final row = await _db.kanbanDao.insertCard(
       KanbanCardsCompanion.insert(
@@ -124,6 +154,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
     await _db.kanbanDao.updateCard(
       KanbanCardsCompanion(
         id: Value(card.id),
+        labSpaceId: Value(card.labSpaceId),
         columnId: Value(card.columnId),
         title: Value(card.title),
         description: Value(card.description),
@@ -218,6 +249,12 @@ class LocalKanbanRepository implements KanbanCardRepository {
   Future<KanbanCard?> getByOriginTaskId(int taskId) async {
     final row = await _db.kanbanDao.getByOriginTaskId(taskId);
     return row != null ? _rowToCard(row) : null;
+  }
+
+  @override
+  Future<List<KanbanCard>> getAllByOriginTaskId(int taskId) async {
+    final rows = await _db.kanbanDao.getAllByOriginTaskId(taskId);
+    return rows.map(_rowToCard).toList();
   }
 
   @override

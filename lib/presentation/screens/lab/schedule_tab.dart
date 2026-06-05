@@ -259,6 +259,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
             if (weekNote != null)
               _WeekNoteBanner(
                 note: weekNote.note,
+                accentColor: widget.space.accentColor,
                 onEdit: () => _editWeekNote(context, weekNote),
                 onDismiss: () async {
                   await ref
@@ -363,6 +364,8 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                                 dayIndex: _dragDayIndex!,
                                                 dayWidth: dayWidth,
                                                 hoursWidth: _hoursWidth,
+                                                accentColor:
+                                                    widget.space.accentColor,
                                               ),
                                             // Drag gesture detector for each day
                                             for (
@@ -655,6 +658,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                 (ctx, sc) => _SettingsSheet(
                   settings: settings,
                   scrollController: sc,
+                  accentColor: widget.space.accentColor,
                   onChanged: (s) {
                     ref.read(scheduleRepositoryProvider).updateSettings(s);
                     ref.invalidate(_scheduleSettingsProvider(widget.space.id));
@@ -802,11 +806,13 @@ class _ScheduleHeader extends StatelessWidget {
 
 class _WeekNoteBanner extends StatelessWidget {
   final String note;
+  final Color accentColor;
   final VoidCallback onEdit;
   final VoidCallback onDismiss;
 
   const _WeekNoteBanner({
     required this.note,
+    required this.accentColor,
     required this.onEdit,
     required this.onDismiss,
   });
@@ -816,31 +822,33 @@ class _WeekNoteBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: accentLab.withAlpha(20),
+        color: accentColor.withAlpha(20),
         border: Border(
-          bottom: BorderSide(color: accentLab, width: borderWidth),
+          bottom: BorderSide(color: accentColor, width: borderWidth),
         ),
       ),
       child: Row(
         children: [
-          Expanded(child: Text(note, style: bodyS.copyWith(color: accentLab))),
+          Expanded(
+            child: Text(note, style: bodyS.copyWith(color: accentColor)),
+          ),
           GestureDetector(
             onTap: onEdit,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                border: Border.all(color: accentLab, width: borderWidth),
+                border: Border.all(color: accentColor, width: borderWidth),
               ),
               child: Text(
                 '[Editar]',
-                style: labelBold.copyWith(color: accentLab, fontSize: 10),
+                style: labelBold.copyWith(color: accentColor, fontSize: 10),
               ),
             ),
           ),
           const SizedBox(width: 6),
           GestureDetector(
             onTap: onDismiss,
-            child: const Icon(Icons.close, size: 14, color: accentLab),
+            child: Icon(Icons.close, size: 14, color: accentColor),
           ),
         ],
       ),
@@ -1097,6 +1105,7 @@ class _DragOverlay extends StatelessWidget {
   final int dayIndex;
   final double dayWidth;
   final double hoursWidth;
+  final Color accentColor;
 
   const _DragOverlay({
     required this.startY,
@@ -1104,6 +1113,7 @@ class _DragOverlay extends StatelessWidget {
     required this.dayIndex,
     required this.dayWidth,
     required this.hoursWidth,
+    required this.accentColor,
   });
 
   @override
@@ -1117,8 +1127,8 @@ class _DragOverlay extends StatelessWidget {
       height: height,
       child: Container(
         decoration: BoxDecoration(
-          color: accentLab.withAlpha(30),
-          border: Border.all(color: accentLab, width: borderWidth),
+          color: accentColor.withAlpha(30),
+          border: Border.all(color: accentColor, width: borderWidth),
         ),
       ),
     );
@@ -1304,7 +1314,7 @@ class _BlockDetailSheet extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
-                      color: accentLab,
+                      color: space.accentColor,
                       border: Border.all(
                         color: y.yBorderStrong,
                         width: y.yLineMid,
@@ -1774,8 +1784,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             const SizedBox(height: 6),
             ColorPalettePicker(
               selected: _parseHex(_selectedColor),
-              onChanged: (c) =>
-                  setState(() => _selectedColor = _colorToHex(c)),
+              onChanged: (c) => setState(() => _selectedColor = _colorToHex(c)),
             ),
           ],
           if (_selectedFolderId != null) ...[
@@ -1823,7 +1832,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color: accentLab,
+                color: widget.space.accentColor,
                 border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
                 boxShadow: shadowM,
               ),
@@ -1848,11 +1857,13 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
 class _ToggleRow extends StatelessWidget {
   final String label;
   final bool value;
+  final Color accentColor;
   final ValueChanged<bool> onChanged;
 
   const _ToggleRow({
     required this.label,
     required this.value,
+    required this.accentColor,
     required this.onChanged,
   });
 
@@ -1868,7 +1879,7 @@ class _ToggleRow extends StatelessWidget {
             width: 40,
             height: 22,
             decoration: BoxDecoration(
-              color: value ? accentLab : inkGray,
+              color: value ? accentColor : inkGray,
               border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
             ),
             child: Align(
@@ -1960,11 +1971,13 @@ class _TimePickerField extends StatelessWidget {
 class _SettingsSheet extends StatefulWidget {
   final ScheduleSettings settings;
   final ScrollController scrollController;
+  final Color accentColor;
   final ValueChanged<ScheduleSettings> onChanged;
 
   const _SettingsSheet({
     required this.settings,
     required this.scrollController,
+    required this.accentColor,
     required this.onChanged,
   });
 
@@ -2026,6 +2039,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
           _ToggleRow(
             label: 'Mostrar sabado',
             value: _showSaturday,
+            accentColor: widget.accentColor,
             onChanged: (v) {
               setState(() => _showSaturday = v);
               _emit();
@@ -2035,6 +2049,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
           _ToggleRow(
             label: 'Mostrar domingo',
             value: _showSunday,
+            accentColor: widget.accentColor,
             onChanged: (v) {
               setState(() => _showSunday = v);
               _emit();

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
-import '../../widgets/yuli_design.dart' show cleanMention;
+import '../../widgets/yuli_design.dart' show cleanMention, ensureFolderMention;
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -39,9 +39,10 @@ class _TaskCardState extends ConsumerState<TaskCard>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
   }
 
   @override
@@ -54,8 +55,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
     if (_completing) return;
     setState(() => _completing = true);
 
-    final reducedMotion =
-        MediaQuery.of(context).disableAnimations;
+    final reducedMotion = MediaQuery.of(context).disableAnimations;
 
     if (!reducedMotion) {
       HapticFeedback.mediumImpact();
@@ -82,19 +82,19 @@ class _TaskCardState extends ConsumerState<TaskCard>
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
-    final folderAsync = task.folderId != null
-        ? ref.watch(folderByIdProvider(task.folderId!))
-        : null;
+    final folderAsync =
+        task.folderId != null
+            ? ref.watch(folderByIdProvider(task.folderId!))
+            : null;
     final folder = folderAsync?.valueOrNull;
 
     final borderCol = inkColor(context);
 
     Widget card = AnimatedBuilder(
       animation: _fadeAnimation,
-      builder: (context, child) => Opacity(
-        opacity: _fadeAnimation.value,
-        child: child,
-      ),
+      builder:
+          (context, child) =>
+              Opacity(opacity: _fadeAnimation.value, child: child),
       child: _CardContent(
         task: task,
         folder: folder,
@@ -105,23 +105,23 @@ class _TaskCardState extends ConsumerState<TaskCard>
 
     if (widget.isDone) {
       return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Dismissible(
-        key: ValueKey('done_${task.id}'),
-        direction: DismissDirection.endToStart,
-        confirmDismiss: (_) async {
-          await _delete();
-          return false;
-        },
-        background: const SizedBox.shrink(),
-        secondaryBackground: _SwipeBackground(
-          color: accentFight,
-          alignment: Alignment.centerRight,
-          icon: Icons.delete_outline,
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Dismissible(
+          key: ValueKey('done_${task.id}'),
+          direction: DismissDirection.endToStart,
+          confirmDismiss: (_) async {
+            await _delete();
+            return false;
+          },
+          background: const SizedBox.shrink(),
+          secondaryBackground: _SwipeBackground(
+            color: accentFight,
+            alignment: Alignment.centerRight,
+            icon: Icons.delete_outline,
+          ),
+          child: card,
         ),
-        child: card,
-      ),
-    );
+      );
     }
 
     // Long-press to send to Kanban
@@ -174,8 +174,7 @@ class _CardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final doneBackground = desaturate(accentFight, amount: 0.85)
-        .withAlpha(60);
+    final doneBackground = desaturate(accentFight, amount: 0.85).withAlpha(60);
 
     final defaultStyle = bodyL.copyWith(
       color: inkColor(context),
@@ -237,29 +236,33 @@ class _CardContent extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: folder!.color,
-                    border: Border.all(color: inkBlack, width: borderWidth),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: inkBlack,
-                        offset: shadowOffset,
-                        blurRadius: shadowBlurRadius,
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    folder!.name,
-                    style: labelBold.copyWith(
-                      color: folder!.color.computeLuminance() > 0.4
-                          ? inkBlack
-                          : inkLight,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    decoration: BoxDecoration(
+                      color: folder!.color,
+                      border: Border.all(color: inkBlack, width: borderWidth),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: inkBlack,
+                          offset: shadowOffset,
+                          blurRadius: shadowBlurRadius,
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      folder!.name,
+                      style: labelBold.copyWith(
+                        color:
+                            folder!.color.computeLuminance() > 0.4
+                                ? inkBlack
+                                : inkLight,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
                 ),
               ],
             ],
@@ -327,36 +330,37 @@ class _CardContent extends ConsumerWidget {
     if (task.dueDate != null) {
       final action = await showDialog<String>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: paperColor(ctx),
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
-          ),
-          title: Text(
-            'Fecha límite',
-            style: displayM.copyWith(color: inkColor(ctx)),
-          ),
-          content: Text(
-            'Actual: ${task.dueDate!.day.toString().padLeft(2, '0')}/${task.dueDate!.month.toString().padLeft(2, '0')}/${task.dueDate!.year} ${task.dueDate!.hour.toString().padLeft(2, '0')}:${task.dueDate!.minute.toString().padLeft(2, '0')}',
-            style: bodyM.copyWith(color: inkColor(ctx)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'clear'),
-              child: Text(
-                'BORRAR',
-                style: labelBold.copyWith(color: accentFight),
+        builder:
+            (ctx) => AlertDialog(
+              backgroundColor: paperColor(ctx),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
               ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'change'),
-              child: Text(
-                'CAMBIAR',
-                style: labelBold.copyWith(color: inkColor(ctx)),
+              title: Text(
+                'Fecha límite',
+                style: displayM.copyWith(color: inkColor(ctx)),
               ),
+              content: Text(
+                'Actual: ${task.dueDate!.day.toString().padLeft(2, '0')}/${task.dueDate!.month.toString().padLeft(2, '0')}/${task.dueDate!.year} ${task.dueDate!.hour.toString().padLeft(2, '0')}:${task.dueDate!.minute.toString().padLeft(2, '0')}',
+                style: bodyM.copyWith(color: inkColor(ctx)),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'clear'),
+                  child: Text(
+                    'BORRAR',
+                    style: labelBold.copyWith(color: accentFight),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'change'),
+                  child: Text(
+                    'CAMBIAR',
+                    style: labelBold.copyWith(color: inkColor(ctx)),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
       );
 
       if (action == 'clear') {
@@ -373,36 +377,43 @@ class _CardContent extends ConsumerWidget {
       initialDate: task.dueDate ?? now,
       firstDate: now,
       lastDate: now.add(const Duration(days: 365 * 5)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          datePickerTheme: const DatePickerThemeData(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              datePickerTheme: const DatePickerThemeData(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+            ),
+            child: child!,
           ),
-        ),
-        child: child!,
-      ),
     );
     if (picked == null) return;
 
     if (!context.mounted) return;
     final time = await showTimePicker(
       context: context,
-      initialTime: task.dueDate != null
-          ? TimeOfDay.fromDateTime(task.dueDate!)
-          : const TimeOfDay(hour: 12, minute: 0),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          timePickerTheme: const TimePickerThemeData(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      initialTime:
+          task.dueDate != null
+              ? TimeOfDay.fromDateTime(task.dueDate!)
+              : const TimeOfDay(hour: 12, minute: 0),
+      builder:
+          (ctx, child) => Theme(
+            data: Theme.of(ctx).copyWith(
+              timePickerTheme: const TimePickerThemeData(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+            ),
+            child: child!,
           ),
-        ),
-        child: child!,
-      ),
     );
     if (time == null) return;
 
     final dt = DateTime(
-      picked.year, picked.month, picked.day, time.hour, time.minute,
+      picked.year,
+      picked.month,
+      picked.day,
+      time.hour,
+      time.minute,
     );
     await ref.read(taskRepositoryProvider).updateDueDate(task.id, dt);
   }
@@ -489,44 +500,70 @@ class _SpaceRow extends ConsumerWidget {
     // Only offer "open" columns — never drop a task straight into a terminal
     // (Entregado) or expired (Vencido) column, which would bypass the done/due
     // stamping that create() doesn't apply.
-    final columns = (columnsAsync.valueOrNull ?? [])
-        .where((c) => !c.isTerminal && !c.isExpired)
-        .toList();
+    final columns =
+        (columnsAsync.valueOrNull ?? [])
+            .where((c) => !c.isTerminal && !c.isExpired)
+            .toList();
 
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 24),
-      title: Text(space.name,
-          style: bodyM.copyWith(color: space.accentColor, fontWeight: FontWeight.w700)),
-      children: columns.map((col) {
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () async {
-            int? folderColor;
-            if (task.folderId != null) {
-              final folder =
-                  await ref.read(folderRepositoryProvider).getById(task.folderId!);
-              folderColor = folder?.color.toARGB32();
-            }
-            await ref.read(kanbanCardRepositoryProvider).create(
-                  labSpaceId: space.id,
-                  columnId: col.id,
-                  title: task.content,
-                  originTaskId: task.id,
-                  originFolderColor: folderColor,
-                  dueDate: task.dueDate,
-                );
-            if (context.mounted) Navigator.pop(context);
-          },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(col.name,
-                  style: bodyM.copyWith(color: inkColor(context))),
-            ),
-          ),
-        );
-      }).toList(),
+      title: Text(
+        space.name,
+        style: bodyM.copyWith(
+          color: space.accentColor,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      children:
+          columns.map((col) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                int? folderColor;
+                int? sourceNoteId;
+                var cardTitle = task.content;
+                if (task.folderId != null) {
+                  final folder = await ref
+                      .read(folderRepositoryProvider)
+                      .getById(task.folderId!);
+                  folderColor = folder?.color.toARGB32();
+                  if (folder != null) {
+                    cardTitle = ensureFolderMention(cardTitle, folder.name);
+                  }
+                }
+                final linkedNoteIds = await ref
+                    .read(noteRepositoryProvider)
+                    .getLinkedNoteIds(task.id);
+                if (linkedNoteIds.length == 1) {
+                  sourceNoteId = linkedNoteIds.first;
+                }
+                await ref
+                    .read(kanbanCardRepositoryProvider)
+                    .create(
+                      labSpaceId: space.id,
+                      columnId: col.id,
+                      title: cardTitle,
+                      sourceNoteId: sourceNoteId,
+                      originTaskId: task.id,
+                      originFolderColor: folderColor,
+                      dueDate: task.dueDate,
+                      remindAt: task.remindAt,
+                      reminderPreset: task.reminderPreset,
+                    );
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(40, 10, 24, 10),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    col.name,
+                    style: bodyM.copyWith(color: inkColor(context)),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
     );
   }
 }
