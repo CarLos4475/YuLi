@@ -7,6 +7,7 @@ import '../../providers/ai_providers.dart';
 import '../../providers/image_storage_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../../data/services/image_storage.dart';
+import '../../../data/services/launcher_icon_service.dart';
 import '../../widgets/app_section_divider.dart';
 import 'image_storage_screen.dart';
 import 'crash_log_screen.dart';
@@ -109,6 +110,17 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppSectionDivider(label: 'ICONO'),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _LauncherIconBlock(),
             ),
 
             const SizedBox(height: 24),
@@ -260,6 +272,182 @@ class SettingsScreen extends ConsumerWidget {
 }
 
 // ── WIDGETS PRIVADOS ──
+
+class _LauncherIconBlock extends StatefulWidget {
+  const _LauncherIconBlock();
+
+  @override
+  State<_LauncherIconBlock> createState() => _LauncherIconBlockState();
+}
+
+class _LauncherIconBlockState extends State<_LauncherIconBlock> {
+  final _service = LauncherIconService();
+  LauncherIconVariant _current = LauncherIconVariant.icon1;
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!LauncherIconService.isSupported) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    try {
+      final current = await _service.current();
+      if (!mounted) return;
+      setState(() {
+        _current = current;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _select(LauncherIconVariant variant) async {
+    if (_busy || !LauncherIconService.isSupported) return;
+    setState(() => _busy = true);
+    try {
+      await _service.set(variant);
+      if (!mounted) return;
+      setState(() => _current = variant);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Icono actualizado')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo cambiar el icono')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    final paper = paperColor(context);
+    final supported = LauncherIconService.isSupported;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: paper,
+        border: Border.all(color: ink, width: borderWidth),
+        boxShadow: const [
+          BoxShadow(
+            color: inkBlack,
+            offset: shadowOffset,
+            blurRadius: shadowBlurRadius,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'ICONO DE APP',
+                style: labelBold.copyWith(
+                  color: ink,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                supported ? _current.label : 'Solo Android',
+                style: bodyS.copyWith(color: ink.withAlpha(150)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children:
+                LauncherIconVariant.values
+                    .map(
+                      (variant) => _LauncherIconOption(
+                        label: variant.label,
+                        selected: supported && _current == variant,
+                        enabled: supported && !_loading && !_busy,
+                        onTap: () => _select(variant),
+                      ),
+                    )
+                    .toList(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            supported
+                ? 'Puede tardar unos segundos en reflejarse en el launcher.'
+                : 'Disponible solo en Android.',
+            style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LauncherIconOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _LauncherIconOption({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? accentJournal : paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: selected ? ink : Colors.transparent,
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: labelBold.copyWith(
+                color: selected ? paperLight : ink,
+                fontSize: 11,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _CrashLogBlock extends StatelessWidget {
   const _CrashLogBlock();

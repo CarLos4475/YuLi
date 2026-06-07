@@ -96,7 +96,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/icon/LOGO_YuLi.png"
+  image_path: "assets/icon/icon1.png"
   adaptive_icon_background: "#FFFDF8"
-  adaptive_icon_foreground: "assets/icon/LOGO_YuLi.png"
+  adaptive_icon_foreground: "assets/icon/icon1.png"
   min_sdk_android: 21
