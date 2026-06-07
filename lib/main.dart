@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/services/crash_logger.dart';
+import 'data/services/launcher_icon_lifecycle.dart';
+import 'data/services/launcher_icon_service.dart';
 import 'presentation/theme/app_tokens.dart';
 import 'presentation/providers/database_providers.dart';
 import 'presentation/providers/image_storage_providers.dart';
@@ -55,6 +57,7 @@ void main() {
 
       final themeOverride = await initThemeModeOverride();
       runApp(ProviderScope(overrides: [themeOverride], child: const YuLiApp()));
+      LauncherIconLifecycle(LauncherIconService()).attach();
     },
     (error, stack) {
       CrashLogger.instance.record(error, stack, context: 'Zone');

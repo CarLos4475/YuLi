@@ -1,8 +1,11 @@
 package com.carlos.yuli.yuli
 
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.os.Bundle
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,6 +19,27 @@ class MainActivity : FlutterActivity() {
         "icon2" to ".LauncherIcon2",
         "icon3" to ".LauncherIcon3",
     )
+    private val prefsName = "yuli_launcher_prefs"
+    private val kAutoMode = "auto_mode"
+    private val kInForeground = "in_foreground"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        swapPrefs().edit().putBoolean(kInForeground, true).apply()
+        if (isAutoMode()) {
+            scheduleNextSwap(nextSwapAtMs())
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        swapPrefs().edit().putBoolean(kInForeground, true).apply()
+    }
+
+    override fun onPause() {
+        swapPrefs().edit().putBoolean(kInForeground, false).apply()
+        super.onPause()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -43,6 +67,28 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
                         setLauncherIcon(iconId)
+                        result.success(null)
+                    }
+                    "scheduleNextSwap" -> {
+                        val triggerAtMs = (call.arguments as? Number)?.toLong()
+                        if (triggerAtMs == null) {
+                            result.error("invalid_args", "triggerAtMs requerido", null)
+                            return@setMethodCallHandler
+                        }
+                        scheduleNextSwap(triggerAtMs)
+                        result.success(null)
+                    }
+                    "cancelSchedule" -> {
+                        cancelSwapSchedule()
+                        result.success(null)
+                    }
+                    "scheduleLifecycleSwap" -> {
+                        val delayMs = (call.arguments as? Number)?.toLong() ?: 30_000L
+                        scheduleLifecycleSwap(delayMs)
+                        result.success(null)
+                    }
+                    "cancelLifecycleSwap" -> {
+                        cancelLifecycleSwap()
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -86,5 +132,49 @@ class MainActivity : FlutterActivity() {
 
     private fun componentNameFor(aliasName: String): ComponentName {
         return ComponentName(this, "$packageName$aliasName")
+    }
+
+    private fun swapPrefs(): SharedPreferences =
+        getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+    private fun isAutoMode(): Boolean = swapPrefs().getBoolean(kAutoMode, true)
+
+    private fun nextSwapAtMs(): Long {
+        val cal = java.util.Calendar.getInstance()
+        val nowMs = cal.timeInMillis
+        val today = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val candidates = intArrayOf(6, 12, 18)
+        for (h in candidates) {
+            val c = today.clone() as java.util.Calendar
+            c.set(java.util.Calendar.HOUR_OF_DAY, h)
+            if (c.timeInMillis > nowMs) return c.timeInMillis
+        }
+        val tomorrow = (today.clone() as java.util.Calendar).apply {
+            add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        tomorrow.set(java.util.Calendar.HOUR_OF_DAY, 6)
+        return tomorrow.timeInMillis
+    }
+
+    private fun scheduleNextSwap(triggerAtMs: Long) {
+        IconSwapScheduler(this).scheduleBoundaryAt(triggerAtMs)
+    }
+
+    private fun cancelSwapSchedule() {
+        IconSwapScheduler(this).cancelBoundary()
+    }
+
+    private fun scheduleLifecycleSwap(delayMs: Long) {
+        val triggerAtMs = System.currentTimeMillis() + delayMs
+        IconSwapScheduler(this).scheduleLifecycleAt(triggerAtMs)
+    }
+
+    private fun cancelLifecycleSwap() {
+        IconSwapScheduler(this).cancelLifecycle()
     }
 }

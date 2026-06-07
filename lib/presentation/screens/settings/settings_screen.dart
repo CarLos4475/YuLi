@@ -283,6 +283,7 @@ class _LauncherIconBlock extends StatefulWidget {
 class _LauncherIconBlockState extends State<_LauncherIconBlock> {
   final _service = LauncherIconService();
   LauncherIconVariant _current = LauncherIconVariant.icon1;
+  bool _auto = true;
   bool _loading = true;
   bool _busy = false;
 
@@ -298,9 +299,11 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
       return;
     }
     try {
+      final auto = await _service.isAutoMode();
       final current = await _service.current();
       if (!mounted) return;
       setState(() {
+        _auto = auto;
         _current = current;
         _loading = false;
       });
@@ -309,24 +312,59 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
     }
   }
 
-  Future<void> _select(LauncherIconVariant variant) async {
-    if (_busy || !LauncherIconService.isSupported) return;
+  Future<void> _toggleAuto(bool v) async {
+    if (_busy) return;
     setState(() => _busy = true);
     try {
-      await _service.set(variant);
+      await _service.setAutoMode(v);
+      if (v) {
+        await _service.scheduleLifecycleSwap(delayMs: 30000);
+      }
+      final current = await _service.current();
       if (!mounted) return;
-      setState(() => _current = variant);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Icono actualizado')));
+      setState(() {
+        _auto = v;
+        _current = current;
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo cambiar el icono')),
+        const SnackBar(content: Text('No se pudo cambiar el modo')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _select(LauncherIconVariant variant) async {
+    if (_busy || !LauncherIconService.isSupported) return;
+    setState(() => _busy = true);
+    try {
+      await _service.setManualOverride(variant);
+      await _service.setAutoMode(false);
+      await _service.set(variant);
+      if (!mounted) return;
+      setState(() {
+        _auto = false;
+        _current = variant;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Icono fijado')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo fijar el icono')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _formatHour(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   @override
@@ -334,6 +372,10 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
     final ink = inkColor(context);
     final paper = paperColor(context);
     final supported = LauncherIconService.isSupported;
+    final now = DateTime.now();
+    final band = TimeBandRules.bandFor(now);
+    final nextSwap = TimeBandRules.nextSwapAfter(now);
+    final enabled = supported && !_loading && !_busy;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -362,13 +404,79 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
                 ),
               ),
               const Spacer(),
-              Text(
-                supported ? _current.label : 'Solo Android',
-                style: bodyS.copyWith(color: ink.withAlpha(150)),
-              ),
+              if (supported)
+                Text(
+                  _auto ? 'Auto' : 'Fijo',
+                  style: bodyS.copyWith(
+                    color: ink.withAlpha(150),
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                Text(
+                  'Solo Android',
+                  style: bodyS.copyWith(color: ink.withAlpha(150)),
+                ),
             ],
           ),
           const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Rotar por horario',
+                  style: bodyM.copyWith(color: ink),
+                ),
+              ),
+              Switch(
+                value: _auto,
+                onChanged: enabled ? _toggleAuto : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_auto && supported)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Franja actual: ${band.label}',
+                    style: bodyS.copyWith(color: ink),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Próximo cambio: ${_formatHour(nextSwap)}',
+                    style: bodyS.copyWith(color: ink.withAlpha(160)),
+                  ),
+                ],
+              ),
+            )
+          else if (supported)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                border: Border.all(color: ink, width: borderWidth),
+              ),
+              child: Text(
+                'Icono fijo: ${_current.label}',
+                style: bodyS.copyWith(color: ink),
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            'ICONO',
+            style: labelBold.copyWith(
+              color: ink.withAlpha(160),
+              fontSize: 10,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -377,8 +485,8 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
                     .map(
                       (variant) => _LauncherIconOption(
                         label: variant.label,
-                        selected: supported && _current == variant,
-                        enabled: supported && !_loading && !_busy,
+                        selected: _current == variant,
+                        enabled: enabled,
                         onTap: () => _select(variant),
                       ),
                     )
@@ -387,7 +495,9 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
           const SizedBox(height: 8),
           Text(
             supported
-                ? 'Puede tardar unos segundos en reflejarse en el launcher.'
+                ? (_auto
+                    ? 'Toca un icono para fijarlo y salir de la rotación.'
+                    : 'Activa la rotación por horario arriba para volver al modo automático.')
                 : 'Disponible solo en Android.',
             style: bodyS.copyWith(color: ink.withAlpha(140), fontSize: 11),
           ),
