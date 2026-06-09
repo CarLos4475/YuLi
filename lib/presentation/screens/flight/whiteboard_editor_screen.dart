@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -28,6 +29,7 @@ import '../../../domain/models/page_background.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
 import 'color_picker.dart';
+import 'color_loupe.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
 import 'eraser_mode_popup.dart';
@@ -195,6 +197,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   List<Color> _bgSavedColors = const [];
   bool _eyedropperMode = false;
   bool _lockBeforeEyedropper = false;
+  // Eyedropper loupe: a raster snapshot of the visible canvas is sampled per
+  // pixel (anything: paper, strokes, images, text), not stroke hit-testing.
+  final GlobalKey _canvasBoundaryKey = GlobalKey();
+  ui.Image? _eyedropImg;
+  ByteData? _eyedropBytes;
+  double _eyedropDpr = 1;
+  Offset _loupePos = Offset.zero;
+  Color _loupeColor = yInk;
+  Matrix4? _eyedropCaptureMatrix;
 
   // Multi-finger tap tracking
   int _maxSimultaneous = 0;
@@ -385,30 +396,118 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _locked = true;
     });
     HapticFeedback.lightImpact();
+    _captureEyedropSnapshot();
   }
 
-  void _exitEyedropper() {
+  Future<void> _captureEyedropSnapshot({bool resetPos = true}) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_eyedropperMode) return;
+    final boundary =
+        _canvasBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final img = await boundary.toImage(pixelRatio: dpr);
+    final bytes = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (!mounted || !_eyedropperMode || bytes == null) {
+      img.dispose();
+      return;
+    }
+    final pos = resetPos
+        ? Offset(_viewport.width / 2, _viewport.height / 2)
+        : _loupePos;
     setState(() {
-      _eyedropperMode = false;
-      _locked = _lockBeforeEyedropper;
+      _eyedropImg?.dispose();
+      _eyedropImg = img;
+      _eyedropBytes = bytes;
+      _eyedropDpr = dpr;
+      _eyedropCaptureMatrix = _viewCtrl.value.clone();
+      _loupePos = pos;
+      _loupeColor =
+          sampleSnapshotColor(bytes, img.width, img.height, dpr, pos) ??
+          _loupeColor;
     });
   }
 
-  bool _sampleAt(Offset world) {
-    final c = sampleStrokeColorAt(_data.strokes, world);
-    if (c == null) {
-      _exitEyedropper();
-      HapticFeedback.lightImpact();
-      return false;
-    }
+  void _moveLoupe(Offset local) {
+    final b = _eyedropBytes, img = _eyedropImg;
+    if (b == null || img == null) return;
+    setState(() {
+      _loupePos = local;
+      _loupeColor =
+          sampleSnapshotColor(b, img.width, img.height, _eyedropDpr, local) ??
+          _loupeColor;
+    });
+  }
+
+  void _confirmLoupe() {
+    final c = _loupeColor;
     _exitEyedropper();
     _commitColor(c);
     HapticFeedback.mediumImpact();
-    return true;
+  }
+
+  void _exitEyedropper() {
+    _eyedropImg?.dispose();
+    setState(() {
+      _eyedropperMode = false;
+      _locked = _lockBeforeEyedropper;
+      _eyedropImg = null;
+      _eyedropBytes = null;
+    });
+  }
+
+  List<Widget> _buildLoupeOverlay(Size viewport) {
+    const loupeW = 132.0;
+    const loupeH = 160.0;
+    final left = (_loupePos.dx - loupeW / 2).clamp(8.0, viewport.width - loupeW - 8);
+    final top = (_loupePos.dy - loupeH - 40).clamp(8.0, viewport.height - loupeH - 8);
+    return [
+      // Exact sample point.
+      Positioned(
+        left: _loupePos.dx - 7,
+        top: _loupePos.dy - 7,
+        child: IgnorePointer(
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: _loupeColor,
+              border: Border.all(color: yCream, width: 2),
+            ),
+          ),
+        ),
+      ),
+      Positioned(
+        left: left,
+        top: top,
+        child: IgnorePointer(
+          child: ColorLoupe(
+            image: _eyedropImg!,
+            dpr: _eyedropDpr,
+            sample: _loupePos,
+            color: _loupeColor,
+          ),
+        ),
+      ),
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 16,
+        child: Center(
+          child: LoupeActionBar(
+            accent: _accent,
+            onCancel: _exitEyedropper,
+            onConfirm: _confirmLoupe,
+          ),
+        ),
+      ),
+    ];
   }
 
   @override
   void dispose() {
+    _eyedropImg?.dispose();
     _reconcileImageFiles();
     _holdTimer?.cancel();
     _pasteTimer?.cancel();
@@ -994,7 +1093,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return;
     }
     if (_eyedropperMode) {
-      _sampleAt(_screenToWorld(e.localPosition));
+      _activePointers.add(e.pointer);
+      // 1 pointer drags the loupe; 2+ hands the gesture to pan/zoom.
+      if (_activePointers.length < 2) {
+        _moveLoupe(e.localPosition);
+      } else {
+        setState(() {});
+      }
       return;
     }
     final tbRect = _lassoToolbarScreenRect();
@@ -1209,6 +1314,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   static const _minDist2 = 9.0; // 3px squared
 
   void _onMove(PointerMoveEvent e) {
+    if (_eyedropperMode) {
+      if (_activePointers.length < 2) _moveLoupe(e.localPosition);
+      return;
+    }
     if (_exportMarquee) {
       // Only a single finger draws/adjusts; with 2+ the InteractiveViewer pans.
       if (_marqueePointers.length != 1 || _marqueeDrag == null) return;
@@ -1287,6 +1396,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _onUp(PointerUpEvent e) {
+    if (_eyedropperMode) {
+      _activePointers.remove(e.pointer);
+      setState(() {});
+      return;
+    }
     if (_exportMarquee) {
       // Lifting a finger never exports — the rect stays (with handles) for
       // adjustment until the user taps confirm.
@@ -1375,6 +1489,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _onCancel(PointerCancelEvent e) {
+    if (_eyedropperMode) {
+      _activePointers.remove(e.pointer);
+      setState(() {});
+      return;
+    }
     if (_exportMarquee) {
       _marqueePointers.remove(e.pointer);
       _marqueeDrag = null;
@@ -2613,7 +2732,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        ClipRect(
+                        RepaintBoundary(
+                          key: _canvasBoundaryKey,
+                          child: ClipRect(
                           child: GestureDetector(
                             onTapUp: _onLassoTap,
                             child: Listener(
@@ -2626,6 +2747,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 transformationController: _viewCtrl,
                                 minScale: 0.3,
                                 maxScale: 4.0,
+                                onInteractionEnd: (_) {
+                                  // After a 2-finger pan/zoom the snapshot is
+                                  // stale → recapture so the loupe keeps sampling
+                                  // the right pixels (keeps its position).
+                                  if (_eyedropperMode &&
+                                      _eyedropCaptureMatrix != null &&
+                                      _viewCtrl.value != _eyedropCaptureMatrix) {
+                                    _captureEyedropSnapshot(resetPos: false);
+                                  }
+                                },
                                 boundaryMargin: const EdgeInsets.all(
                                   _kCanvasW * 0.5,
                                 ),
@@ -2633,7 +2764,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 // a box (its GestureDetector), so disable pan;
                                 // 2-finger still zooms/navigates.
                                 panEnabled:
-                                    _exportMarquee
+                                    _eyedropperMode
+                                        ? _activePointers.length >= 2
+                                        : _exportMarquee
                                         ? false
                                         : _tool == DrawTool.text
                                         ? false
@@ -2647,7 +2780,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                         ? !_stylusActive
                                         : !_isDrawing,
                                 scaleEnabled:
-                                    _exportMarquee
+                                    _eyedropperMode
+                                        ? _activePointers.length >= 2
+                                        : _exportMarquee
                                         ? true
                                         : _tool == DrawTool.text
                                         ? true
@@ -2696,6 +2831,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                               ),
                             ),
                           ),
+                          ),
                         ),
                         // Floating palettes — sibling of the canvas Listener so
                         // touching a palette never leaks a pointer into a stroke.
@@ -2730,6 +2866,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                               radius: _eraserScreenRadius,
                             ),
                           ),
+                        // Eyedropper loupe (viewport-space, like the palettes).
+                        if (_eyedropImg != null) ..._buildLoupeOverlay(viewport),
                         // Lives INSIDE the canvas Stack so the painter shares the
                         // InteractiveViewer's viewport space — the same space as
                         // `e.localPosition` used for handle hit-testing. In the
@@ -2754,13 +2892,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               _toolbar(),
             ],
           ),
-          if (_eyedropperMode)
-            Positioned(
-              left: 12,
-              right: 12,
-              top: 12,
-              child: Center(child: _EyedropperHint(onCancel: _exitEyedropper)),
-            ),
           if (_imagePanelOpen) ...[
             Positioned.fill(
               child: GestureDetector(
@@ -3530,62 +3661,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               setState(() => _morePopupOpen = false);
               _confirmClear();
             },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EyedropperHint extends StatelessWidget {
-  final VoidCallback onCancel;
-  const _EyedropperHint({required this.onCancel});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: yBorderStrong, width: yLineMid),
-        boxShadow: const [
-          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(YuLiIcons.palette, size: 14, color: yInk),
-          const SizedBox(width: 8),
-          Text(
-            'TOCA UN TRAZO PARA COPIAR EL COLOR',
-            style: yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yInk,
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onCancel,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              decoration: BoxDecoration(
-                color: yInk,
-                border: Border.all(color: yBorderStrong, width: 1.5),
-              ),
-              child: Text(
-                'CANCELAR',
-                style: yMono(
-                  size: 9,
-                  weight: FontWeight.w700,
-                  tracking: 1.2,
-                  color: yCream,
-                ),
-              ),
-            ),
           ),
         ],
       ),
