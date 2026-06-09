@@ -698,19 +698,22 @@ class ToolChip extends StatelessWidget {
 }
 
 class ViewToggleBtn extends StatelessWidget {
-  final String glyph;
+  final IconData icon;
   final bool active;
   final VoidCallback onTap;
+  final Color? accentColor;
 
   const ViewToggleBtn({
     super.key,
-    required this.glyph,
+    required this.icon,
     required this.active,
     required this.onTap,
+    this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final accent = accentColor ?? yFlight;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -719,17 +722,10 @@ class ViewToggleBtn extends StatelessWidget {
         height: 38,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? yFlight : yCream,
+          color: active ? accent : yCream,
           border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
-        child: Text(
-          glyph,
-          style: TextStyle(
-            fontSize: 16,
-            color: active ? yCream : yInk,
-            height: 1.0,
-          ),
-        ),
+        child: Icon(icon, size: 16, color: active ? yCream : yInk),
       ),
     );
   }
@@ -890,4 +886,100 @@ Color parseHex(String hex) {
   if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
   if (h.length == 8) return Color(int.parse(h, radix: 16));
   return yMuted;
+}
+
+/// Shows a brutalist help dialog explaining what a mode does.
+void showModeHelp(BuildContext context, {
+  required String mode,
+  required String description,
+  required Color accent,
+  List<String>? tips,
+}) {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: yCream,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 14,
+                height: 14,
+                color: accent,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                mode,
+                style: ySans(
+                  size: 20,
+                  weight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                  color: yInk,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            description,
+            style: yBody(size: 14, color: yInk2),
+          ),
+          if (tips != null && tips.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              '> TIPS',
+              style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted),
+            ),
+            const SizedBox(height: 8),
+            for (final tip in tips) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 5),
+                    child: Icon(YuLiIcons.chevronRight, size: 10, color: yInk),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      tip,
+                      style: yBody(size: 13, color: yInk2),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
+          ],
+          const SizedBox(height: 18),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.pop(ctx),
+            child: Container(
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent,
+                border: Border.all(color: yInk, width: yLineMid),
+                boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
+              ),
+              child: Text(
+                'ENTENDIDO',
+                style: yMono(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yCream,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

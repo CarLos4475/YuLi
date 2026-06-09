@@ -307,14 +307,16 @@ class _FolderHero extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 ViewToggleBtn(
-                  glyph: '▣',
+                  icon: YuLiIcons.layoutGrid,
                   active: grid,
+                  accentColor: folder.color,
                   onTap: grid ? () {} : onToggleView,
                 ),
                 const SizedBox(width: 4),
                 ViewToggleBtn(
-                  glyph: '≡',
+                  icon: YuLiIcons.menu,
                   active: !grid,
+                  accentColor: folder.color,
                   onTap: !grid ? () {} : onToggleView,
                 ),
                 const SizedBox(width: 10),

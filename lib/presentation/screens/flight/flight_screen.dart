@@ -104,7 +104,41 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
           color: yFlight,
           onBack:
               () => ref.read(currentModeProvider.notifier).state = AppMode.home,
-          headerRight: [_SearchBar(totalNotes: totalNotes)],
+          headerRight: [
+            _SearchBar(totalNotes: totalNotes),
+            const SizedBox(width: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showModeHelp(
+                context,
+                mode: 'FLIGHT',
+                accent: yFlight,
+                description: 'Organiza tus notas en carpetas con colores. '
+                    'Crea notas de texto con bloques, cuadernos con páginas '
+                    'o pizarras infinitas para dibujo con stylus.',
+                tips: [
+                  'Crea carpetas para agrupar notas por tema',
+                  'Usa notas bloque para texto, math y listas',
+                  'Los cuadernos tienen páginas A4 con dibujo',
+                  'Las pizarras son lienzos infinitos con zoom',
+                ],
+              ),
+              child: Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: yCream,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Text(
+                  '?',
+                  style: yMono(size: 16, weight: FontWeight.w700, color: yInk),
+                ),
+              ),
+            ),
+          ],
         ),
         const _Toolbar(),
         Expanded(
@@ -233,13 +267,13 @@ class _Toolbar extends ConsumerWidget {
           ),
           const Spacer(),
           ViewToggleBtn(
-            glyph: '▣',
+            icon: YuLiIcons.layoutGrid,
             active: toolbar.view == FlightView.grid,
             onTap: () => notifier.setView(FlightView.grid),
           ),
           const SizedBox(width: 4),
           ViewToggleBtn(
-            glyph: '≡',
+            icon: YuLiIcons.menu,
             active: toolbar.view == FlightView.list,
             onTap: () => notifier.setView(FlightView.list),
           ),

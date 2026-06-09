@@ -125,7 +125,37 @@ class _LabScreenState extends ConsumerState<LabScreen> {
                 ),
               ),
             ),
-            IconSquareBtn(icon: YuLiIcons.helpCircle),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showModeHelp(
+                context,
+                mode: 'LAB',
+                accent: yLab,
+                description: 'Gestiona proyectos con tableros kanban, calendario, '
+                    'horario, timeline y grafo de relaciones. Organiza espacios '
+                    'de trabajo con tarjetas, fechas y seguimiento visual.',
+                tips: [
+                  'Toca un space para abrir su tablero kanban',
+                  'Programa fechas en el calendario y horario',
+                  'Usa el grafo para ver conexiones entre notas y tareas',
+                  'Mantén presionado un space para opciones',
+                ],
+              ),
+              child: Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: yCream,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Text(
+                  '?',
+                  style: yMono(size: 16, weight: FontWeight.w700, color: yInk),
+                ),
+              ),
+            ),
           ],
         ),
         _LabToolbar(

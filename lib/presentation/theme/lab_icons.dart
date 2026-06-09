@@ -39,6 +39,7 @@ class YuLiIcons {
   static const IconData copy = LucideIcons.copy;
   static const IconData clipboard = LucideIcons.clipboard;
   static const IconData flipHorizontal = LucideIcons.flipHorizontal;
+  static const IconData menu = LucideIcons.menu;
   static const IconData flipVertical = LucideIcons.flipVertical;
 
   // ─── Drawing / Canvas Tools ──────────────────────────────────

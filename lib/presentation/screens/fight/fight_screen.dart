@@ -42,6 +42,38 @@ class FightScreen extends ConsumerWidget {
               bg: Color(0xFF8E2D4B),
               fg: yCream,
             ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showModeHelp(
+                context,
+                mode: 'FIGHT',
+                accent: yFight,
+                description: 'Captura tareas rápido con @etiquetas. '
+                    'Swipe derecha = hecha, izquierda = descartar. '
+                    'Programa recordatorios y vencimientos.',
+                tips: [
+                  'Usa @nombre-carpeta para vincular una tarea',
+                  'Mantén presionado para enviar al kanban de Lab',
+                  'Toca el reloj para asignar fecha límite',
+                  'Las tareas vencidas se resaltan automáticamente',
+                ],
+              ),
+              child: Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: yCream,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Text(
+                  '?',
+                  style: yMono(size: 16, weight: FontWeight.w700, color: yInk),
+                ),
+              ),
+            ),
           ],
         ),
         const _CapturaBar(),
