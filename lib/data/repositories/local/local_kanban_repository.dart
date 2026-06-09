@@ -208,7 +208,7 @@ class LocalKanbanRepository implements KanbanCardRepository {
         title: Value(card.title),
         description: Value(card.description),
         priority: Value(card.priority.toDbString()),
-        position: Value(card.position),
+        position: Value(card.position), 
         dueDate: Value(card.dueDate),
         remindAt: Value(card.remindAt),
         reminderPreset: Value(card.reminderPreset?.toDbString()),

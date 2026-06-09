@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_tokens.dart';
 import '../theme/lab_icons.dart';
 import 'yuli_design.dart' show cleanMention;
+import 'confetti_burst.dart';
 import '../providers/task_providers.dart';
 import '../providers/folder_providers.dart';
 import '../providers/lab_space_providers.dart';
@@ -142,7 +143,10 @@ class PanelTaskTile extends ConsumerWidget {
           ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => setTaskDone(ref, task.id, done: true),
+            onTapUp: (d) {
+              burstConfetti(context, d.globalPosition, accent: accentFight);
+              setTaskDone(ref, task.id, done: true);
+            },
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: Icon(YuLiIcons.check, color: accentFight, size: 18),

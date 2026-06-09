@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../providers/lab_space_providers.dart';
@@ -7,6 +12,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../widgets/yuli_design.dart' as y;
+import '../../widgets/confetti_burst.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/kanban_card.dart';
@@ -890,7 +896,7 @@ class _DateRow extends StatelessWidget {
   }
 }
 
-class _KanbanBoard extends ConsumerWidget {
+class _KanbanBoard extends ConsumerStatefulWidget {
   final LabSpace space;
   final List<KanbanColumn> columns;
   final Set<int> selectedCardIds;
@@ -906,7 +912,151 @@ class _KanbanBoard extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_KanbanBoard> createState() => _KanbanBoardState();
+}
+
+class _KanbanBoardState extends ConsumerState<_KanbanBoard>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  final ValueNotifier<bool> _dragging = ValueNotifier(false);
+
+  late final AnimationController _shake = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+
+  StreamSubscription<UserAccelerometerEvent>? _accelSub;
+  AudioPlayer? _dicePlayer;
+  bool _foreground = true;
+  bool _rolling = false;
+  DateTime _lastShake = DateTime.fromMillisecondsSinceEpoch(0);
+
+  int? _luckyCardId;
+  final GlobalKey _luckyKey = GlobalKey();
+  Timer? _luckyClear;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _accelSub = userAccelerometerEventStream().listen((e) {
+      if (!_foreground || _rolling) return;
+      final magnitude = sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
+      if (magnitude < 16) return;
+      final now = DateTime.now();
+      if (now.difference(_lastShake) < const Duration(milliseconds: 1200)) {
+        return;
+      }
+      _lastShake = now;
+      _rollDice();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _accelSub?.cancel();
+    _luckyClear?.cancel();
+    _shake.dispose();
+    _dicePlayer?.dispose();
+    _dragging.dispose();
+    super.dispose();
+  }
+
+  void _rollDice() async {
+    if (_rolling) return;
+    final eligibleColumns =
+        widget.columns
+            .where((c) => !c.isTerminal && !c.isExpired)
+            .map((c) => c.id)
+            .toSet();
+    final allCards =
+        ref.read(kanbanCardsBySpaceProvider(widget.space.id)).valueOrNull ?? [];
+    final pool =
+        allCards
+            .where((c) => eligibleColumns.contains(c.columnId) && !c.isDone)
+            .toList();
+    if (pool.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 2),
+            content: Text(
+              'Nada para sortear',
+              style: y.yBody(size: 14, color: y.yCream),
+            ),
+          ),
+        );
+      return;
+    }
+
+    setState(() {
+      _rolling = true;
+      _luckyCardId = null;
+    });
+    _luckyClear?.cancel();
+    HapticFeedback.mediumImpact();
+    (_dicePlayer ??= AudioPlayer()).play(AssetSource('sounds/dice.wav'));
+    _shake.forward(from: 0);
+
+    await Future.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+
+    final picked = pool[Random().nextInt(pool.length)];
+    setState(() {
+      _rolling = false;
+      _luckyCardId = picked.id;
+    });
+    HapticFeedback.heavyImpact();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _luckyKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 350),
+          alignment: 0.5,
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    _luckyClear = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _luckyCardId = null);
+    });
+  }
+
+  void _deleteCard(KanbanCard card) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final repo = ref.read(kanbanCardRepositoryProvider);
+    await repo.delete(card.id);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 5),
+          content: Text(
+            'Tarjeta eliminada',
+            style: y.yBody(size: 14, color: y.yCream),
+          ),
+          action: SnackBarAction(
+            label: 'DESHACER',
+            textColor: y.yCream,
+            onPressed: () => repo.restore(card),
+          ),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final space = widget.space;
+    final columns = widget.columns;
     final allCards =
         ref.watch(kanbanCardsBySpaceProvider(space.id)).valueOrNull ?? [];
     return Column(
@@ -917,6 +1067,12 @@ class _KanbanBoard extends ConsumerWidget {
           kicker: '${allCards.length} tareas . ${columns.length} columnas',
           right: [
             y.HeadBtn(
+              label: 'DADO',
+              leadingIcon: YuLiIcons.dice,
+              onTap: _rolling ? null : _rollDice,
+            ),
+            const SizedBox(width: 8),
+            y.HeadBtn(
               label: '+ TAREA',
               primary: true,
               color: space.accentColor,
@@ -925,7 +1081,14 @@ class _KanbanBoard extends ConsumerWidget {
           ],
         ),
         Expanded(
-          child: Stack(
+          child: AnimatedBuilder(
+            animation: _shake,
+            builder: (context, child) {
+              final v = _shake.value;
+              final dx = v == 0 ? 0.0 : sin(v * pi * 9) * 11 * (1 - v);
+              return Transform.translate(offset: Offset(dx, 0), child: child);
+            },
+            child: Stack(
             children: [
               ListView.separated(
                 scrollDirection: Axis.horizontal,
@@ -937,9 +1100,13 @@ class _KanbanBoard extends ConsumerWidget {
                     return _KanbanColumn(
                       space: space,
                       column: columns[i],
-                      selectedCardIds: selectedCardIds,
-                      onToggleSelection: onToggleSelection,
-                      selectionMode: selectionMode,
+                      selectedCardIds: widget.selectedCardIds,
+                      onToggleSelection: widget.onToggleSelection,
+                      selectionMode: widget.selectionMode,
+                      onDragStart: () => _dragging.value = true,
+                      onDragEnd: () => _dragging.value = false,
+                      luckyCardId: _luckyCardId,
+                      luckyKey: _luckyKey,
                     );
                   }
                   return _AddColumnButton(spaceId: space.id);
@@ -977,7 +1144,21 @@ class _KanbanBoard extends ConsumerWidget {
                     ),
                   ),
                 ),
+              // Drag-to-delete: physical trash bin, only while dragging a card
+              Positioned(
+                right: 24,
+                bottom: 24,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _dragging,
+                  builder:
+                      (_, dragging, _) => _TrashBin(
+                        visible: dragging,
+                        onDelete: _deleteCard,
+                      ),
+                ),
+              ),
             ],
+            ),
           ),
         ),
       ],
@@ -985,6 +1166,8 @@ class _KanbanBoard extends ConsumerWidget {
   }
 
   void _showQuickAdd(BuildContext context, WidgetRef ref) {
+    final columns = widget.columns;
+    final space = widget.space;
     if (columns.isEmpty) return;
     final ctrl = TextEditingController();
     showDialog(
@@ -1066,6 +1249,10 @@ class _KanbanColumn extends ConsumerWidget {
   final Set<int> selectedCardIds;
   final void Function(int) onToggleSelection;
   final bool selectionMode;
+  final VoidCallback onDragStart;
+  final VoidCallback onDragEnd;
+  final int? luckyCardId;
+  final GlobalKey luckyKey;
 
   const _KanbanColumn({
     required this.space,
@@ -1073,6 +1260,10 @@ class _KanbanColumn extends ConsumerWidget {
     required this.selectedCardIds,
     required this.onToggleSelection,
     required this.selectionMode,
+    required this.onDragStart,
+    required this.onDragEnd,
+    required this.luckyCardId,
+    required this.luckyKey,
   });
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
@@ -1161,7 +1352,14 @@ class _KanbanColumn extends ConsumerWidget {
               child: DragTarget<_DragData>(
                 onAcceptWithDetails: (details) async {
                   if (details.data.card.columnId != column.id) {
-                    await _moveCardToColumn(ref, details.data, cards.length);
+                    await _handleDrop(
+                      context,
+                      ref,
+                      details.data,
+                      cards,
+                      cards.length,
+                      details.offset,
+                    );
                   }
                 },
                 builder: (context, candidateData, rejectedData) {
@@ -1210,8 +1408,14 @@ class _KanbanColumn extends ConsumerWidget {
                                     accentColor: space.accentColor,
                                     position: i,
                                     onDrop:
-                                        (_DragData data) =>
-                                            _handleDrop(ref, data, cards, i),
+                                        (data, at) => _handleDrop(
+                                          context,
+                                          ref,
+                                          data,
+                                          cards,
+                                          i,
+                                          at,
+                                        ),
                                   ),
                                   if (selectionMode)
                                     GestureDetector(
@@ -1235,6 +1439,8 @@ class _KanbanColumn extends ConsumerWidget {
                                     LongPressDraggable<_DragData>(
                                       key: ValueKey(cards[i].id),
                                       data: _DragData(cards[i]),
+                                      onDragStarted: onDragStart,
+                                      onDragEnd: (_) => onDragEnd(),
                                       feedback: Material(
                                         elevation: 4,
                                         color: Colors.transparent,
@@ -1260,12 +1466,17 @@ class _KanbanColumn extends ConsumerWidget {
                                           inExpiredColumn: column.isExpired,
                                         ),
                                       ),
-                                      child: KanbanCardTile(
-                                        card: cards[i],
-                                        accentColor: space.accentColor,
-                                        onTap:
-                                            () => _openCard(context, cards[i]),
-                                        inExpiredColumn: column.isExpired,
+                                      child: _LuckyWrap(
+                                        isLucky: cards[i].id == luckyCardId,
+                                        luckyKey: luckyKey,
+                                        accent: space.accentColor,
+                                        child: KanbanCardTile(
+                                          card: cards[i],
+                                          accentColor: space.accentColor,
+                                          onTap:
+                                              () => _openCard(context, cards[i]),
+                                          inExpiredColumn: column.isExpired,
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -1274,11 +1485,13 @@ class _KanbanColumn extends ConsumerWidget {
                                   accentColor: space.accentColor,
                                   position: cards.length,
                                   onDrop:
-                                      (_DragData data) => _handleDrop(
+                                      (data, at) => _handleDrop(
+                                        context,
                                         ref,
                                         data,
                                         cards,
                                         cards.length,
+                                        at,
                                       ),
                                 ),
                                 const SizedBox(height: 8),
@@ -1454,15 +1667,25 @@ class _KanbanColumn extends ConsumerWidget {
   }
 
   Future<void> _handleDrop(
+    BuildContext ctx,
     WidgetRef ref,
     _DragData data,
     List<KanbanCard> cards,
     int position,
+    Offset at,
   ) async {
+    final celebrate = column.isTerminal && data.card.columnId != column.id;
     if (data.card.columnId == column.id) {
       _reorderInColumn(ref, cards, data.card.id, position);
     } else {
       await _moveCardToColumn(ref, data, position);
+    }
+    if (celebrate && ctx.mounted) {
+      burstConfetti(
+        ctx,
+        at + const Offset(130, 18),
+        accent: space.accentColor,
+      );
     }
   }
 
@@ -1518,7 +1741,7 @@ class _CardDropZone extends StatelessWidget {
   final KanbanColumn column;
   final Color accentColor;
   final int position;
-  final ValueChanged<_DragData> onDrop;
+  final void Function(_DragData, Offset) onDrop;
 
   const _CardDropZone({
     required this.column,
@@ -1530,7 +1753,7 @@ class _CardDropZone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DragTarget<_DragData>(
-      onAcceptWithDetails: (details) => onDrop(details.data),
+      onAcceptWithDetails: (details) => onDrop(details.data, details.offset),
       builder: (context, candidateData, rejectedData) {
         final isActive = candidateData.isNotEmpty;
         return Container(
@@ -1825,6 +2048,186 @@ class _AddCardButton extends ConsumerWidget {
 class _DragData {
   final KanbanCard card;
   const _DragData(this.card);
+}
+
+/// Applies the dice-winner highlight to a single card. Only the lucky card
+/// carries [luckyKey] (so Scrollable.ensureVisible can reach it); others pass
+/// through untouched.
+class _LuckyWrap extends StatelessWidget {
+  final bool isLucky;
+  final GlobalKey luckyKey;
+  final Color accent;
+  final Widget child;
+
+  const _LuckyWrap({
+    required this.isLucky,
+    required this.luckyKey,
+    required this.accent,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isLucky) return child;
+    return _DiceHighlight(key: luckyKey, accent: accent, child: child);
+  }
+}
+
+/// The "you got picked" treatment: a one-shot bounce + a blinking accent halo.
+class _DiceHighlight extends StatefulWidget {
+  final Color accent;
+  final Widget child;
+
+  const _DiceHighlight({super.key, required this.accent, required this.child});
+
+  @override
+  State<_DiceHighlight> createState() => _DiceHighlightState();
+}
+
+class _DiceHighlightState extends State<_DiceHighlight>
+    with TickerProviderStateMixin {
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 460),
+  )..repeat(reverse: true);
+
+  late final AnimationController _jump = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 480),
+  )..forward();
+
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.0, end: 1.12).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 35,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.12,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.elasticOut)),
+      weight: 65,
+    ),
+  ]).animate(_jump);
+
+  @override
+  void dispose() {
+    _blink.dispose();
+    _jump.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_blink, _jump]),
+      child: widget.child,
+      builder: (context, child) {
+        final t = _blink.value;
+        return Transform.scale(
+          scale: _scale.value,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Color.lerp(widget.accent.withAlpha(60), widget.accent, t)!,
+                width: 3,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accent.withAlpha((140 * t).round()),
+                  blurRadius: 0,
+                  spreadRadius: 2 * t,
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Drag-to-delete target. Slides up from the corner only while a card is being
+/// dragged; grows + flips color + haptics when a card hovers over it, and
+/// "chomps" (heavy haptic) when one is dropped in.
+class _TrashBin extends StatefulWidget {
+  final bool visible;
+  final void Function(KanbanCard) onDelete;
+
+  const _TrashBin({required this.visible, required this.onDelete});
+
+  @override
+  State<_TrashBin> createState() => _TrashBinState();
+}
+
+class _TrashBinState extends State<_TrashBin> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !widget.visible,
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 220),
+        curve: widget.visible ? Curves.easeOutBack : Curves.easeIn,
+        offset: widget.visible ? Offset.zero : const Offset(0, 1.8),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: widget.visible ? 1 : 0,
+          child: DragTarget<_DragData>(
+            onMove: (_) {
+              if (!_hovering) {
+                setState(() => _hovering = true);
+                HapticFeedback.mediumImpact();
+              }
+            },
+            onLeave: (_) {
+              if (_hovering) setState(() => _hovering = false);
+            },
+            onAcceptWithDetails: (details) {
+              setState(() => _hovering = false);
+              HapticFeedback.heavyImpact();
+              widget.onDelete(details.data.card);
+            },
+            builder: (context, candidate, rejected) {
+              final active = _hovering;
+              return AnimatedScale(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOutBack,
+                scale: active ? 1.3 : 1.0,
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: active ? accentFight : y.yCream,
+                    border: Border.all(
+                      color: y.yBorderStrong,
+                      width: active ? 3 : 2,
+                    ),
+                    boxShadow:
+                        active
+                            ? [
+                              BoxShadow(
+                                color: y.yBorderStrong,
+                                offset: const Offset(4, 4),
+                              ),
+                            ]
+                            : null,
+                  ),
+                  child: Icon(
+                    YuLiIcons.trash,
+                    size: 26,
+                    color: active ? y.yCream : y.yInk,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SelectionBar extends StatelessWidget {

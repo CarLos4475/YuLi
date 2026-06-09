@@ -8,6 +8,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/reminder_picker.dart';
+import '../../widgets/confetti_burst.dart';
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
@@ -216,6 +217,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                         columns.first,
                     columns: columns,
                     repo: _repository,
+                    accent: widget.space.accentColor,
                     onChanged: (c) => _onCardChanged(c),
                   ),
                 const SizedBox(height: 16),
@@ -461,6 +463,7 @@ class _ColumnSelector extends StatelessWidget {
   final KanbanColumn currentColumn;
   final List<KanbanColumn> columns;
   final KanbanCardRepository repo;
+  final Color accent;
   final ValueChanged<KanbanCard> onChanged;
 
   const _ColumnSelector({
@@ -468,6 +471,7 @@ class _ColumnSelector extends StatelessWidget {
     required this.currentColumn,
     required this.columns,
     required this.repo,
+    required this.accent,
     required this.onChanged,
   });
 
@@ -529,10 +533,15 @@ class _ColumnSelector extends StatelessWidget {
               ...columns.map(
                 (col) => GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () async {
+                  onTapUp: (d) async {
+                    final celebrate =
+                        col.isTerminal && col.id != card.columnId;
                     await repo.moveToColumn(card.id, col.id, 0);
                     onChanged(card.copyWith(columnId: col.id));
                     if (context.mounted) Navigator.pop(context);
+                    if (celebrate && context.mounted) {
+                      burstConfetti(context, d.globalPosition, accent: accent);
+                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(

@@ -54,6 +54,9 @@ dependencies:
   pdf: ^3.10.8
   share_plus: ^10.0.0
   lucide_icons_flutter: ^3.1.14+2
+  sensors_plus: ^7.0.0
+  audioplayers: ^6.7.1
+  confetti: ^0.8.0
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +71,7 @@ flutter:
 
   assets:
     - assets/fonts/
+    - assets/sounds/
 
   fonts:
     - family: SpaceGrotesk

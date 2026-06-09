@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart' show cleanMention, ensureFolderMention;
+import '../../widgets/confetti_burst.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -56,15 +57,22 @@ class _TaskCardState extends ConsumerState<TaskCard>
     if (_completing) return;
     setState(() => _completing = true);
 
-    final reducedMotion = MediaQuery.of(context).disableAnimations;
+    HapticFeedback.mediumImpact();
 
-    if (!reducedMotion) {
-      HapticFeedback.mediumImpact();
-      await setTaskDone(ref, widget.task.id, done: true);
-      if (mounted) await _fadeController.forward();
-    } else {
-      await setTaskDone(ref, widget.task.id, done: true);
+    // Confetti always fires (it's the reward, not the card animation). The swipe
+    // slides the card off to the side, so its global dx is unreliable here (only
+    // dy stays put). Burst at screen-center X, at the row's vertical center.
+    final size = MediaQuery.of(context).size;
+    double cy = size.height / 2;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      cy = box.localToGlobal(Offset.zero).dy + box.size.height / 2;
     }
+    burstConfetti(context, Offset(size.width / 2, cy), accent: accentFight);
+
+    final reducedMotion = MediaQuery.of(context).disableAnimations;
+    await setTaskDone(ref, widget.task.id, done: true);
+    if (!reducedMotion && mounted) await _fadeController.forward();
   }
 
   Future<void> _delete() async {

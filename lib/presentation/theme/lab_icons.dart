@@ -112,6 +112,7 @@ class YuLiIcons {
   static const IconData filter = LucideIcons.filter;
   static const IconData timeline = LucideIcons.timeline;
   static const IconData star = LucideIcons.star;
+  static const IconData dice = LucideIcons.dices;
   static const IconData gripVertical = LucideIcons.gripVertical;
   static const IconData gitGraph = LucideIcons.gitGraph;
   static const IconData bookOpen = LucideIcons.bookOpen;

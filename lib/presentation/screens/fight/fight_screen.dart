@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../theme/app_tokens.dart';
+import '../../widgets/confetti_burst.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
@@ -736,6 +739,16 @@ class _SwipeableTaskCard extends ConsumerStatefulWidget {
 
 class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
   Future<void> _complete() async {
+    HapticFeedback.mediumImpact();
+    // The swipe slides the card off in X, so its global dx is unreliable here
+    // (only dy stays put). Burst at screen-center X, at the row's vertical center.
+    final size = MediaQuery.of(context).size;
+    double cy = size.height / 2;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      cy = box.localToGlobal(Offset.zero).dy + box.size.height / 2;
+    }
+    burstConfetti(context, Offset(size.width / 2, cy), accent: accentFight);
     await setTaskDone(ref, widget.task.id, done: true);
   }
 

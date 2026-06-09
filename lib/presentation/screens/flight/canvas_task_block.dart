@@ -12,6 +12,8 @@ import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/confetti_burst.dart';
+import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/task.dart';
@@ -487,7 +489,12 @@ class _CanvasTaskRow extends ConsumerWidget {
           children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: onCheck,
+              onTapUp: (d) {
+                if (!done) {
+                  burstConfetti(context, d.globalPosition, accent: accentFlight);
+                }
+                onCheck();
+              },
               child: Container(
                 width: 20,
                 height: 20,
