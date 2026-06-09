@@ -1222,7 +1222,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               sp.dx,
               sp.dy,
               pressure,
-              DateTime.now().millisecondsSinceEpoch.toDouble(),
+              e.timeStamp.inMilliseconds.toDouble(),
             ],
           ],
         );
@@ -1381,7 +1381,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         sp.dx,
         sp.dy,
         pressure,
-        DateTime.now().millisecondsSinceEpoch.toDouble(),
+        e.timeStamp.inMilliseconds.toDouble(),
       ]);
       _activeTick.value++;
       return;

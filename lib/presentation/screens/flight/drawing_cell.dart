@@ -1026,7 +1026,7 @@ class _DrawingCellState extends State<DrawingCell>
                       p.dx,
                       p.dy,
                       pressure,
-                      DateTime.now().millisecondsSinceEpoch.toDouble(),
+                      e.timeStamp.inMilliseconds.toDouble(),
                     ],
                   ],
                 );
@@ -1062,7 +1062,7 @@ class _DrawingCellState extends State<DrawingCell>
                 p.dx,
                 p.dy,
                 pressure,
-                DateTime.now().millisecondsSinceEpoch.toDouble(),
+                e.timeStamp.inMilliseconds.toDouble(),
               ]);
               _activeTick.value++;
               return;

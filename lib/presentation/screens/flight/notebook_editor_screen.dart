@@ -1230,7 +1230,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               sp.dx,
               sp.dy,
               pressure,
-              DateTime.now().millisecondsSinceEpoch.toDouble(),
+              e.timeStamp.inMilliseconds.toDouble(),
             ],
           ],
         );
@@ -1366,7 +1366,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         sp.dx,
         sp.dy,
         pressure,
-        DateTime.now().millisecondsSinceEpoch.toDouble(),
+        e.timeStamp.inMilliseconds.toDouble(),
       ]);
       _activeTick.value++;
       return;
