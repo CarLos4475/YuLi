@@ -85,3 +85,6 @@ node_modules/
 
 # Flutter version management
 .fvm/
+
+# Math OCR model training (local, no Mathpix)
+math_model/

@@ -337,7 +337,30 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
         ],
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: _advanced ? _buildAdvanced() : _buildCompact(),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          layoutBuilder: (current, previous) => Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              ...previous,
+              if (current != null) current,
+            ],
+          ),
+          transitionBuilder: (child, anim) =>
+              FadeTransition(opacity: anim, child: child),
+          child: _advanced
+              ? KeyedSubtree(
+                  key: const ValueKey('adv'), child: _buildAdvanced())
+              : KeyedSubtree(
+                  key: const ValueKey('compact'), child: _buildCompact()),
+        ),
+      ),
     );
   }
 

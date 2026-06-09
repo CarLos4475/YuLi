@@ -42,6 +42,7 @@ import 'drawing_prefs.dart';
 import 'eraser_mode_popup.dart';
 import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
+import 'popup_reveal.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
@@ -3307,195 +3308,105 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 ),
               ),
             ),
-          if (_shapePopupOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _shapePopupOpen = false),
-              ),
+          RevealPopup(
+            key: const ValueKey('rp-shape'),
+            open: _shapePopupOpen,
+            onDismiss: () => setState(() => _shapePopupOpen = false),
+            child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-more'),
+            open: _morePopupOpen,
+            onDismiss: () => setState(() => _morePopupOpen = false),
+            child: _buildMorePopup(),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-image'),
+            open: _imagePanelOpen,
+            onDismiss: _toggleImagePanel,
+            child: ImageInsertPanel(
+              accent: _accent,
+              onPick: (file) {
+                _toggleImagePanel();
+                _insertImageFile(file);
+              },
+              onClose: _toggleImagePanel,
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
-              ),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-bg'),
+            open: _bgPopupOpen,
+            onDismiss: _toggleBgPopup,
+            child: BackgroundPopup(
+              pattern: _currentBg,
+              color: _currentBgColor,
+              showScope: true,
+              allPages: _bgAllPages,
+              accent: _accent,
+              onPattern: _applyBgPattern,
+              onColor: _applyBgColor,
+              onMoreColors: () => setState(() {
+                _bgColorPickerOpen = true;
+                _bgPopupOpen = false;
+              }),
+              onScope: (all) => setState(() => _bgAllPages = all),
+              onClose: _toggleBgPopup,
             ),
-          ],
-          if (_morePopupOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _morePopupOpen = false),
-              ),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-bgcolor'),
+            open: _bgColorPickerOpen,
+            onDismiss: () => setState(() => _bgColorPickerOpen = false),
+            child: ColorPickerPopup(
+              currentColor: _currentBgColor,
+              recentColors: const [],
+              savedColors: _bgSavedColors,
+              quickColors: _bgSavedColors,
+              quickLabel: 'FAVORITOS',
+              onPreview: _applyBgColor,
+              onCommit: _applyBgColor,
+              onStar: _starBgColor,
+              onEyedropper: () {},
+              onClose: () => setState(() {
+                _bgColorPickerOpen = false;
+                _bgPopupOpen = true;
+              }),
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: _buildMorePopup(),
-              ),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-width'),
+            open: _widthPickerOpen,
+            onDismiss: _toggleWidthPicker,
+            child: StrokeWidthPopup(
+              currentWidth: _strokeW,
+              recentWidths: _recentWidths,
+              accentColor: _accent,
+              onPreview: (v) => setState(() => _strokeW = v),
+              onCommit: _commitWidth,
+              onClose: _toggleWidthPicker,
             ),
-          ],
-          if (_imagePanelOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleImagePanel,
-              ),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-color'),
+            open: _colorPickerOpen,
+            onDismiss: _toggleColorPicker,
+            child: ColorPickerPopup(
+              currentColor: _color,
+              recentColors: _recentColors,
+              savedColors: _savedColors,
+              onPreview: (c) => setState(() => _color = c),
+              onCommit: _commitColor,
+              onStar: _starColor,
+              onEyedropper: () => _enterEyedropper(),
+              onClose: _toggleColorPicker,
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: ImageInsertPanel(
-                  accent: _accent,
-                  onPick: (file) {
-                    _toggleImagePanel();
-                    _insertImageFile(file);
-                  },
-                  onClose: _toggleImagePanel,
-                ),
-              ),
-            ),
-          ],
-          if (_bgPopupOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleBgPopup,
-              ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: BackgroundPopup(
-                  pattern: _currentBg,
-                  color: _currentBgColor,
-                  showScope: true,
-                  allPages: _bgAllPages,
-                  accent: _accent,
-                  onPattern: _applyBgPattern,
-                  onColor: _applyBgColor,
-                  onMoreColors:
-                      () => setState(() {
-                        _bgColorPickerOpen = true;
-                        _bgPopupOpen = false;
-                      }),
-                  onScope: (all) => setState(() => _bgAllPages = all),
-                  onClose: _toggleBgPopup,
-                ),
-              ),
-            ),
-          ],
-          if (_bgColorPickerOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _bgColorPickerOpen = false),
-              ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: ColorPickerPopup(
-                  currentColor: _currentBgColor,
-                  recentColors: const [],
-                  savedColors: _bgSavedColors,
-                  quickColors: _bgSavedColors,
-                  quickLabel: 'FAVORITOS',
-                  onPreview: _applyBgColor,
-                  onCommit: _applyBgColor,
-                  onStar: _starBgColor,
-                  onEyedropper: () {},
-                  onClose:
-                      () => setState(() {
-                        _bgColorPickerOpen = false;
-                        _bgPopupOpen = true;
-                      }),
-                ),
-              ),
-            ),
-          ],
-          if (_widthPickerOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleWidthPicker,
-              ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: StrokeWidthPopup(
-                  currentWidth: _strokeW,
-                  recentWidths: _recentWidths,
-                  accentColor: _accent,
-                  onPreview: (v) => setState(() => _strokeW = v),
-                  onCommit: _commitWidth,
-                  onClose: _toggleWidthPicker,
-                ),
-              ),
-            ),
-          ],
-          if (_colorPickerOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleColorPicker,
-              ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: ColorPickerPopup(
-                  currentColor: _color,
-                  recentColors: _recentColors,
-                  savedColors: _savedColors,
-                  onPreview: (c) => setState(() => _color = c),
-                  onCommit: _commitColor,
-                  onStar: _starColor,
-                  onEyedropper: () => _enterEyedropper(),
-                  onClose: _toggleColorPicker,
-                ),
-              ),
-            ),
-          ],
-          if (_eraserPopupOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _eraserPopupOpen = false),
-              ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 64,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: _eraserModePopup(),
-              ),
-            ),
-             ],
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-eraser'),
+            open: _eraserPopupOpen,
+            onDismiss: () => setState(() => _eraserPopupOpen = false),
+            child: _eraserModePopup(),
+          ),
            ],
          ),
        ),

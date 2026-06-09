@@ -10,6 +10,7 @@ import 'fountain_pen_engine.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
 import 'note_cell_model.dart';
+import 'popup_reveal.dart';
 import 'lasso_controller.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
@@ -676,56 +677,36 @@ class _DrawingCellState extends State<DrawingCell>
               top: (widget.header != null ? 48 : 0) + 50,
               child: Center(child: _EyedropperHint(onCancel: _exitEyedropper)),
             ),
-          if (_widthPickerOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleWidthPicker,
-              ),
+          RevealPopup(
+            key: const ValueKey('rp-width'),
+            open: _widthPickerOpen,
+            onDismiss: _toggleWidthPicker,
+            top: (widget.header != null ? 48 : 0) + 50,
+            child: StrokeWidthPopup(
+              currentWidth: _strokeW,
+              recentWidths: _recentWidths,
+              accentColor: widget.accent ?? yAmber,
+              onPreview: (v) => setState(() => _strokeW = v),
+              onCommit: _commitWidth,
+              onClose: _toggleWidthPicker,
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              top: (widget.header != null ? 48 : 0) + 50,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: StrokeWidthPopup(
-                  currentWidth: _strokeW,
-                  recentWidths: _recentWidths,
-                  accentColor: widget.accent ?? yAmber,
-                  onPreview: (v) => setState(() => _strokeW = v),
-                  onCommit: _commitWidth,
-                  onClose: _toggleWidthPicker,
-                ),
-              ),
+          ),
+          RevealPopup(
+            key: const ValueKey('rp-color'),
+            open: _colorPickerOpen,
+            onDismiss: _toggleColorPicker,
+            top: (widget.header != null ? 48 : 0) + 50,
+            child: ColorPickerPopup(
+              currentColor: _color,
+              recentColors: _recentColors,
+              savedColors: _savedColors,
+              onPreview: (c) => setState(() => _color = c),
+              onCommit: _commitColor,
+              onStar: _starColor,
+              onEyedropper: _enterEyedropper,
+              onClose: _toggleColorPicker,
             ),
-          ],
-          if (_colorPickerOpen) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleColorPicker,
-              ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              top: (widget.header != null ? 48 : 0) + 50,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ColorPickerPopup(
-                  currentColor: _color,
-                  recentColors: _recentColors,
-                  savedColors: _savedColors,
-                  onPreview: (c) => setState(() => _color = c),
-                  onCommit: _commitColor,
-                  onStar: _starColor,
-                  onEyedropper: _enterEyedropper,
-                  onClose: _toggleColorPicker,
-                ),
-              ),
-            ),
-          ],
+          ),
         ],
       ),
     );
