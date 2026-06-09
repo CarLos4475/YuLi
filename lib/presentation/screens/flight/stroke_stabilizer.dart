@@ -1,8 +1,9 @@
+import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
-/// Live stroke stabilizer levels. [off] means raw input (no smoothing) — the
-/// default for every editor. Higher levels lag the drawn point further behind
-/// the pointer, smoothing out hand jitter as you write.
+/// Live stroke stabilizer levels. [off] means raw input (no smoothing). Higher
+/// levels lag the drawn point further behind the pointer, smoothing out hand
+/// jitter as you write.
 enum StabilizerLevel { off, low, medium, high }
 
 extension StabilizerLevelX on StabilizerLevel {
@@ -30,21 +31,54 @@ extension StabilizerLevelX on StabilizerLevel {
 /// Exponential-moving-average position filter, one instance per stroke.
 /// Shared by the regular pen and the fountain pen — it only touches x/y,
 /// leaving pressure/timestamp components untouched.
+///
+/// Smoothing is **speed-adaptive**: slow strokes keep detail (lighter
+/// smoothing, so careful calligraphy stays faithful), fast strokes hide hand
+/// tremor (full smoothing at the level's [baseAlpha]). Speed is the EMA of the
+/// per-sample travel distance, in whatever coordinate space [process] is fed.
+/// The adaptive factor only ever *reduces* smoothing below the baseline at low
+/// speed; at high speed it equals the fixed-alpha behavior, so it never makes a
+/// stroke worse than the non-adaptive filter did.
 class LiveStabilizer {
-  final double alpha;
+  /// Heaviest smoothing factor (the level's configured alpha), used at speed.
+  final double baseAlpha;
+
+  /// Travel-per-sample (in the fed coord space) below which smoothing is at its
+  /// lightest, and above which it reaches [baseAlpha]. Tuned for hand-writing.
+  static const double _slowDist = 2.0;
+  static const double _fastDist = 14.0;
+
+  /// How far toward raw (alpha 1.0) the slow end backs off the smoothing.
+  static const double _slowRelax = 0.6;
+
   double _x = 0;
   double _y = 0;
+  double _rawX = 0;
+  double _rawY = 0;
+  double _speed = 0;
   bool _started = false;
 
-  LiveStabilizer(this.alpha);
+  LiveStabilizer(this.baseAlpha);
 
   Offset process(double x, double y) {
     if (!_started) {
       _started = true;
       _x = x;
       _y = y;
+      _rawX = x;
+      _rawY = y;
       return Offset(x, y);
     }
+
+    final d = math.sqrt((x - _rawX) * (x - _rawX) + (y - _rawY) * (y - _rawY));
+    _rawX = x;
+    _rawY = y;
+    _speed += 0.3 * (d - _speed);
+
+    final t = ((_speed - _slowDist) / (_fastDist - _slowDist)).clamp(0.0, 1.0);
+    final alphaSlow = baseAlpha + (1.0 - baseAlpha) * _slowRelax;
+    final alpha = alphaSlow + (baseAlpha - alphaSlow) * t;
+
     _x += alpha * (x - _x);
     _y += alpha * (y - _y);
     return Offset(_x, _y);
