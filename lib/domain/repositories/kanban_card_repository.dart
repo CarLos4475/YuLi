@@ -28,6 +28,12 @@ abstract class KanbanCardRepository {
   );
   Future<void> delete(int id);
   Future<void> deleteMultiple(List<int> ids);
+
+  /// Re-insert a just-deleted card faithfully (same id and ALL fields, incl.
+  /// [KanbanCard.originTaskDoneAt] / [KanbanCard.createdAt] / position) and
+  /// re-sync its reminder. Powers the "DESHACER" snackbar; does NOT run column
+  /// transitions (it's a verbatim restore of the prior state).
+  Future<void> restore(KanbanCard card);
   Future<KanbanCard?> getByOriginTaskId(int taskId);
   Future<List<KanbanCard>> getAllByOriginTaskId(int taskId);
   Stream<KanbanCard?> watchByOriginTaskId(int taskId);

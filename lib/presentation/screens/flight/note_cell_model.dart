@@ -4,7 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/page_background.dart';
 
-enum DrawTool { pen, fountainPen, highlighter, eraser, lasso, text }
+enum DrawTool { pen, fountainPen, highlighter, eraser, lasso, text, task }
 
 /// stroke = erase the whole stroke on touch (object eraser, default).
 /// partial = erase only the touched portion, splitting the stroke.

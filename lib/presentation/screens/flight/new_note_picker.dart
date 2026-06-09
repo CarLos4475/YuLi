@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/color_palette_picker.dart';
 import '../../theme/app_tokens.dart';
 import '../../../domain/models/note.dart';
@@ -58,7 +59,7 @@ class _NewNotePickerDialog extends StatelessWidget {
                     sublabel: 'BLOQUES',
                     description:
                         'Texto, math, listas, dibujos. Bloque a bloque.',
-                    icon: 'Tt',
+                    icon: YuLiIcons.textInitial,
                     accent: yFlight,
                     onTap: () => Navigator.pop(context, NoteKind.block),
                   ),
@@ -69,7 +70,7 @@ class _NewNotePickerDialog extends StatelessWidget {
                     label: 'CUADERNO',
                     sublabel: 'PÁGINAS',
                     description: 'Páginas A4 apiladas. Dibujo con stylus.',
-                    icon: '\u25A4',
+                    icon: YuLiIcons.notebook,
                     accent: yAmber,
                     onTap: () => Navigator.pop(context, NoteKind.notebook),
                   ),
@@ -80,7 +81,7 @@ class _NewNotePickerDialog extends StatelessWidget {
                     label: 'PIZARRA',
                     sublabel: 'INFINITA',
                     description: 'Canvas infinito. Solo dibujo. Pan + zoom.',
-                    icon: '\u270E',
+                    icon: YuLiIcons.pencil,
                     accent: yLab,
                     onTap: () => Navigator.pop(context, NoteKind.whiteboard),
                   ),
@@ -98,7 +99,7 @@ class _KindOption extends StatelessWidget {
   final String label;
   final String sublabel;
   final String description;
-  final String icon;
+  final IconData icon;
   final Color accent;
   final VoidCallback onTap;
 
@@ -128,15 +129,7 @@ class _KindOption extends StatelessWidget {
               height: 80,
               alignment: Alignment.center,
               color: accent,
-              child: Text(
-                icon,
-                style: ySans(
-                  size: 38,
-                  weight: FontWeight.w700,
-                  color: yCream,
-                  height: 1.0,
-                ),
-              ),
+              child: Icon(icon, size: 32, color: yCream),
             ),
             Container(height: 2, color: yBorderStrong),
             Padding(

@@ -9,6 +9,7 @@ import '../../providers/navigation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'graph_assembler.dart';
 import 'graph_simulation.dart';
 import 'graph_node_detail.dart';
@@ -601,7 +602,7 @@ class _GraphTabState extends ConsumerState<GraphTab>
           active: _hasCustomFilters,
           activeColor: yInk,
           icon: Icon(
-            Icons.filter_alt_outlined,
+            YuLiIcons.slidersHorizontal,
             size: 16,
             color: _hasCustomFilters ? yCream : yInk,
           ),
@@ -612,7 +613,7 @@ class _GraphTabState extends ConsumerState<GraphTab>
           label: 'CENTRAR',
           active: false,
           activeColor: _accent,
-          icon: const Icon(Icons.center_focus_strong, size: 16, color: yInk),
+          icon: const Icon(YuLiIcons.scan, size: 16, color: yInk),
           onTap: _recenter,
         ),
       ],
@@ -1255,6 +1256,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
                   child: _FilterActionBtn(
                     label: 'TODO',
                     fill: false,
+                    accent: widget.accent,
                     onTap: () => setState(() {
                       _nodes
                         ..clear()
@@ -1270,6 +1272,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
                   child: _FilterActionBtn(
                     label: 'APLICAR',
                     fill: true,
+                    accent: widget.accent,
                     onTap: () => Navigator.of(context).pop(
                       _GraphFilterSelection(
                         nodeKinds: {..._nodes},
@@ -1305,6 +1308,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
         label: label,
         active: _nodes.contains(kind),
         last: last,
+        accent: widget.accent,
         onTap: () => _toggleNode(kind),
       );
 
@@ -1314,6 +1318,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
         label: label,
         active: _edges.contains(kind),
         last: last,
+        accent: widget.accent,
         onTap: () => _toggleEdge(kind),
       );
 
@@ -1328,7 +1333,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
           width: 15,
           height: 15,
           child: Stack(children: [
-            Container(width: 15, height: 15, color: yFlight),
+            Container(width: 15, height: 15, color: widget.accent),
             Positioned(
               left: 0,
               right: 0,
@@ -1339,7 +1344,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
           ]),
         );
       case GraphNodeKind.folder:
-        return Container(width: 15, height: 15, color: yLab);
+        return Container(width: 15, height: 15, color: widget.accent);
       case GraphNodeKind.note:
         return Container(
           width: 15,
@@ -1380,6 +1385,7 @@ class _FilterToggleRow extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    required this.accent,
     this.last = false,
   });
 
@@ -1387,6 +1393,7 @@ class _FilterToggleRow extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final Color accent;
   final bool last;
 
   @override
@@ -1418,20 +1425,20 @@ class _FilterToggleRow extends StatelessWidget {
                 ),
               ),
             ),
-            // Brutalist checkbox: filled ink + crema check when on, hollow off.
+            // Brutalist checkbox: filled accent + crema check when on, hollow off.
             Container(
               width: 20,
               height: 20,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: active ? yInk : yCream,
+                color: active ? accent : yCream,
                 border: Border.all(
-                  color: active ? yInk : yBorderStrong,
+                  color: active ? accent : yBorderStrong,
                   width: yLineThin,
                 ),
               ),
               child: active
-                  ? const Icon(Icons.check, size: 14, color: yCream)
+                  ? const Icon(YuLiIcons.check, size: 14, color: yCream)
                   : null,
             ),
           ],
@@ -1445,11 +1452,13 @@ class _FilterActionBtn extends StatelessWidget {
   const _FilterActionBtn({
     required this.label,
     required this.fill,
+    required this.accent,
     required this.onTap,
   });
 
   final String label;
   final bool fill;
+  final Color accent;
   final VoidCallback onTap;
 
   @override
@@ -1461,12 +1470,10 @@ class _FilterActionBtn extends StatelessWidget {
         height: 46,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: fill ? yInk : yCream,
-          border: Border.all(color: yInk, width: yLineMid),
+          color: fill ? accent : yCream,
+          border: Border.all(color: fill ? accent : yInk, width: yLineMid),
           boxShadow: fill
-              ? const [
-                  BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0)
-                ]
+              ? const [BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0)]
               : null,
         ),
         child: Text(
@@ -1542,7 +1549,7 @@ class _Legend extends StatelessWidget {
                 width: 13,
                 height: 13,
                 child: CustomPaint(
-                    painter: _SwatchPainter(_SwatchKind.contextNode, yFlight))),
+                    painter: _SwatchPainter(_SwatchKind.contextNode, accent))),
             'Nodo de contexto IA'),
         const SizedBox(height: 6),
         _row(

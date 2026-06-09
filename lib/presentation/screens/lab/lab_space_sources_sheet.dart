@@ -6,6 +6,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../flight/context_assembler.dart' show kMaxFolderNotes;
 import '../../../data/services/context_cache.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
@@ -359,9 +360,9 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
 
   Widget _sourceRow(CanvasContextSource s, Color accent) {
     final (icon, kindLabel) = switch (s.kind) {
-      CanvasSourceKind.folder => (Icons.folder_outlined, 'CARPETA'),
-      CanvasSourceKind.url => (Icons.link, 'ENLACE'),
-      CanvasSourceKind.note => (Icons.description_outlined, 'NOTA'),
+      CanvasSourceKind.folder => (YuLiIcons.folder, 'CARPETA'),
+      CanvasSourceKind.url => (YuLiIcons.link, 'ENLACE'),
+      CanvasSourceKind.note => (YuLiIcons.fileText, 'NOTA'),
     };
     final label = (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim();
     return Container(
@@ -381,7 +382,7 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
             child: Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Icon(
-                s.enabled ? Icons.check_box : Icons.check_box_outline_blank,
+                s.enabled ? YuLiIcons.squareCheck : YuLiIcons.square,
                 size: 18,
                 color: s.enabled ? accent : yMuted,
               ),
@@ -416,7 +417,7 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
               onTap: _busy ? null : () => _refetch(s),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 6),
-                child: Icon(Icons.refresh, size: 18, color: yInk),
+                child: Icon(YuLiIcons.refresh, size: 18, color: yInk),
               ),
             ),
           GestureDetector(
@@ -424,7 +425,7 @@ class _SpaceSourcesSheetState extends ConsumerState<_SpaceSourcesSheet> {
             onTap: () => _remove(s),
             child: const Padding(
               padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Icon(Icons.close, size: 16, color: yMuted),
+              child: Icon(YuLiIcons.close, size: 16, color: yMuted),
             ),
           ),
         ],

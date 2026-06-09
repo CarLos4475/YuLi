@@ -215,6 +215,8 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
                           decoration: InputDecoration(
                             isCollapsed: true,
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
                             hintText: 'Escribe en markdown…',
                             hintStyle: yBody(size: 15, color: yMuted),
                           ),

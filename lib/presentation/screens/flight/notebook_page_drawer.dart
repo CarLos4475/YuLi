@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'background_paint.dart';
 import 'canvas_image_cache.dart';
 import 'drawing_engine.dart';
@@ -138,7 +139,7 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
                       child: _SectionHeader(
                         label: 'GUARDADAS',
                         count: starred.length,
-                        icon: Icons.bookmark,
+                        icon: YuLiIcons.bookmark,
                       ),
                     ),
                     SliverList(
@@ -173,7 +174,7 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
                     child: _SectionHeader(
                       label: 'PÁGINAS',
                       count: unstarred.length,
-                      icon: Icons.auto_stories,
+                      icon: YuLiIcons.bookOpen,
                     ),
                   ),
                   SliverReorderableList(
@@ -293,7 +294,7 @@ class _DrawerHeader extends StatelessWidget {
           ),
         ),
         _HeaderBtn(
-          icon: Icons.ios_share,
+          icon: YuLiIcons.share,
           label: 'EXPORTAR',
           filled: false,
           accentColor: accentColor,
@@ -301,7 +302,7 @@ class _DrawerHeader extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         _HeaderBtn(
-          icon: Icons.add,
+          icon: YuLiIcons.plus,
           label: 'NUEVA',
           filled: true,
           accentColor: accentColor,
@@ -319,7 +320,7 @@ class _DrawerHeader extends StatelessWidget {
               color: yCream,
               border: Border.all(color: yBorderStrong, width: yLineMid),
             ),
-            child: const Icon(Icons.close, color: yInk, size: 16),
+            child: const Icon(YuLiIcons.close, color: yInk, size: 16),
           ),
         ),
       ],
@@ -340,7 +341,7 @@ class _DrawerHeader extends StatelessWidget {
               color: yCream,
               border: Border.all(color: yBorderStrong, width: yLineMid),
             ),
-            child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+            child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
           ),
         ),
         const SizedBox(width: 10),
@@ -373,7 +374,7 @@ class _DrawerHeader extends StatelessWidget {
           ),
         ),
         _HeaderBtn(
-          icon: allSelected ? Icons.deselect : Icons.select_all,
+          icon: allSelected ? YuLiIcons.xSquare : YuLiIcons.checkCheck,
           label: allSelected ? 'NINGUNA' : 'TODAS',
           filled: false,
           accentColor: accentColor,
@@ -383,7 +384,7 @@ class _DrawerHeader extends StatelessWidget {
         Opacity(
           opacity: selectedCount == 0 ? 0.4 : 1,
           child: _HeaderBtn(
-            icon: Icons.check,
+            icon: YuLiIcons.check,
             label: 'LISTO',
             filled: true,
             accentColor: accentColor,
@@ -567,7 +568,7 @@ class _PageTile extends StatelessWidget {
                   border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child: isSelected
-                    ? const Icon(Icons.check, size: 15, color: yCream)
+                    ? const Icon(YuLiIcons.check, size: 15, color: yCream)
                     : null,
               ),
               const SizedBox(width: 10),
@@ -642,13 +643,13 @@ class _PageTile extends StatelessWidget {
             ),
             if (!exportMode) ...[
               _IconBtn(
-                icon: isStarred ? Icons.bookmark : Icons.bookmark_border,
+                icon: YuLiIcons.bookmark,
                 color: isStarred ? accentColor : yMuted,
                 onTap: onToggleStar,
               ),
               const SizedBox(width: 6),
               _IconBtn(
-                icon: Icons.delete_outline,
+                icon: YuLiIcons.trash,
                 color: canDelete ? yInk : yMuted.withValues(alpha: 0.3),
                 onTap: canDelete ? () => _confirmDelete(context) : null,
               ),
@@ -665,7 +666,7 @@ class _PageTile extends StatelessWidget {
                     color: yCream2,
                     border: Border.all(color: yBorderStrong, width: 1.2),
                   ),
-                  child: const Icon(Icons.drag_handle,
+                  child: const Icon(YuLiIcons.gripVertical,
                       size: 16, color: yInk),
                 ),
               ),

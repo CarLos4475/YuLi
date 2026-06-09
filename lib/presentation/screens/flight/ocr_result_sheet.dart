@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 /// Bottom sheet showing the OCR result. The text is **editable** so the user
 /// can fix recognition errors, copy fragments by hand (native selection) or
@@ -128,7 +129,7 @@ class _OcrResultSheetState extends State<_OcrResultSheet> {
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.close, size: 20, color: yInk),
+                    child: const Icon(YuLiIcons.close, size: 20, color: yInk),
                   ),
                 ],
               ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,8 +10,8 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../utils/pdf_export.dart';
-import '../../widgets/fight_panel.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../widgets/ai_link_badge.dart';
 import '../../../domain/models/folder.dart';
@@ -249,48 +250,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     );
   }
 
-  void _showFightPanel() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder:
-          (_) => DraggableScrollableSheet(
-            initialChildSize: 0.5,
-            minChildSize: 0.2,
-            maxChildSize: 0.9,
-            builder:
-                (ctx, scrollController) => Container(
-                  decoration: const BoxDecoration(
-                    color: yCream,
-                    border: Border(
-                      top: BorderSide(color: yBorderStrong, width: yLineMid),
-                    ),
-                  ),
-                  child: FightPanel(
-                    folderId: widget.folder.id,
-                    scrollController: scrollController,
-                    onTapTask: (task) async {
-                      _insertSyntax('\n- [ ] ${task.content}\n');
-                      await setTaskDone(ref, task.id, done: true);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Tarea insertada como checklist y completada',
-                            ),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-          ),
-    );
-  }
-
   Future<void> _showLinkToLab(List<LabSpace> spaces) async {
     if (spaces.isEmpty) return;
     final picked = await showDialog<LabSpace>(
@@ -345,8 +304,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     .valueOrNull
                     ?.isNotEmpty ??
                 false));
-    // Pin the per-note AI session to this view's lifetime (discarded on leave).
-    ref.watch(aiSessionProvider(widget.note.id));
 
     return Scaffold(
       backgroundColor: yCream,
@@ -356,192 +313,148 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         child: SafeArea(
           top: false,
           child: Stack(
-          children: [
-            Column(
-              children: [
-                if (_headerCollapsed)
-                  _CollapsedHeader(
-                    folder: widget.folder,
-                    titleCtrl: _titleCtrl,
-                    dirty: _dirty,
-                    isPreview: _isPreview,
-                    hasAiKey: hasAiKey,
-                    aiLinked: aiLinked,
-                    accent: _accent,
-                    onBack: () => Navigator.pop(context),
-                    onSave: _saveTitle,
-                    onTogglePreview:
-                        () => setState(() => _isPreview = !_isPreview),
-                    onExpand: () => setState(() => _headerCollapsed = false),
-                    onAi: () => _openAiChat(),
-                    onAiLongPress: () => _pushNoteContextToAi(blocks),
-                  )
-                else ...[
-                  ModeHeader(
-                    mode: 'NOTA',
-                    subtitle: 'MODO NOTAS · CARPETA · NOTA ABIERTA',
-                    color: _accent,
-                    onBack: () => Navigator.pop(context),
-                    headerRight: [
-                      YBadge(
-                        label: '@${widget.folder.name}',
-                        bg: widget.folder.color,
-                        fg: yCream,
+            children: [
+              Column(
+                children: [
+                  if (_headerCollapsed)
+                    _CollapsedHeader(
+                      folder: widget.folder,
+                      titleCtrl: _titleCtrl,
+                      dirty: _dirty,
+                      isPreview: _isPreview,
+                      hasAiKey: hasAiKey,
+                      aiLinked: aiLinked,
+                      accent: _accent,
+                      onBack: () => Navigator.pop(context),
+                      onSave: _saveTitle,
+                      onTogglePreview:
+                          () => setState(() => _isPreview = !_isPreview),
+                      onPdf: () => _exportPdf(blocks),
+                      onExpand: () => setState(() => _headerCollapsed = false),
+                      onAi: () => _openAiChat(),
+                      onAiLongPress: () => _pushNoteContextToAi(blocks),
+                    )
+                  else ...[
+                    ModeHeader(
+                      mode: 'NOTA',
+                      subtitle: _buildSubtitle(),
+                      subtitleWidget: _buildNoteSubtitleWidget(linkedCards),
+                      color: _accent,
+                      onBack: () => Navigator.pop(context),
+                      headerRight: _buildExpandedHeaderRight(
+                        hasAiKey: hasAiKey,
+                        aiLinked: aiLinked,
+                        dirty: _dirty,
+                        isPreview: _isPreview,
+                        onSave: _saveTitle,
+                        onTogglePreview:
+                            () => setState(() => _isPreview = !_isPreview),
+                        onLink: () => _showLinkToLab(spaces),
+                        onPdf: () => _exportPdf(blocks),
+                        onCollapse:
+                            () => setState(() => _headerCollapsed = true),
                       ),
-                      AiLinkBadge(
-                        active: aiLinked,
-                        color: _accent,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: hasAiKey ? _openAiChat : null,
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: hasAiKey ? _accent : yMuted,
-                              border: Border.all(
-                                color: yBorderStrong,
-                                width: yLineMid,
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.auto_awesome,
-                              color: hasAiKey ? yCream : yCream2,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => setState(() => _headerCollapsed = true),
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: yCream,
-                            border: Border.all(
-                              color: yBorderStrong,
-                              width: yLineMid,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.keyboard_arrow_up,
-                            color: yInk,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  _NoteHeroHeader(
-                    folder: widget.folder,
-                    titleCtrl: _titleCtrl,
-                    dirty: _dirty,
-                    lastEdit: widget.note.updatedAt,
-                    wordCount: _countWords(blocks),
-                    linkedCards: linkedCards,
-                    accent: _accent,
-                    onSave: _saveTitle,
-                    onImage: () => _addBlock(NoteBlockType.drawing),
-                    onLink: () => _showLinkToLab(spaces),
-                    onPdf: () => _exportPdf(blocks),
-                    onFight: _showFightPanel,
-                    onTogglePreview:
-                        () => setState(() => _isPreview = !_isPreview),
-                    isPreview: _isPreview,
-                  ),
-                ],
-                Expanded(
-                  child: Container(
-                    color: yCream,
-                    child:
-                        blocks.isEmpty
-                            ? _EmptyState(onAdd: _addBlock, accent: _accent)
-                            : _isPreview
-                            ? _buildPreview(blocks)
-                            : ReorderableListView.builder(
-                              physics:
-                                  _scrollLocked
-                                      ? const NeverScrollableScrollPhysics()
-                                      : null,
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                16,
-                                16,
-                                16,
-                              ),
-                              buildDefaultDragHandles: false,
-                              proxyDecorator:
-                                  (child, _, _) => Material(
-                                    color: Colors.transparent,
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: _accent,
-                                          width: yLineThin,
+                    ),
+                  ],
+                  Expanded(
+                    child: Container(
+                      color: yCream,
+                      child:
+                          blocks.isEmpty
+                              ? _EmptyState(onAdd: _addBlock, accent: _accent)
+                              : _isPreview
+                              ? _buildPreview(blocks)
+                              : ScrollConfiguration(
+                                // Stylus draws on canvas blocks; only the finger
+                                // scrolls the note (pen excluded from dragDevices),
+                                // so a pen stroke never scrolls the list.
+                                behavior: const _NoteScrollBehavior(),
+                                child: ReorderableListView.builder(
+                                  physics:
+                                      _scrollLocked
+                                          ? const NeverScrollableScrollPhysics()
+                                          : null,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    16,
+                                    16,
+                                    16,
+                                  ),
+                                  buildDefaultDragHandles: false,
+                                  proxyDecorator:
+                                      (child, _, _) => Material(
+                                        color: Colors.transparent,
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: _accent,
+                                              width: yLineThin,
+                                            ),
+                                          ),
+                                          child: child,
                                         ),
                                       ),
-                                      child: child,
-                                    ),
-                                  ),
-                              itemBuilder:
-                                  (ctx, i) => Padding(
-                                    key: ValueKey('block_${blocks[i].id}'),
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: BlockRouter(
-                                      block: blocks[i],
-                                      note: widget.note,
-                                      folder: widget.folder,
-                                      index: i,
-                                      onTextBlockFocusChanged:
-                                          _onTextBlockFocusChanged,
-                                      onScrollLockChanged: (locked) {
-                                        setState(() => _scrollLocked = locked);
-                                      },
-                                    ),
-                                  ),
-                              itemCount: blocks.length,
-                              onReorder: (a, b) => _onReorder(blocks, a, b),
-                            ),
+                                  itemBuilder:
+                                      (ctx, i) => Padding(
+                                        key: ValueKey('block_${blocks[i].id}'),
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8,
+                                        ),
+                                        child: BlockRouter(
+                                          block: blocks[i],
+                                          note: widget.note,
+                                          folder: widget.folder,
+                                          index: i,
+                                          onTextBlockFocusChanged:
+                                              _onTextBlockFocusChanged,
+                                          onScrollLockChanged: (locked) {
+                                            setState(
+                                              () => _scrollLocked = locked,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                  itemCount: blocks.length,
+                                  onReorder: (a, b) => _onReorder(blocks, a, b),
+                                ),
+                              ),
+                    ),
+                  ),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child:
+                        _activeTextCtrl != null && !_isPreview
+                            ? FormatToolbar(
+                              controller: _activeTextCtrl,
+                              onOpenInsertMenu: _showInsertMenu,
+                              accent: _accent,
+                            )
+                            : const SizedBox.shrink(),
+                  ),
+                  _EditorFooter(
+                    blocks: blocks,
+                    wordCount: _countWords(blocks),
+                    onAdd: _addBlock,
+                    accent: _accent,
+                  ),
+                ],
+              ),
+              if (_activePanel != null)
+                Positioned.fill(
+                  child: InsertPanelOverlay(
+                    type: _activePanel!,
+                    noteId: widget.note.id,
+                    onInsert: (md) {
+                      _insertSyntax(md);
+                      setState(() => _activePanel = null);
+                    },
+                    onClose: () => setState(() => _activePanel = null),
                   ),
                 ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  child:
-                      _activeTextCtrl != null && !_isPreview
-                          ? FormatToolbar(
-                            controller: _activeTextCtrl,
-                            onOpenInsertMenu: _showInsertMenu,
-                            accent: _accent,
-                          )
-                          : const SizedBox.shrink(),
-                ),
-                _EditorFooter(
-                  blocks: blocks,
-                  wordCount: _countWords(blocks),
-                  onAdd: _addBlock,
-                ),
-              ],
-            ),
-            if (_activePanel != null)
-              Positioned.fill(
-                child: InsertPanelOverlay(
-                  type: _activePanel!,
-                  noteId: widget.note.id,
-                  onInsert: (md) {
-                    _insertSyntax(md);
-                    setState(() => _activePanel = null);
-                  },
-                  onClose: () => setState(() => _activePanel = null),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -669,6 +582,144 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
   int _wc(String s) =>
       s.trim().isEmpty ? 0 : s.trim().split(RegExp(r'\s+')).length;
+
+  String _buildSubtitle() {
+    final title = _titleCtrl.text.trim();
+    final base = 'MODO NOTAS · CARPETA · NOTA ABIERTA';
+    return title.isEmpty ? base : '$base · ${title.toUpperCase()}';
+  }
+
+  /// Subtitle slot for the expanded [ModeHeader]. Holds the editable note
+  /// title (cream text on the accent background) plus linked lab badges.
+  Widget _buildNoteSubtitleWidget(List<KanbanCard> linkedCards) {
+    final uniqueSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _titleCtrl,
+            style: ySans(
+              size: 22,
+              weight: FontWeight.w700,
+              letterSpacing: -0.6,
+              color: yCream,
+              height: 1.1,
+            ),
+            decoration: InputDecoration(
+              isCollapsed: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 2),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              hintText: 'Sin título',
+              hintStyle: ySans(
+                size: 22,
+                weight: FontWeight.w700,
+                letterSpacing: -0.6,
+                color: yCream.withValues(alpha: 0.55),
+                height: 1.1,
+              ),
+            ),
+            maxLines: 1,
+          ),
+        ),
+        if (uniqueSpaceIds.isNotEmpty) ...[
+          const SizedBox(width: 10),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children:
+                uniqueSpaceIds
+                    .map((spaceId) => _LabBadge(spaceId: spaceId))
+                    .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Action icons rendered in the expanded [ModeHeader] headerRight, matching
+  /// pizarra/cuaderno. Order: @carpeta, save, preview, link, PDF, AI, collapse.
+  List<Widget> _buildExpandedHeaderRight({
+    required bool hasAiKey,
+    required bool aiLinked,
+    required bool dirty,
+    required bool isPreview,
+    required VoidCallback onSave,
+    required VoidCallback onTogglePreview,
+    required VoidCallback onLink,
+    required VoidCallback onPdf,
+    required VoidCallback onCollapse,
+  }) {
+    return [
+      YBadge(
+        label: '@${widget.folder.name}',
+        bg: widget.folder.color,
+        fg: yCream,
+      ),
+      _HeaderIcon(
+        icon: YuLiIcons.check,
+        fill: !dirty,
+        color: dirty ? yAmber2 : yLab,
+        onTap: onSave,
+      ),
+      _HeaderIcon(
+        icon: isPreview ? YuLiIcons.pen : YuLiIcons.eye,
+        fill: isPreview,
+        color: yLab,
+        onTap: onTogglePreview,
+      ),
+      _HeaderIcon(
+        icon: YuLiIcons.infinity,
+        fill: true,
+        color: yLab,
+        onTap: onLink,
+      ),
+      _HeaderIcon(
+        icon: YuLiIcons.fileText,
+        fill: true,
+        color: yAmber,
+        onTap: onPdf,
+      ),
+      AiLinkBadge(
+        active: aiLinked,
+        color: _accent,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: hasAiKey ? _openAiChat : null,
+          child: Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: hasAiKey ? _accent : yMuted,
+              border: Border.all(color: yBorderStrong, width: yLineMid),
+            ),
+            child: Icon(
+              YuLiIcons.sparkles,
+              color: hasAiKey ? yCream : yCream2,
+              size: 18,
+            ),
+          ),
+        ),
+      ),
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onCollapse,
+        child: Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: yCream,
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+          ),
+          child: const Icon(YuLiIcons.chevronUp, color: yInk, size: 18),
+        ),
+      ),
+    ];
+  }
 }
 
 // ─── Collapsed header ─────────────────────────────────────────────────────
@@ -684,6 +735,7 @@ class _CollapsedHeader extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onSave;
   final VoidCallback onTogglePreview;
+  final VoidCallback onPdf;
   final VoidCallback onExpand;
   final VoidCallback onAi;
   final VoidCallback? onAiLongPress;
@@ -699,6 +751,7 @@ class _CollapsedHeader extends StatelessWidget {
     required this.onBack,
     required this.onSave,
     required this.onTogglePreview,
+    required this.onPdf,
     required this.onExpand,
     required this.onAi,
     this.onAiLongPress,
@@ -727,7 +780,7 @@ class _CollapsedHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+              child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
             ),
           ),
           const SizedBox(width: 10),
@@ -752,7 +805,7 @@ class _CollapsedHeader extends StatelessWidget {
             active: aiLinked,
             color: accent,
             child: _HeaderIcon(
-              icon: Icons.auto_awesome,
+              icon: YuLiIcons.sparkles,
               fill: hasAiKey,
               color: hasAiKey ? accent : yMuted,
               onTap: hasAiKey ? onAi : null,
@@ -761,17 +814,24 @@ class _CollapsedHeader extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
-            icon: Icons.check,
+            icon: YuLiIcons.check,
             fill: !dirty,
             color: dirty ? yAmber2 : yLab,
             onTap: onSave,
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
-            icon: isPreview ? Icons.edit_outlined : Icons.visibility_outlined,
+            icon: isPreview ? YuLiIcons.pen : YuLiIcons.eye,
             fill: isPreview,
             color: yLab,
             onTap: onTogglePreview,
+          ),
+          const SizedBox(width: 6),
+          _HeaderIcon(
+            icon: YuLiIcons.fileText,
+            fill: true,
+            color: yAmber,
+            onTap: onPdf,
           ),
           const SizedBox(width: 6),
           GestureDetector(
@@ -785,190 +845,7 @@ class _CollapsedHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(
-                Icons.keyboard_arrow_down,
-                color: yInk,
-                size: 18,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Hero header ──────────────────────────────────────────────────────────
-
-class _NoteHeroHeader extends ConsumerWidget {
-  final Folder folder;
-  final TextEditingController titleCtrl;
-  final bool dirty;
-  final DateTime lastEdit;
-  final int wordCount;
-  final List<KanbanCard> linkedCards;
-  final VoidCallback onSave;
-  final VoidCallback onImage;
-  final VoidCallback onLink;
-  final VoidCallback onPdf;
-  final VoidCallback onFight;
-  final VoidCallback onTogglePreview;
-  final bool isPreview;
-  final Color accent;
-
-  const _NoteHeroHeader({
-    required this.folder,
-    required this.titleCtrl,
-    required this.dirty,
-    required this.lastEdit,
-    required this.wordCount,
-    required this.linkedCards,
-    required this.onSave,
-    required this.onImage,
-    required this.onLink,
-    required this.onPdf,
-    required this.onFight,
-    required this.onTogglePreview,
-    required this.isPreview,
-    required this.accent,
-  });
-
-  String _lastEditLabel(DateTime d) {
-    final diff = DateTime.now().difference(d);
-    if (diff.inMinutes < 1) return 'hace un momento';
-    if (diff.inMinutes < 60) return 'hace ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'hace ${diff.inHours} h';
-    if (diff.inDays < 7) return 'hace ${diff.inDays} d';
-    return 'hace ${(diff.inDays / 7).floor()} sem';
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final uniqueSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream2,
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: 0,
-            child: Container(width: 6, color: accent),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '> ${folder.name.toUpperCase()} / NOTA · ED. ${_lastEditLabel(lastEdit).toUpperCase()} · $wordCount PALABRAS',
-                            style: yMono(
-                              size: 10,
-                              weight: FontWeight.w700,
-                              tracking: 1.4,
-                              color: yMuted,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          TextField(
-                            controller: titleCtrl,
-                            style: ySans(
-                              size: 28,
-                              weight: FontWeight.w700,
-                              letterSpacing: -1,
-                              color: accent,
-                              height: 1.1,
-                            ),
-                            decoration: InputDecoration(
-                              isCollapsed: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                              ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              filled: false,
-                              hintText: 'Sin título',
-                              hintStyle: ySans(
-                                size: 28,
-                                weight: FontWeight.w700,
-                                letterSpacing: -1,
-                                color: yMuted,
-                                height: 1.1,
-                              ),
-                            ),
-                            maxLines: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    _HeaderIcon(
-                      icon: Icons.check,
-                      fill: !dirty,
-                      color: dirty ? yAmber2 : yLab,
-                      onTap: onSave,
-                    ),
-                    const SizedBox(width: 6),
-                    _HeaderIcon(
-                      icon:
-                          isPreview
-                              ? Icons.edit_outlined
-                              : Icons.visibility_outlined,
-                      fill: isPreview,
-                      color: yLab,
-                      onTap: onTogglePreview,
-                    ),
-                    const SizedBox(width: 6),
-                    _HeaderIcon(
-                      icon: Icons.flash_on,
-                      fill: true,
-                      color: yFight,
-                      onTap: onFight,
-                    ),
-                    const SizedBox(width: 6),
-                    _HeaderIcon(icon: Icons.image_outlined, onTap: onImage),
-                    const SizedBox(width: 6),
-                    _HeaderIcon(
-                      icon: Icons.all_inclusive,
-                      fill: true,
-                      color: accent,
-                      onTap: onLink,
-                    ),
-                    const SizedBox(width: 6),
-                    _HeaderIcon(
-                      icon: Icons.picture_as_pdf,
-                      fill: true,
-                      color: yAmber,
-                      onTap: onPdf,
-                    ),
-                  ],
-                ),
-                if (uniqueSpaceIds.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children:
-                        uniqueSpaceIds
-                            .map((spaceId) => _LabBadge(spaceId: spaceId))
-                            .toList(),
-                  ),
-                ],
-              ],
+              child: const Icon(YuLiIcons.chevronDown, color: yInk, size: 18),
             ),
           ),
         ],
@@ -1005,7 +882,7 @@ class _LabBadge extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.science_outlined, size: 10, color: yCream),
+            const Icon(YuLiIcons.flaskConical, size: 10, color: yCream),
             const SizedBox(width: 4),
             Text(
               space.name.toUpperCase(),
@@ -1058,17 +935,34 @@ class _HeaderIcon extends StatelessWidget {
   }
 }
 
+/// Scroll behavior for the note's block list that EXCLUDES the stylus from its
+/// drag devices. A pen over a drawing block draws (the block's canvas handles
+/// it) instead of scrolling the note; the finger keeps scrolling normally.
+class _NoteScrollBehavior extends MaterialScrollBehavior {
+  const _NoteScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => const {
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.unknown,
+  };
+}
+
 // ─── Footer ───────────────────────────────────────────────────────────────
 
 class _EditorFooter extends StatelessWidget {
   final List<NoteBlock> blocks;
   final int wordCount;
   final void Function(NoteBlockType) onAdd;
+  final Color accent;
 
   const _EditorFooter({
     required this.blocks,
     required this.wordCount,
     required this.onAdd,
+    required this.accent,
   });
 
   @override
@@ -1090,35 +984,53 @@ class _EditorFooter extends StatelessWidget {
               color: yMuted,
             ),
           ),
-          const Spacer(),
-          _AddBlockBtn(
-            glyph: 'Tt',
-            label: 'Texto',
-            onTap: () => onAdd(NoteBlockType.text),
-          ),
-          const SizedBox(width: 6),
-          _AddBlockBtn(
-            glyph: '∑',
-            label: 'Math',
-            onTap: () => onAdd(NoteBlockType.math),
-          ),
-          const SizedBox(width: 6),
-          _AddBlockBtn(
-            glyph: '•',
-            label: 'Lista',
-            onTap: () => onAdd(NoteBlockType.bullets),
-          ),
-          const SizedBox(width: 6),
-          _AddBlockBtn(
-            glyph: '☑',
-            label: 'Tareas',
-            onTap: () => onAdd(NoteBlockType.tareas),
-          ),
-          const SizedBox(width: 6),
-          _AddBlockBtn(
-            glyph: '✎',
-            label: 'Dibujo',
-            onTap: () => onAdd(NoteBlockType.drawing),
+          const SizedBox(width: 12),
+          // Scrollable so the add-block buttons stay reachable on narrower tablet
+          // widths (portrait / split-screen) instead of overflowing the Row.
+          // reverse:true keeps them right-aligned when there's room.
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                children: [
+                  _AddBlockBtn(
+                    icon: YuLiIcons.textInitial,
+                    label: 'Texto',
+                    color: accent,
+                    onTap: () => onAdd(NoteBlockType.text),
+                  ),
+                  const SizedBox(width: 6),
+                  _AddBlockBtn(
+                    icon: YuLiIcons.sigma,
+                    label: 'Math',
+                    color: accent,
+                    onTap: () => onAdd(NoteBlockType.math),
+                  ),
+                  const SizedBox(width: 6),
+                  _AddBlockBtn(
+                    icon: YuLiIcons.listChecks,
+                    label: 'Lista',
+                    color: accent,
+                    onTap: () => onAdd(NoteBlockType.bullets),
+                  ),
+                  const SizedBox(width: 6),
+                  _AddBlockBtn(
+                    icon: YuLiIcons.squareCheck,
+                    label: 'Tareas',
+                    color: accent,
+                    onTap: () => onAdd(NoteBlockType.tareas),
+                  ),
+                  const SizedBox(width: 6),
+                  _AddBlockBtn(
+                    icon: YuLiIcons.pencil,
+                    label: 'Dibujo',
+                    color: accent,
+                    onTap: () => onAdd(NoteBlockType.drawing),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -1127,14 +1039,16 @@ class _EditorFooter extends StatelessWidget {
 }
 
 class _AddBlockBtn extends StatelessWidget {
-  final String glyph;
+  final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Color color;
 
   const _AddBlockBtn({
-    required this.glyph,
+    required this.icon,
     required this.label,
     required this.onTap,
+    required this.color,
   });
 
   @override
@@ -1155,16 +1069,8 @@ class _AddBlockBtn extends StatelessWidget {
               width: 20,
               height: 20,
               alignment: Alignment.center,
-              decoration: const BoxDecoration(color: yInk),
-              child: Text(
-                glyph,
-                style: yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 0,
-                  color: yCream,
-                ),
-              ),
+              decoration: BoxDecoration(color: color),
+              child: Icon(icon, size: 12, color: yCream),
             ),
             const SizedBox(width: 6),
             Text(

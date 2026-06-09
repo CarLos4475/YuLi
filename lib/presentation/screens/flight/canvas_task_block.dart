@@ -12,6 +12,7 @@ import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/task.dart';
 import 'note_block_actions.dart';
@@ -266,7 +267,7 @@ class _CanvasTaskBlockOverlayState
                       color: yCream,
                       border: Border.all(color: yBorderStrong, width: yLineMid),
                     ),
-                    child: const Icon(Icons.keyboard_arrow_down,
+                    child: const Icon(YuLiIcons.chevronDown,
                         color: yInk, size: 20),
                   ),
                 ),
@@ -548,7 +549,7 @@ class _CanvasTaskRow extends ConsumerWidget {
               onTap: onDelete,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Icon(Icons.close,
+                child: Icon(YuLiIcons.close,
                     size: 14, color: yMuted.withValues(alpha: 0.6)),
               ),
             ),

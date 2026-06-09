@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'block_insert_panels.dart';
 
 class BlockInsertMenu extends StatelessWidget {
@@ -16,23 +17,23 @@ class BlockInsertMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       _MenuItem(
-        Icons.table_chart_outlined,
+        YuLiIcons.table,
         'Tabla',
         panelType: InsertPanelType.table,
       ),
-      _MenuItem(Icons.code, 'Código', panelType: InsertPanelType.code),
+      _MenuItem(YuLiIcons.code, 'Código', panelType: InsertPanelType.code),
       _MenuItem(
-        Icons.format_quote_outlined,
+        YuLiIcons.textQuote,
         'Cita',
         panelType: InsertPanelType.quote,
       ),
-      _MenuItem(Icons.functions, 'LaTeX', panelType: InsertPanelType.latex),
+      _MenuItem(YuLiIcons.sigma, 'LaTeX', panelType: InsertPanelType.latex),
       _MenuItem(
-        Icons.image_outlined,
+        YuLiIcons.image,
         'Imagen',
         panelType: InsertPanelType.image,
       ),
-      _MenuItem(Icons.horizontal_rule, 'Divisor', syntax: '\n\n---\n\n'),
+      _MenuItem(YuLiIcons.separatorHorizontal, 'Divisor', syntax: '\n\n---\n\n'),
     ];
 
     return Container(

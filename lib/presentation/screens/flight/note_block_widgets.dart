@@ -14,6 +14,7 @@ import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
@@ -90,12 +91,11 @@ class _BlockShell extends ConsumerWidget {
   });
 
   static const _glyphForType = {
-    NoteBlockType.text: 'Tt',
-    NoteBlockType.math: '∑',
-
-    NoteBlockType.bullets: '•',
-    NoteBlockType.tareas: '☑',
-    NoteBlockType.drawing: '✎',
+    NoteBlockType.text: YuLiIcons.textInitial,
+    NoteBlockType.math: YuLiIcons.sigma,
+    NoteBlockType.bullets: YuLiIcons.listChecks,
+    NoteBlockType.tareas: YuLiIcons.squareCheck,
+    NoteBlockType.drawing: YuLiIcons.pencil,
   };
 
   @override
@@ -118,21 +118,17 @@ class _BlockShell extends ConsumerWidget {
                   color: yCream,
                   border: Border.all(color: yBorderStrong, width: 1.5),
                 ),
-                child: Text(
-                  _glyphForType[block.type] ?? '·',
-                  style: yMono(
-                    size: 9,
-                    weight: FontWeight.w700,
-                    tracking: 0.4,
-                    color: yMuted,
-                  ),
+                child: Icon(
+                  _glyphForType[block.type] ?? YuLiIcons.textInitial,
+                  size: 12,
+                  color: yMuted,
                 ),
               ),
               const SizedBox(height: 6),
               ReorderableDragStartListener(
                 index: index,
                 child: const Icon(
-                  Icons.drag_indicator,
+                  YuLiIcons.gripVertical,
                   size: 14,
                   color: yMuted,
                 ),
@@ -154,7 +150,7 @@ class _BlockShell extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(4),
                     child: Icon(
-                      Icons.close,
+                      YuLiIcons.close,
                       size: 14,
                       color: yMuted.withValues(alpha: 0.5),
                     ),
@@ -966,14 +962,10 @@ class _NoteTaskRow extends ConsumerWidget {
                 ),
                 child:
                     done
-                        ? const Text(
-                          '✓',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: yCream,
-                            height: 1.0,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        ? const Icon(
+                          YuLiIcons.check,
+                          size: 12,
+                          color: yCream,
                         )
                         : null,
               ),
@@ -1037,7 +1029,7 @@ class _NoteTaskRow extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 child: Icon(
-                  Icons.close,
+                  YuLiIcons.close,
                   size: 14,
                   color: yMuted.withValues(alpha: 0.6),
                 ),
@@ -1369,7 +1361,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
                 (checked) => Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: Icon(
-                    checked ? Icons.check_box : Icons.check_box_outline_blank,
+                    checked ? YuLiIcons.squareCheck : YuLiIcons.square,
                     size: 18,
                     color: yInk,
                   ),

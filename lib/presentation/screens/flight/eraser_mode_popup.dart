@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'note_cell_model.dart';
 
 /// A ring that follows the eraser tip to preview what it will erase.
@@ -55,11 +56,11 @@ class EraserModePopup extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _chip('TRAZO', Icons.auto_fix_high, EraserMode.stroke),
+          _chip('TRAZO', YuLiIcons.wandSparkles, EraserMode.stroke),
           const SizedBox(width: 8),
           _chip(
             'PRECISO',
-            Icons.cleaning_services_outlined,
+            YuLiIcons.eraser,
             EraserMode.partial,
           ),
         ],

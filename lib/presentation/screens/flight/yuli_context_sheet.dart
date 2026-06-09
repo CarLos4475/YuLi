@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 Future<void> showYuliContextSheet(
   BuildContext context, {
@@ -93,7 +94,7 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.close, size: 20, color: yInk),
+                    child: const Icon(YuLiIcons.close, size: 20, color: yInk),
                   ),
                 ],
               ),

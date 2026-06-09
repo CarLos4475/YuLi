@@ -5,72 +5,80 @@ import 'package:yuli/data/services/launcher_icon_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('TimeBandRules.bandFor', () {
-    test('morning: 06:00–11:59', () {
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 6, 0)), TimeBand.morning);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 9, 30)), TimeBand.morning);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 11, 59, 59)), TimeBand.morning);
+  group('IconCycleRules.currentSlot', () {
+    test('00:00–03:59 → slot1 (icon1)', () {
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 0, 0)), IconCycleSlot.slot1);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 1, 30)), IconCycleSlot.slot1);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 3, 59, 59)), IconCycleSlot.slot1);
     });
 
-    test('afternoon: 12:00–17:59', () {
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 12, 0)), TimeBand.afternoon);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 14, 30)), TimeBand.afternoon);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 17, 59, 59)), TimeBand.afternoon);
+    test('04:00–07:59 → slot2 (icon2)', () {
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 4, 0)), IconCycleSlot.slot2);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 6, 0)), IconCycleSlot.slot2);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 7, 59, 59)), IconCycleSlot.slot2);
     });
 
-    test('evening: 18:00–05:59', () {
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 18, 0)), TimeBand.evening);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 23, 59, 59)), TimeBand.evening);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 0, 0)), TimeBand.evening);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 3, 0)), TimeBand.evening);
-      expect(TimeBandRules.bandFor(DateTime(2026, 6, 7, 5, 59, 59)), TimeBand.evening);
+    test('08:00–11:59 → slot3 (icon3)', () {
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 8, 0)), IconCycleSlot.slot3);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 11, 59, 59)), IconCycleSlot.slot3);
+    });
+
+    test('12:00–15:59 → slot1 (ciclo 2)', () {
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 12, 0)), IconCycleSlot.slot1);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 15, 59, 59)), IconCycleSlot.slot1);
+    });
+
+    test('16:00–19:59 → slot2 (ciclo 2)', () {
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 16, 0)), IconCycleSlot.slot2);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 19, 59, 59)), IconCycleSlot.slot2);
+    });
+
+    test('20:00–23:59 → slot3 (ciclo 2)', () {
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 20, 0)), IconCycleSlot.slot3);
+      expect(IconCycleRules.currentSlot(DateTime(2026, 6, 7, 23, 59, 59)), IconCycleSlot.slot3);
     });
   });
 
-  group('TimeBandRules.iconFor', () {
-    test('mapping morning→icon1, afternoon→icon2, evening→icon3', () {
-      expect(TimeBandRules.iconFor(DateTime(2026, 6, 7, 8)), LauncherIconVariant.icon1);
-      expect(TimeBandRules.iconFor(DateTime(2026, 6, 7, 14)), LauncherIconVariant.icon2);
-      expect(TimeBandRules.iconFor(DateTime(2026, 6, 7, 21)), LauncherIconVariant.icon3);
-      expect(TimeBandRules.iconFor(DateTime(2026, 6, 7, 3)), LauncherIconVariant.icon3);
+  group('IconCycleRules.iconFor', () {
+    test('icon assignment follows slot, cycling icon1→icon2→icon3×2/day', () {
+      expect(IconCycleRules.iconFor(DateTime(2026, 6, 7, 2)), LauncherIconVariant.icon1);
+      expect(IconCycleRules.iconFor(DateTime(2026, 6, 7, 6)), LauncherIconVariant.icon2);
+      expect(IconCycleRules.iconFor(DateTime(2026, 6, 7, 10)), LauncherIconVariant.icon3);
+      expect(IconCycleRules.iconFor(DateTime(2026, 6, 7, 14)), LauncherIconVariant.icon1);
+      expect(IconCycleRules.iconFor(DateTime(2026, 6, 7, 18)), LauncherIconVariant.icon2);
+      expect(IconCycleRules.iconFor(DateTime(2026, 6, 7, 22)), LauncherIconVariant.icon3);
     });
   });
 
-  group('TimeBandRules.nextSwapAfter', () {
-    test('before first boundary (05:00) → today 06:00', () {
-      final now = DateTime(2026, 6, 7, 5, 0);
-      final next = TimeBandRules.nextSwapAfter(now);
-      expect(next, DateTime(2026, 6, 7, 6, 0));
+  group('IconCycleRules.nextSwapAfter', () {
+    test('00:30 → today 04:00', () {
+      final now = DateTime(2026, 6, 7, 0, 30);
+      expect(IconCycleRules.nextSwapAfter(now), DateTime(2026, 6, 7, 4, 0));
     });
 
-    test('between 06:00 and 12:00 (09:00) → today 12:00', () {
-      final now = DateTime(2026, 6, 7, 9, 0);
-      final next = TimeBandRules.nextSwapAfter(now);
-      expect(next, DateTime(2026, 6, 7, 12, 0));
+    test('03:59:59 → today 04:00', () {
+      final now = DateTime(2026, 6, 7, 3, 59, 59);
+      expect(IconCycleRules.nextSwapAfter(now), DateTime(2026, 6, 7, 4, 0));
     });
 
-    test('between 12:00 and 18:00 (15:00) → today 18:00', () {
-      final now = DateTime(2026, 6, 7, 15, 0);
-      final next = TimeBandRules.nextSwapAfter(now);
-      expect(next, DateTime(2026, 6, 7, 18, 0));
+    test('04:00:00 → today 08:00', () {
+      final now = DateTime(2026, 6, 7, 4, 0);
+      expect(IconCycleRules.nextSwapAfter(now), DateTime(2026, 6, 7, 8, 0));
     });
 
-    test('between 18:00 and midnight (22:00) → tomorrow 06:00', () {
-      final now = DateTime(2026, 6, 7, 22, 0);
-      final next = TimeBandRules.nextSwapAfter(now);
-      expect(next, DateTime(2026, 6, 8, 6, 0));
+    test('12:00:00 → today 16:00', () {
+      final now = DateTime(2026, 6, 7, 12, 0);
+      expect(IconCycleRules.nextSwapAfter(now), DateTime(2026, 6, 7, 16, 0));
     });
 
-    test('exactly on a boundary (06:00:00) → next is 12:00', () {
-      final now = DateTime(2026, 6, 7, 6, 0);
-      final next = TimeBandRules.nextSwapAfter(now);
-      expect(next, DateTime(2026, 6, 7, 12, 0));
+    test('20:00:00 → tomorrow 00:00', () {
+      final now = DateTime(2026, 6, 7, 20, 0);
+      expect(IconCycleRules.nextSwapAfter(now), DateTime(2026, 6, 8, 0, 0));
     });
 
-    test('exactly on 18:00:00 → tomorrow 06:00', () {
-      final now = DateTime(2026, 6, 7, 18, 0);
-      final next = TimeBandRules.nextSwapAfter(now);
-      expect(next, DateTime(2026, 6, 8, 6, 0));
+    test('23:30 → tomorrow 00:00', () {
+      final now = DateTime(2026, 6, 7, 23, 30);
+      expect(IconCycleRules.nextSwapAfter(now), DateTime(2026, 6, 8, 0, 0));
     });
   });
 
@@ -84,14 +92,12 @@ void main() {
       return LauncherIconService();
     }
 
-    test('default = auto mode, manual override null → band-based', () async {
-      await newService({});
+    test('default = auto mode, manual override null → cycle-based', () async {
       final svc = await newService({});
       expect(await svc.isAutoMode(), true);
     });
 
-    test('auto mode ON, no override → uses band (we cannot inject time, but we can check that override path works)', () async {
-      await newService({});
+    test('auto mode ON, no override → uses cycle (returns one of 3 icons)', () async {
       final svc = await newService({});
       final t = await svc.targetForNow();
       expect([LauncherIconVariant.icon1, LauncherIconVariant.icon2, LauncherIconVariant.icon3], contains(t));

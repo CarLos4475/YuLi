@@ -83,10 +83,11 @@ class AiChatMsg {
   const AiChatMsg(this.role, this.text);
 }
 
-/// Per-note chat conversation. Lives in an autoDispose provider keyed by note
-/// id. **Messages are ephemeral** (discarded when you leave the view); the
-/// **context anchor persists per note** (SharedPreferences keyed by [noteId]),
-/// so it survives leaving the view — even an app restart. The sheet is just a
+/// Per-note chat conversation. Lives in a (non-autoDispose) provider keyed by
+/// note id, so it persists for the whole app run. **Messages live in memory for
+/// the app session** (kept across leaving/re-entering the view; cleared only on
+/// a full app close); the **context anchor persists per note** (SharedPreferences
+/// keyed by [noteId]), so it survives even an app restart. The sheet is just a
 /// window over this.
 class AiChatSession extends ChangeNotifier {
   final int noteId;

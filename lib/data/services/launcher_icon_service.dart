@@ -20,59 +20,39 @@ enum LauncherIconVariant {
   }
 }
 
-enum TimeBand { morning, afternoon, evening }
+enum IconCycleSlot { slot1, slot2, slot3 }
 
-extension TimeBandX on TimeBand {
-  String get label {
-    switch (this) {
-      case TimeBand.morning:
-        return 'Mañana';
-      case TimeBand.afternoon:
-        return 'Tarde';
-      case TimeBand.evening:
-        return 'Noche';
-    }
-  }
-
+extension IconCycleSlotX on IconCycleSlot {
   LauncherIconVariant get icon {
     switch (this) {
-      case TimeBand.morning:
+      case IconCycleSlot.slot1:
         return LauncherIconVariant.icon1;
-      case TimeBand.afternoon:
+      case IconCycleSlot.slot2:
         return LauncherIconVariant.icon2;
-      case TimeBand.evening:
+      case IconCycleSlot.slot3:
         return LauncherIconVariant.icon3;
     }
   }
 }
 
-class TimeBandRules {
-  static const int morningStart = 6;
-  static const int afternoonStart = 12;
-  static const int eveningStart = 18;
+class IconCycleRules {
+  static const List<int> boundaryHours = [0, 4, 8, 12, 16, 20];
+  static const int hoursPerSwap = 4;
 
-  static TimeBand bandFor(DateTime time) {
-    final h = time.hour;
-    if (h >= morningStart && h < afternoonStart) return TimeBand.morning;
-    if (h >= afternoonStart && h < eveningStart) return TimeBand.afternoon;
-    return TimeBand.evening;
+  static IconCycleSlot currentSlot(DateTime time) {
+    final bucket = (time.hour ~/ hoursPerSwap) % IconCycleSlot.values.length;
+    return IconCycleSlot.values[bucket];
   }
 
-  static LauncherIconVariant iconFor(DateTime time) =>
-      bandFor(time).icon;
+  static LauncherIconVariant iconFor(DateTime time) => currentSlot(time).icon;
 
   static DateTime nextSwapAfter(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
-    final candidates = <DateTime>[
-      today.add(const Duration(hours: morningStart)),
-      today.add(const Duration(hours: afternoonStart)),
-      today.add(const Duration(hours: eveningStart)),
-      today.add(Duration(days: 1, hours: morningStart)),
-    ];
-    return candidates.firstWhere(
-      (c) => c.isAfter(now),
-      orElse: () => today.add(const Duration(days: 1, hours: morningStart)),
-    );
+    for (final h in boundaryHours) {
+      final candidate = today.add(Duration(hours: h));
+      if (candidate.isAfter(now)) return candidate;
+    }
+    return today.add(const Duration(days: 1));
   }
 }
 
@@ -140,11 +120,11 @@ class LauncherIconService {
     if (!auto) {
       final id = p.getString(_kManualOverride);
       if (id != null) return LauncherIconVariant.fromId(id);
-      return TimeBandRules.iconFor(DateTime.now());
+      return IconCycleRules.iconFor(DateTime.now());
     }
     final manualId = p.getString(_kManualOverride);
     if (manualId != null) return LauncherIconVariant.fromId(manualId);
-    return TimeBandRules.iconFor(DateTime.now());
+    return IconCycleRules.iconFor(DateTime.now());
   }
 
   Future<DateTime> nextSwapAt() async {
@@ -156,11 +136,11 @@ class LauncherIconService {
         return DateTime.now().add(const Duration(days: 365));
       }
     }
-    return TimeBandRules.nextSwapAfter(DateTime.now());
+    return IconCycleRules.nextSwapAfter(DateTime.now());
   }
 
   Future<void> _scheduleNextSwapInternal() async {
-    final next = TimeBandRules.nextSwapAfter(DateTime.now());
+    final next = IconCycleRules.nextSwapAfter(DateTime.now());
     await _channel.invokeMethod<void>('scheduleNextSwap', next.millisecondsSinceEpoch);
   }
 

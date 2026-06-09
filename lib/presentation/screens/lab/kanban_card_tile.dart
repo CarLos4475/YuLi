@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/models/kanban_card.dart';
 
 class KanbanCardTile extends StatelessWidget {
@@ -180,7 +181,7 @@ class KanbanCardTile extends StatelessWidget {
                               Padding(
                                 padding: const EdgeInsets.only(right: 5),
                                 child: Icon(
-                                  Icons.notifications_active,
+                                  YuLiIcons.bellRing,
                                   size: 13,
                                   color: accentColor,
                                 ),

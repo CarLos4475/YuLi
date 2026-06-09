@@ -12,6 +12,7 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/task.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 class GraphNodeInspector extends ConsumerStatefulWidget {
   const GraphNodeInspector({
@@ -546,7 +547,7 @@ class _InspectorShell extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: Border.all(color: yCream, width: yLineThin),
                   ),
-                  child: const Icon(Icons.close, size: 18, color: yCream),
+                  child: const Icon(YuLiIcons.close, size: 18, color: yCream),
                 ),
               ),
             ],

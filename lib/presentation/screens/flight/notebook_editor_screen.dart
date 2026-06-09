@@ -24,6 +24,7 @@ import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../utils/canvas_block_raster.dart';
 import '../../utils/canvas_export.dart';
 import 'ai_chat_sheet.dart';
@@ -839,6 +840,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   bool _shouldDraw(PointerDeviceKind kind) {
     if (_tool == DrawTool.text) return false; // text mode never draws
+    if (_tool == DrawTool.task) return false; // task mode never draws
     if (kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus) {
       return true;
@@ -1147,6 +1149,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_tool == DrawTool.text) {
       final p = _screenToWorld(d.localPosition);
       _insertTextBlockAt(p);
+      return;
+    }
+    if (_tool == DrawTool.task) {
+      final p = _screenToWorld(d.localPosition);
+      _insertTaskBlockAt(p);
       return;
     }
     if (_tool != DrawTool.lasso || !_palmRejection) return;
@@ -1804,23 +1811,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     HapticFeedback.lightImpact();
   }
 
-  /// Insert a new empty task block on the page currently in view, centred on
-  /// the viewport.
-  void _insertTaskBlock() {
+  /// Enter task-insert mode: subsequent finger taps place a new task block at
+  /// the tap position (mirrors text mode). Used by the toolbar Tareas button.
+  void _enterTaskMode() {
+    setState(() => _tool = DrawTool.task);
+    _lassoCtrl.deselect();
+    HapticFeedback.lightImpact();
+  }
+
+  /// Place a task block at [worldPos] (tap-to-insert in task mode).
+  void _insertTaskBlockAt(Offset worldPos) {
     if (_pageBlockIds.isEmpty) return;
-    final screen = MediaQuery.of(context).size;
-    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
     final pageIdx = _nearestPageIndex(
-      center.dy,
+      worldPos.dy,
     ).clamp(0, _pageBlockIds.length - 1);
     final w = (kCanvasTaskBlockDefaultW / _viewScale).clamp(60.0, 600.0);
     final h = (w * 0.375).clamp(40.0, 400.0);
-    final localY = center.dy - _pageOffsetY(pageIdx) - h / 2;
-    final block = CanvasTaskBlock(x: center.dx - w / 2, y: localY, w: w, h: h);
+    final localY = worldPos.dy - _pageOffsetY(pageIdx) - h / 2;
+    final block = CanvasTaskBlock(
+      x: worldPos.dx - w / 2,
+      y: localY,
+      w: w,
+      h: h,
+    );
     final before = _snapshot();
     setState(() {
       _pageData[_pageBlockIds[pageIdx]]?.taskBlocks.add(block);
-      if (_tool != DrawTool.lasso) _tool = DrawTool.lasso;
+      _tool = DrawTool.task;
     });
     _commit(before);
     _persistPage(pageIdx);
@@ -2679,6 +2696,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
+          if (_tool != DrawTool.lasso) {
+            setState(() => _tool = DrawTool.lasso);
+          }
           _lassoMutate(
             (s, im, b, _) => _lassoCtrl.pasteAt(_showPasteAt!, s, im),
           );
@@ -2694,14 +2714,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
             ],
           ),
-          child: Text(
-            'PEGAR',
-            style: yMono(
-              size: 11,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yInk,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(YuLiIcons.clipboard, size: 12, color: yInk),
+              const SizedBox(width: 6),
+              Text(
+                'PEGAR',
+                style: yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yInk,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2724,8 +2751,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
-    // Pin the per-note AI session to this view's lifetime (discarded on leave).
-    ref.watch(aiSessionProvider(widget.note.id));
     return Scaffold(
       backgroundColor: yCream,
       body: StatusBarFlood(
@@ -2745,6 +2770,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                       accent: _accent,
                       hasAiKey: hasAiKey,
                       aiLinked: aiLinked,
+                      noteTitle: widget.note.title ?? '',
                       onExpand: () => setState(() => _headerCollapsed = false),
                       onOpenPages: _togglePageDrawer,
                       onAi:
@@ -2759,8 +2785,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   else ...[
                     ModeHeader(
                       mode: 'CUADERNO',
-                      subtitle:
-                          'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
+                      subtitle: (widget.note.title?.trim().isNotEmpty == true)
+                          ? 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label} · ${widget.note.title!.trim()}'
+                          : 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
                       color: _accent,
                       onBack: () => Navigator.pop(context),
                       headerRight: [
@@ -2784,7 +2811,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                               ),
                             ),
                             child: const Icon(
-                              Icons.auto_stories,
+                              YuLiIcons.bookOpen,
                               color: yInk,
                               size: 18,
                             ),
@@ -2817,7 +2844,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                 ),
                               ),
                               child: Icon(
-                                Icons.auto_awesome,
+                                YuLiIcons.sparkles,
                                 color: hasAiKey ? yCream : yCream2,
                                 size: 18,
                               ),
@@ -2839,7 +2866,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                               ),
                             ),
                             child: const Icon(
-                              Icons.all_inclusive,
+                              YuLiIcons.infinity,
                               color: yCream,
                               size: 18,
                             ),
@@ -2860,7 +2887,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                               ),
                             ),
                             child: const Icon(
-                              Icons.keyboard_arrow_up,
+                              YuLiIcons.chevronUp,
                               color: yInk,
                               size: 18,
                             ),
@@ -2930,6 +2957,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                         panEnabled:
                                             _tool == DrawTool.text
                                                 ? false
+                                                : _tool == DrawTool.task
+                                                ? false
                                                 : _tool == DrawTool.lasso
                                                 ? (_lassoCtrl.phase ==
                                                         LassoPhase.idle &&
@@ -2939,6 +2968,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                 : !_isDrawing,
                                         scaleEnabled:
                                             _tool == DrawTool.text
+                                                ? true
+                                                : _tool == DrawTool.task
                                                 ? true
                                                 : _tool == DrawTool.lasso
                                                 ? (_lassoCtrl.phase ==
@@ -3318,21 +3349,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           child: Row(
             children: [
               _toolBtn(
-                icon: Icons.edit_outlined,
+                icon: YuLiIcons.pen,
                 active: _tool == DrawTool.pen,
                 tooltip: 'Lápiz',
                 onTap: () => _selectTool(DrawTool.pen),
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.gesture,
+                icon: YuLiIcons.penTool,
                 active: _tool == DrawTool.fountainPen,
                 tooltip: 'Pluma fuente',
                 onTap: () => _selectTool(DrawTool.fountainPen),
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.highlight,
+                icon: YuLiIcons.highlighter,
                 active: _tool == DrawTool.highlighter,
                 tooltip: 'Resaltador',
                 onTap: () => _selectTool(DrawTool.highlighter),
@@ -3341,8 +3372,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               _toolBtn(
                 icon:
                     _eraserMode == EraserMode.partial
-                        ? Icons.cleaning_services_outlined
-                        : Icons.auto_fix_high,
+                        ? YuLiIcons.eraser
+                        : YuLiIcons.wandSparkles,
                 active: _tool == DrawTool.eraser,
                 tooltip: 'Borrador',
                 onTap: () {
@@ -3355,35 +3386,35 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.highlight_alt,
+                icon: YuLiIcons.lasso,
                 active: _tool == DrawTool.lasso,
                 tooltip: 'Lazo',
                 onTap: () => _selectTool(DrawTool.lasso),
               ),
               _divider(),
               _toolBtn(
-                icon: Icons.image_outlined,
+                icon: YuLiIcons.image,
                 active: _imagePanelOpen,
                 tooltip: 'Imagen',
                 onTap: _toggleImagePanel,
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.checklist,
-                active: false,
+                icon: YuLiIcons.listChecks,
+                active: _tool == DrawTool.task,
                 tooltip: 'Tareas',
-                onTap: _insertTaskBlock,
+                onTap: _enterTaskMode,
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.notes,
+                icon: YuLiIcons.textInitial,
                 active: _tool == DrawTool.text,
                 tooltip: 'Texto',
                 onTap: _enterTextMode,
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.category_outlined,
+                icon: YuLiIcons.shapes,
                 active: _shapePopupOpen,
                 tooltip: 'Figuras',
                 onTap: _toggleShapePopup,
@@ -3415,7 +3446,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               _divider(),
               _toolBtn(
-                icon: Icons.undo,
+                icon: YuLiIcons.undo,
                 active: false,
                 enabled: _undoStack.isNotEmpty,
                 tooltip: 'Deshacer',
@@ -3423,7 +3454,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.redo,
+                icon: YuLiIcons.redo,
                 active: false,
                 enabled: _redoStack.isNotEmpty,
                 tooltip: 'Rehacer',
@@ -3450,7 +3481,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.more_horiz,
+                icon: YuLiIcons.moreHorizontal,
                 active: _morePopupOpen,
                 tooltip: 'Más',
                 onTap: _toggleMorePopup,
@@ -3656,7 +3687,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         runSpacing: 8,
         children: [
           _toolBtn(
-            icon: Icons.auto_graph,
+            icon: YuLiIcons.lineSquiggle,
             active: _stabilizer.isOn,
             label: 'ESTAB · ${_stabilizer.label}',
             onTap: () {
@@ -3665,7 +3696,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.format_color_fill,
+            icon: YuLiIcons.paintBucket,
             active: _fillShapes,
             label: 'RELLENO',
             onTap: () {
@@ -3674,7 +3705,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.back_hand_outlined,
+            icon: YuLiIcons.hand,
             active: _palmRejection,
             label: 'PALMA',
             onTap: () {
@@ -3683,7 +3714,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.grid_on,
+            icon: YuLiIcons.layoutGrid,
             active: _bgPopupOpen,
             label: 'FONDO',
             onTap: () {
@@ -3974,7 +4005,7 @@ class _EyedropperHint extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.colorize, size: 14, color: yInk),
+          const Icon(YuLiIcons.palette, size: 14, color: yInk),
           const SizedBox(width: 8),
           Text(
             'TOCA UN TRAZO PARA COPIAR EL COLOR',
@@ -4019,6 +4050,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final Color accent;
   final bool hasAiKey;
   final bool aiLinked;
+  final String noteTitle;
   final VoidCallback onExpand;
   final VoidCallback onOpenPages;
   final VoidCallback onAi;
@@ -4030,6 +4062,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
     required this.accent,
     required this.hasAiKey,
     required this.aiLinked,
+    required this.noteTitle,
     required this.onExpand,
     required this.onOpenPages,
     required this.onAi,
@@ -4058,7 +4091,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+              child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
             ),
           ),
           const SizedBox(width: 10),
@@ -4066,7 +4099,9 @@ class _CollapsedNotebookHeader extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'CUADERNO · @${folder.name} · $pageCount PÁG',
+              noteTitle.trim().isEmpty
+                  ? 'CUADERNO · @${folder.name} · $pageCount PÁG'
+                  : 'CUADERNO · @${folder.name} · $pageCount PÁG · ${noteTitle.trim()}',
               style: ySans(
                 size: 15,
                 weight: FontWeight.w700,
@@ -4090,7 +4125,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.auto_stories, color: yInk, size: 16),
+              child: const Icon(YuLiIcons.bookOpen, color: yInk, size: 16),
             ),
           ),
           const SizedBox(width: 6),
@@ -4108,11 +4143,11 @@ class _CollapsedNotebookHeader extends StatelessWidget {
                   color: hasAiKey ? accent : yMuted,
                   border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
-                child: Icon(
-                  Icons.auto_awesome,
-                  color: hasAiKey ? yCream : yCream2,
-                  size: 16,
-                ),
+              child: Icon(
+                YuLiIcons.sparkles,
+                color: hasAiKey ? yCream : yCream2,
+                size: 16,
+              ),
               ),
             ),
           ),
@@ -4129,7 +4164,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(
-                Icons.keyboard_arrow_down,
+                YuLiIcons.chevronDown,
                 color: yInk,
                 size: 18,
               ),

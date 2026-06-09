@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../providers/image_storage_providers.dart';
 import '../../../data/services/image_storage.dart';
 
@@ -37,7 +38,7 @@ class ImageStorageScreen extends ConsumerWidget {
                     child: SizedBox(
                       width: 40,
                       height: 40,
-                      child: Icon(Icons.arrow_back, size: 20, color: paper),
+                      child: Icon(YuLiIcons.arrowLeft, size: 20, color: paper),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -132,7 +133,7 @@ class _ImageTile extends StatelessWidget {
               cacheWidth: 300,
               errorBuilder: (_, _, _) => Container(
                 color: inkGray.withAlpha(30),
-                child: Icon(Icons.broken_image_outlined,
+                child: Icon(YuLiIcons.imageOff,
                     size: 24, color: inkGray),
               ),
             ),

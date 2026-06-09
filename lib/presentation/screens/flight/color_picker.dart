@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'note_cell_model.dart';
 
 const int kRecentColorsCount = 5;
@@ -210,7 +211,7 @@ class ColorButton extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Icon(
-              isOpen ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+              isOpen ? YuLiIcons.chevronUp : YuLiIcons.chevronDown,
               size: 14,
               color: yInk,
             ),
@@ -409,7 +410,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
           children: [
             Expanded(
               child: _ActionBtn(
-                icon: Icons.colorize,
+                icon: YuLiIcons.palette,
                 label: 'GOTERO',
                 onTap: widget.onEyedropper,
               ),
@@ -417,7 +418,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
             const SizedBox(width: 6),
             Expanded(
               child: _ActionBtn(
-                icon: Icons.tune,
+                icon: YuLiIcons.slidersHorizontal,
                 label: 'PERSONALIZADO',
                 primary: true,
                 onTap: () => setState(() => _advanced = true),
@@ -448,7 +449,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
                   color: yCream,
                   border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
-                child: const Icon(Icons.arrow_back, size: 14, color: yInk),
+                child: const Icon(YuLiIcons.arrowLeft, size: 14, color: yInk),
               ),
             ),
             const SizedBox(width: 10),
@@ -474,7 +475,7 @@ class _ColorPickerPopupState extends State<ColorPickerPopup> {
                   border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
                 child: Icon(
-                  starred ? Icons.star : Icons.star_border,
+                  starred ? YuLiIcons.star : YuLiIcons.star,
                   size: 16,
                   color: yInk,
                 ),

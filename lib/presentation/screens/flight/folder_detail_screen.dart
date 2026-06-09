@@ -13,6 +13,7 @@ import '../../providers/navigation_provider.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../widgets/edit_item_dialog.dart';
+import '../../theme/lab_icons.dart';
 
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -246,7 +247,7 @@ class _FolderHero extends StatelessWidget {
                     decoration: BoxDecoration(
                       border: Border.all(color: yBorderStrong, width: yLineMid),
                     ),
-                    child: const Icon(Icons.arrow_back, color: yInk, size: 18),
+                    child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 18),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -700,9 +701,9 @@ class _NoteRow extends ConsumerWidget {
 // ─── Note kind indicators ────────────────────────────────────────────────────
 
 ({IconData icon, String label}) _kindMeta(NoteKind k) => switch (k) {
-  NoteKind.notebook => (icon: Icons.menu_book_outlined, label: 'CUADERNO'),
-  NoteKind.whiteboard => (icon: Icons.gesture, label: 'PIZARRA'),
-  NoteKind.block => (icon: Icons.notes_outlined, label: 'NOTA'),
+  NoteKind.notebook => (icon: YuLiIcons.notebook, label: 'CUADERNO'),
+  NoteKind.whiteboard => (icon: YuLiIcons.pencil, label: 'PIZARRA'),
+  NoteKind.block => (icon: YuLiIcons.textInitial, label: 'NOTA'),
 };
 
 class _NoteKindBadge extends StatelessWidget {

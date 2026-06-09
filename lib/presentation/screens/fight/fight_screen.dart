@@ -8,6 +8,7 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/task_propagation_provider.dart';
 import '../../widgets/reminder_picker.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import '../../../domain/models/lab_space.dart';
@@ -742,7 +743,7 @@ class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
         secondaryBackground: const _SwipeBg(
           color: Color(0xFF8E2D4B),
           align: Alignment.centerRight,
-          icon: Icons.close,
+          icon: YuLiIcons.close,
           label: 'QUITAR',
         ),
         child: card,
@@ -771,13 +772,13 @@ class _SwipeableTaskCardState extends ConsumerState<_SwipeableTaskCard> {
       background: const _SwipeBg(
         color: yLab,
         align: Alignment.centerLeft,
-        icon: Icons.check,
+        icon: YuLiIcons.check,
         label: 'HECHO',
       ),
       secondaryBackground: const _SwipeBg(
         color: Color(0xFF8E2D4B),
         align: Alignment.centerRight,
-        icon: Icons.close,
+        icon: YuLiIcons.close,
         label: 'DESC.',
       ),
       child: GestureDetector(
@@ -1063,8 +1064,8 @@ class _TaskCardBody extends ConsumerWidget {
                 _TinyTaskAction(
                   icon:
                       task.dueDate != null
-                          ? Icons.access_time_filled
-                          : Icons.access_time,
+                          ? YuLiIcons.timer
+                          : YuLiIcons.clock,
                   active: task.dueDate != null,
                   onTap: () => _pickDueDate(context, ref),
                 ),
@@ -1072,8 +1073,8 @@ class _TaskCardBody extends ConsumerWidget {
                 _TinyTaskAction(
                   icon:
                       task.remindAt != null
-                          ? Icons.notifications_active
-                          : Icons.notifications_none,
+                          ? YuLiIcons.bellRing
+                          : YuLiIcons.bell,
                   active: task.remindAt != null,
                   onTap: () => _pickReminder(context, ref),
                 ),

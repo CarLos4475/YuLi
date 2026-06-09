@@ -21,24 +21,12 @@ class MainActivity : FlutterActivity() {
     )
     private val prefsName = "yuli_launcher_prefs"
     private val kAutoMode = "auto_mode"
-    private val kInForeground = "in_foreground"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        swapPrefs().edit().putBoolean(kInForeground, true).apply()
         if (isAutoMode()) {
             scheduleNextSwap(nextSwapAtMs())
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        swapPrefs().edit().putBoolean(kInForeground, true).apply()
-    }
-
-    override fun onPause() {
-        swapPrefs().edit().putBoolean(kInForeground, false).apply()
-        super.onPause()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -148,7 +136,7 @@ class MainActivity : FlutterActivity() {
             set(java.util.Calendar.SECOND, 0)
             set(java.util.Calendar.MILLISECOND, 0)
         }
-        val candidates = intArrayOf(6, 12, 18)
+        val candidates = intArrayOf(0, 4, 8, 12, 16, 20)
         for (h in candidates) {
             val c = today.clone() as java.util.Calendar
             c.set(java.util.Calendar.HOUR_OF_DAY, h)
@@ -157,7 +145,7 @@ class MainActivity : FlutterActivity() {
         val tomorrow = (today.clone() as java.util.Calendar).apply {
             add(java.util.Calendar.DAY_OF_YEAR, 1)
         }
-        tomorrow.set(java.util.Calendar.HOUR_OF_DAY, 6)
+        tomorrow.set(java.util.Calendar.HOUR_OF_DAY, 0)
         return tomorrow.timeInMillis
     }
 

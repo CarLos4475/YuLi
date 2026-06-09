@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/yuli_splash_screen.dart';
 import '../../providers/database_providers.dart';
@@ -508,7 +509,7 @@ class _HeaderStrip extends StatelessWidget {
                         height: 68,
                         alignment: Alignment.center,
                         child: const Icon(
-                          Icons.settings,
+                          YuLiIcons.settings,
                           color: _yInk,
                           size: 38,
                         ),

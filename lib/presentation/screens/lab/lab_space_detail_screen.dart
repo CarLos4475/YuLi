@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
-import '../../providers/ai_providers.dart';
 import '../../widgets/yuli_design.dart' as y;
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/kanban_card.dart';
-import '../../../domain/models/note.dart';
-import '../../screens/flight/note_cell_model.dart';
 import 'kanban_card_tile.dart';
 import 'kanban_card_detail.dart';
 import 'calendar_tab.dart';
@@ -91,6 +89,8 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
 
   Future<void> _deleteSelected() async {
     if (_selectedCardIds.isEmpty) return;
+    // Capture before any async gap (app-level messenger → survives rebuilds).
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
@@ -127,8 +127,37 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
     );
     if (confirmed == true && context.mounted) {
       final repo = ref.read(kanbanCardRepositoryProvider);
-      await repo.deleteMultiple(_selectedCardIds.toList());
+      final ids = _selectedCardIds.toList();
+      // Capture full rows before deleting so undo restores them faithfully.
+      final deleted = <KanbanCard>[];
+      for (final id in ids) {
+        final card = await repo.getById(id);
+        if (card != null) deleted.add(card);
+      }
+      await repo.deleteMultiple(ids);
       _clearSelection();
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 5),
+            content: Text(
+              deleted.length == 1
+                  ? 'Tarjeta eliminada'
+                  : '${deleted.length} tarjetas eliminadas',
+              style: y.yBody(size: 14, color: y.yCream),
+            ),
+            action: SnackBarAction(
+              label: 'DESHACER',
+              textColor: y.yCream,
+              onPressed: () async {
+                for (final card in deleted) {
+                  await repo.restore(card);
+                }
+              },
+            ),
+          ),
+        );
     }
   }
 
@@ -205,10 +234,6 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final tabs = ref.watch(labTabsProvider(widget.space.id));
-    // Pin the LAB AI chat session to this screen's lifetime (autoDispose →
-    // discarded on leave). Without this, showLabChat's ref.read created it and
-    // it disposed immediately → "AiChatSession used after being disposed".
-    ref.watch(aiLabSessionProvider(widget.space.id));
 
     return Scaffold(
       backgroundColor: paperColor(context),
@@ -243,7 +268,7 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                           vertical: 12,
                         ),
                         child: const Icon(
-                          Icons.clear,
+                          YuLiIcons.close,
                           size: 16,
                           color: y.yMuted,
                         ),
@@ -461,7 +486,7 @@ class _TabButton extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(2),
                   child: Icon(
-                    Icons.close,
+                                YuLiIcons.close,
                     size: 12,
                     color: isActive ? y.yInk : y.yMuted,
                   ),
@@ -505,7 +530,7 @@ class _KanbanHeader extends ConsumerWidget {
                 color: y.yCream,
                 border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
               ),
-              child: const Icon(Icons.arrow_back, color: y.yInk, size: 18),
+              child: const Icon(YuLiIcons.arrowLeft, color: y.yInk, size: 18),
             ),
           ),
           const SizedBox(width: 14),
@@ -547,19 +572,19 @@ class _KanbanHeader extends ConsumerWidget {
           ),
           const SizedBox(width: 10),
           _HeaderIcon(
-            icon: Icons.link,
+            icon: YuLiIcons.link,
             bg: space.accentColor,
             onTap: () => showSpaceSourcesSheet(context, space),
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
-            icon: Icons.calendar_today,
+            icon: YuLiIcons.calendar,
             bg: space.accentColor,
             onTap: () => _showDateEditor(context, ref),
           ),
           const SizedBox(width: 6),
           _HeaderIcon(
-            icon: Icons.auto_awesome,
+            icon: YuLiIcons.sparkles,
             bg: space.accentColor,
             fg: y.yCream,
             fill: true,
@@ -568,7 +593,7 @@ class _KanbanHeader extends ConsumerWidget {
           if (onToggleSelectionMode != null) ...[
             const SizedBox(width: 6),
             _HeaderIcon(
-              icon: Icons.checklist,
+              icon: YuLiIcons.listChecks,
               bg: selectionMode ? y.yFight : space.accentColor,
               fg: y.yCream,
               fill: true,
@@ -642,7 +667,7 @@ class _KanbanHeader extends ConsumerWidget {
                             GestureDetector(
                               onTap: () => Navigator.pop(ctx),
                               child: Icon(
-                                Icons.close,
+                    YuLiIcons.close,
                                 size: 18,
                                 color: inkGray,
                               ),
@@ -853,7 +878,7 @@ class _DateRow extends StatelessWidget {
                   if (date != null)
                     GestureDetector(
                       onTap: onClear,
-                      child: Icon(Icons.close, size: 14, color: inkGray),
+                      child: Icon(YuLiIcons.close, size: 14, color: inkGray),
                     ),
                 ],
               ),
@@ -1880,94 +1905,6 @@ class _SelectionBar extends StatelessWidget {
   }
 }
 
-class _ColumnPickerSheet extends ConsumerWidget {
-  final LabSpace space;
-  final Note note;
-
-  const _ColumnPickerSheet({required this.space, required this.note});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final columnsAsync = ref.watch(kanbanColumnsProvider(space.id));
-    final columns = columnsAsync.valueOrNull ?? [];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: paperColor(context),
-        border: Border(
-          top: BorderSide(color: y.yBorderStrong, width: borderWidth),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Text(
-                'Enviar a columna',
-                style: labelBold.copyWith(color: inkGray),
-              ),
-            ),
-            if (columns.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: Text(
-                  'No hay columnas.',
-                  style: bodyS.copyWith(color: inkGray),
-                ),
-              )
-            else
-              ...columns.map(
-                (col) => GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () async {
-                    final cleaned = cleanCellContent(note.rawMarkdown);
-                    final snippet =
-                        cleaned.length > 200
-                            ? cleaned.substring(0, 200)
-                            : cleaned;
-                    await ref
-                        .read(kanbanCardRepositoryProvider)
-                        .create(
-                          labSpaceId: space.id,
-                          columnId: col.id,
-                          title: note.displayTitle,
-                          description: snippet.isNotEmpty ? snippet : null,
-                          sourceNoteId: note.id,
-                        );
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Card creada en ${col.name}'),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
-                    ),
-                    child: Text(
-                      col.name,
-                      style: bodyM.copyWith(color: inkColor(context)),
-                    ),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ColumnHead extends StatelessWidget {
   final KanbanColumn column;
   final int count;
@@ -2145,33 +2082,33 @@ class _ColumnManagePopover extends StatelessWidget {
             ),
             Container(height: 2, color: y.yBorderStrong),
             _PopRow(
-              icon: Icons.edit_outlined,
+              icon: YuLiIcons.pen,
               label: 'Renombrar',
               onTap: onRename,
             ),
             _PopRow(
-              icon: Icons.chevron_left,
+              icon: YuLiIcons.chevronLeft,
               label: 'Mover a la izquierda',
               onTap: onMoveLeft,
             ),
             _PopRow(
-              icon: Icons.chevron_right,
+              icon: YuLiIcons.chevronRight,
               label: 'Mover a la derecha',
               onTap: onMoveRight,
             ),
             _PopRow(
               icon:
                   column.isTerminal
-                      ? Icons.check_box
-                      : Icons.check_box_outline_blank,
+                      ? YuLiIcons.squareCheck
+                      : YuLiIcons.square,
               label: column.isTerminal ? 'Quitar DONE' : 'Marcar como DONE',
               onTap: onToggleDone,
             ),
             _PopRow(
               icon:
                   column.isExpired
-                      ? Icons.warning
-                      : Icons.warning_amber_outlined,
+                      ? YuLiIcons.triangleAlert
+                      : YuLiIcons.triangleAlert,
               label:
                   column.isExpired ? 'Quitar EXPIRED' : 'Marcar como EXPIRED',
               onTap: onToggleExpired,
@@ -2179,8 +2116,8 @@ class _ColumnManagePopover extends StatelessWidget {
             _PopRow(
               icon:
                   column.isInProgress
-                      ? Icons.play_circle
-                      : Icons.play_circle_outline,
+                      ? YuLiIcons.circlePlay
+                      : YuLiIcons.circlePlay,
               label:
                   column.isInProgress
                       ? 'Quitar EN PROCESO'
@@ -2189,7 +2126,7 @@ class _ColumnManagePopover extends StatelessWidget {
             ),
             Container(height: 2, color: y.yBorderSoft),
             _PopRow(
-              icon: Icons.close,
+              icon: YuLiIcons.close,
               label: 'Eliminar columna',
               danger: true,
               onTap: onDelete,

@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/lab_icons.dart';
 
 import '../providers/database_providers.dart';
 
@@ -87,6 +88,7 @@ TextStyle yBody({
 class ModeHeader extends StatelessWidget {
   final String mode;
   final String subtitle;
+  final Widget? subtitleWidget;
   final Color color;
   final List<Widget> headerRight;
   final VoidCallback? onBack;
@@ -96,6 +98,7 @@ class ModeHeader extends StatelessWidget {
     required this.mode,
     required this.subtitle,
     required this.color,
+    this.subtitleWidget,
     this.headerRight = const [],
     this.onBack,
   });
@@ -127,7 +130,7 @@ class ModeHeader extends StatelessWidget {
                     width: yLineMid,
                   ),
                 ),
-                child: const Icon(Icons.arrow_back, color: yCream, size: 18),
+                child: const Icon(YuLiIcons.arrowLeft, color: yCream, size: 18),
               ),
             ),
             const SizedBox(width: 18),
@@ -150,16 +153,19 @@ class ModeHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: yMono(
-                    size: 11,
-                    color: yCream.withValues(alpha: 0.8),
-                    tracking: 1.6,
+                if (subtitleWidget != null)
+                  subtitleWidget!
+                else
+                  Text(
+                    subtitle,
+                    style: yMono(
+                      size: 11,
+                      color: yCream.withValues(alpha: 0.8),
+                      tracking: 1.6,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
               ],
             ),
           ),
@@ -213,7 +219,7 @@ class YuliBottomNav extends ConsumerWidget {
                       right: BorderSide(color: yBorderStrong, width: yLineMid),
                     ),
                   ),
-                  child: const Icon(Icons.home_outlined, color: yInk, size: 22),
+                  child: const Icon(YuLiIcons.home, color: yInk, size: 22),
                 ),
               ),
               for (int i = 0; i < tabs.length; i++)
@@ -500,15 +506,16 @@ class CapChip extends StatelessWidget {
   });
 
   static const _meta = {
-    'Kanban': '▣',
-    'Horario': '◷',
-    'Timeline': '═',
-    'Calendario': '▦',
+    'Kanban': YuLiIcons.kanban,
+    'Horario': YuLiIcons.clock,
+    'Timeline': YuLiIcons.timeline,
+    'Calendario': YuLiIcons.calendarDays,
+    'Grafo': YuLiIcons.gitGraph,
   };
 
   @override
   Widget build(BuildContext context) {
-    final glyph = _meta[kind] ?? '·';
+    final icon = _meta[kind] ?? YuLiIcons.kanban;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -521,13 +528,10 @@ class CapChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              glyph,
-              style: TextStyle(
-                fontSize: 11,
-                color: active ? yCream : color,
-                height: 1.0,
-              ),
+            Icon(
+              icon,
+              size: 12,
+              color: active ? yCream : color,
             ),
             const SizedBox(width: 5),
             Text(
@@ -857,10 +861,10 @@ class HeadBtn extends StatelessWidget {
 
 /// Compact nav button (36×36 square w/ glyph).
 class NavBtn extends StatelessWidget {
-  final String glyph;
+  final IconData icon;
   final VoidCallback? onTap;
 
-  const NavBtn({super.key, required this.glyph, this.onTap});
+  const NavBtn({super.key, required this.icon, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -875,10 +879,7 @@ class NavBtn extends StatelessWidget {
           color: yCream,
           border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
-        child: Text(
-          glyph,
-          style: const TextStyle(fontSize: 16, color: yInk, height: 1.0),
-        ),
+        child: Icon(icon, size: 16, color: yInk),
       ),
     );
   }

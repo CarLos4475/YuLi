@@ -196,6 +196,35 @@ class LocalKanbanRepository implements KanbanCardRepository {
   }
 
   @override
+  Future<void> restore(KanbanCard card) async {
+    // Verbatim re-insert (same id + every field) so a "done" card keeps its
+    // originTaskDoneAt/dueDate and the timeline keeps its createdAt — bypasses
+    // create()'s origin-task dedup and column transitions on purpose.
+    await _db.kanbanDao.insertCard(
+      KanbanCardsCompanion(
+        id: Value(card.id),
+        labSpaceId: Value(card.labSpaceId),
+        columnId: Value(card.columnId),
+        title: Value(card.title),
+        description: Value(card.description),
+        priority: Value(card.priority.toDbString()),
+        position: Value(card.position),
+        dueDate: Value(card.dueDate),
+        remindAt: Value(card.remindAt),
+        reminderPreset: Value(card.reminderPreset?.toDbString()),
+        startDate: Value(card.startDate),
+        sourceNoteId: Value(card.sourceNoteId),
+        sourceAnchor: Value(card.sourceAnchor),
+        originTaskId: Value(card.originTaskId),
+        originFolderColor: Value(card.originFolderColor),
+        originTaskDoneAt: Value(card.originTaskDoneAt),
+        createdAt: Value(card.createdAt),
+      ),
+    );
+    await _reminders?.syncCard(card.id);
+  }
+
+  @override
   Future<void> updateReminder(
     int id,
     DateTime? remindAt,

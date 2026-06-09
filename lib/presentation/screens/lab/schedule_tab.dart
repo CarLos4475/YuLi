@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart' as y;
 import '../../widgets/color_palette_picker.dart';
 import '../../providers/database_providers.dart';
@@ -769,7 +770,7 @@ class _ScheduleHeader extends StatelessWidget {
       titleColor: accentColor,
       kicker: weekLabel.toUpperCase(),
       right: [
-        y.NavBtn(glyph: '‹', onTap: onPrev),
+        y.NavBtn(icon: YuLiIcons.chevronLeft, onTap: onPrev),
         const SizedBox(width: 4),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -788,10 +789,11 @@ class _ScheduleHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        y.NavBtn(glyph: '›', onTap: onNext),
+        y.NavBtn(icon: YuLiIcons.chevronRight, onTap: onNext),
         const SizedBox(width: 8),
         y.HeadBtn(
-          label: creatingMode ? '✕ SALIR' : '+ CREAR',
+          label: creatingMode ? 'SALIR' : 'CREAR',
+          leadingIcon: creatingMode ? YuLiIcons.close : YuLiIcons.plus,
           primary: !creatingMode,
           color: !creatingMode ? accentColor : null,
           onTap: onToggleCreate,
@@ -799,7 +801,7 @@ class _ScheduleHeader extends StatelessWidget {
         const SizedBox(width: 6),
         y.HeadBtn(
           label: 'AJUSTAR',
-          leadingIcon: Icons.settings_outlined,
+          leadingIcon: YuLiIcons.settings,
           onTap: onSettings,
         ),
       ],
@@ -853,7 +855,7 @@ class _WeekNoteBanner extends StatelessWidget {
           const SizedBox(width: 6),
           GestureDetector(
             onTap: onDismiss,
-            child: Icon(Icons.close, size: 14, color: accentColor),
+            child: Icon(YuLiIcons.close, size: 14, color: accentColor),
           ),
         ],
       ),
@@ -1413,7 +1415,7 @@ class _FolderLinkButton extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.folder_outlined, size: 16, color: folder.color),
+            Icon(YuLiIcons.folder, size: 16, color: folder.color),
             const SizedBox(width: 8),
             Text(
               'Ir a carpeta $_arrow',
@@ -1615,7 +1617,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
                         if (isSelected) ...[
                           const SizedBox(width: 6),
                           Icon(
-                            Icons.check,
+                            YuLiIcons.check,
                             size: 10,
                             color:
                                 f.color.computeLuminance() > 0.5
@@ -1917,7 +1919,7 @@ class _TimePickerField extends StatelessWidget {
               children: [
                 Text(value, style: bodyM.copyWith(color: ink)),
                 const Spacer(),
-                const Icon(Icons.access_time, size: 14, color: inkGray),
+                const Icon(YuLiIcons.clock, size: 14, color: inkGray),
               ],
             ),
           ),

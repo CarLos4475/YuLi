@@ -187,6 +187,60 @@ void main() {
     });
   });
 
+  group('Papelera — restore() deshace el borrado de card fielmente', () {
+    late AppDatabase db;
+    late LocalLabSpaceRepository labRepo;
+    late LocalKanbanRepository kanbanRepo;
+
+    setUp(() {
+      db = AppDatabase.forTesting(NativeDatabase.memory());
+      labRepo = LocalLabSpaceRepository(db);
+      kanbanRepo = LocalKanbanRepository(db);
+    });
+    tearDown(() => db.close());
+
+    test('restore re-inserta con mismo id y estado "hecha" intacto', () async {
+      final space = await labRepo.create('S', '#123456');
+      final cols = await labRepo.getColumns(space.id);
+      final backlog = cols.firstWhere((c) => c.name == 'Backlog');
+      final entregado = cols.firstWhere((c) => c.isTerminal);
+      final taskId = await db
+          .into(db.tasks)
+          .insert(
+            TasksCompanion.insert(
+              content: 'tarea',
+              status: 'pending',
+              expiresAt: DateTime.now(),
+            ),
+          );
+      final c0 = await kanbanRepo.create(
+        labSpaceId: space.id,
+        columnId: backlog.id,
+        title: 'card a borrar',
+        originTaskId: taskId,
+      );
+      // → Entregado: queda "hecha" (originTaskDoneAt + dueDate sellados).
+      await kanbanRepo.moveToColumn(c0.id, entregado.id, 0);
+      final before = (await kanbanRepo.getById(c0.id))!;
+      expect(before.originTaskDoneAt, isNotNull);
+
+      // Borrar → desaparece.
+      await kanbanRepo.delete(before.id);
+      expect(await kanbanRepo.getById(before.id), isNull);
+
+      // Restaurar (deshacer) → vuelve IDÉNTICA, sin "des-hacerse".
+      await kanbanRepo.restore(before);
+      final after = (await kanbanRepo.getById(before.id))!;
+      expect(after.id, before.id);
+      expect(after.title, before.title);
+      expect(after.columnId, before.columnId);
+      expect(after.originTaskId, before.originTaskId);
+      expect(after.originTaskDoneAt, before.originTaskDoneAt);
+      expect(after.dueDate, before.dueDate);
+      expect(after.createdAt, before.createdAt);
+    });
+  });
+
   group('Expiry — barrido a Vencido (el fix crítico)', () {
     late AppDatabase db;
     late LocalLabSpaceRepository labRepo;

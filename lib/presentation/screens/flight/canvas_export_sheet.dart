@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 enum ExportFormat { pdf, png }
 
@@ -253,7 +254,7 @@ class _ToggleRow extends StatelessWidget {
               border: Border.all(color: yBorderStrong, width: yLineMid),
             ),
             child: value
-                ? const Icon(Icons.check, size: 15, color: yCream)
+                ? const Icon(YuLiIcons.check, size: 15, color: yCream)
                 : null,
           ),
           const SizedBox(width: 10),
@@ -329,8 +330,8 @@ class _WhiteboardExportSheetState extends State<_WhiteboardExportSheet> {
           accent: widget.accent,
           value: _region,
           options: const [
-            (WhiteboardRegion.all, 'TODO', Icons.select_all),
-            (WhiteboardRegion.marquee, 'ÁREA', Icons.crop_free),
+            (WhiteboardRegion.all, 'TODO', YuLiIcons.checkCheck),
+            (WhiteboardRegion.marquee, 'ÁREA', YuLiIcons.crop),
           ],
           onChanged: (v) => setState(() => _region = v),
         ),
@@ -340,8 +341,8 @@ class _WhiteboardExportSheetState extends State<_WhiteboardExportSheet> {
           accent: widget.accent,
           value: _format,
           options: const [
-            (ExportFormat.pdf, 'PDF', Icons.picture_as_pdf),
-            (ExportFormat.png, 'PNG', Icons.image_outlined),
+            (ExportFormat.pdf, 'PDF', YuLiIcons.fileText),
+            (ExportFormat.png, 'PNG', YuLiIcons.image),
           ],
           onChanged: (v) => setState(() => _format = v),
         ),
@@ -406,8 +407,8 @@ class _NotebookExportSheetState extends State<_NotebookExportSheet> {
           accent: widget.accent,
           value: _format,
           options: const [
-            (ExportFormat.pdf, 'PDF', Icons.picture_as_pdf),
-            (ExportFormat.png, 'PNG', Icons.image_outlined),
+            (ExportFormat.pdf, 'PDF', YuLiIcons.fileText),
+            (ExportFormat.png, 'PNG', YuLiIcons.image),
           ],
           onChanged: (v) => setState(() => _format = v),
         ),

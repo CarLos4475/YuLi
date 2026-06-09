@@ -27,7 +27,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val candidates = intArrayOf(6, 12, 18)
+        val candidates = intArrayOf(0, 4, 8, 12, 16, 20)
         var nextMs: Long = -1
         for (h in candidates) {
             val c = today.clone() as Calendar
@@ -41,7 +41,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
             val tomorrow = (today.clone() as Calendar).apply {
                 add(Calendar.DAY_OF_YEAR, 1)
             }
-            tomorrow.set(Calendar.HOUR_OF_DAY, 6)
+            tomorrow.set(Calendar.HOUR_OF_DAY, 0)
             nextMs = tomorrow.timeInMillis
         }
         IconSwapScheduler(context).scheduleBoundaryAt(nextMs)

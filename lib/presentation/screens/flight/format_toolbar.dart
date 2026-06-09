@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 class FormatToolbar extends StatelessWidget {
   final TextEditingController? controller;
@@ -70,17 +71,17 @@ class FormatToolbar extends StatelessWidget {
           _FmtBtn(label: r'$', onTap: () => _wrap(r'$', r'$')),
           const SizedBox(width: 8),
           _AlignBtn(
-            icon: Icons.format_align_left,
+            icon: YuLiIcons.textAlignStart,
             onTap: () => _wrapAlign('left'),
           ),
           const SizedBox(width: 4),
           _AlignBtn(
-            icon: Icons.format_align_center,
+            icon: YuLiIcons.textAlignCenter,
             onTap: () => _wrapAlign('center'),
           ),
           const SizedBox(width: 4),
           _AlignBtn(
-            icon: Icons.format_align_right,
+            icon: YuLiIcons.textAlignEnd,
             onTap: () => _wrapAlign('right'),
           ),
           const Spacer(),

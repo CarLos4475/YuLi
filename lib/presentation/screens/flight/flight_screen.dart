@@ -7,6 +7,7 @@ import '../../providers/flight_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/note_providers.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -328,7 +329,7 @@ class _SearchBar extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.search, size: 16, color: yInk),
+            Icon(YuLiIcons.search, size: 16, color: yInk),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -388,7 +389,7 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
           children: [
             Row(
               children: [
-                const Icon(Icons.search, color: yInk),
+                Icon(YuLiIcons.search, color: yInk),
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
@@ -911,7 +912,7 @@ void _showFolderContextMenu(
                 ),
               ),
               _FolderMenuItem(
-                icon: Icons.edit_outlined,
+                icon: YuLiIcons.pen,
                 label: 'Cambiar nombre',
                 onTap: () {
                   Navigator.pop(ctx);
@@ -935,7 +936,7 @@ void _showFolderContextMenu(
                 },
               ),
               _FolderMenuItem(
-                icon: Icons.palette_outlined,
+                icon: YuLiIcons.palette,
                 label: 'Cambiar color',
                 onTap: () {
                   Navigator.pop(ctx);
@@ -987,7 +988,7 @@ void _showFolderContextMenu(
                 },
               ),
               _FolderMenuItem(
-                icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                icon: YuLiIcons.pin,
                 label: pinned ? 'Desfijar' : 'Destacar',
                 onTap: () {
                   Navigator.pop(ctx);
@@ -995,7 +996,7 @@ void _showFolderContextMenu(
                 },
               ),
               _FolderMenuItem(
-                icon: Icons.delete_outline,
+                icon: YuLiIcons.trash,
                 label: 'Eliminar',
                 destructive: true,
                 onTap: () async {
@@ -1053,6 +1054,7 @@ class _FolderMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = destructive ? const Color(0xFF8E2D4B) : yInk;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -1063,18 +1065,14 @@ class _FolderMenuItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 18,
-              color: destructive ? const Color(0xFF8E2D4B) : yInk,
-            ),
+            Icon(icon, size: 18, color: color),
             const SizedBox(width: 12),
             Text(
               label,
               style: ySans(
                 size: 15,
                 weight: FontWeight.w600,
-                color: destructive ? const Color(0xFF8E2D4B) : yInk,
+                color: color,
               ),
             ),
           ],

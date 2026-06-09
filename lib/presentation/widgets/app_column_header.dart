@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
+import '../theme/lab_icons.dart';
 
 class AppColumnHeader extends StatelessWidget {
   final String title;
@@ -43,7 +44,7 @@ class AppColumnHeader extends StatelessWidget {
               onTap: onDelete,
               child: Padding(
                 padding: const EdgeInsets.all(2),
-                child: Icon(Icons.close, size: 14, color: inkGray.withAlpha(120)),
+                child: Icon(YuLiIcons.close, size: 14, color: inkGray.withAlpha(120)),
               ),
             ),
           ],

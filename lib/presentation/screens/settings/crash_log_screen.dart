@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../../data/services/crash_logger.dart';
 
 /// Shows the persisted crash log with Share (to get it off the device — the
@@ -67,7 +68,7 @@ class _CrashLogScreenState extends State<CrashLogScreen> {
                     child: SizedBox(
                       width: 40,
                       height: 40,
-                      child: Icon(Icons.arrow_back, size: 20, color: paper),
+                      child: Icon(YuLiIcons.arrowLeft, size: 20, color: paper),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -80,7 +81,7 @@ class _CrashLogScreenState extends State<CrashLogScreen> {
                     onTap: empty ? null : _share,
                     child: Padding(
                       padding: const EdgeInsets.all(6),
-                      child: Icon(Icons.ios_share,
+                      child: Icon(YuLiIcons.share,
                           size: 20, color: empty ? inkGray : paper),
                     ),
                   ),
@@ -89,7 +90,7 @@ class _CrashLogScreenState extends State<CrashLogScreen> {
                     onTap: empty ? null : _clear,
                     child: Padding(
                       padding: const EdgeInsets.all(6),
-                      child: Icon(Icons.delete_outline,
+                      child: Icon(YuLiIcons.trash,
                           size: 20, color: empty ? inkGray : paper),
                     ),
                   ),

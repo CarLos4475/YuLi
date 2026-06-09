@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_tokens.dart';
+import '../theme/lab_icons.dart';
 import '../providers/database_providers.dart';
 import '../screens/trash/trash_screen.dart';
 import '../screens/settings/settings_screen.dart';
@@ -19,7 +20,7 @@ class ModeSwitch extends ConsumerWidget {
         Expanded(
           child: _ModeTab(
             label: 'FIGHT',
-            icon: Icons.checklist_outlined,
+            icon: YuLiIcons.listChecks,
             mode: AppMode.fight,
             accentColor: accentFight,
             currentMode: currentMode,
@@ -30,7 +31,7 @@ class ModeSwitch extends ConsumerWidget {
         Expanded(
           child: _ModeTab(
             label: 'FLIGHT',
-            icon: Icons.article_outlined,
+            icon: YuLiIcons.fileText,
             mode: AppMode.flight,
             accentColor: accentFlight,
             currentMode: currentMode,
@@ -41,7 +42,7 @@ class ModeSwitch extends ConsumerWidget {
         Expanded(
           child: _ModeTab(
             label: 'LAB',
-            icon: Icons.dashboard_outlined,
+            icon: YuLiIcons.layoutDashboard,
             mode: AppMode.lab,
             accentColor: accentLab,
             currentMode: currentMode,

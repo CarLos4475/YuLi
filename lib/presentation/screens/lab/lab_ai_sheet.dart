@@ -6,6 +6,7 @@ import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/ai_working_dialog.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/lab_space.dart';
@@ -129,21 +130,21 @@ class _LabAiSheet extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _action(
-              Icons.auto_awesome,
+              YuLiIcons.sparkles,
               'Generar tarjetas',
               'Desglosa un objetivo en tarjetas (a Backlog)',
               () => Navigator.of(context).pop(_LabAction.generate),
             ),
             const SizedBox(height: 8),
             _action(
-              Icons.notes,
+              YuLiIcons.textInitial,
               'Resumir / triage',
               'Resume el avance y qué sigue',
               () => Navigator.of(context).pop(_LabAction.summarize),
             ),
             const SizedBox(height: 8),
             _action(
-              Icons.forum,
+              YuLiIcons.messageSquare,
               'Chat del proyecto',
               'Conversa con el board como contexto',
               () => Navigator.of(context).pop(_LabAction.chat),
@@ -539,7 +540,7 @@ class _SummaryDialog extends StatelessWidget {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => Navigator.of(context).pop(),
-                  child: const Icon(Icons.close, size: 18, color: yInk),
+                  child: const Icon(YuLiIcons.close, size: 18, color: yInk),
                 ),
               ],
             ),
@@ -799,14 +800,10 @@ class _LabCardReviewSheetState extends ConsumerState<_LabCardReviewSheet> {
                   ),
                   child:
                       p.include
-                          ? const Text(
-                            '✓',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: yCream,
-                              height: 1.0,
-                              fontWeight: FontWeight.w700,
-                            ),
+                           ? const Icon(
+                            YuLiIcons.check,
+                            size: 12,
+                            color: yCream,
                           )
                           : null,
                 ),

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../providers/database_providers.dart';
 
 enum InsertPanelType { table, code, quote, latex, image }
@@ -124,7 +125,7 @@ class _PanelScaffold extends StatelessWidget {
                   onTap: onClose,
                   child: const Padding(
                     padding: EdgeInsets.all(8),
-                    child: Icon(Icons.close, color: yInk, size: 22),
+                    child: Icon(YuLiIcons.close, color: yInk, size: 22),
                   ),
                 ),
               ],
@@ -397,11 +398,11 @@ class _TablePanelState extends State<_TablePanel> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _alignBtn(Icons.format_align_left, TextAlign.left),
+              _alignBtn(YuLiIcons.textAlignStart, TextAlign.left),
               const SizedBox(width: 6),
-              _alignBtn(Icons.format_align_center, TextAlign.center),
+              _alignBtn(YuLiIcons.textAlignCenter, TextAlign.center),
               const SizedBox(width: 6),
-              _alignBtn(Icons.format_align_right, TextAlign.right),
+              _alignBtn(YuLiIcons.textAlignEnd, TextAlign.right),
             ],
           ),
           const SizedBox(height: 16),
@@ -769,7 +770,7 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.image_outlined, size: 48, color: yMuted),
+                    const Icon(YuLiIcons.image, size: 48, color: yMuted),
                     const SizedBox(height: 12),
                     Text(
                       'Seleccionar imagen',

@@ -10,6 +10,7 @@ import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/ai_working_dialog.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../../../domain/models/note.dart' show NoteKind;
 import '../../../domain/models/note_block.dart';
@@ -741,7 +742,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ),
           ),
           const SizedBox(width: 8),
-          _ghostIcon(Icons.refresh, 'Re-sincronizar tablero', () async {
+          _ghostIcon(YuLiIcons.refresh, 'Re-sincronizar tablero', () async {
             await widget.onResyncContext?.call();
             if (mounted) setState(() => _syncedAt = DateTime.now());
           }),
@@ -780,7 +781,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ),
           ),
           const Spacer(),
-          _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
+          _ghostIcon(YuLiIcons.link, 'Fuentes de contexto', _showSourcesSheet),
         ],
       ),
     );
@@ -831,11 +832,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ),
           ),
           const SizedBox(width: 8),
-          _ghostIcon(Icons.link, 'Fuentes de contexto', _showSourcesSheet),
+          _ghostIcon(YuLiIcons.link, 'Fuentes de contexto', _showSourcesSheet),
           const SizedBox(width: 6),
-          _ghostIcon(Icons.edit, 'Editar contexto', _editContext),
+          _ghostIcon(YuLiIcons.pen, 'Editar contexto', _editContext),
           const SizedBox(width: 6),
-          _ghostIcon(Icons.close, 'Quitar contexto', () => _s.setAnchor('')),
+          _ghostIcon(YuLiIcons.close, 'Quitar contexto', () => _s.setAnchor('')),
         ],
       ),
     );
@@ -882,9 +883,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           const SizedBox(width: 8),
           // Re-reads local notes only; urls are refreshed per-source from the
           // Fuentes sheet (no surprise network).
-          _ghostIcon(Icons.refresh, 'Re-sincronizar notas', _resyncFromSources),
+          _ghostIcon(YuLiIcons.refresh, 'Re-sincronizar notas', _resyncFromSources),
           const SizedBox(width: 6),
-          _ghostIcon(Icons.tune, 'Gestionar fuentes', _showSourcesSheet),
+          _ghostIcon(YuLiIcons.slidersHorizontal, 'Gestionar fuentes', _showSourcesSheet),
         ],
       ),
     );
@@ -1053,7 +1054,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               decoration: BoxDecoration(
                 border: Border.all(color: yCream, width: yLineMid),
               ),
-              child: const Icon(Icons.close, size: 16, color: yCream),
+              child: const Icon(YuLiIcons.close, size: 16, color: yCream),
             ),
           ),
         ],
@@ -1383,7 +1384,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.undo, size: 11, color: yMuted),
+                    const Icon(YuLiIcons.undo, size: 11, color: yMuted),
                     const SizedBox(width: 3),
                     Text(
                       'DESHACER',
@@ -1505,18 +1506,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   Widget _quickActions() {
     // (glyph, label, prompt, sendWithHistory)
-    final items = <(String, String, String, bool)>[
-      ('≡', 'Resumir', 'Resume el contexto en pocas líneas.', false),
+    final items = <(IconData, String, String, bool)>[
+      (YuLiIcons.listChecks, 'Resumir', 'Resume el contexto en pocas líneas.', false),
       (
-        '☐',
+        YuLiIcons.squareCheck,
         'Extraer tareas',
         'Lista las tareas accionables del contexto, una por línea, sin numerar.',
         false,
       ),
-      ('A', 'Título', 'Sugiere 3 títulos cortos para el contexto.', false),
-      ('⇄', 'Traducir', 'Traduce el contexto al inglés.', false),
+      (YuLiIcons.type, 'Título', 'Sugiere 3 títulos cortos para el contexto.', false),
+      (YuLiIcons.arrowRight, 'Traducir', 'Traduce el contexto al inglés.', false),
       (
-        '⌫',
+        YuLiIcons.eraser,
         'Limpiar',
         'Reescribe y limpia el contexto: corrige ortografía y redacción, '
             'mantén el significado.',
@@ -1524,7 +1525,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       ),
       // Uses full chat history (not a one-shot quick action).
       (
-        '❝',
+        YuLiIcons.textQuote,
         'Resumir chat',
         'Resume nuestra conversación hasta ahora en 3-4 puntos clave.',
         true,
@@ -1584,7 +1585,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   Widget _qaChip(
-    String glyph,
+    IconData icon,
     String label,
     String prompt, {
     required bool withHistory,
@@ -1609,14 +1610,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              glyph,
-              style: yMono(
-                size: 12,
-                weight: FontWeight.w700,
-                color: widget.accent,
-              ),
-            ),
+            Icon(icon, size: 14, color: widget.accent),
             const SizedBox(width: 7),
             Text(
               label.toUpperCase(),
@@ -1683,7 +1677,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                           color: yCream,
                         ),
                       )
-                      : const Icon(Icons.arrow_upward, color: yCream, size: 22),
+                      : const Icon(YuLiIcons.arrowUp, color: yCream, size: 22),
             ),
           ),
         ],
@@ -2151,7 +2145,7 @@ class _TaskReviewSheetState extends ConsumerState<_TaskReviewSheet> {
                                   child:
                                       _sel[i]
                                           ? const Icon(
-                                            Icons.check,
+                                            YuLiIcons.check,
                                             size: 14,
                                             color: yCream,
                                           )
@@ -2583,10 +2577,10 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
             Row(
               children: [
                 Expanded(
-                  child: _addBtn(Icons.description_outlined, 'Nota', _addNote),
+                  child: _addBtn(YuLiIcons.fileText, 'Nota', _addNote),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: _addBtn(Icons.link, 'Enlace', _addUrl)),
+                Expanded(child: _addBtn(YuLiIcons.link, 'Enlace', _addUrl)),
               ],
             ),
           ],
@@ -2684,14 +2678,14 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Icon(
-                  s.enabled ? Icons.check_box : Icons.check_box_outline_blank,
+                  s.enabled ? YuLiIcons.squareCheck : YuLiIcons.square,
                   size: 18,
                   color: s.enabled ? widget.accent : yMuted,
                 ),
               ),
             ),
             Icon(
-              s.isNote ? Icons.description_outlined : Icons.link,
+              s.isNote ? YuLiIcons.fileText : YuLiIcons.link,
               size: 16,
               color: s.enabled ? widget.accent : yMuted,
             ),
@@ -2723,13 +2717,13 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
             if (s.isUrl) ...[
               const SizedBox(width: 4),
               _iconBtn(
-                Icons.refresh,
+                YuLiIcons.refresh,
                 'Actualizar',
                 _busy ? null : () => _refetch(s),
               ),
             ],
             const SizedBox(width: 4),
-            _iconBtn(Icons.close, 'Quitar', _busy ? null : () => _remove(s)),
+            _iconBtn(YuLiIcons.close, 'Quitar', _busy ? null : () => _remove(s)),
           ],
         ),
       ),
@@ -3054,7 +3048,7 @@ class _SourceViewDialog extends StatelessWidget {
                             const Padding(
                               padding: EdgeInsets.only(top: 1),
                               child: Icon(
-                                Icons.info_outline,
+                                YuLiIcons.info,
                                 size: 14,
                                 color: yAmber,
                               ),

@@ -19,6 +19,7 @@ import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
@@ -678,21 +679,26 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   /// Place a new empty task block at the centre of the current viewport.
-  void _insertTaskBlock() {
-    final screen = MediaQuery.of(context).size;
-    final center = _screenToWorld(Offset(screen.width / 2, screen.height / 2));
+  void _enterTaskMode() {
+    setState(() => _tool = DrawTool.task);
+    _lassoCtrl.deselect();
+    HapticFeedback.lightImpact();
+  }
+
+  /// Place a task block at [worldPos] (tap-to-insert in task mode).
+  void _insertTaskBlockAt(Offset worldPos) {
     final w = (kCanvasTaskBlockDefaultW / _viewScale).clamp(60.0, 600.0);
     final h = (w * 0.375).clamp(40.0, 400.0);
     final block = CanvasTaskBlock(
-      x: center.dx - w / 2,
-      y: center.dy - h / 2,
+      x: worldPos.dx - w / 2,
+      y: worldPos.dy - h / 2,
       w: w,
       h: h,
     );
     final before = _snapshot();
     setState(() {
       _data.taskBlocks.add(block);
-      if (_tool != DrawTool.lasso) _tool = DrawTool.lasso;
+      _tool = DrawTool.task;
     });
     _commit(before);
     _persist();
@@ -903,6 +909,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   bool _shouldDraw(PointerDeviceKind kind) {
     if (_tool == DrawTool.text) return false; // text mode never draws
+    if (_tool == DrawTool.task) return false; // task mode never draws
     if (kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus) {
       return true;
@@ -1125,6 +1132,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_tool == DrawTool.text) {
       final p = _screenToWorld(d.localPosition);
       _insertTextBlockAt(p);
+      return;
+    }
+    if (_tool == DrawTool.task) {
+      final p = _screenToWorld(d.localPosition);
+      _insertTaskBlockAt(p);
       return;
     }
     if (_tool != DrawTool.lasso || !_palmRejection) return;
@@ -2001,6 +2013,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
+          if (_tool != DrawTool.lasso) {
+            setState(() => _tool = DrawTool.lasso);
+          }
           _lassoMutate(
             () => _lassoCtrl.pasteAt(
               _showPasteAt!,
@@ -2021,14 +2036,21 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
             ],
           ),
-          child: Text(
-            'PEGAR',
-            style: yMono(
-              size: 11,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yInk,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(YuLiIcons.clipboard, size: 12, color: yInk),
+              const SizedBox(width: 6),
+              Text(
+                'PEGAR',
+                style: yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.4,
+                  color: yInk,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2413,8 +2435,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             .valueOrNull
             ?.isNotEmpty) ??
         false;
-    // Pin the per-note AI session to this view's lifetime (discarded on leave).
-    ref.watch(aiSessionProvider(widget.note.id));
 
     return Scaffold(
       backgroundColor: yCream,
@@ -2434,6 +2454,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                       accent: _accent,
                       hasAiKey: hasAiKey,
                       aiLinked: aiLinked,
+                      noteTitle: widget.note.title ?? '',
                       onExpand: () => setState(() => _headerCollapsed = false),
                       onReset: _resetView,
                       onLink: () => _linkToLab(spaces),
@@ -2451,7 +2472,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                       children: [
                         ModeHeader(
                           mode: 'PIZARRA',
-                          subtitle: 'INFINITA · CANVAS · PAN + ZOOM',
+                          subtitle: (widget.note.title?.trim().isNotEmpty == true)
+                              ? 'INFINITA · CANVAS · PAN + ZOOM · ${widget.note.title!.trim()}'
+                              : 'INFINITA · CANVAS · PAN + ZOOM',
                           color: _accent,
                           onBack: () => Navigator.pop(context),
                           headerRight: [
@@ -2475,7 +2498,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 ),
                               ),
                               child: const Icon(
-                                Icons.center_focus_strong,
+                                YuLiIcons.scan,
                                 color: yInk,
                                 size: 16,
                               ),
@@ -2496,7 +2519,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 ),
                               ),
                               child: const Icon(
-                                Icons.all_inclusive,
+                                YuLiIcons.infinity,
                                 color: yCream,
                                 size: 16,
                               ),
@@ -2529,7 +2552,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                   ),
                                 ),
                                 child: Icon(
-                                  Icons.auto_awesome,
+                                  YuLiIcons.sparkles,
                                   color: hasAiKey ? yCream : yCream2,
                                   size: 16,
                                 ),
@@ -2552,7 +2575,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 ),
                               ),
                               child: const Icon(
-                                Icons.keyboard_arrow_up,
+                                YuLiIcons.chevronUp,
                                 color: yInk,
                                 size: 18,
                               ),
@@ -2600,6 +2623,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                         ? false
                                         : _tool == DrawTool.text
                                         ? false
+                                        : _tool == DrawTool.task
+                                        ? false
                                         : _tool == DrawTool.lasso
                                         ? (_lassoCtrl.phase ==
                                                 LassoPhase.idle &&
@@ -2611,6 +2636,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                     _exportMarquee
                                         ? true
                                         : _tool == DrawTool.text
+                                        ? true
+                                        : _tool == DrawTool.task
                                         ? true
                                         : _tool == DrawTool.lasso
                                         ? (_lassoCtrl.phase ==
@@ -2666,6 +2693,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                             top: _eraserCursor!.dy - _eraserScreenRadius,
                             child: const EraserCursor(
                               radius: _eraserScreenRadius,
+                            ),
+                          ),
+                        // Lives INSIDE the canvas Stack so the painter shares the
+                        // InteractiveViewer's viewport space — the same space as
+                        // `e.localPosition` used for handle hit-testing. In the
+                        // outer Stack it was offset by the header height, so the
+                        // visible handles sat above their hit area and dragging
+                        // them started a fresh marquee instead of resizing.
+                        if (_exportMarquee)
+                          Positioned.fill(
+                            child: _ExportMarqueeOverlay(
+                              accent: _accent,
+                              viewCtrl: _viewCtrl,
+                              worldRect: _marqueeWorld,
+                              onConfirm: _confirmMarquee,
+                              onCancel: _cancelMarquee,
                             ),
                           ),
                       ],
@@ -2873,16 +2916,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
             ),
           ],
-          if (_exportMarquee)
-            Positioned.fill(
-              child: _ExportMarqueeOverlay(
-                accent: _accent,
-                viewCtrl: _viewCtrl,
-                worldRect: _marqueeWorld,
-                onConfirm: _confirmMarquee,
-                onCancel: _cancelMarquee,
-              ),
-            ),
             ],
           ),
         ),
@@ -3146,21 +3179,21 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           child: Row(
             children: [
               _toolBtn(
-                icon: Icons.edit_outlined,
+                icon: YuLiIcons.pen,
                 active: _tool == DrawTool.pen,
                 tooltip: 'Lápiz',
                 onTap: () => _selectTool(DrawTool.pen),
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.gesture,
+                icon: YuLiIcons.penTool,
                 active: _tool == DrawTool.fountainPen,
                 tooltip: 'Pluma fuente',
                 onTap: () => _selectTool(DrawTool.fountainPen),
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.highlight,
+                icon: YuLiIcons.highlighter,
                 active: _tool == DrawTool.highlighter,
                 tooltip: 'Resaltador',
                 onTap: () => _selectTool(DrawTool.highlighter),
@@ -3169,8 +3202,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               _toolBtn(
                 icon:
                     _eraserMode == EraserMode.partial
-                        ? Icons.cleaning_services_outlined
-                        : Icons.auto_fix_high,
+                        ? YuLiIcons.eraser
+                        : YuLiIcons.wandSparkles,
                 active: _tool == DrawTool.eraser,
                 tooltip: 'Borrador',
                 onTap: () {
@@ -3183,35 +3216,35 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.highlight_alt,
+                icon: YuLiIcons.lasso,
                 active: _tool == DrawTool.lasso,
                 tooltip: 'Lazo',
                 onTap: () => _selectTool(DrawTool.lasso),
               ),
               _divider(),
               _toolBtn(
-                icon: Icons.image_outlined,
+                icon: YuLiIcons.image,
                 active: _imagePanelOpen,
                 tooltip: 'Imagen',
                 onTap: _toggleImagePanel,
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.checklist,
-                active: false,
+                icon: YuLiIcons.listChecks,
+                active: _tool == DrawTool.task,
                 tooltip: 'Tareas',
-                onTap: _insertTaskBlock,
+                onTap: _enterTaskMode,
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.notes,
+                icon: YuLiIcons.textInitial,
                 active: _tool == DrawTool.text,
                 tooltip: 'Texto',
                 onTap: _enterTextMode,
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.category_outlined,
+                icon: YuLiIcons.shapes,
                 active: _shapePopupOpen,
                 tooltip: 'Figuras',
                 onTap: _toggleShapePopup,
@@ -3243,7 +3276,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
               _divider(),
               _toolBtn(
-                icon: Icons.undo,
+                icon: YuLiIcons.undo,
                 active: false,
                 enabled: _undoStack.isNotEmpty,
                 tooltip: 'Deshacer',
@@ -3251,7 +3284,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: Icons.redo,
+                icon: YuLiIcons.redo,
                 active: false,
                 enabled: _redoStack.isNotEmpty,
                 tooltip: 'Rehacer',
@@ -3259,7 +3292,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
               _divider(),
               _toolBtn(
-                icon: Icons.more_horiz,
+                icon: YuLiIcons.moreHorizontal,
                 active: _morePopupOpen,
                 tooltip: 'Más',
                 onTap: _toggleMorePopup,
@@ -3357,13 +3390,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         runSpacing: 8,
         children: [
           _toolBtn(
-            icon: _locked ? Icons.lock : Icons.lock_open,
+            icon: _locked ? YuLiIcons.lock : YuLiIcons.lockOpen,
             active: _locked,
             label: _locked ? 'ZOOM OFF' : 'ZOOM ON',
             onTap: () => setState(() => _locked = !_locked),
           ),
           _toolBtn(
-            icon: Icons.auto_graph,
+            icon: YuLiIcons.lineSquiggle,
             active: _stabilizer.isOn,
             label: 'ESTAB · ${_stabilizer.label}',
             onTap: () {
@@ -3372,7 +3405,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.format_color_fill,
+            icon: YuLiIcons.paintBucket,
             active: _fillShapes,
             label: 'RELLENO',
             onTap: () {
@@ -3381,7 +3414,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.back_hand_outlined,
+            icon: YuLiIcons.hand,
             active: _palmRejection,
             label: 'PALMA',
             onTap: () {
@@ -3390,7 +3423,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.grid_on,
+            icon: YuLiIcons.layoutGrid,
             active: _bgPopupOpen,
             label: 'FONDO',
             onTap: () {
@@ -3399,7 +3432,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.fit_screen,
+            icon: YuLiIcons.maximize,
             active: false,
             label: 'ENCUADRAR',
             onTap: () {
@@ -3408,13 +3441,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
-            icon: Icons.ios_share,
+            icon: YuLiIcons.share,
             active: false,
             label: 'EXPORTAR',
             onTap: _startExport,
           ),
           _toolBtn(
-            icon: Icons.delete_outline,
+            icon: YuLiIcons.trash,
             active: false,
             label: 'BORRAR',
             onTap: () {
@@ -3446,7 +3479,7 @@ class _EyedropperHint extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.colorize, size: 14, color: yInk),
+          const Icon(YuLiIcons.palette, size: 14, color: yInk),
           const SizedBox(width: 8),
           Text(
             'TOCA UN TRAZO PARA COPIAR EL COLOR',
@@ -3490,6 +3523,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
   final Color accent;
   final bool hasAiKey;
   final bool aiLinked;
+  final String noteTitle;
   final VoidCallback onExpand;
   final VoidCallback onReset;
   final VoidCallback onLink;
@@ -3501,6 +3535,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
     required this.accent,
     required this.hasAiKey,
     required this.aiLinked,
+    required this.noteTitle,
     required this.onExpand,
     required this.onReset,
     required this.onLink,
@@ -3530,7 +3565,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.arrow_back, color: yInk, size: 16),
+              child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
             ),
           ),
           const SizedBox(width: 10),
@@ -3538,7 +3573,9 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'PIZARRA · @${folder.name}',
+              noteTitle.trim().isEmpty
+                  ? 'PIZARRA · @${folder.name}'
+                  : 'PIZARRA · @${folder.name} · ${noteTitle.trim()}',
               style: ySans(
                 size: 15,
                 weight: FontWeight.w700,
@@ -3563,7 +3600,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(
-                Icons.center_focus_strong,
+                YuLiIcons.scan,
                 color: yInk,
                 size: 16,
               ),
@@ -3581,7 +3618,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 color: yLab,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(Icons.all_inclusive, color: yCream, size: 16),
+              child: const Icon(YuLiIcons.infinity, color: yCream, size: 16),
             ),
           ),
           const SizedBox(width: 6),
@@ -3600,7 +3637,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                   border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
                 child: Icon(
-                  Icons.auto_awesome,
+                  YuLiIcons.sparkles,
                   color: hasAiKey ? yCream : yCream2,
                   size: 16,
                 ),
@@ -3620,7 +3657,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(
-                Icons.keyboard_arrow_down,
+                YuLiIcons.chevronDown,
                 color: yInk,
                 size: 18,
               ),
@@ -3944,7 +3981,7 @@ class _ExportMarqueeOverlay extends StatelessWidget {
                         color: yCream,
                         border: Border.all(color: yBorderStrong, width: yLineMid),
                       ),
-                      child: const Icon(Icons.close, color: yInk, size: 18),
+                      child: const Icon(YuLiIcons.close, color: yInk, size: 18),
                     ),
                   ),
                 ],

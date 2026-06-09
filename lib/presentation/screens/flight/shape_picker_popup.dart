@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'shape_recognizer.dart';
 
 /// Tiny popup to insert a clean shape onto the canvas. Each chip drops the
@@ -30,15 +31,15 @@ class ShapePickerPopup extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _chip('RECT', Icons.crop_square, ShapeKind.rectangle),
+          _chip('RECT', YuLiIcons.square, ShapeKind.rectangle),
           const SizedBox(width: 8),
-          _chip('ÓVALO', Icons.circle_outlined, ShapeKind.ellipse),
+          _chip('ÓVALO', YuLiIcons.circle, ShapeKind.ellipse),
           const SizedBox(width: 8),
-          _chip('TRIÁNGULO', Icons.change_history, ShapeKind.triangle),
+          _chip('TRIÁNGULO', YuLiIcons.triangle, ShapeKind.triangle),
           const SizedBox(width: 8),
-          _chip('LÍNEA', Icons.horizontal_rule, ShapeKind.line),
+          _chip('LÍNEA', YuLiIcons.minus, ShapeKind.line),
           const SizedBox(width: 8),
-          _chip('FLECHA', Icons.trending_flat, ShapeKind.arrow),
+          _chip('FLECHA', YuLiIcons.arrowRight, ShapeKind.arrow),
         ],
       ),
     );

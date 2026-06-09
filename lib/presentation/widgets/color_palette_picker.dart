@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
+import '../theme/lab_icons.dart';
 import 'yuli_design.dart' show yBorderStrong;
 
 /// Brutalist color picker for folders / spaces / notes. Shows [folderPaletteSections]
@@ -82,7 +83,7 @@ class _Swatch extends StatelessWidget {
             width: selected ? borderWidthHeavy : 1.2,
           ),
         ),
-        child: selected ? Icon(Icons.check, size: 16, color: checkColor) : null,
+        child: selected ? Icon(YuLiIcons.check, size: 16, color: checkColor) : null,
       ),
     );
   }

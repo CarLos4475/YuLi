@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/ink_recognizer_provider.dart';
 import '../../providers/ai_providers.dart';
@@ -40,8 +41,7 @@ class SettingsScreen extends ConsumerWidget {
                       width: 40,
                       height: 40,
                       alignment: Alignment.center,
-                      child: Icon(
-                        Icons.arrow_back,
+                      child: Icon(YuLiIcons.arrowLeft,
                         size: 20,
                         color: paperColor(context),
                       ),
@@ -373,8 +373,8 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
     final paper = paperColor(context);
     final supported = LauncherIconService.isSupported;
     final now = DateTime.now();
-    final band = TimeBandRules.bandFor(now);
-    final nextSwap = TimeBandRules.nextSwapAfter(now);
+    final slot = IconCycleRules.currentSlot(now);
+    final nextSwap = IconCycleRules.nextSwapAfter(now);
     final enabled = supported && !_loading && !_busy;
     return Container(
       width: double.infinity,
@@ -445,7 +445,7 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Franja actual: ${band.label}',
+                    'Bloque actual: ${slot.icon.label}',
                     style: bodyS.copyWith(color: ink),
                   ),
                   const SizedBox(height: 2),
@@ -581,7 +581,7 @@ class _CrashLogBlock extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.bug_report_outlined, size: 20, color: ink),
+            Icon(YuLiIcons.bug, size: 20, color: ink),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -603,7 +603,7 @@ class _CrashLogBlock extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 18, color: inkGray),
+            Icon(YuLiIcons.chevronRight, size: 18, color: inkGray),
           ],
         ),
       ),
@@ -633,7 +633,7 @@ class _TrashBlock extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.delete_outline, size: 20, color: ink),
+            Icon(YuLiIcons.trash, size: 20, color: ink),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -655,7 +655,7 @@ class _TrashBlock extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 18, color: inkGray),
+            Icon(YuLiIcons.chevronRight, size: 18, color: inkGray),
           ],
         ),
       ),
@@ -686,7 +686,7 @@ class _ImagesStorageBlock extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.image_outlined, size: 20, color: ink),
+            Icon(YuLiIcons.image, size: 20, color: ink),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -713,7 +713,7 @@ class _ImagesStorageBlock extends ConsumerWidget {
               style: labelBold.copyWith(color: ink, fontSize: 13),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.chevron_right, size: 18, color: inkGray),
+            Icon(YuLiIcons.chevronRight, size: 18, color: inkGray),
           ],
         ),
       ),

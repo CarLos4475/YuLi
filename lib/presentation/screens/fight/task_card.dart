@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart' show cleanMention, ensureFolderMention;
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
@@ -117,7 +118,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
           secondaryBackground: _SwipeBackground(
             color: accentFight,
             alignment: Alignment.centerRight,
-            icon: Icons.delete_outline,
+            icon: YuLiIcons.trash,
           ),
           child: card,
         ),
@@ -146,12 +147,12 @@ class _TaskCardState extends ConsumerState<TaskCard>
         background: _SwipeBackground(
           color: Colors.green,
           alignment: Alignment.centerLeft,
-          icon: Icons.check,
+          icon: YuLiIcons.check,
         ),
         secondaryBackground: _SwipeBackground(
           color: accentFight,
           alignment: Alignment.centerRight,
-          icon: Icons.delete_outline,
+          icon: YuLiIcons.trash,
         ),
         child: card,
       ),
@@ -290,8 +291,8 @@ class _CardContent extends ConsumerWidget {
               ),
               child: Icon(
                 task.dueDate != null
-                    ? Icons.access_time_filled
-                    : Icons.access_time,
+                    ? YuLiIcons.timer
+                    : YuLiIcons.clock,
                 size: 12,
                 color: task.dueDate != null ? paperLight : inkBlack,
               ),

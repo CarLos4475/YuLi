@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 class LassoMiniToolbar extends StatefulWidget {
   final VoidCallback onDelete;
@@ -138,7 +139,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
             children: [
               if (widget.onRecognizeText != null) ...[
                 _Btn(
-                  icon: Icons.text_fields,
+                  icon: YuLiIcons.type,
                   label: 'TEXTO',
                   onTap: widget.onRecognizeText!,
                 ),
@@ -146,7 +147,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
               ],
               if (widget.onSendToYuli != null) ...[
                 _Btn(
-                  icon: Icons.auto_awesome,
+                  icon: YuLiIcons.sparkles,
                   label: 'YULI',
                   onTap: widget.onSendToYuli!,
                 ),
@@ -154,7 +155,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
               ],
               if (widget.onSendMathToYuli != null) ...[
                 _Btn(
-                  icon: Icons.functions,
+                  icon: YuLiIcons.sigma,
                   label: 'MATH',
                   onTap: widget.onSendMathToYuli!,
                 ),
@@ -162,26 +163,26 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
               ],
               if (widget.onCrop != null) ...[
                 _Btn(
-                  icon: Icons.crop,
+                  icon: YuLiIcons.crop,
                   label: 'RECORTAR',
                   onTap: widget.onCrop!,
                 ),
                 _sep(),
               ],
               _Btn(
-                icon: Icons.delete_outline,
+                icon: YuLiIcons.trash,
                 label: 'BORRAR',
                 onTap: widget.onDelete,
               ),
               _sep(),
               _Btn(
-                icon: Icons.copy_outlined,
+                icon: YuLiIcons.copy,
                 label: 'DUPLICAR',
                 onTap: widget.onDuplicate,
               ),
               _sep(),
               _Btn(
-                icon: Icons.palette_outlined,
+                icon: YuLiIcons.palette,
                 label: 'COLOR',
                 onTap:
                     () => setState(() {
@@ -191,7 +192,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
               ),
               _sep(),
               _Btn(
-                icon: Icons.line_weight,
+                icon: YuLiIcons.penLine,
                 label: 'GROSOR',
                 onTap:
                     () => setState(() {
@@ -200,22 +201,22 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
                     }),
               ),
               _sep(),
-              _Btn(icon: Icons.flip, label: 'H', onTap: widget.onFlipH),
+              _Btn(icon: YuLiIcons.flipHorizontal, label: 'H', onTap: widget.onFlipH),
               _sep(),
               _Btn(
-                icon: Icons.flip_outlined,
+                icon: YuLiIcons.flipVertical,
                 label: 'V',
                 onTap: widget.onFlipV,
               ),
               _sep(),
               _Btn(
-                icon: Icons.content_copy,
+                icon: YuLiIcons.copy,
                 label: 'COPIAR',
                 onTap: widget.onCopy,
               ),
               _sep(),
               _Btn(
-                icon: Icons.content_cut,
+                icon: YuLiIcons.scissors,
                 label: 'CORTAR',
                 onTap: widget.onCut,
               ),

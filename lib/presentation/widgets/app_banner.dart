@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
+import '../theme/lab_icons.dart';
 
 class AppBanner extends StatelessWidget {
   final String message;
@@ -57,7 +58,7 @@ class AppBanner extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Icon(
-                  Icons.close,
+                  YuLiIcons.close,
                   size: 16,
                   color: inkGray,
                 ),

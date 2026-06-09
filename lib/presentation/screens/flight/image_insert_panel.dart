@@ -9,6 +9,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 
 /// Bottom panel to insert an image onto the drawing canvas. Shows recent
 /// device photos (via photo_manager) plus Gallery / Camera buttons
@@ -135,10 +136,10 @@ class _ImageInsertPanelState extends State<ImageInsertPanel> {
                     color: yMuted,
                   )),
               const Spacer(),
-              _action(Icons.photo_library_outlined, 'GALERÍA',
+              _action(YuLiIcons.images, 'GALERÍA',
                   () => _pickFromPicker(ImageSource.gallery)),
               const SizedBox(width: 6),
-              _action(Icons.photo_camera_outlined, 'CÁMARA',
+              _action(YuLiIcons.camera, 'CÁMARA',
                   () => _pickFromPicker(ImageSource.camera)),
             ],
           ),

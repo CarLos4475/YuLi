@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_tokens.dart';
+import '../theme/lab_icons.dart';
 import 'yuli_design.dart' show cleanMention;
 import '../providers/task_providers.dart';
 import '../providers/folder_providers.dart';
@@ -144,7 +145,7 @@ class PanelTaskTile extends ConsumerWidget {
             onTap: () => setTaskDone(ref, task.id, done: true),
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: Icon(Icons.check, color: accentFight, size: 18),
+              child: Icon(YuLiIcons.check, color: accentFight, size: 18),
             ),
           ),
         ],

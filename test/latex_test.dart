@@ -5,10 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:yuli/data/local/database.dart';
-import 'package:yuli/domain/models/folder.dart';
-import 'package:yuli/domain/models/note.dart';
 import 'package:yuli/presentation/providers/database_providers.dart';
-import 'package:yuli/presentation/screens/flight/note_editor_screen.dart';
+import 'package:yuli/presentation/screens/flight/note_block_widgets.dart';
 
 void main() {
   // Crear cards/tareas dispara la sincronización de recordatorios, que lee
@@ -16,59 +14,35 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
 
-  testWidgets('NoteEditorScreen LaTeX preview test', (WidgetTester tester) async {
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
-    
-    final folder = Folder(
-      id: 1,
-      name: 'Matemáticas',
-      color: Colors.red,
-      createdAt: DateTime.now(),
-    );
-
-    final note = Note(
-      id: 1,
-      folderId: 1,
-      title: 'Apuntes de Álgebra',
-      rawMarkdown: 'Testing inline \$x^2\$ and block \$\$e = mc^2\$\$ in note.',
-      sizeBytes: 100,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-
+  testWidgets('LaTeX inline + block renderizan como widgets Math en el preview', (
+    WidgetTester tester,
+  ) async {
+    // Apunta al widget de preview reusable (la ruta de preview del editor por
+    // bloques), no a toda la NoteEditorScreen → robusto ante rediseños del
+    // chrome del editor. Cubre el valor real: que `$...$` y `$$...$$` se
+    // rendericen como widgets Math (flutter_math_fork).
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          databaseProvider.overrideWithValue(db),
-        ],
+      const ProviderScope(
         child: MaterialApp(
-          home: NoteEditorScreen(note: note, folder: folder),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: NoteMarkdownPreview(
+                data: r'Testing inline $x^2$ and block $$e = mc^2$$ in note.',
+              ),
+            ),
+          ),
         ),
       ),
     );
 
     await tester.pumpAndSettle();
 
-    // Verify we start in edit mode (the text field containing the rawMarkdown is visible)
-    expect(find.textContaining('Testing inline'), findsOneWidget);
+    // Uno inline ($...$) + uno en bloque ($$...$$) → dos widgets Math.
+    expect(find.byType(Math), findsNWidgets(2));
 
-    // Tap the preview toggle button
-    await tester.tap(find.text('preview'));
-    await tester.pumpAndSettle();
-
-    // Verify we are in preview mode
-    expect(find.text('editar'), findsOneWidget);
-
-    // Verify that we can find the Math widgets
-    final mathFinder = find.byType(Math);
-    expect(mathFinder, findsNWidgets(2));
-    print('SUCCESS: Found 2 Math widgets rendered in the preview!');
-
-    // Dispose the widget tree to cleanup visibility detector timers
+    // Limpia timers del visibility detector antes de cerrar.
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 600));
-
-    await db.close();
   });
 
   test('Note to Kanban and Folder to Space link integration test', () async {

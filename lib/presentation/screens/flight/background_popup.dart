@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../domain/models/page_background.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'background_paint.dart';
 
 /// Background chooser popup: pattern + paper color, plus a page/all-notebook
@@ -63,7 +64,7 @@ class BackgroundPopup extends StatelessWidget {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onClose,
-                child: const Icon(Icons.close, size: 16, color: yInk),
+                child: const Icon(YuLiIcons.close, size: 16, color: yInk),
               ),
             ],
           ),
@@ -197,7 +198,7 @@ class BackgroundPopup extends StatelessWidget {
           ),
         ),
         child: Icon(
-          Icons.more_horiz,
+          YuLiIcons.moreHorizontal,
           size: 16,
           color: isDefault ? yInk : _on(color),
         ),

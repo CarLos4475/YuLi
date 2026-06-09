@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
@@ -140,7 +141,7 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.close, size: 20, color: yInk),
+                    child: const Icon(YuLiIcons.close, size: 20, color: yInk),
                   ),
                 ],
               ),
@@ -173,7 +174,7 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
                       shrinkWrap: true,
                       children: [
                         _DestRow(
-                          icon: Icons.add,
+                          icon: YuLiIcons.plus,
                           label: 'NUEVA NOTA AQUÍ',
                           accent: widget.accent,
                           highlight: true,
@@ -193,7 +194,7 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
                         else
                           for (final n in notes)
                             _DestRow(
-                              icon: Icons.description_outlined,
+                              icon: YuLiIcons.fileText,
                               label: n.displayTitle.isEmpty
                                   ? 'Sin título'
                                   : n.displayTitle,

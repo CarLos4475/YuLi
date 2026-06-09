@@ -3,6 +3,7 @@ import '../../widgets/yuli_design.dart' as y;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
@@ -176,7 +177,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                     ),
                     const SizedBox(width: 12),
                     _SheetIcon(
-                      icon: Icons.check,
+                      icon: YuLiIcons.check,
                       active: !_isDirty,
                       color: y.yLab,
                       onTap: () async {
@@ -188,15 +189,15 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                     _SheetIcon(
                       icon:
                           _isPreview
-                              ? Icons.edit_outlined
-                              : Icons.visibility_outlined,
+                              ? YuLiIcons.pen
+                              : YuLiIcons.eye,
                       active: _isPreview,
                       color: y.yFlight,
                       onTap: () => setState(() => _isPreview = !_isPreview),
                     ),
                     const SizedBox(width: 6),
                     _SheetIcon(
-                      icon: Icons.close,
+                      icon: YuLiIcons.close,
                       active: false,
                       color: y.yCream,
                       onTap: () => Navigator.pop(context),
@@ -312,7 +313,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.description_outlined,
+                            YuLiIcons.fileText,
                             size: 16,
                             color: y.yFlight,
                           ),
@@ -327,7 +328,7 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
                               ),
                             ),
                           ),
-                          Icon(Icons.arrow_forward, size: 14, color: y.yFlight),
+                          Icon(YuLiIcons.arrowRight, size: 14, color: y.yFlight),
                         ],
                       ),
                     ),
@@ -429,8 +430,28 @@ class _KanbanCardDetailState extends ConsumerState<KanbanCardDetail> {
           ),
     );
     if (confirmed == true && context.mounted) {
-      await _repository.delete(widget.card.id);
+      // Capture before the pop: the messenger (app-level → survives this screen
+      // closing) and the full card (to restore it faithfully on undo).
+      final messenger = ScaffoldMessenger.of(context);
+      final deleted = widget.card;
+      await _repository.delete(deleted.id);
       if (context.mounted) Navigator.pop(context);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 5),
+            content: Text(
+              'Tarjeta eliminada',
+              style: y.yBody(size: 14, color: y.yCream),
+            ),
+            action: SnackBarAction(
+              label: 'DESHACER',
+              textColor: y.yCream,
+              onPressed: () => _repository.restore(deleted),
+            ),
+          ),
+        );
     }
   }
 }
@@ -985,28 +1006,28 @@ class _AppearChips extends StatelessWidget {
     final chips = <Widget>[];
     if (currentColumn != null) {
       chips.add(
-        _AppearChip(glyph: '#', label: 'Kanban / ${currentColumn!.name}'),
+        _AppearChip(icon: YuLiIcons.kanban, label: 'Kanban / ${currentColumn!.name}'),
       );
     }
     if (card.dueDate != null) {
       chips.add(
         _AppearChip(
-          glyph: '+',
+          icon: YuLiIcons.calendar,
           label: 'Calendario / ${_fmtShort(card.dueDate!)}',
         ),
       );
       chips.add(
         _AppearChip(
-          glyph: '~',
+          icon: YuLiIcons.timeline,
           label: 'Timeline · ${_fmtShort(card.dueDate!)}',
         ),
       );
     }
     if (card.originTaskId != null) {
-      chips.add(const _AppearChip(glyph: 'x', label: 'FIGHT / origen task'));
+      chips.add(const _AppearChip(icon: YuLiIcons.xSquare, label: 'FIGHT / origen task'));
     }
     if (card.sourceNoteId != null) {
-      chips.add(const _AppearChip(glyph: '/', label: 'FLIGHT / nota'));
+      chips.add(const _AppearChip(icon: YuLiIcons.fileText, label: 'FLIGHT / nota'));
     }
     return Wrap(spacing: 6, runSpacing: 6, children: chips);
   }
@@ -1016,9 +1037,9 @@ class _AppearChips extends StatelessWidget {
 }
 
 class _AppearChip extends StatelessWidget {
-  final String glyph;
+  final IconData icon;
   final String label;
-  const _AppearChip({required this.glyph, required this.label});
+  const _AppearChip({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -1031,10 +1052,7 @@ class _AppearChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            glyph,
-            style: const TextStyle(fontSize: 11, color: y.yInk, height: 1.0),
-          ),
+          Icon(icon, size: 12, color: y.yInk),
           const SizedBox(width: 6),
           Text(
             label.toUpperCase(),

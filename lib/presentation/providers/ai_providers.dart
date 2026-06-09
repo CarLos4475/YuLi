@@ -18,20 +18,25 @@ final webReaderProvider =
 final jinaHasKeyProvider =
     FutureProvider<bool>((ref) => ref.read(jinaKeyStoreProvider).hasKey());
 
-/// Per-note chat session, keyed by note id. autoDispose → lives while the
-/// note/pizarra/cuaderno view keeps it alive (the screen watches it) and is
-/// discarded when you leave that view. The chat sheet is just a window over it.
+/// Per-note chat session, keyed by note id. Created lazily — only when the chat
+/// (or an incoming OCR/context anchor) first reads it, NOT on every editor build.
+/// NOT autoDispose → once created, the session (and its in-memory messages) lives
+/// for the whole app run, so leaving the note/pizarra/cuaderno view and coming
+/// back keeps the conversation. Only a full app close (process death) clears the
+/// messages — they're in-memory; the context anchor is persisted separately
+/// (SharedPreferences). The chat sheet is just a window over it.
 final aiSessionProvider =
-    Provider.autoDispose.family<AiChatSession, int>((ref, noteId) {
+    Provider.family<AiChatSession, int>((ref, noteId) {
   final session = AiChatSession(noteId);
   ref.onDispose(session.dispose);
   return session;
 });
 
 /// Per-LAB-space chat session (scope 'lab' → no collision with note sessions).
-/// Context = the serialized board, set by the chat on open.
+/// Context = the serialized board, (re)synced via ↻. NOT autoDispose → survives
+/// leaving the space detail and coming back; cleared only on a full app close.
 final aiLabSessionProvider =
-    Provider.autoDispose.family<AiChatSession, int>((ref, labSpaceId) {
+    Provider.family<AiChatSession, int>((ref, labSpaceId) {
   final session = AiChatSession(labSpaceId, scope: 'lab');
   ref.onDispose(session.dispose);
   return session;

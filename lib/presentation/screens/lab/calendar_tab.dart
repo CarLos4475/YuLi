@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart' as y;
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
@@ -154,7 +155,7 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
                         ),
                         GestureDetector(
                           onTap: () => Navigator.pop(ctx),
-                          child: Icon(Icons.close, size: 16, color: y.yCream),
+                          child: Icon(YuLiIcons.close, size: 16, color: y.yCream),
                         ),
                       ],
                     ),
@@ -292,9 +293,9 @@ class _CalendarTabState extends ConsumerState<CalendarTab>
       titleColor: widget.space.accentColor,
       kicker: dateText.toUpperCase(),
       right: [
-        y.NavBtn(glyph: '‹', onTap: _prev),
+        y.NavBtn(icon: YuLiIcons.chevronLeft, onTap: _prev),
         const SizedBox(width: 4),
-        y.NavBtn(glyph: '›', onTap: _next),
+        y.NavBtn(icon: YuLiIcons.chevronRight, onTap: _next),
         const SizedBox(width: 8),
         _ViewToggleButton(
           label: 'SEMANA',
@@ -353,7 +354,7 @@ class _NoDatesMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.date_range, size: 32, color: fg),
+            Icon(YuLiIcons.calendarDays, size: 32, color: fg),
             const SizedBox(height: 12),
             Text(
               'ESTABLECER FECHAS DEL PROYECTO',
@@ -750,6 +751,7 @@ class _MonthView extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
+                        color: accentColor,
                         border:
                             e.key < 6
                                 ? Border(
@@ -902,7 +904,7 @@ class _MonthView extends StatelessWidget {
 
 // ─── Sin Fecha Section ───────────────────────────────────────────────────
 
-class _SinFechaSection extends StatelessWidget {
+class _SinFechaSection extends StatefulWidget {
   final List<KanbanCard> cards;
   final Color ink;
   final Color accentColor;
@@ -922,93 +924,121 @@ class _SinFechaSection extends StatelessWidget {
   });
 
   @override
+  State<_SinFechaSection> createState() => _SinFechaSectionState();
+}
+
+class _SinFechaSectionState extends State<_SinFechaSection> {
+  bool _collapsed = true;
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: ink, width: borderWidth)),
+        border: Border(top: BorderSide(color: widget.ink, width: borderWidth)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: ink.withAlpha(10),
-              border: Border(
-                bottom: BorderSide(
-                  color: ink.withAlpha(40),
-                  width: borderWidth,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _collapsed = !_collapsed),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: widget.accentColor,
+                border: Border(
+                  bottom: BorderSide(
+                    color: widget.ink,
+                    width: borderWidth,
+                  ),
                 ),
               ),
-            ),
-            child: Text(
-              'SIN FECHA (${cards.length})',
-              style: labelS.copyWith(
-                color: inkGray,
-                fontWeight: FontWeight.w600,
+              child: Row(
+                children: [
+                  Icon(
+                    _collapsed ? YuLiIcons.chevronRight : YuLiIcons.chevronDown,
+                    size: 14,
+                    color: y.yCream,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'SIN FECHA (${widget.cards.length})',
+                    style: labelS.copyWith(
+                      color: y.yCream,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          SizedBox(
-            height: 100,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.all(8),
-              itemCount: cards.length,
-              itemBuilder: (context, i) {
-                final bg = labCardAccent(cards[i]);
-                final isSelected = selectedCardIds.contains(cards[i].id);
-                return GestureDetector(
-                  onTap: onCardTap != null ? () => onCardTap!(cards[i]) : null,
-                  onLongPress:
-                      onCardLongPress != null
-                          ? () => onCardLongPress!(cards[i])
-                          : null,
-                  child: Container(
-                    width: 140,
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: bg,
-                      border: Border.all(
-                        color: isSelected ? accentColor : inkBlack,
-                        width: isSelected ? borderWidthHeavy : borderWidth,
-                      ),
-                      boxShadow: isSelected ? null : shadowM,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            cards[i].title,
-                            style: bodyS.copyWith(
-                              color:
-                                  bg.computeLuminance() > 0.5
-                                      ? inkBlack
-                                      : paperColor(context),
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+          if (!_collapsed)
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.all(8),
+                itemCount: widget.cards.length,
+                itemBuilder: (context, i) {
+                  final bg = labCardAccent(widget.cards[i]);
+                  final isSelected =
+                      widget.selectedCardIds.contains(widget.cards[i].id);
+                  return GestureDetector(
+                    onTap:
+                        widget.onCardTap != null
+                            ? () => widget.onCardTap!(widget.cards[i])
+                            : null,
+                    onLongPress:
+                        widget.onCardLongPress != null
+                            ? () => widget.onCardLongPress!(widget.cards[i])
+                            : null,
+                    child: Container(
+                      width: 140,
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        border: Border.all(
+                          color:
+                              isSelected ? widget.accentColor : inkBlack,
+                          width:
+                              isSelected ? borderWidthHeavy : borderWidth,
                         ),
-                        if (isSelected)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Icon(
-                              Icons.check,
-                              size: 10,
-                              color: accentColor,
+                        boxShadow: isSelected ? null : shadowM,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.cards[i].title,
+                              style: bodyS.copyWith(
+                                color:
+                                    bg.computeLuminance() > 0.5
+                                        ? inkBlack
+                                        : paperColor(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                      ],
+                          if (isSelected)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: Icon(
+                                YuLiIcons.check,
+                                size: 10,
+                                color: widget.accentColor,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
         ],
       ),
     );

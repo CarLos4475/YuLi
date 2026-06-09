@@ -6,6 +6,7 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/edit_item_dialog.dart';
 import '../../../domain/models/kanban_column.dart';
@@ -124,7 +125,7 @@ class _LabScreenState extends ConsumerState<LabScreen> {
                 ),
               ),
             ),
-            IconSquareBtn(icon: Icons.help_outline),
+            IconSquareBtn(icon: YuLiIcons.helpCircle),
           ],
         ),
         _LabToolbar(
@@ -390,14 +391,14 @@ class _SpaceCard extends ConsumerWidget {
         final options = <_SheetOption>[];
 
         options.add(
-          _SheetOption('Cambiar nombre', Icons.edit_outlined, () {
+          _SheetOption('Cambiar nombre', YuLiIcons.pen, () {
             Navigator.pop(ctx);
             _showRename(context, ref);
           }),
         );
 
         options.add(
-          _SheetOption('Cambiar color', Icons.palette_outlined, () {
+          _SheetOption('Cambiar color', YuLiIcons.palette, () {
             Navigator.pop(ctx);
             _showColorPicker(context, ref);
           }),
@@ -405,14 +406,14 @@ class _SpaceCard extends ConsumerWidget {
 
         if (space.status == LabSpaceStatus.paused) {
           options.add(
-            _SheetOption('Reanudar', Icons.play_arrow_outlined, () async {
+            _SheetOption('Reanudar', YuLiIcons.play, () async {
               Navigator.pop(ctx);
               await repo.update(space.copyWith(status: LabSpaceStatus.active));
             }),
           );
         } else if (space.status == LabSpaceStatus.active) {
           options.add(
-            _SheetOption('Pausar', Icons.pause_outlined, () async {
+            _SheetOption('Pausar', YuLiIcons.pause, () async {
               Navigator.pop(ctx);
               await repo.update(space.copyWith(status: LabSpaceStatus.paused));
             }),
@@ -421,7 +422,7 @@ class _SpaceCard extends ConsumerWidget {
 
         if (space.status != LabSpaceStatus.completed) {
           options.add(
-            _SheetOption('Completar', Icons.check_circle_outline, () async {
+            _SheetOption('Completar', YuLiIcons.circleCheck, () async {
               Navigator.pop(ctx);
               await repo.update(
                 space.copyWith(status: LabSpaceStatus.completed),
@@ -432,7 +433,7 @@ class _SpaceCard extends ConsumerWidget {
 
         if (space.status != LabSpaceStatus.archived) {
           options.add(
-            _SheetOption('Archivar', Icons.archive_outlined, () async {
+            _SheetOption('Archivar', YuLiIcons.archive, () async {
               Navigator.pop(ctx);
               await repo.update(
                 space.copyWith(status: LabSpaceStatus.archived),
@@ -444,7 +445,7 @@ class _SpaceCard extends ConsumerWidget {
         if (space.status != LabSpaceStatus.active &&
             space.status != LabSpaceStatus.paused) {
           options.add(
-            _SheetOption('Reactivar', Icons.replay_outlined, () async {
+            _SheetOption('Reactivar', YuLiIcons.refresh, () async {
               Navigator.pop(ctx);
               await repo.update(space.copyWith(status: LabSpaceStatus.active));
             }),
@@ -452,7 +453,7 @@ class _SpaceCard extends ConsumerWidget {
         }
 
         options.add(
-          _SheetOption('Eliminar', Icons.delete_outline, () async {
+          _SheetOption('Eliminar', YuLiIcons.trash, () async {
             Navigator.pop(ctx);
             final ok = await showDialog<bool>(
               context: context,
@@ -744,7 +745,7 @@ class _SpaceCard extends ConsumerWidget {
             // Capabilities
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -753,16 +754,17 @@ class _SpaceCard extends ConsumerWidget {
                       '> VISTAS ACTIVAS',
                       style: yMono(size: 10, color: yMuted, tracking: 1.4),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
                         for (final cap in const [
                           'Kanban',
                           'Horario',
                           'Timeline',
                           'Calendario',
+                          'Grafo',
                         ])
                           CapChip(
                             kind: cap,

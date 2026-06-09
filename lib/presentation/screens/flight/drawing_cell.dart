@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../widgets/yuli_design.dart';
+import '../../theme/lab_icons.dart';
 import 'color_picker.dart';
 import 'fountain_pen_engine.dart';
 import 'drawing_engine.dart';
@@ -76,6 +77,14 @@ class _DrawingCellState extends State<DrawingCell>
   Timer? _pasteTimer;
   Offset? _pastePos;
   Offset? _showPasteAt;
+
+  /// Whether the block's chrome (toolbar + resize strip) is expanded. Starts
+  /// COLLAPSED so a note full of drawing blocks opens compact; the user expands
+  /// the one they want to edit via the chevron. Deterministic toggle, no timers.
+  bool _controlsVisible = false;
+
+  void _toggleControls() =>
+      setState(() => _controlsVisible = !_controlsVisible);
 
   bool _widthPickerOpen = false;
   List<double> _recentWidths = const [3.0, 6.0, 10.0];
@@ -275,6 +284,16 @@ class _DrawingCellState extends State<DrawingCell>
     return kind == PointerDeviceKind.stylus ||
         kind == PointerDeviceKind.invertedStylus;
   }
+
+  bool _isStylus(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.stylus ||
+      kind == PointerDeviceKind.invertedStylus;
+
+  /// Stylus-first gate: unless the block is explicitly locked for finger
+  /// drawing, ONLY the pen interacts with the canvas — a finger is ignored here
+  /// so it scrolls the note instead. (The note's list excludes the stylus from
+  /// its scroll drag devices, so a pen stroke never scrolls.)
+  bool _ignoreForScroll(PointerDeviceKind kind) => !_locked && !_isStylus(kind);
 
   LiveStabilizer? _newStabilizer() =>
       _stabilizer.isOn ? LiveStabilizer(_stabilizer.alpha) : null;
@@ -616,10 +635,39 @@ class _DrawingCellState extends State<DrawingCell>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (widget.header != null) widget.header!,
-              _buildToolbar(),
+              // Collapse the chrome's HEIGHT (not just opacity) so hiding it
+              // makes the block compact instead of leaving an empty band. The
+              // canvas has a fixed height, so it never resizes.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child:
+                    _controlsVisible
+                        ? _buildToolbar()
+                        : const SizedBox(width: double.infinity, height: 0),
+              ),
               _buildCanvas(),
-              _buildResizeStrip(),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: Alignment.bottomCenter,
+                child:
+                    _controlsVisible
+                        ? _buildResizeStrip()
+                        : const SizedBox(width: double.infinity, height: 0),
+              ),
             ],
+          ),
+          // Persistent toggle at the top-LEFT (top-right is the block's ✕):
+          // chevron-up collapses, chevron-down expands. Deterministic.
+          Positioned(
+            left: 8,
+            top: (widget.header != null ? 48 : 0) + 4,
+            child: _ChromeToggle(
+              collapsed: !_controlsVisible,
+              onTap: _toggleControls,
+            ),
           ),
           if (_eyedropperMode)
             Positioned(
@@ -691,43 +739,45 @@ class _DrawingCellState extends State<DrawingCell>
           bottom: BorderSide(color: yBorderStrong, width: yLineThin),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      // Left padding reserves room for the top-left collapse chevron so the
+      // scrolling tools never slide under it.
+      padding: const EdgeInsets.fromLTRB(44, 8, 10, 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
             _toolBtn(
-              icon: _locked ? Icons.lock : Icons.lock_open,
+              icon: _locked ? YuLiIcons.lock : YuLiIcons.lockOpen,
               active: _locked,
               onTap: _toggleLock,
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.edit_outlined,
+              icon: YuLiIcons.pen,
               active: _tool == DrawTool.pen,
               onTap: () => _selectTool(DrawTool.pen),
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.gesture,
+              icon: YuLiIcons.penTool,
               active: _tool == DrawTool.fountainPen,
               onTap: () => _selectTool(DrawTool.fountainPen),
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.highlight,
+              icon: YuLiIcons.highlighter,
               active: _tool == DrawTool.highlighter,
               onTap: () => _selectTool(DrawTool.highlighter),
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.auto_fix_high,
+              icon: YuLiIcons.wandSparkles,
               active: _tool == DrawTool.eraser,
               onTap: () => _selectTool(DrawTool.eraser),
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.highlight_alt,
+              icon: YuLiIcons.lasso,
               active: _tool == DrawTool.lasso,
               label: 'LAZO',
               onTap: () => _selectTool(DrawTool.lasso),
@@ -760,21 +810,21 @@ class _DrawingCellState extends State<DrawingCell>
             const SizedBox(width: 4),
             _divider(),
             _toolBtn(
-              icon: Icons.undo,
+              icon: YuLiIcons.undo,
               active: false,
               enabled: _undoStack.isNotEmpty,
               onTap: _undo,
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.redo,
+              icon: YuLiIcons.redo,
               active: false,
               enabled: _redoStack.isNotEmpty,
               onTap: _redo,
             ),
             _divider(),
             _toolBtn(
-              icon: Icons.auto_graph,
+              icon: YuLiIcons.lineSquiggle,
               active: _stabilizer.isOn,
               label: _stabilizer.label,
               onTap: () {
@@ -784,14 +834,14 @@ class _DrawingCellState extends State<DrawingCell>
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: Icons.back_hand_outlined,
+              icon: YuLiIcons.hand,
               active: _palmRejection,
               label: 'PALMA',
               onTap: _togglePalmRejection,
             ),
             const SizedBox(width: 8),
             _toolBtn(
-              icon: Icons.delete_outline,
+              icon: YuLiIcons.trash,
               active: false,
               onTap: _confirmClear,
             ),
@@ -883,12 +933,15 @@ class _DrawingCellState extends State<DrawingCell>
                       size: Size.infinite,
                     ),
               ),
-            if (!_locked)
+            // Stylus draws straight onto the canvas (no lock needed). This hint
+            // only appears when finger-drawing is the intent (palm rejection
+            // off) and scroll isn't locked yet — the one case that needs it.
+            if (!_locked && !_palmRejection)
               Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    'BLOQUEAR SCROLL PARA DIBUJAR',
+                    'BLOQUEA PARA DIBUJAR CON EL DEDO',
                     style: yMono(
                       size: 10,
                       weight: FontWeight.w700,
@@ -904,14 +957,15 @@ class _DrawingCellState extends State<DrawingCell>
       ),
     );
 
-    if (!_locked) return canvas;
-
+    // Always wrap with the drawing Listener (stylus-first): the pen draws even
+    // when unlocked. Finger events fall through to scroll unless _locked.
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
+            if (_ignoreForScroll(e.kind)) return;
             if (_eyedropperMode) {
               _activePointers.add(e.pointer);
               _pointerDownPos[e.pointer] = e.localPosition;
@@ -1003,6 +1057,7 @@ class _DrawingCellState extends State<DrawingCell>
             _start(e.localPosition);
           },
           onPointerMove: (e) {
+            if (_ignoreForScroll(e.kind)) return;
             if (_activePointers.length >= 2 && !_multiFingerMoved) {
               final start = _pointerDownPos[e.pointer];
               if (start != null && (e.localPosition - start).distance > 15) {
@@ -1035,6 +1090,7 @@ class _DrawingCellState extends State<DrawingCell>
             _move(e.localPosition);
           },
           onPointerUp: (e) {
+            if (_ignoreForScroll(e.kind)) return;
             _activePointers.remove(e.pointer);
             _pointerDownPos.remove(e.pointer);
             if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
@@ -1078,6 +1134,7 @@ class _DrawingCellState extends State<DrawingCell>
             _stab = null;
           },
           onPointerCancel: (e) {
+            if (_ignoreForScroll(e.kind)) return;
             _activePointers.remove(e.pointer);
             _pointerDownPos.remove(e.pointer);
             if (_activePointers.isEmpty) _maxSimultaneous = 0;
@@ -1164,6 +1221,9 @@ class _DrawingCellState extends State<DrawingCell>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
+                if (_tool != DrawTool.lasso) {
+                  setState(() => _tool = DrawTool.lasso);
+                }
                 _lassoMutate(
                   () => _lassoCtrl.pasteAt(_showPasteAt!, _data.strokes),
                 );
@@ -1182,14 +1242,21 @@ class _DrawingCellState extends State<DrawingCell>
                     BoxShadow(color: yInk, offset: Offset(2, 2)),
                   ],
                 ),
-                child: Text(
-                  'PEGAR',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(YuLiIcons.clipboard, size: 12, color: yInk),
+                    const SizedBox(width: 6),
+                    Text(
+                      'PEGAR',
+                      style: yMono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        tracking: 1.4,
+                        color: yInk,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1208,7 +1275,7 @@ class _DrawingCellState extends State<DrawingCell>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _resizeBtn(Icons.remove, () => _resize(-60)),
+          _resizeBtn(YuLiIcons.minus, () => _resize(-60)),
           const SizedBox(width: 6),
           GestureDetector(
             onVerticalDragUpdate: (d) {
@@ -1227,11 +1294,11 @@ class _DrawingCellState extends State<DrawingCell>
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineThin),
               ),
-              child: const Icon(Icons.swap_vert, size: 14, color: yInk),
+              child: const Icon(YuLiIcons.gripVertical, size: 14, color: yInk),
             ),
           ),
           const SizedBox(width: 6),
-          _resizeBtn(Icons.add, () => _resize(60)),
+          _resizeBtn(YuLiIcons.plus, () => _resize(60)),
         ],
       ),
     );
@@ -1337,7 +1404,7 @@ class _DrawingCellState extends State<DrawingCell>
         padding: EdgeInsets.symmetric(horizontal: label != null ? 8 : 6),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? yInk : yCream,
+          color: active ? (widget.accent ?? yInk) : yCream,
           border: Border.all(
             color: enabled ? yBorderStrong : yMuted.withValues(alpha: 0.4),
             width: yLineThin,
@@ -1391,7 +1458,7 @@ class _EyedropperHint extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.colorize, size: 14, color: yInk),
+          const Icon(YuLiIcons.palette, size: 14, color: yInk),
           const SizedBox(width: 8),
           Text(
             'TOCA UN TRAZO PARA COPIAR EL COLOR',
@@ -1490,3 +1557,37 @@ class DrawingPreviewPainter extends CustomPainter {
 }
 
 void _draw(Canvas canvas, DrawingStroke stroke) => drawStroke(canvas, stroke);
+
+/// Persistent chrome toggle pinned to the block's top-right corner.
+/// [collapsed] true  → "CONTROLES ▼" chip (the chrome is hidden; expand it).
+/// [collapsed] false → compact "▲" button (the chrome is shown; collapse it).
+/// Compact chrome toggle pinned to the block's top-LEFT corner (the top-right is
+/// the block's delete ✕). Same small size in both states: chevron-down to
+/// expand, chevron-up to collapse.
+class _ChromeToggle extends StatelessWidget {
+  final bool collapsed;
+  final VoidCallback onTap;
+  const _ChromeToggle({required this.collapsed, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
+        child: Icon(
+          collapsed ? YuLiIcons.chevronDown : YuLiIcons.chevronUp,
+          size: 18,
+          color: yInk,
+        ),
+      ),
+    );
+  }
+}
