@@ -6,7 +6,7 @@
 
 import 'dart:math' as math;
 
-enum ShapeKind { line, arrow, circle, ellipse, rectangle, triangle }
+enum ShapeKind { line, arrow, circle, ellipse, rectangle, triangle, star, pentagram }
 
 class RecognizedShape {
   final ShapeKind kind;
@@ -25,7 +25,7 @@ class ShapeRecognizer {
     if (points.length < 12) return null;
     final bb = _bbox(points);
     final diag = math.sqrt(bb.width * bb.width + bb.height * bb.height);
-    if (diag < 30) return null;
+    if (diag < 22) return null;
 
     final closed = _isClosed(points, diag);
     final resampled = _resample(points, 64);
@@ -42,6 +42,12 @@ class ShapeRecognizer {
         [line[1][0], line[1][1]],
       ]);
     }
+
+    // Five-pointed stars — tried before polygons (a star's 5 tips would
+    // otherwise confuse the corner counter). Discriminates a clean outline
+    // from a crossing-line pentagram by the drawn path's self-intersections.
+    final star = _tryStar(resampled);
+    if (star != null) return star;
 
     // Closed shapes — tried even if not perfectly closed, since people rarely
     // close a circle/rectangle exactly.
@@ -114,15 +120,60 @@ List<List<double>> buildShape(
       return buildLineShape(cx - w / 2, cy, cx + w / 2, cy);
     case ShapeKind.arrow:
       return buildArrowShape(cx - w / 2, cy, cx + w / 2, cy);
+    case ShapeKind.star:
+      return buildStarShape(cx, cy, w, h);
+    case ShapeKind.pentagram:
+      return buildPentagramShape(cx, cy, w, h);
   }
 }
 
-/// Closed shapes can carry a translucent fill; open shapes (line/arrow) can't.
+/// Five-pointed star outline (10 vertices, tip/valley alternating, closed).
+List<List<double>> buildStarShape(double cx, double cy, double w, double h) =>
+    _starPoints(cx, cy, math.min(w, h) / 2, -math.pi / 2, pentagram: false);
+
+/// Five-line pentagram — the {5/2} star polygon: tips joined skipping one, the
+/// edges crossing in the centre. Closed path but never filled (hollow centre).
+List<List<double>> buildPentagramShape(double cx, double cy, double w, double h) =>
+    _starPoints(cx, cy, math.min(w, h) / 2, -math.pi / 2, pentagram: true);
+
+/// Geometry shared by the menu builders and the snap recognizer. [tipAngle] is
+/// the angle of the first outer point; the rest follow every 72°.
+List<List<double>> _starPoints(double cx, double cy, double R, double tipAngle,
+    {required bool pentagram}) {
+  const step = 2 * math.pi / 5;
+  if (pentagram) {
+    final tips = <List<double>>[];
+    for (int k = 0; k < 5; k++) {
+      final a = tipAngle + k * step;
+      tips.add([cx + R * math.cos(a), cy + R * math.sin(a)]);
+    }
+    const order = [0, 2, 4, 1, 3];
+    final out = [
+      for (final i in order) [tips[i][0], tips[i][1]]
+    ];
+    out.add([out.first[0], out.first[1]]);
+    return out;
+  }
+  final r = R * 0.382; // classic inner/outer ratio of a regular 5-point star
+  final out = <List<double>>[];
+  for (int k = 0; k < 5; k++) {
+    final ao = tipAngle + k * step;
+    out.add([cx + R * math.cos(ao), cy + R * math.sin(ao)]);
+    final ai = ao + step / 2;
+    out.add([cx + r * math.cos(ai), cy + r * math.sin(ai)]);
+  }
+  out.add([out.first[0], out.first[1]]);
+  return out;
+}
+
+/// Closed shapes can carry a translucent fill; open shapes (line/arrow) and the
+/// hollow-centred pentagram can't.
 bool shapeKindIsClosed(ShapeKind kind) =>
     kind == ShapeKind.rectangle ||
     kind == ShapeKind.triangle ||
     kind == ShapeKind.circle ||
-    kind == ShapeKind.ellipse;
+    kind == ShapeKind.ellipse ||
+    kind == ShapeKind.star;
 
 List<List<double>> buildArrowShape(
     double ax, double ay, double bx, double by) {
@@ -546,4 +597,151 @@ bool _areAnglesNear(
     if ((angle - target).abs() > tolerance) return false;
   }
   return true;
+}
+
+// ─── Star / pentagram detection ───────────────────────────────────────────
+//
+// Both shapes share one silhouette: 5 radial tips with deep valleys (~0.38 of
+// the tip radius) between them — so the angular radius profile alone can't tell
+// them apart. The discriminator is the DRAWN path: an outline never crosses
+// itself, a one-stroke pentagram crosses ~5 times.
+
+RecognizedShape? _tryStar(List<List<double>> pts) {
+  final c = shapeCentroid(pts);
+  final cx = c[0], cy = c[1];
+
+  // Silhouette radius per angular bin (the farthest point seen at each angle),
+  // remembering which actual point produced it so we can reuse the user's real
+  // tips later instead of synthesizing perfect ones.
+  const bins = 60;
+  final rad = List<double>.filled(bins, 0);
+  final radPt = List<List<double>?>.filled(bins, null);
+  for (final p in pts) {
+    final d = _dist(p, [cx, cy]);
+    final a = math.atan2(p[1] - cy, p[0] - cx); // -pi..pi
+    final b = (((a + math.pi) / (2 * math.pi)) * bins).floor() % bins;
+    if (d > rad[b]) {
+      rad[b] = d;
+      radPt[b] = p;
+    }
+  }
+  // Fill gaps from the nearest populated bin so peak counting stays stable.
+  for (int i = 0; i < bins; i++) {
+    if (rad[i] > 0) continue;
+    for (int o = 1; o < bins; o++) {
+      final l = rad[(i - o + bins) % bins];
+      final r = rad[(i + o) % bins];
+      if (l > 0 || r > 0) {
+        rad[i] = math.max(l, r);
+        break;
+      }
+    }
+  }
+
+  double maxR = 0, minR = double.infinity;
+  for (final v in rad) {
+    if (v > maxR) maxR = v;
+    if (v < minR) minR = v;
+  }
+  if (maxR < 9) return null;
+  if (minR / maxR > 0.6) return null; // not spiky enough (circle / pentagon)
+
+  // Find prominent tips: circular local maxima above a mid threshold, merged
+  // within a window so a flat top isn't double-counted.
+  final thresh = minR + 0.45 * (maxR - minR);
+  const k = 3;
+  final used = List<bool>.filled(bins, false);
+  final peakBins = <int>[];
+  for (int i = 0; i < bins; i++) {
+    if (used[i] || rad[i] < thresh) continue;
+    bool isMax = true;
+    for (int j = -k; j <= k; j++) {
+      if (j == 0) continue;
+      if (rad[(i + j + bins) % bins] > rad[i]) {
+        isMax = false;
+        break;
+      }
+    }
+    if (!isMax) continue;
+    peakBins.add(i);
+    for (int j = -k; j <= k; j++) {
+      used[(i + j + bins) % bins] = true;
+    }
+  }
+  if (peakBins.length != 5) return null;
+
+  final pentagram = _countSelfIntersections(pts) >= 3;
+
+  if (pentagram) {
+    // Keep the user's asymmetry: join their actual tips with straight lines in
+    // the {5/2} skip-one order. We straighten the edges but don't regularize
+    // the star into a perfect symmetric one.
+    final tips = <List<double>>[];
+    for (final b in peakBins) {
+      List<double>? pt;
+      double best = -1;
+      for (int j = -k; j <= k; j++) {
+        final bb = (b + j + bins) % bins;
+        if (radPt[bb] != null && rad[bb] > best) {
+          best = rad[bb];
+          pt = radPt[bb];
+        }
+      }
+      if (pt != null) tips.add([pt[0], pt[1]]);
+    }
+    if (tips.length == 5) {
+      tips.sort((p, q) => math
+          .atan2(p[1] - cy, p[0] - cx)
+          .compareTo(math.atan2(q[1] - cy, q[0] - cx)));
+      const order = [0, 2, 4, 1, 3];
+      final out = [
+        for (final i in order) [tips[i][0], tips[i][1]]
+      ];
+      out.add([out.first[0], out.first[1]]);
+      return RecognizedShape(ShapeKind.pentagram, out);
+    }
+  }
+
+  // Clean outline star → tidy regular geometry (this is the "limpia" variant).
+  double tipAngle = 0, far = -1;
+  for (final p in pts) {
+    final d = _dist(p, [cx, cy]);
+    if (d > far) {
+      far = d;
+      tipAngle = math.atan2(p[1] - cy, p[0] - cx);
+    }
+  }
+  return RecognizedShape(
+    ShapeKind.star,
+    _starPoints(cx, cy, maxR, tipAngle, pentagram: false),
+  );
+}
+
+/// Number of times the (closed) polyline [pts] crosses itself, ignoring
+/// adjacent segments and the closing seam.
+int _countSelfIntersections(List<List<double>> pts) {
+  final n = pts.length;
+  if (n < 6) return 0;
+  int count = 0;
+  for (int i = 0; i < n - 1; i++) {
+    for (int j = i + 2; j < n - 1; j++) {
+      if (i == 0 && j == n - 2) continue; // first & last share the seam vertex
+      if (_segmentsCross(pts[i], pts[i + 1], pts[j], pts[j + 1])) count++;
+    }
+  }
+  return count;
+}
+
+/// Proper (interior) crossing of segments a-b and c-d. Collinear / endpoint
+/// touches don't count.
+bool _segmentsCross(
+    List<double> a, List<double> b, List<double> c, List<double> d) {
+  double cross(List<double> o, List<double> p, List<double> q) =>
+      (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  final d1 = cross(c, d, a);
+  final d2 = cross(c, d, b);
+  final d3 = cross(a, b, c);
+  final d4 = cross(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+      ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }

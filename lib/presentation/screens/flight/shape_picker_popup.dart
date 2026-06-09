@@ -37,6 +37,8 @@ class ShapePickerPopup extends StatelessWidget {
           const SizedBox(width: 8),
           _chip('TRIÁNGULO', YuLiIcons.triangle, ShapeKind.triangle),
           const SizedBox(width: 8),
+          _chip('ESTRELLA', YuLiIcons.star, ShapeKind.star),
+          const SizedBox(width: 8),
           _chip('LÍNEA', YuLiIcons.minus, ShapeKind.line),
           const SizedBox(width: 8),
           _chip('FLECHA', YuLiIcons.arrowRight, ShapeKind.arrow),

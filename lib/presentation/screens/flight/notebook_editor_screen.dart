@@ -863,6 +863,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (isScribble(_active!.points)) return false;
     final shape = ShapeRecognizer.detect(_active!.points);
     if (shape == null) return false;
+    // Highlighter only snaps to straight lines (a marker arrow/box reads odd).
+    if (_tool == DrawTool.highlighter && shape.kind != ShapeKind.line) {
+      return false;
+    }
     _enterShapeAdjust(shape, _active!);
     HapticFeedback.lightImpact();
     return true;
@@ -893,8 +897,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _active = DrawingStroke(
         colorValue: src.colorValue,
         strokeWidth: src.strokeWidth,
-        filled: _fillShapes && !shape.isOpen,
+        filled: _fillShapes && shapeKindIsClosed(shape.kind),
         isShape: true,
+        isHighlighter: src.isHighlighter,
         points: pts,
       );
     });
@@ -925,6 +930,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         strokeWidth: _active!.strokeWidth,
         filled: _active!.filled,
         isShape: true,
+        isHighlighter: _active!.isHighlighter,
         points: pts,
       );
     });
@@ -1135,7 +1141,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         ],
       );
     });
-    if (_tool == DrawTool.pen) _startHoldTimer(world);
+    if (_tool == DrawTool.pen || _tool == DrawTool.highlighter) {
+      _startHoldTimer(world);
+    }
   }
 
   LiveStabilizer? _newStabilizer() =>
