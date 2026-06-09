@@ -4,7 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/page_background.dart';
 
-enum DrawTool { pen, fountainPen, highlighter, eraser, lasso, text, task }
+enum DrawTool { pen, pencil, fountainPen, highlighter, eraser, lasso, text, task }
 
 /// stroke = erase the whole stroke on touch (object eraser, default).
 /// partial = erase only the touched portion, splitting the stroke.
@@ -317,6 +317,10 @@ class DrawingStroke {
   /// ink underneath stays readable.
   final bool isHighlighter;
 
+  /// Pencil stroke: flat-width tapered strip filled with a grain texture +
+  /// translucency for a graphite feel.
+  final bool isPencil;
+
   DrawingStroke({
     required this.colorValue,
     required this.strokeWidth,
@@ -325,6 +329,7 @@ class DrawingStroke {
     this.filled = false,
     this.isShape = false,
     this.isHighlighter = false,
+    this.isPencil = false,
   }) : points = points ?? [];
 
   /// Deep copy. Preserves flags and every point component (fountain-pen points
@@ -336,6 +341,7 @@ class DrawingStroke {
         filled: filled,
         isShape: isShape,
         isHighlighter: isHighlighter,
+        isPencil: isPencil,
         points: points.map((p) => List<double>.from(p)).toList(),
       );
 
@@ -351,6 +357,7 @@ class DrawingStroke {
         filled: filled,
         isShape: isShape,
         isHighlighter: isHighlighter,
+        isPencil: isPencil,
         points: points ?? this.points,
       );
 
@@ -362,6 +369,7 @@ class DrawingStroke {
         if (filled) 'fl': 1,
         if (isShape) 'sh': 1,
         if (isHighlighter) 'hl': 1,
+        if (isPencil) 'pc': 1,
       };
 
   factory DrawingStroke.fromJson(Map<String, dynamic> json) => DrawingStroke(
@@ -375,6 +383,7 @@ class DrawingStroke {
         filled: (json['fl'] as int?) == 1,
         isShape: (json['sh'] as int?) == 1,
         isHighlighter: (json['hl'] as int?) == 1,
+        isPencil: (json['pc'] as int?) == 1,
       );
 }
 
@@ -580,6 +589,7 @@ List<DrawingStroke> splitStrokeByEraser(
             strokeWidth: s.strokeWidth,
             isFountainPen: s.isFountainPen,
             isHighlighter: s.isHighlighter,
+            isPencil: s.isPencil,
             points: pl,
           ))
       .toList();

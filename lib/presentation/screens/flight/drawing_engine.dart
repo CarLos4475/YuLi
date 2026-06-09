@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'fountain_pen_engine.dart';
@@ -64,6 +66,10 @@ void drawStroke(Canvas canvas, DrawingStroke stroke) {
     drawFountainPenStroke(canvas, stroke);
     return;
   }
+  if (stroke.isPencil) {
+    drawPencilStroke(canvas, stroke);
+    return;
+  }
   fillStrokeShape(canvas, stroke);
   final paint = Paint()
     ..color = Color(stroke.colorValue)
@@ -111,6 +117,73 @@ Path buildTaperedPenPath(DrawingStroke stroke) {
   final widths = List<double>.filled(centerline.length, stroke.strokeWidth);
   FountainPenEngine.taperWidths(widths, taperLength: 5);
   return FountainPenEngine.tessellate(centerline, widths);
+}
+
+ImageShader? _pencilGrain;
+bool _pencilGrainLoading = false;
+
+/// Lazily builds a small tiling graphite-grain texture ONCE and exposes it as a
+/// repeating [ImageShader]. Returns null until the async decode finishes (the
+/// first pencil stroke renders as a plain translucent strip, then grain kicks
+/// in). Deliberately a GPU-sampled raster — one [drawPath] per stroke inside the
+/// already-cached layers, never a per-frame redraw — so it cannot reproduce the
+/// old full-screen noise-Picture stall.
+ImageShader? _pencilGrainShader() {
+  if (_pencilGrain != null) return _pencilGrain;
+  if (_pencilGrainLoading) return null;
+  _pencilGrainLoading = true;
+  const n = 96;
+  final px = Uint8List(n * n * 4);
+  final rng = math.Random(7);
+  for (int i = 0; i < n * n; i++) {
+    final a = (110 + rng.nextDouble() * 145).toInt();
+    px[i * 4] = 255;
+    px[i * 4 + 1] = 255;
+    px[i * 4 + 2] = 255;
+    px[i * 4 + 3] = a;
+  }
+  decodeImageFromPixels(px, n, n, PixelFormat.rgba8888, (img) {
+    _pencilGrain = ImageShader(
+      img,
+      TileMode.repeated,
+      TileMode.repeated,
+      Float64List.fromList(<double>[
+        1, 0, 0, 0, //
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+      ]),
+    );
+  });
+  return null;
+}
+
+/// Render a pencil stroke: the tapered flat-width strip, filled with the grain
+/// texture tinted to the stroke color at reduced opacity (graphite feel).
+void drawPencilStroke(Canvas canvas, DrawingStroke stroke) {
+  final base = Color(stroke.colorValue);
+  if (stroke.points.length < 2) {
+    canvas.drawCircle(
+      Offset(stroke.points[0][0], stroke.points[0][1]),
+      stroke.strokeWidth / 2,
+      Paint()
+        ..color = base.withValues(alpha: 0.8)
+        ..style = PaintingStyle.fill,
+    );
+    return;
+  }
+  final path = cachedStrokePath(stroke, () => buildTaperedPenPath(stroke));
+  final paint = Paint()
+    ..color = base.withValues(alpha: 0.82)
+    ..style = PaintingStyle.fill;
+  final grain = _pencilGrainShader();
+  if (grain != null) {
+    paint
+      ..shader = grain
+      ..colorFilter =
+          ColorFilter.mode(base.withValues(alpha: 0.82), BlendMode.srcIn);
+  }
+  canvas.drawPath(path, paint);
 }
 
 /// Build the outline path for a non-fountain stroke. Recognized shapes

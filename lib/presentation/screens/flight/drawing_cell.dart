@@ -320,6 +320,7 @@ class _DrawingCellState extends State<DrawingCell>
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
+        isPencil: _tool == DrawTool.pencil,
         points: [
           [p.dx, p.dy],
         ],
@@ -743,6 +744,12 @@ class _DrawingCellState extends State<DrawingCell>
               icon: YuLiIcons.penTool,
               active: _tool == DrawTool.fountainPen,
               onTap: () => _selectTool(DrawTool.fountainPen),
+            ),
+            const SizedBox(width: 4),
+            _toolBtn(
+              icon: YuLiIcons.pencil,
+              active: _tool == DrawTool.pencil,
+              onTap: () => _selectTool(DrawTool.pencil),
             ),
             const SizedBox(width: 4),
             _toolBtn(

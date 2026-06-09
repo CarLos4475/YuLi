@@ -40,18 +40,21 @@ class DrawingPrefs {
   /// Tools that carry a remembered color + width.
   static const coloredTools = [
     DrawTool.pen,
+    DrawTool.pencil,
     DrawTool.fountainPen,
     DrawTool.highlighter,
   ];
 
   static const Map<DrawTool, Color> defaultColors = {
     DrawTool.pen: yInk,
+    DrawTool.pencil: Color(0xFF555555),
     DrawTool.fountainPen: yInk,
     DrawTool.highlighter: yAmber,
   };
 
   static const Map<DrawTool, double> defaultWidths = {
     DrawTool.pen: 3.0,
+    DrawTool.pencil: 3.0,
     DrawTool.fountainPen: 2.0,
     DrawTool.highlighter: 20.0,
   };

@@ -1237,6 +1237,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
+        isPencil: _tool == DrawTool.pencil,
         points: [
           [sp.dx, sp.dy],
         ],
@@ -3286,6 +3287,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 active: _tool == DrawTool.fountainPen,
                 tooltip: 'Pluma fuente',
                 onTap: () => _selectTool(DrawTool.fountainPen),
+              ),
+              const SizedBox(width: 10),
+              _toolBtn(
+                icon: YuLiIcons.pencil,
+                active: _tool == DrawTool.pencil,
+                tooltip: 'Lápiz',
+                onTap: () => _selectTool(DrawTool.pencil),
               ),
               const SizedBox(width: 10),
               _toolBtn(
