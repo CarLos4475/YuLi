@@ -38,6 +38,7 @@ import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
 import 'eraser_mode_popup.dart';
+import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
@@ -196,6 +197,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _colorPickerOpen = false;
   List<Color> _recentColors = const [];
   List<Color> _savedColors = const [];
+  FloatingPalettesController? _palettes;
   // Favorite selected (== current color) when the color picker opened, so
   // starring a refined color replaces it in place instead of evicting oldest.
   Color? _pickerFavoriteAnchor;
@@ -246,6 +248,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     SavedBgColorsPrefs.load().then((colors) {
       if (!mounted) return;
       setState(() => _bgSavedColors = colors);
+    });
+    FloatingPalettesController.load().then((c) {
+      if (!mounted) return;
+      setState(() => _palettes = c);
     });
     DrawingPrefs.load().then((prefs) {
       if (!mounted) return;
@@ -3055,6 +3061,29 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                     ),
                                   ),
                                 ),
+                                // Floating palettes — sibling of the canvas
+                                // Listener (no pointer leak) and OUTSIDE the
+                                // _viewCtrl AnimatedBuilder so they stay pinned
+                                // to the screen, not the panning canvas.
+                                if (_palettes != null)
+                                  Positioned.fill(
+                                    child: AnimatedBuilder(
+                                      animation: _palettes!,
+                                      builder: (_, _) => FloatingPalettesLayer(
+                                        controller: _palettes!,
+                                        accent: _accent,
+                                        activeColor: _color,
+                                        activeWidth: _strokeW,
+                                        onPickColor: _commitColor,
+                                        onPickWidth: _commitWidth,
+                                        onInsertShape: _insertShape,
+                                        onUndo: _undo,
+                                        onRedo: _redo,
+                                        canUndo: _undoStack.isNotEmpty,
+                                        canRedo: _redoStack.isNotEmpty,
+                                      ),
+                                    ),
+                                  ),
                                 // Screen-space overlays that track the view
                                 // transform — their own tiny AnimatedBuilder
                                 // so they still follow pan, without dragging
@@ -3344,6 +3373,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Toolbar ───────────────────────────────────────────────────────────
 
+  void _togglePalette(FloatingPaletteKind kind) {
+    if (_palettes == null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _palettes!.toggle(kind));
+  }
+
   Widget _toolbar() {
     return Container(
       decoration: const BoxDecoration(
@@ -3421,17 +3456,24 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 onTap: _enterTextMode,
               ),
               const SizedBox(width: 10),
-              _toolBtn(
-                icon: YuLiIcons.shapes,
-                active: _shapePopupOpen,
-                tooltip: 'Figuras',
-                onTap: _toggleShapePopup,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () => _togglePalette(FloatingPaletteKind.shapes),
+                child: _toolBtn(
+                  icon: YuLiIcons.shapes,
+                  active: _shapePopupOpen,
+                  onTap: _toggleShapePopup,
+                ),
               ),
               _divider(),
-              ColorButton(
-                currentColor: _color,
-                isOpen: _colorPickerOpen,
-                onTap: _toggleColorPicker,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () => _togglePalette(FloatingPaletteKind.colors),
+                child: ColorButton(
+                  currentColor: _color,
+                  isOpen: _colorPickerOpen,
+                  onTap: _toggleColorPicker,
+                ),
               ),
               if (_savedColors.isNotEmpty) ...[
                 const SizedBox(width: 8),
@@ -3446,11 +3488,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ],
               const SizedBox(width: 10),
               _divider(),
-              StrokeWidthButton(
-                currentWidth: _strokeW,
-                isOpen: _widthPickerOpen,
-                accentColor: _accent,
-                onTap: _toggleWidthPicker,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () => _togglePalette(FloatingPaletteKind.widths),
+                child: StrokeWidthButton(
+                  currentWidth: _strokeW,
+                  isOpen: _widthPickerOpen,
+                  accentColor: _accent,
+                  onTap: _toggleWidthPicker,
+                ),
               ),
               _divider(),
               _toolBtn(
@@ -3720,6 +3766,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               setState(() => _palmRejection = !_palmRejection);
               DrawingPrefs.savePalm(_palmRejection);
             },
+          ),
+          _toolBtn(
+            icon: YuLiIcons.palette,
+            active: _palettes?.isOpen(FloatingPaletteKind.colors) ?? false,
+            label: 'P · COLORES',
+            onTap: () => _togglePalette(FloatingPaletteKind.colors),
+          ),
+          _toolBtn(
+            icon: YuLiIcons.shapes,
+            active: _palettes?.isOpen(FloatingPaletteKind.shapes) ?? false,
+            label: 'P · FIGURAS',
+            onTap: () => _togglePalette(FloatingPaletteKind.shapes),
+          ),
+          _toolBtn(
+            icon: YuLiIcons.lineSquiggle,
+            active: _palettes?.isOpen(FloatingPaletteKind.widths) ?? false,
+            label: 'P · GROSOR',
+            onTap: () => _togglePalette(FloatingPaletteKind.widths),
+          ),
+          _toolBtn(
+            icon: YuLiIcons.undo,
+            active: _palettes?.isOpen(FloatingPaletteKind.undoRedo) ?? false,
+            label: 'P · DESHACER',
+            onTap: () => _togglePalette(FloatingPaletteKind.undoRedo),
           ),
           _toolBtn(
             icon: YuLiIcons.layoutGrid,
