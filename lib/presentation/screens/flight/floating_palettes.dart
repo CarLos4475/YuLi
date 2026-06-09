@@ -283,6 +283,10 @@ class FloatingPalettesLayer extends StatefulWidget {
   /// palette's own list (the editor wires that via the controller).
   final VoidCallback? onEyedropper;
 
+  /// When true the palettes slide off toward their docked edge (used while the
+  /// eyedropper is active) and slide back in when it clears.
+  final bool hidden;
+
   const FloatingPalettesLayer({
     super.key,
     required this.controller,
@@ -297,6 +301,7 @@ class FloatingPalettesLayer extends StatefulWidget {
     required this.canUndo,
     required this.canRedo,
     this.onEyedropper,
+    this.hidden = false,
   });
 
   @override
@@ -399,12 +404,15 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
       builder: (context, constraints) {
         _avail = Size(constraints.maxWidth, constraints.maxHeight);
         final kinds = _c.open.toList();
-        return Stack(
-          children: [
-            // Magnet target hint while dragging.
-            if (_dragging != null) ..._magnetHints(),
-            for (final k in kinds) _buildDockedPalette(k),
-          ],
+        return IgnorePointer(
+          ignoring: widget.hidden,
+          child: Stack(
+            children: [
+              // Magnet target hint while dragging.
+              if (_dragging != null && !widget.hidden) ..._magnetHints(),
+              for (final k in kinds) _buildDockedPalette(k),
+            ],
+          ),
         );
       },
     );
@@ -433,11 +441,23 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
   Widget _buildDockedPalette(FloatingPaletteKind k) {
     final hEst = _estHeight(k);
     final isDrag = _dragging == k;
-    final tl = isDrag ? _dragTopLeft : _dockTopLeft(k, hEst);
+    final docked = _dockTopLeft(k, hEst);
+    Offset tl;
+    if (isDrag) {
+      tl = _dragTopLeft;
+    } else if (widget.hidden) {
+      // Slide off toward the palette's own edge.
+      final offX = _c.edgeOf(k) == PaletteEdge.left
+          ? -(_paletteWidth + 24)
+          : _avail.width + 24;
+      tl = Offset(offX, docked.dy);
+    } else {
+      tl = docked;
+    }
     return AnimatedPositioned(
       key: ValueKey(k),
       duration: isDrag ? Duration.zero : const Duration(milliseconds: 260),
-      curve: Curves.easeOutBack,
+      curve: widget.hidden ? Curves.easeInCubic : Curves.easeOutBack,
       left: tl.dx,
       top: tl.dy,
       child: GestureDetector(

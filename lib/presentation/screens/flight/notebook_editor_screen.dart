@@ -3195,9 +3195,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                 // Floating palettes — sibling of the canvas
                                 // Listener (no pointer leak) and OUTSIDE the
                                 // _viewCtrl AnimatedBuilder so they stay pinned
-                                // to the screen, not the panning canvas. Hidden
-                                // during eyedropper so they don't block sampling.
-                                if (_palettes != null && !_eyedropperMode)
+                                // to the screen. They slide off toward their edge
+                                // during the eyedropper.
+                                if (_palettes != null)
                                   Positioned.fill(
                                     child: AnimatedBuilder(
                                       animation: _palettes!,
@@ -3206,6 +3206,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                         accent: _accent,
                                         activeColor: _color,
                                         activeWidth: _strokeW,
+                                        hidden: _eyedropperMode,
                                         onPickColor: _commitColor,
                                         onPickWidth: _commitWidth,
                                         onInsertShape: _insertShape,

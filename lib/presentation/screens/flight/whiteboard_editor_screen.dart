@@ -2843,8 +2843,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                         ),
                         // Floating palettes — sibling of the canvas Listener so
                         // touching a palette never leaks a pointer into a stroke.
-                        // Hidden during eyedropper so they don't block sampling.
-                        if (_palettes != null && !_eyedropperMode)
+                        // They slide off toward their edge during the eyedropper.
+                        if (_palettes != null)
                           Positioned.fill(
                             child: AnimatedBuilder(
                               animation: _palettes!,
@@ -2853,6 +2853,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 accent: _accent,
                                 activeColor: _color,
                                 activeWidth: _strokeW,
+                                hidden: _eyedropperMode,
                                 onPickColor: _commitColor,
                                 onPickWidth: _commitWidth,
                                 onInsertShape: _insertShape,
