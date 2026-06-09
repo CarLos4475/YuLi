@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'fountain_pen_engine.dart';
 import 'fountain_pen_painter.dart';
 import 'note_cell_model.dart';
 import 'stroke_bounds.dart';
@@ -85,7 +86,31 @@ void drawStroke(Canvas canvas, DrawingStroke stroke) {
     );
     return;
   }
+  // Plain freehand pen: render as a flat-width strip that tapers at the tips
+  // (livelier touch-down / lift-off). Highlighters (flat marker) and recognized
+  // shapes keep their constant-width stroked look. Short strokes stay stroked so
+  // a quick tick doesn't render faint.
+  if (!stroke.isHighlighter && !stroke.isShape && stroke.points.length >= 8) {
+    canvas.drawPath(
+      cachedStrokePath(stroke, () => buildTaperedPenPath(stroke)),
+      Paint()
+        ..color = Color(stroke.colorValue)
+        ..style = PaintingStyle.fill,
+    );
+    return;
+  }
   canvas.drawPath(cachedStrokePath(stroke, () => buildStrokePath(stroke)), paint);
+}
+
+/// Flat-width centerline strip with tapered tips (touch-down / lift-off),
+/// reusing the fountain-pen tessellator. Gives a plain pen a livelier feel
+/// without per-point pressure/velocity width.
+Path buildTaperedPenPath(DrawingStroke stroke) {
+  final pts = stroke.points.map((p) => Offset(p[0], p[1])).toList();
+  final centerline = FountainPenEngine.chaikinSmooth(pts, iterations: 1);
+  final widths = List<double>.filled(centerline.length, stroke.strokeWidth);
+  FountainPenEngine.taperWidths(widths, taperLength: 5);
+  return FountainPenEngine.tessellate(centerline, widths);
 }
 
 /// Build the outline path for a non-fountain stroke. Recognized shapes
