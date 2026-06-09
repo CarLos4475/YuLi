@@ -214,6 +214,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Offset _loupePos = Offset.zero;
   Color _loupeColor = yInk;
   Matrix4? _eyedropCaptureMatrix;
+  void Function(Color)? _eyedropOnPick;
   EraserMode _eraserMode = EraserMode.stroke;
   bool _eraserPopupOpen = false;
   Offset? _eraserCursor;
@@ -619,9 +620,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     HapticFeedback.selectionClick();
   }
 
-  void _enterEyedropper() {
+  void _enterEyedropper({void Function(Color)? onPick}) {
     setState(() {
       _eyedropperMode = true;
+      _eyedropOnPick = onPick;
       _colorPickerOpen = false;
       _widthPickerOpen = false;
       _tool = DrawTool.pen;
@@ -674,8 +676,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   void _confirmLoupe() {
     final c = _loupeColor;
+    final cb = _eyedropOnPick;
     _exitEyedropper();
-    _commitColor(c);
+    if (cb != null) {
+      cb(c);
+    } else {
+      _commitColor(c);
+    }
     HapticFeedback.mediumImpact();
   }
 
@@ -683,6 +690,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _eyedropImg?.dispose();
     setState(() {
       _eyedropperMode = false;
+      _eyedropOnPick = null;
       _eyedropImg = null;
       _eyedropBytes = null;
     });
@@ -3187,8 +3195,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                 // Floating palettes — sibling of the canvas
                                 // Listener (no pointer leak) and OUTSIDE the
                                 // _viewCtrl AnimatedBuilder so they stay pinned
-                                // to the screen, not the panning canvas.
-                                if (_palettes != null)
+                                // to the screen, not the panning canvas. Hidden
+                                // during eyedropper so they don't block sampling.
+                                if (_palettes != null && !_eyedropperMode)
                                   Positioned.fill(
                                     child: AnimatedBuilder(
                                       animation: _palettes!,
@@ -3204,6 +3213,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                         onRedo: _redo,
                                         canUndo: _undoStack.isNotEmpty,
                                         canRedo: _redoStack.isNotEmpty,
+                                        onEyedropper: () => _enterEyedropper(
+                                          onPick: (c) => _palettes?.addColor(c),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -3460,7 +3472,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   onPreview: (c) => setState(() => _color = c),
                   onCommit: _commitColor,
                   onStar: _starColor,
-                  onEyedropper: _enterEyedropper,
+                  onEyedropper: () => _enterEyedropper(),
                   onClose: _toggleColorPicker,
                 ),
               ),

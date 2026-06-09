@@ -279,6 +279,10 @@ class FloatingPalettesLayer extends StatefulWidget {
   final bool canUndo;
   final bool canRedo;
 
+  /// Starts the editor's eyedropper; the sampled color is added to this
+  /// palette's own list (the editor wires that via the controller).
+  final VoidCallback? onEyedropper;
+
   const FloatingPalettesLayer({
     super.key,
     required this.controller,
@@ -292,6 +296,7 @@ class FloatingPalettesLayer extends StatefulWidget {
     required this.onRedo,
     required this.canUndo,
     required this.canRedo,
+    this.onEyedropper,
   });
 
   @override
@@ -458,6 +463,7 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
             onRedo: widget.onRedo,
             canUndo: widget.canUndo,
             canRedo: widget.canRedo,
+            onEyedropper: widget.onEyedropper,
           ),
         ),
       ),
@@ -482,6 +488,7 @@ class _PaletteCard extends StatelessWidget {
   final VoidCallback onRedo;
   final bool canUndo;
   final bool canRedo;
+  final VoidCallback? onEyedropper;
 
   const _PaletteCard({
     required this.kind,
@@ -498,6 +505,7 @@ class _PaletteCard extends StatelessWidget {
     required this.onRedo,
     required this.canUndo,
     required this.canRedo,
+    this.onEyedropper,
   });
 
   @override
@@ -706,6 +714,7 @@ class _PaletteCard extends StatelessWidget {
         controller: controller,
         accent: accent,
         activeColor: activeColor,
+        onEyedropper: onEyedropper,
       ),
     );
   }
@@ -729,11 +738,13 @@ class _ColorsConfigSheet extends StatefulWidget {
   final FloatingPalettesController controller;
   final Color accent;
   final Color activeColor;
+  final VoidCallback? onEyedropper;
 
   const _ColorsConfigSheet({
     required this.controller,
     required this.accent,
     required this.activeColor,
+    this.onEyedropper,
   });
 
   @override
@@ -741,8 +752,8 @@ class _ColorsConfigSheet extends StatefulWidget {
 }
 
 class _ColorsConfigSheetState extends State<_ColorsConfigSheet> {
-  void _openPicker(BuildContext context) {
-    showModalBottomSheet<void>(
+  Future<void> _openPicker(BuildContext context) async {
+    final wantEyedropper = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -753,6 +764,13 @@ class _ColorsConfigSheetState extends State<_ColorsConfigSheet> {
         onAdded: () => setState(() {}),
       ),
     );
+    if (wantEyedropper == true && mounted) _startEyedropper();
+  }
+
+  void _startEyedropper() {
+    // Close this config sheet, then hand off to the editor's loupe.
+    Navigator.of(context).pop();
+    widget.onEyedropper?.call();
   }
 
   @override
@@ -786,6 +804,15 @@ class _ColorsConfigSheetState extends State<_ColorsConfigSheet> {
               ),
             ],
           ),
+          if (widget.onEyedropper != null) ...[
+            const SizedBox(height: 8),
+            _sheetAction(
+              icon: YuLiIcons.palette,
+              label: 'GOTERO (TOMAR DEL LIENZO)',
+              accent: widget.accent,
+              onTap: _startEyedropper,
+            ),
+          ],
           const SizedBox(height: 12),
           Text('TOCA PARA QUITAR',
               style: yMono(size: 9, weight: FontWeight.w700, tracking: 1.4, color: yMuted)),
@@ -872,7 +899,7 @@ class _PalettePickerSheetState extends State<_PalettePickerSheet> {
                   widget.controller.addColor(c);
                   widget.onAdded();
                 },
-                onEyedropper: () {},
+                onEyedropper: () => Navigator.of(context).pop(true),
                 onClose: () => Navigator.of(context).pop(),
               ),
               const SizedBox(height: 8),

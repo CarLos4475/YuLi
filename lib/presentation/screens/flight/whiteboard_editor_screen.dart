@@ -206,6 +206,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Offset _loupePos = Offset.zero;
   Color _loupeColor = yInk;
   Matrix4? _eyedropCaptureMatrix;
+  void Function(Color)? _eyedropOnPick;
 
   // Multi-finger tap tracking
   int _maxSimultaneous = 0;
@@ -385,10 +386,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     HapticFeedback.selectionClick();
   }
 
-  void _enterEyedropper() {
+  void _enterEyedropper({void Function(Color)? onPick}) {
     _lockBeforeEyedropper = _locked;
     setState(() {
       _eyedropperMode = true;
+      _eyedropOnPick = onPick;
       _colorPickerOpen = false;
       _widthPickerOpen = false;
       _tool = DrawTool.pen;
@@ -442,8 +444,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   void _confirmLoupe() {
     final c = _loupeColor;
+    final cb = _eyedropOnPick;
     _exitEyedropper();
-    _commitColor(c);
+    if (cb != null) {
+      cb(c);
+    } else {
+      _commitColor(c);
+    }
     HapticFeedback.mediumImpact();
   }
 
@@ -451,6 +458,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _eyedropImg?.dispose();
     setState(() {
       _eyedropperMode = false;
+      _eyedropOnPick = null;
       _locked = _lockBeforeEyedropper;
       _eyedropImg = null;
       _eyedropBytes = null;
@@ -2835,7 +2843,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                         ),
                         // Floating palettes — sibling of the canvas Listener so
                         // touching a palette never leaks a pointer into a stroke.
-                        if (_palettes != null)
+                        // Hidden during eyedropper so they don't block sampling.
+                        if (_palettes != null && !_eyedropperMode)
                           Positioned.fill(
                             child: AnimatedBuilder(
                               animation: _palettes!,
@@ -2851,6 +2860,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 onRedo: _redo,
                                 canUndo: _undoStack.isNotEmpty,
                                 canRedo: _redoStack.isNotEmpty,
+                                onEyedropper: () => _enterEyedropper(
+                                  onPick: (c) => _palettes?.addColor(c),
+                                ),
                               ),
                             ),
                           ),
@@ -3076,7 +3088,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                   onPreview: (c) => setState(() => _color = c),
                   onCommit: _commitColor,
                   onStar: _starColor,
-                  onEyedropper: _enterEyedropper,
+                  onEyedropper: () => _enterEyedropper(),
                   onClose: _toggleColorPicker,
                 ),
               ),
