@@ -92,19 +92,6 @@ void drawStroke(Canvas canvas, DrawingStroke stroke) {
     );
     return;
   }
-  // Plain freehand pen: render as a flat-width strip that tapers at the tips
-  // (livelier touch-down / lift-off). Highlighters (flat marker) and recognized
-  // shapes keep their constant-width stroked look. Short strokes stay stroked so
-  // a quick tick doesn't render faint.
-  if (!stroke.isHighlighter && !stroke.isShape && stroke.points.length >= 8) {
-    canvas.drawPath(
-      cachedStrokePath(stroke, () => buildTaperedPenPath(stroke)),
-      Paint()
-        ..color = Color(stroke.colorValue)
-        ..style = PaintingStyle.fill,
-    );
-    return;
-  }
   canvas.drawPath(cachedStrokePath(stroke, () => buildStrokePath(stroke)), paint);
 }
 
