@@ -3,6 +3,16 @@ import 'dart:ui';
 
 import 'note_cell_model.dart';
 
+/// Non-linear (sigmoid-ish) pressure→width response. A real metal nib opens up
+/// progressively under pressure rather than 1:1, so light variations near the
+/// resting pressure feel subtle and firm presses pop. Smoothstep keeps the same
+/// [0.75, 1.25] output range as the old linear map (base width unchanged).
+double pressureWidthFactor(double pressure) {
+  final p = pressure.clamp(0.0, 1.0);
+  final s = p * p * (3 - 2 * p);
+  return 0.75 + s * 0.50;
+}
+
 class FountainPenEngine {
   /// Remove excess points that are closer than [minDist] pixels.
   /// Slow strokes produce very dense points that destabilize direction vectors.
@@ -99,7 +109,7 @@ class FountainPenEngine {
 
       // 2. Pressure factor:  light → thinner, firm → thicker.
       final pressure = pressures.length > rawIdx ? pressures[rawIdx] : 0.5;
-      final pressureFactor = 0.75 + pressure * 0.50;
+      final pressureFactor = pressureWidthFactor(pressure);
 
       // 3. Velocity factor:  fast → slightly thinner, slow → slightly thicker.
       double velocityFactor = 1.0;

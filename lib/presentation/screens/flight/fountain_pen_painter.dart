@@ -56,7 +56,7 @@ void _drawRawFountainPreview(Canvas canvas, DrawingStroke stroke) {
   final color = Color(stroke.colorValue);
   if (points.length == 1) {
     final pressure = points.first.length > 2 ? points.first[2] : 0.5;
-    final r = stroke.strokeWidth * (0.75 + pressure * 0.5) / 2;
+    final r = stroke.strokeWidth * pressureWidthFactor(pressure) / 2;
     canvas.drawCircle(
       Offset(points.first[0], points.first[1]),
       r,
@@ -86,7 +86,7 @@ void _drawRawFountainPreview(Canvas canvas, DrawingStroke stroke) {
     final pb = b.length > 2 ? b[2] : 0.5;
     final pressure = (pa + pb) * 0.5;
     final directionFactor = 1.0 + (delta.dy / dist) * 0.35;
-    final pressureFactor = 0.75 + pressure * 0.5;
+    final pressureFactor = pressureWidthFactor(pressure);
     final taper =
         i < 4
             ? i / 4
