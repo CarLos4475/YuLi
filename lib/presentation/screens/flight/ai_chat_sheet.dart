@@ -1282,7 +1282,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ? Text('…', style: yBody(size: 14, color: yInk))
             : streaming
             ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
-            : NoteMarkdownPreview(data: fixMarkdownTables(m.text));
+            : NoteMarkdownPreview(data: fixMarkdownTables(m.text), accent: widget.accent);
     final actions =
         (!streaming && m.text.isNotEmpty)
             ? <Widget>[
@@ -2630,6 +2630,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
             originalLen: wasCompacted ? raw.length : null,
             compactedLen: wasCompacted ? compacted!.length : null,
             url: s.isUrl ? s.ref : null,
+            accent: widget.accent,
           ),
     );
   }
@@ -2962,6 +2963,7 @@ class _SourceViewDialog extends StatelessWidget {
   final int? originalLen;
   final int? compactedLen;
   final String? url;
+  final Color accent;
 
   const _SourceViewDialog({
     required this.label,
@@ -2971,6 +2973,7 @@ class _SourceViewDialog extends StatelessWidget {
     this.originalLen,
     this.compactedLen,
     this.url,
+    required this.accent,
   });
 
   @override
@@ -3085,7 +3088,7 @@ class _SourceViewDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    NoteMarkdownPreview(data: fixMarkdownTables(content)),
+                    NoteMarkdownPreview(data: fixMarkdownTables(content), accent: accent),
                   ],
                 ),
               ),

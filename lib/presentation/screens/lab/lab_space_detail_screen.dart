@@ -1066,10 +1066,19 @@ class _KanbanBoardState extends ConsumerState<_KanbanBoard>
           titleColor: space.accentColor,
           kicker: '${allCards.length} tareas . ${columns.length} columnas',
           right: [
-            y.HeadBtn(
-              label: 'DADO',
-              leadingIcon: YuLiIcons.dice,
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: _rolling ? null : _rollDice,
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: y.yCream,
+                  border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
+                ),
+                child: Icon(YuLiIcons.dice5, size: 16, color: y.yInk),
+              ),
             ),
             const SizedBox(width: 8),
             y.HeadBtn(

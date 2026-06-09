@@ -547,7 +547,7 @@ class _SummaryDialog extends StatelessWidget {
             const SizedBox(height: 10),
             Flexible(
               child: SingleChildScrollView(
-                child: NoteMarkdownPreview(data: fixMarkdownTables(text)),
+                child: NoteMarkdownPreview(data: fixMarkdownTables(text), accent: accent),
               ),
             ),
             const SizedBox(height: 12),

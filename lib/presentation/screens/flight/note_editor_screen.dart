@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ai_providers.dart';
@@ -19,12 +18,14 @@ import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
+import '../../../domain/models/task.dart';
+import 'block_pdf_export_sheet.dart';
 import 'block_insert_menu.dart';
 import 'block_insert_panels.dart';
+import 'canvas_export_sheet.dart';
 import 'format_toolbar.dart';
 import 'note_block_widgets.dart';
-import 'note_cell_model.dart';
-import 'drawing_cell.dart';
+import 'note_export_view.dart';
 import 'ai_chat_sheet.dart';
 import '../lab/lab_space_detail_screen.dart';
 
@@ -204,14 +205,66 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   Future<void> _exportPdf(List<NoteBlock> blocks) async {
-    await exportNoteToPdf(
-      context: context,
-      title:
-          _titleCtrl.text.trim().isEmpty
-              ? 'Sin título'
-              : _titleCtrl.text.trim(),
-      blocks: blocks,
+    final hasTasks = blocks.any(
+      (b) => b is TareasBlock && b.taskIds.isNotEmpty,
     );
+    final opts = await showBlockPdfExportSheet(
+      context,
+      accent: _accent,
+      hasTasks: hasTasks,
+    );
+    if (opts == null || !mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ExportProgressDialog(accent: _accent),
+    );
+
+    try {
+      final tasksById =
+          opts.includeTasks
+              ? await _loadExportTasks(blocks)
+              : const <int, Task>{};
+      if (!mounted) return;
+      await exportNoteToPdf(
+        context: context,
+        title:
+            _titleCtrl.text.trim().isEmpty
+                ? 'Sin titulo'
+                : _titleCtrl.text.trim(),
+        blocks: blocks,
+        accent: _accent,
+        options: opts,
+        tasksById: tasksById,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo exportar'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
+  Future<Map<int, Task>> _loadExportTasks(List<NoteBlock> blocks) async {
+    final ids = <int>{
+      for (final block in blocks)
+        if (block is TareasBlock) ...block.taskIds,
+    };
+    if (ids.isEmpty) return const {};
+    final repo = ref.read(taskRepositoryProvider);
+    final entries = await Future.wait(
+      ids.map((id) async => MapEntry(id, await repo.getById(id))),
+    );
+    return {
+      for (final entry in entries)
+        if (entry.value != null) entry.key: entry.value!,
+    };
   }
 
   void _onTextBlockFocusChanged(TextEditingController? ctrl) {
@@ -462,100 +515,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   Widget _buildPreview(List<NoteBlock> blocks) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final b in blocks)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: switch (b) {
-                TextBlock t =>
-                  t.markdown.isNotEmpty
-                      ? NoteMarkdownPreview(data: t.markdown)
-                      : const SizedBox.shrink(),
-                MathBlock m =>
-                  m.latex.isNotEmpty
-                      ? Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: _accent,
-                          border: Border.all(
-                            color: yBorderStrong,
-                            width: yLineMid,
-                          ),
-                          boxShadow: const [
-                            BoxShadow(color: yInk, offset: Offset(3, 3)),
-                          ],
-                        ),
-                        child: Center(
-                          child: Math.tex(
-                            m.latex,
-                            mathStyle: MathStyle.display,
-                            textStyle: const TextStyle(
-                              fontSize: 22,
-                              color: yCream,
-                            ),
-                            onErrorFallback:
-                                (err) => Text(
-                                  err.message,
-                                  style: yMono(
-                                    size: 11,
-                                    color: yAmber2,
-                                    tracking: 0.8,
-                                  ),
-                                ),
-                          ),
-                        ),
-                      )
-                      : const SizedBox.shrink(),
-                BulletsBlock bl => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final it in bl.items)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 8, right: 10),
-                              child: SizedBox(
-                                width: 6,
-                                height: 6,
-                                child: ColoredBox(color: yInk),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                it,
-                                style: yBody(
-                                  size: 14,
-                                  color: yInk2,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-                TareasBlock _ => const SizedBox.shrink(),
-                DrawingBlock d => SizedBox(
-                  height: d.height,
-                  width: double.infinity,
-                  child: CustomPaint(
-                    painter: DrawingPreviewPainter(
-                      strokes: DrawingData.fromJson(d.payloadJson()).strokes,
-                    ),
-                    size: Size.infinite,
-                  ),
-                ),
-              },
-            ),
-        ],
-      ),
+      child: NoteExportView(blocks: blocks, accent: _accent),
     );
   }
 

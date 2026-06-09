@@ -58,6 +58,7 @@ class BlockRouter extends StatelessWidget {
       child: switch (block) {
         TextBlock t => _TextBlockBody(
           block: t,
+          accent: accent,
           onFocusChanged: onTextBlockFocusChanged,
         ),
         MathBlock m => _MathBlockBody(block: m, accentColor: accent),
@@ -207,12 +208,15 @@ class _BlockShell extends ConsumerWidget {
 mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
   Timer? _saveTimer;
   bool _hasPendingSave = false;
+  Future<void> Function()? _pendingSave;
 
   void scheduleSave(Future<void> Function() doSave) {
     _hasPendingSave = true;
+    _pendingSave = doSave;
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(seconds: 2), () async {
       _hasPendingSave = false;
+      _pendingSave = null;
       await doSave();
     });
   }
@@ -221,7 +225,22 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
     _saveTimer?.cancel();
     if (_hasPendingSave) {
       _hasPendingSave = false;
+      _pendingSave = null;
       await doSave();
+    }
+  }
+
+  /// Persist a pending debounced edit immediately (fire-and-forget). MUST be
+  /// called from State.dispose BEFORE the controllers the save reads from are
+  /// torn down — otherwise a debounced edit is silently dropped when the block
+  /// unmounts (e.g. leaving the screen within the 2s debounce window).
+  void commitPendingSave() {
+    _saveTimer?.cancel();
+    if (_hasPendingSave) {
+      _hasPendingSave = false;
+      final save = _pendingSave;
+      _pendingSave = null;
+      save?.call();
     }
   }
 
@@ -236,8 +255,9 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
 
 class _TextBlockBody extends ConsumerStatefulWidget {
   final TextBlock block;
+  final Color accent;
   final void Function(TextEditingController? ctrl)? onFocusChanged;
-  const _TextBlockBody({required this.block, this.onFocusChanged});
+  const _TextBlockBody({required this.block, required this.accent, this.onFocusChanged});
 
   @override
   ConsumerState<_TextBlockBody> createState() => _TextBlockBodyState();
@@ -248,18 +268,32 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   late final TextEditingController _ctrl;
   late final FocusNode _focus;
   bool _hasFocus = false;
+  late String _lastText;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.block.markdown);
+    _lastText = _ctrl.text;
+    // Listen on the controller (not just TextField.onChanged) so PROGRAMMATIC
+    // edits — the [+] insert menu / panels writing image/table/code syntax via
+    // ctrl.value — also schedule a save. onChanged only fires for human typing.
+    _ctrl.addListener(_onTextChanged);
     _focus = FocusNode();
     _focus.addListener(_onFocusChange);
   }
 
+  void _onTextChanged() {
+    if (_ctrl.text == _lastText) return; // ignore selection-only changes
+    _lastText = _ctrl.text;
+    scheduleSave(_persist);
+  }
+
   @override
   void dispose() {
+    commitPendingSave(); // flush before tearing down _ctrl the save reads from
     _focus.removeListener(_onFocusChange);
+    _ctrl.removeListener(_onTextChanged);
     _focus.dispose();
     _ctrl.dispose();
     super.dispose();
@@ -293,14 +327,15 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
             _focus.requestFocus();
           });
         },
-        child: IgnorePointer(child: NoteMarkdownPreview(data: _ctrl.text)),
+        child: IgnorePointer(child: NoteMarkdownPreview(data: _ctrl.text, accent: widget.accent)),
       );
     }
     return TextField(
       controller: _ctrl,
       focusNode: _focus,
       maxLines: null,
-      onChanged: (_) => scheduleSave(_persist),
+      // Saves are scheduled via the controller listener (_onTextChanged), which
+      // also catches programmatic [+] inserts — no onChanged needed here.
       style: yBody(size: 15, color: yInk2, height: 1.55),
       decoration: InputDecoration(
         isCollapsed: true,
@@ -342,6 +377,7 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
 
   @override
   void dispose() {
+    commitPendingSave();
     _focus.removeListener(_onFocusChange);
     _focus.dispose();
     _ctrl.dispose();
@@ -504,6 +540,7 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
 
   @override
   void dispose() {
+    commitPendingSave(); // flush before _ctrls (which _persist reads) are gone
     for (final c in _ctrls) {
       c.dispose();
     }
@@ -1278,10 +1315,12 @@ String fixMarkdownTables(String md) {
 class NoteMarkdownPreview extends ConsumerWidget {
   final String data;
   final bool tight;
+  final Color accent;
   const NoteMarkdownPreview({
     super.key,
     required this.data,
     this.tight = false,
+    this.accent = yFlight,
   });
 
   @override
@@ -1381,7 +1420,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
               tracking: 0.5,
             ).copyWith(backgroundColor: yCream2),
           ),
-          BlockquoteConfig(textColor: yMuted, sideColor: yFlight),
+          BlockquoteConfig(textColor: yMuted, sideColor: accent),
           ImgConfig(
             builder: (url, attributes) {
               final maxW = MediaQuery.of(context).size.width * 0.75;

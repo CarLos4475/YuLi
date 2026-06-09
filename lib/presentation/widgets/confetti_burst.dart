@@ -85,6 +85,8 @@ class _ConfettiBurstState extends State<_ConfettiBurst> {
           confettiController: _ctrl,
           blastDirectionality: BlastDirectionality.explosive,
           shouldLoop: false,
+          // Single clean burst: only the initial emission, no random re-emits.
+          emissionFrequency: 0,
           numberOfParticles: 24,
           maxBlastForce: 20,
           minBlastForce: 8,
