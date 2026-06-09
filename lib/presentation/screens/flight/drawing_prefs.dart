@@ -58,7 +58,7 @@ class DrawingPrefs {
 
   static Future<DrawingPrefsData> load() async {
     final p = await SharedPreferences.getInstance();
-    final stabIdx = (p.getInt(_kStab) ?? 0)
+    final stabIdx = (p.getInt(_kStab) ?? StabilizerLevel.low.index)
         .clamp(0, StabilizerLevel.values.length - 1);
     final colors = <DrawTool, Color>{};
     final widths = <DrawTool, double>{};
