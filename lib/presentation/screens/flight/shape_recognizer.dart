@@ -643,7 +643,7 @@ RecognizedShape? _tryStar(List<List<double>> pts) {
     if (v > maxR) maxR = v;
     if (v < minR) minR = v;
   }
-    if (maxR < 8) return null;
+    if (maxR < 5) return null;
   if (minR / maxR > 0.6) return null; // not spiky enough (circle / pentagon)
 
   // Find prominent tips: circular local maxima above a mid threshold, merged

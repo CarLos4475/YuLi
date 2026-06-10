@@ -434,19 +434,32 @@ List<List<double>> _resampleTo(List<List<double>> pts, int n) {
   return out;
 }
 
-bool isScribble(List<List<double>> points) {
+/// Detects the "scribble to erase" gesture. Points are in WORLD/canvas
+/// coordinates, but the gesture is perceptual — what the user drew on screen.
+/// [viewScale] (canvas zoom) converts the absolute size thresholds and the
+/// crossing density to screen pixels, so the same hand motion reads identically
+/// whether the canvas is zoomed in or out. Without it, zooming in shrinks a
+/// stroke's world footprint, letting normal small cursive slip past the size
+/// gate while inflating the crossing density — and legitimate handwriting gets
+/// erased. Defaults to 1.0 for callers drawing in unscaled coordinates.
+bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
   if (points.length < 15) return false;
 
-  final bounds = scribbleBounds(points);
-  if (bounds.width > 120 || bounds.height > 120) return false;
+  final scale = viewScale.isFinite && viewScale > 0 ? viewScale : 1.0;
 
-  // Path length (original points — resampling wouldn't change it).
+  // Bounds in screen pixels: how big the scribble actually looked.
+  final bounds = scribbleBounds(points);
+  if (bounds.width * scale > 120 || bounds.height * scale > 120) return false;
+
+  // Path length in screen pixels (original points — resampling wouldn't change
+  // it).
   double pathLength = 0;
   for (int i = 1; i < points.length; i++) {
     final dx = points[i][0] - points[i - 1][0];
     final dy = points[i][1] - points[i - 1][1];
     pathLength += math.sqrt(dx * dx + dy * dy);
   }
+  pathLength *= scale;
   if (pathLength < 20) return false;
 
   // Normalise point density so angular variance / crossing density work
