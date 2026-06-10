@@ -32,24 +32,25 @@ extension StabilizerLevelX on StabilizerLevel {
 /// Shared by the regular pen and the fountain pen — it only touches x/y,
 /// leaving pressure/timestamp components untouched.
 ///
-/// Smoothing is **speed-adaptive**: slow strokes keep detail (lighter
-/// smoothing, so careful calligraphy stays faithful), fast strokes hide hand
-/// tremor (full smoothing at the level's [baseAlpha]). Speed is the EMA of the
-/// per-sample travel distance, in whatever coordinate space [process] is fed.
-/// The adaptive factor only ever *reduces* smoothing below the baseline at low
-/// speed; at high speed it equals the fixed-alpha behavior, so it never makes a
-/// stroke worse than the non-adaptive filter did.
+/// Smoothing is **speed-adaptive**: slow strokes get the level's full smoothing
+/// (de-jitters careful writing, where positional lag is tiny because speed is
+/// low), while fast strokes track the pen closely (near-raw) so the filter never
+/// builds up lag that would snap back as an "extra ink" catch-up tail when you
+/// slow down or lift. Speed is the EMA of the per-sample travel distance, in
+/// whatever coordinate space [process] is fed.
 class LiveStabilizer {
   /// Heaviest smoothing factor (the level's configured alpha), used at speed.
   final double baseAlpha;
 
-  /// Travel-per-sample (in the fed coord space) below which smoothing is at its
-  /// lightest, and above which it reaches [baseAlpha]. Tuned for hand-writing.
+  /// Travel-per-sample (in the fed coord space) marking the slow→fast range.
   static const double _slowDist = 2.0;
   static const double _fastDist = 14.0;
 
-  /// How far toward raw (alpha 1.0) the slow end backs off the smoothing.
-  static const double _slowRelax = 0.6;
+  /// Smoothing factor at high speed: near-raw so the ink tracks the pen with
+  /// almost no lag (a laggy stabilizer pays the lag back as an "extra ink"
+  /// catch-up tail when you slow/lift, which is the worst on fast strokes).
+  /// Curve smoothing downstream keeps fast strokes clean anyway.
+  static const double _fastAlpha = 0.9;
 
   double _x = 0;
   double _y = 0;
@@ -73,16 +74,16 @@ class LiveStabilizer {
     final d = math.sqrt((x - _rawX) * (x - _rawX) + (y - _rawY) * (y - _rawY));
     _rawX = x;
     _rawY = y;
-    // Asymmetric: speed builds slowly (responsive start) but DROPS fast on
-    // deceleration. At the end of a fast stroke this relaxes the smoothing
-    // immediately, so the lagged ink catches up as a small smooth transition
-    // during the slow-down instead of snapping a long tail at lift-off.
-    final react = d < _speed ? 0.6 : 0.25;
+    // Speed reacts fast to acceleration, slowly to deceleration: it ramps to
+    // low-lag tracking as soon as you speed up and keeps tracking through the
+    // slow-down, so a fast stroke leaves no laggy catch-up tail at lift-off.
+    final react = d > _speed ? 0.5 : 0.2;
     _speed += react * (d - _speed);
 
+    // Slow strokes get the level's smoothing (de-jitter careful writing — lag
+    // is tiny at low speed anyway); fast strokes track closely (alpha→fast).
     final t = ((_speed - _slowDist) / (_fastDist - _slowDist)).clamp(0.0, 1.0);
-    final alphaSlow = baseAlpha + (1.0 - baseAlpha) * _slowRelax;
-    final alpha = alphaSlow + (baseAlpha - alphaSlow) * t;
+    final alpha = baseAlpha + (_fastAlpha - baseAlpha) * t;
 
     _x += alpha * (x - _x);
     _y += alpha * (y - _y);
