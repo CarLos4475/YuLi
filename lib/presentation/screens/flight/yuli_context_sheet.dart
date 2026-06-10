@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
@@ -43,15 +44,57 @@ class _YuliContextSheet extends StatefulWidget {
 }
 
 class _YuliContextSheetState extends State<_YuliContextSheet> {
-  late final TextEditingController _ctrl = TextEditingController(
-    text: widget.contextText,
-  );
+  late final TextEditingController _ctrl =
+      TextEditingController(text: widget.contextText)..addListener(_onTextChange);
   bool _copied = false;
+
+  void _onTextChange() => setState(() {
+    if (_copied) _copied = false;
+  });
+
+  /// Extrae el LaTeX de un contexto `$$ ... $$` o `$ ... $` (null si no hay).
+  String? _extractLatex(String text) {
+    final block = RegExp(r'\$\$([\s\S]*?)\$\$').firstMatch(text);
+    if (block != null) return block.group(1)?.trim();
+    final inline = RegExp(r'\$([^$]+)\$').firstMatch(text);
+    if (inline != null) return inline.group(1)?.trim();
+    return null;
+  }
 
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  /// Vista previa renderizada del LaTeX (solo si el contexto es matemático).
+  Widget _mathPreview() {
+    final latex = _extractLatex(_ctrl.text);
+    if (latex == null || latex.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+      ),
+      child: Center(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            latex,
+            mathStyle: MathStyle.display,
+            textStyle: yBody(size: 22, color: yInk),
+            onErrorFallback:
+                (err) => Text(
+                  'NO RENDERIZABLE',
+                  style: yMono(size: 11, tracking: 1.2, color: yMuted),
+                ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _copyAll() {
@@ -99,6 +142,7 @@ class _YuliContextSheetState extends State<_YuliContextSheet> {
                 ],
               ),
               const SizedBox(height: 10),
+              _mathPreview(),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 260),
                 child: TextField(

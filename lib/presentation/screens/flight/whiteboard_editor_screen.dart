@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
@@ -2115,11 +2114,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
-        // Mathpix math OCR is debug-only for now (too costly for current scope).
+        // OCR de matemáticas 100% local (ONNX): disponible siempre que haya trazos.
         onSendMathToYuli:
-            (kDebugMode && _selectionHasWriting)
-                ? _sendMathSelectionToYuli
-                : null,
+            _selectionHasWriting ? _sendMathSelectionToYuli : null,
         palette: _palette,
         onColorChange:
             (c) => _lassoMutate(

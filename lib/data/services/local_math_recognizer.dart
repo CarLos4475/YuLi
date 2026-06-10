@@ -144,65 +144,126 @@ class LocalMathRecognizer implements MathRecognizer {
     }
   }
 
+  // Beam search (en vez de greedy argmax): mantiene varias hipótesis vivas y
+  // se queda con la de mayor probabilidad TOTAL — recupera casos donde el
+  // greedy se equivoca en un token temprano y arrastra el error (ej: el `^2`
+  // que faltaba en sumatorios). Corre 100% offline; cuesta ~beamWidth× pasos.
+  static const _beamWidth = 4;
+  static const _lengthPenalty = 0.6; // GNMT: <1 favorece secuencias largas
+
   Future<List<int>> _generateTokenIds(MathFeatureTensor features) async {
     final session = _decoderSession;
     if (session == null) {
       throw const MathRecognitionException('DECODER MATH NO ESTÁ CARGADO.');
     }
 
-    final tokenIds = <int>[_bosId];
     final maxSteps = math.min(_maxSeqLen, 160);
+    var beams = <_Beam>[const _Beam(tokens: [1], logProb: 0.0)];
+    // arranque correcto del bos aunque difiera de 1:
+    if (_bosId != 1) beams = [_Beam(tokens: [_bosId], logProb: 0.0)];
+    final finished = <_Beam>[];
+
     for (var step = 0; step < maxSteps; step++) {
-      final tokenValues = Int64List.fromList(tokenIds);
-      final tokensInput = await OrtValue.fromList(tokenValues, [
-        1,
-        tokenIds.length,
-      ]);
-      final featuresInput = await OrtValue.fromList(
-        features.values,
-        features.shape,
-      );
-      Map<String, OrtValue>? outputs;
-      try {
-        outputs = await session.run({
-          'tokens': tokensInput,
-          'features': featuresInput,
-        });
-        final logitsValue = outputs['logits'];
-        if (logitsValue == null) {
-          throw const MathRecognitionException(
-            'DECODER MATH NO DEVOLVIÓ LOGITS.',
-          );
-        }
-        final logits = await logitsValue.asFlattenedList();
-        final nextToken = _argmaxValid(logits);
-        if (nextToken == _eosId) break;
-        tokenIds.add(nextToken);
-      } finally {
-        await tokensInput.dispose();
-        await featuresInput.dispose();
-        if (outputs != null) {
-          for (final output in outputs.values) {
-            await output.dispose();
+      if (beams.isEmpty) break;
+      final candidates = <_Beam>[];
+      for (final beam in beams) {
+        final logits = await _decodeStepLogits(session, beam.tokens, features);
+        for (final cand in _topKLogProbs(logits, _beamWidth)) {
+          final next = [...beam.tokens, cand.id];
+          final nb = _Beam(tokens: next, logProb: beam.logProb + cand.logProb);
+          if (cand.id == _eosId) {
+            finished.add(nb);
+          } else {
+            candidates.add(nb);
           }
         }
       }
-    }
-    return tokenIds.skip(1).toList();
-  }
+      if (candidates.isEmpty) break;
+      candidates.sort((a, b) => _beamScore(b).compareTo(_beamScore(a)));
+      beams = candidates.take(_beamWidth).toList();
 
-  int _argmaxValid(List<dynamic> logits) {
-    final limit = math.min(_validVocabSize, logits.length);
-    var bestId = 0;
-    var bestScore = double.negativeInfinity;
-    for (var i = 0; i < limit; i++) {
-      final score = (logits[i] as num).toDouble();
-      if (score > bestScore) {
-        bestScore = score;
-        bestId = i;
+      // early-stop: si la mejor terminada ya supera a toda hipótesis activa.
+      if (finished.isNotEmpty) {
+        final bestFin = finished.map(_beamScore).reduce(math.max);
+        final bestAct = beams.map(_beamScore).reduce(math.max);
+        if (bestFin >= bestAct) break;
       }
     }
-    return bestId;
+
+    final pool = finished.isNotEmpty ? finished : beams;
+    pool.sort((a, b) => _beamScore(b).compareTo(_beamScore(a)));
+    final best = pool.first.tokens.toList();
+    if (best.isNotEmpty && best.first == _bosId) best.removeAt(0);
+    if (best.isNotEmpty && best.last == _eosId) best.removeLast();
+    return best;
+  }
+
+  /// Score con normalización de longitud (GNMT): logProb / ((5+len)/6)^alpha.
+  double _beamScore(_Beam b) {
+    final len = math.max(1, b.tokens.length - 1); // sin contar el bos
+    final lp = math.pow((5 + len) / 6, _lengthPenalty);
+    return b.logProb / lp;
+  }
+
+  /// Ejecuta UN paso del decoder y devuelve los logits válidos (id < vocab).
+  Future<List<double>> _decodeStepLogits(
+    OrtSession session,
+    List<int> tokens,
+    MathFeatureTensor features,
+  ) async {
+    final tokensInput = await OrtValue.fromList(Int64List.fromList(tokens), [
+      1,
+      tokens.length,
+    ]);
+    final featuresInput = await OrtValue.fromList(
+      features.values,
+      features.shape,
+    );
+    Map<String, OrtValue>? outputs;
+    try {
+      outputs = await session.run({
+        'tokens': tokensInput,
+        'features': featuresInput,
+      });
+      final logitsValue = outputs['logits'];
+      if (logitsValue == null) {
+        throw const MathRecognitionException('DECODER MATH NO DEVOLVIÓ LOGITS.');
+      }
+      final raw = await logitsValue.asFlattenedList();
+      final limit = math.min(_validVocabSize, raw.length);
+      final out = List<double>.filled(limit, 0.0);
+      for (var i = 0; i < limit; i++) {
+        out[i] = (raw[i] as num).toDouble();
+      }
+      return out;
+    } finally {
+      await tokensInput.dispose();
+      await featuresInput.dispose();
+      if (outputs != null) {
+        for (final output in outputs.values) {
+          await output.dispose();
+        }
+      }
+    }
+  }
+
+  /// Top-k tokens por log-probabilidad (log-softmax estable sobre el vocab).
+  List<_Cand> _topKLogProbs(List<double> logits, int k) {
+    var maxLogit = double.negativeInfinity;
+    for (final v in logits) {
+      if (v > maxLogit) maxLogit = v;
+    }
+    var sumExp = 0.0;
+    for (final v in logits) {
+      sumExp += math.exp(v - maxLogit);
+    }
+    final logSumExp = maxLogit + math.log(sumExp);
+    final idx = List<int>.generate(logits.length, (i) => i);
+    idx.sort((a, b) => logits[b].compareTo(logits[a]));
+    final take = math.min(k, idx.length);
+    return [
+      for (var i = 0; i < take; i++) _Cand(idx[i], logits[idx[i]] - logSumExp),
+    ];
   }
 
   String _decodeTokenIds(List<int> tokenIds) {
@@ -221,6 +282,20 @@ class LocalMathRecognizer implements MathRecognizer {
     }
     return buffer.toString();
   }
+}
+
+/// Una hipótesis del beam search: tokens (incl. bos) + log-prob acumulada.
+class _Beam {
+  final List<int> tokens;
+  final double logProb;
+  const _Beam({required this.tokens, required this.logProb});
+}
+
+/// Candidato de expansión: id de token + su log-probabilidad en este paso.
+class _Cand {
+  final int id;
+  final double logProb;
+  const _Cand(this.id, this.logProb);
 }
 
 MathInputTensor renderMathInputTensor(List<List<Offset>> strokes) {
@@ -245,7 +320,7 @@ MathInputTensor renderMathInputTensor(List<List<Offset>> strokes) {
   const snap = 16;
   const targetH = 128;
   const padding = 10.0;
-  const strokeWidth = 2.0;
+  const strokeRadius = 1.0;
 
   final sourceW = math.max(1.0, right - left);
   final sourceH = math.max(1.0, bottom - top);
@@ -276,7 +351,7 @@ MathInputTensor renderMathInputTensor(List<List<Offset>> strokes) {
         targetH,
         point.dx * scale + offsetX,
         point.dy * scale + offsetY,
-        strokeWidth,
+        strokeRadius,
       );
       continue;
     }
@@ -291,7 +366,7 @@ MathInputTensor renderMathInputTensor(List<List<Offset>> strokes) {
         a.dy * scale + offsetY,
         b.dx * scale + offsetX,
         b.dy * scale + offsetY,
-        strokeWidth,
+        strokeRadius,
       );
     }
   }
@@ -313,17 +388,73 @@ String _postProcessLatex(String latex) {
           .replaceAll('[EOS]', '')
           .replaceAll('[BOS]', '')
           .replaceAll('[PAD]', '')
-          .replaceAll('Ġ', ' ')
+          .replaceAll('Ġ', '')
           .replaceAll('Ä ', ' ')
           .replaceAll('Â', '')
-          .replaceAll('\\left', '')
-          .replaceAll('\\right', '')
-          .replaceAll('{\\mbox{', '{')
           .trim();
+  // El modelo (estilo pix2tex) envuelve letras/texto en \mbox{...} o \text{...};
+  // para math eso es ruido — lo desenrollamos a su contenido.
+  value = _unwrapTextWrappers(value);
+  // Quita SOLO los delimitadores \left( ... \right) — con lookahead para NO
+  // mutilar comandos que empiezan igual (\rightarrow, \leftarrow, etc.).
+  value = value.replaceAll(RegExp(r'\\(?:left|right)(?![a-zA-Z])'), '');
   value = value.replaceAll(RegExp(r'\s+'), ' ');
-  value = value.replaceAll(RegExp(r'\s*([{}_^=+\-*/(),])\s*'), r'$1');
-  value = value.replaceAll(RegExp(r'\\\s+'), r'\');
+  value = value.replaceAllMapped(
+    RegExp(r'\s*([{}_^=+\-*/(),])\s*'),
+    (match) => match.group(1) ?? '',
+  );
+  value = value.replaceAllMapped(RegExp(r'\\\s+'), (_) => r'\');
+  // El greedy a veces deja llaves sin cerrar (}}} de más o falta de cierre):
+  // balanceamos para que SIEMPRE salga LaTeX válido.
+  value = _balanceBraces(value);
   return value.trim();
+}
+
+/// Desenrolla `\mbox{X}` y `\text{X}` (incl. anidados) a `X`.
+String _unwrapTextWrappers(String value) {
+  final wrapper = RegExp(r'\\(?:mbox|text)\s*\{([^{}]*)\}');
+  var current = value;
+  var previous = '';
+  while (current != previous) {
+    previous = current;
+    current = current.replaceAllMapped(wrapper, (m) => m.group(1) ?? '');
+  }
+  return current;
+}
+
+/// Balancea llaves: descarta `}` sin pareja y cierra las `{` abiertas.
+/// Respeta llaves escapadas (`\{`, `\}`), que son literales en LaTeX.
+String _balanceBraces(String value) {
+  final buffer = StringBuffer();
+  var depth = 0;
+  var escaped = false;
+  for (var i = 0; i < value.length; i++) {
+    final ch = value[i];
+    if (escaped) {
+      buffer.write(ch);
+      escaped = false;
+      continue;
+    }
+    if (ch == '\\') {
+      buffer.write(ch);
+      escaped = true;
+      continue;
+    }
+    if (ch == '{') {
+      depth++;
+      buffer.write(ch);
+    } else if (ch == '}') {
+      if (depth == 0) continue; // cierre huérfano: lo descartamos
+      depth--;
+      buffer.write(ch);
+    } else {
+      buffer.write(ch);
+    }
+  }
+  for (var i = 0; i < depth; i++) {
+    buffer.write('}');
+  }
+  return buffer.toString();
 }
 
 void _drawLine(

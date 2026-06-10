@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../providers/ink_recognizer_provider.dart';
 import '../../providers/math_recognizer_provider.dart';
@@ -131,8 +136,11 @@ Future<MathRecognitionResult> _recognizeMathDraft(
   List<List<Offset>> strokes,
 ) async {
   try {
-    return await ref.read(mathRecognizerProvider).recognize(strokes);
+    final result = await ref.read(mathRecognizerProvider).recognize(strokes);
+    await _maybeDumpMathStrokes(strokes, result.latex); // datos fine-tune (debug)
+    return result;
   } catch (e, stackTrace) {
+    await _maybeDumpMathStrokes(strokes, 'ERROR: $e'); // datos fine-tune (debug)
     debugPrint('MATH OCR LOCAL FALLBACK: $e');
     debugPrintStack(stackTrace: stackTrace);
     if (context.mounted) {
@@ -144,6 +152,38 @@ Future<MathRecognitionResult> _recognizeMathDraft(
       );
     }
     return const MathRecognitionResult(latex: '', isFallback: true);
+  }
+}
+
+// Recolección de datos para el fine-tune del modelo (SOLO debug): vuelca los
+// trazos EXACTOS que ve el recognizer + el latex producido a JSON en el
+// almacenamiento externo de la app, para juntar caligrafía propia y reentrenar.
+// Pull: adb pull /storage/emulated/0/Android/data/com.carlos.yuli.yuli/files/math_dump
+Future<void> _maybeDumpMathStrokes(
+  List<List<Offset>> strokes,
+  String latex,
+) async {
+  if (!kDebugMode) return;
+  try {
+    final base = await getExternalStorageDirectory();
+    if (base == null) return;
+    final dir = Directory('${base.path}/math_dump');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final payload = {
+      'latex': latex,
+      'strokes': [
+        for (final stroke in strokes)
+          [
+            for (final p in stroke) [p.dx, p.dy],
+          ],
+      ],
+    };
+    final file = File('${dir.path}/math_$stamp.json');
+    await file.writeAsString(jsonEncode(payload));
+    debugPrint('MATH DUMP -> ${file.path} latex="$latex"');
+  } catch (e) {
+    debugPrint('MATH DUMP error: $e');
   }
 }
 
