@@ -106,14 +106,37 @@ const double _kPredict = 2.5;
 /// (drawn via [drawStroke]) never includes the prediction → saved geometry stays
 /// faithful, and the prediction self-cancels when the pen slows (velocity → 0).
 void drawActiveStroke(Canvas canvas, DrawingStroke stroke) {
-  drawStroke(canvas, _withPredictedTip(stroke));
+  if (stroke.isShape) {
+    drawStroke(canvas, stroke);
+    return;
+  }
+  final tip = predictedTipPoint(stroke.points);
+  if (tip == null) {
+    drawStroke(canvas, stroke);
+    return;
+  }
+  drawStroke(
+    canvas,
+    DrawingStroke(
+      colorValue: stroke.colorValue,
+      strokeWidth: stroke.strokeWidth,
+      isFountainPen: stroke.isFountainPen,
+      isHighlighter: stroke.isHighlighter,
+      isPencil: stroke.isPencil,
+      isShape: stroke.isShape,
+      filled: stroke.filled,
+      points: [...stroke.points, tip],
+    ),
+  );
 }
 
-DrawingStroke _withPredictedTip(DrawingStroke s) {
-  final pts = s.points;
+/// The extrapolated tip the live preview leads with (from the averaged recent
+/// velocity). Also appended to a stroke on lift so the committed geometry ends
+/// where the preview ended — no backward retraction. Returns null if there
+/// aren't enough points or the pen isn't moving.
+List<double>? predictedTipPoint(List<List<double>> pts) {
   final n = pts.length;
-  if (n < 2 || s.isShape) return s;
-  // Averaged recent velocity (up to 3 segments) for a stable direction.
+  if (n < 2) return null;
   final m = (n - 1) < 3 ? (n - 1) : 3;
   double vx = 0, vy = 0;
   for (int i = n - m; i < n; i++) {
@@ -126,16 +149,7 @@ DrawingStroke _withPredictedTip(DrawingStroke s) {
   final tip = List<double>.from(last);
   tip[0] = last[0] + vx * _kPredict;
   tip[1] = last[1] + vy * _kPredict;
-  return DrawingStroke(
-    colorValue: s.colorValue,
-    strokeWidth: s.strokeWidth,
-    isFountainPen: s.isFountainPen,
-    isHighlighter: s.isHighlighter,
-    isPencil: s.isPencil,
-    isShape: s.isShape,
-    filled: s.filled,
-    points: [...pts, tip],
-  );
+  return tip;
 }
 
 /// Build the pencil's filled outline from its raw `[x, y, pressure]` points.

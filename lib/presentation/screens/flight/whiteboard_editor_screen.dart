@@ -1504,13 +1504,24 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return;
     }
     if (_tool == DrawTool.fountainPen) {
+      _bakePredictedTip();
       _finishFountainStroke();
       _stab = null;
       return;
     }
     if (_active == null) return;
+    _bakePredictedTip();
     _finishStroke();
     _stab = null;
+  }
+
+  /// On lift, append the same predicted tip the live preview was leading with,
+  /// so the committed stroke ends where the preview ended (no backward retraction).
+  void _bakePredictedTip() {
+    final a = _active;
+    if (a == null || a.isShape) return;
+    final tip = predictedTipPoint(a.points);
+    if (tip != null) a.points.add(tip);
   }
 
   void _onCancel(PointerCancelEvent e) {
