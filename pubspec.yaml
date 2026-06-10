@@ -32,6 +32,9 @@ dependencies:
   # OCR — handwriting → text (on-device, ML Kit Digital Ink)
   google_mlkit_digital_ink_recognition: ^0.14.2
 
+  # Math OCR — ViT encoder (ONNX) + Transformer decoder (Dart)
+  flutter_onnxruntime: ^1.8.0
+
   # AI assistant (v2) — DeepSeek chat (OpenAI-compatible). API key lives ONLY in
   # secure storage on-device; never in code/git/logs.
   http: ^1.2.2
@@ -72,6 +75,7 @@ flutter:
   assets:
     - assets/fonts/
     - assets/sounds/
+    - math_model/exported/
 
   fonts:
     - family: SpaceGrotesk

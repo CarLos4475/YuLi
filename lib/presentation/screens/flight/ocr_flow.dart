@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ink_recognizer_provider.dart';
+import '../../providers/math_recognizer_provider.dart';
 import '../../providers/database_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ink_recognizer.dart';
+import '../../../domain/services/math_recognizer.dart';
 import '../../../domain/models/note_block.dart';
 import 'ai_chat_sheet.dart';
 import 'ocr_result_sheet.dart';
@@ -35,10 +37,16 @@ Future<void> runOcrFlow(
     text: text,
     looksNonTextual: ocrLooksNonTextual(text),
     accent: accent,
-    onSendToNote: folderId == null
-        ? null
-        : (t) => sendTextToNote(context, ref, t,
-            defaultFolderId: folderId, accent: accent),
+    onSendToNote:
+        folderId == null
+            ? null
+            : (t) => sendTextToNote(
+              context,
+              ref,
+              t,
+              defaultFolderId: folderId,
+              accent: accent,
+            ),
   );
 }
 
@@ -70,13 +78,14 @@ Future<void> runOcrToYuliFlow(
     contextText: text,
     accent: accent,
     onSend: (t) => _sendOcrContextToYuli(context, ref, noteId, accent, t),
-    onAsk: (t) => showAiChat(
-      context,
-      ref,
-      noteId: noteId,
-      prefillMessage: t,
-      accent: accent,
-    ),
+    onAsk:
+        (t) => showAiChat(
+          context,
+          ref,
+          noteId: noteId,
+          prefillMessage: t,
+          accent: accent,
+        ),
   );
 }
 
@@ -89,24 +98,53 @@ Future<void> runMathToYuliFlow(
 }) async {
   if (strokes.isEmpty) return;
 
-  final candidates = await _recognizeTextCandidates(context, ref, strokes);
-  if (candidates == null || !context.mounted) return;
+  final mathResult = await _recognizeMathDraft(context, ref, strokes);
+  if (!context.mounted) return;
 
-  final dirty = candidates.isEmpty ? '' : candidates.first.text.trim();
+  String dirty = mathResult.latex.trim();
+  if (dirty.isEmpty || mathResult.isFallback) {
+    final candidates = await _recognizeTextCandidates(context, ref, strokes);
+    if (candidates == null || !context.mounted) return;
+    dirty = candidates.isEmpty ? dirty : candidates.first.text.trim();
+  }
+
   final contextText = _displayMath(dirty);
   showYuliContextSheet(
     context,
     contextText: contextText,
     accent: accent,
     onSend: (t) => _sendOcrContextToYuli(context, ref, noteId, accent, t),
-    onAsk: (t) => showAiChat(
-      context,
-      ref,
-      noteId: noteId,
-      prefillMessage: t,
-      accent: accent,
-    ),
+    onAsk:
+        (t) => showAiChat(
+          context,
+          ref,
+          noteId: noteId,
+          prefillMessage: t,
+          accent: accent,
+        ),
   );
+}
+
+Future<MathRecognitionResult> _recognizeMathDraft(
+  BuildContext context,
+  WidgetRef ref,
+  List<List<Offset>> strokes,
+) async {
+  try {
+    return await ref.read(mathRecognizerProvider).recognize(strokes);
+  } catch (e, stackTrace) {
+    debugPrint('MATH OCR LOCAL FALLBACK: $e');
+    debugPrintStack(stackTrace: stackTrace);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('MATH LOCAL FALLÓ: $e'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+    return const MathRecognitionResult(latex: '', isFallback: true);
+  }
 }
 
 Future<List<InkCandidate>?> _recognizeTextCandidates(
@@ -132,7 +170,10 @@ Future<List<InkCandidate>?> _recognizeTextCandidates(
       if (!ok) error = 'No se pudo descargar el modelo de idioma.';
     }
     if (error == null) {
-      candidates = await recognizer.recognize(strokes, langTag: kInkDefaultLang);
+      candidates = await recognizer.recognize(
+        strokes,
+        langTag: kInkDefaultLang,
+      );
     }
   } catch (e) {
     error = 'Error al reconocer: $e';
@@ -143,7 +184,8 @@ Future<List<InkCandidate>?> _recognizeTextCandidates(
 
   if (error != null) {
     messenger.showSnackBar(
-        SnackBar(content: Text(error), duration: const Duration(seconds: 3)));
+      SnackBar(content: Text(error), duration: const Duration(seconds: 3)),
+    );
     return null;
   }
 
@@ -161,7 +203,9 @@ Future<void> _sendOcrContextToYuli(
   Color accent,
   String text,
 ) async {
-  final sources = await ref.read(noteRepositoryProvider).getContextSources(noteId);
+  final sources = await ref
+      .read(noteRepositoryProvider)
+      .getContextSources(noteId);
   final noteSources =
       sources.where((s) => s.isNote && s.noteId != null).toList();
   if (!context.mounted) return;
@@ -176,57 +220,68 @@ Future<void> _sendOcrContextToYuli(
     final picked = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: yCream,
-          border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('¿A QUÉ NOTA ENVÍO EL TEXTO?',
-                  style: yMono(
+      builder:
+          (ctx) => Container(
+            decoration: const BoxDecoration(
+              color: yCream,
+              border: Border(
+                top: BorderSide(color: yBorderStrong, width: yLineHeavy),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '¿A QUÉ NOTA ENVÍO EL TEXTO?',
+                    style: yMono(
                       size: 11,
                       weight: FontWeight.w700,
                       tracking: 1.4,
-                      color: yInk)),
-              const SizedBox(height: 10),
-              for (final s in noteSources)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(ctx).pop(s.noteId),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                          bottom: BorderSide(color: yBorderStrong, width: yLineThin)),
-                    ),
-                    child: Text(
-                      (s.label?.trim().isEmpty ?? true)
-                          ? 'Nota'
-                          : s.label!.trim(),
-                      style:
-                          ySans(size: 14, weight: FontWeight.w700, color: yInk),
+                      color: yInk,
                     ),
                   ),
-                ),
-            ],
+                  const SizedBox(height: 10),
+                  for (final s in noteSources)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Navigator.of(ctx).pop(s.noteId),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: yBorderStrong,
+                              width: yLineThin,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          (s.label?.trim().isEmpty ?? true)
+                              ? 'Nota'
+                              : s.label!.trim(),
+                          style: ySans(
+                            size: 14,
+                            weight: FontWeight.w700,
+                            color: yInk,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
     );
     if (picked == null) return;
     target = picked;
   }
-  await ref.read(noteBlockRepositoryProvider).insertAtEnd(
-        target,
-        NoteBlockType.text,
-        payload: {'md': text},
-      );
+  await ref
+      .read(noteBlockRepositoryProvider)
+      .insertAtEnd(target, NoteBlockType.text, payload: {'md': text});
   if (!context.mounted) return;
   showAiChat(context, ref, noteId: noteId, accent: accent);
 }
