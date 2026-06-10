@@ -563,7 +563,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     // A scribble densely fills a box and would be mis-snapped to a rectangle —
     // leave it for the scribble-erase on pen-up.
     final snapPts = _rawPen.isNotEmpty ? _rawPen : _active!.points;
-    if (isScribble(snapPts)) {
+    if (isScribble(snapPts, viewScale: _viewScale)) {
       return false;
     }
     final shape = ShapeRecognizer.detect(_active!.points);
@@ -1492,7 +1492,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
     // Scribble-erase has priority over any shape that the hold-timer may have
     // wrongly snapped (a dense scribble can match the rectangle detector).
-    if (_tool == DrawTool.pen && _rawPen.isNotEmpty && isScribble(_rawPen)) {
+    if (_tool == DrawTool.pen &&
+        _rawPen.isNotEmpty &&
+        isScribble(_rawPen, viewScale: _viewScale)) {
       _doScribbleErase();
       _stab = null;
       return;
@@ -1574,7 +1576,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   void _doScribbleErase() {
     final scribblePts = _rawPen;
-    if (!isScribble(scribblePts)) return;
+    if (!isScribble(scribblePts, viewScale: _viewScale)) return;
     final bounds = scribbleBounds(scribblePts);
     final before = _snapshot();
     final lenBefore = _data.strokes.length;
@@ -1606,7 +1608,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
     final scribblePts =
         _rawPen.length >= _active!.points.length ? _rawPen : _active!.points;
-    if (_tool == DrawTool.pen && isScribble(scribblePts)) {
+    if (_tool == DrawTool.pen && isScribble(scribblePts, viewScale: _viewScale)) {
       final bounds = scribbleBounds(scribblePts);
       final before = _snapshot();
       final lenBefore = _data.strokes.length;
@@ -1914,12 +1916,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   /// OCR the selected handwriting → editable result sheet (shared flow).
-  List<List<Offset>> _selectedWritingStrokes() {
+  ///
+  /// [includeShapes]: las figuras imantadas (p.ej. la barra de fracción dibujada
+  /// como línea recta con snap) deben entrar al MATH OCR — sin ellas el modelo
+  /// ve los números flotando. El OCR de texto (ML Kit) sí las excluye.
+  List<List<Offset>> _selectedWritingStrokes({bool includeShapes = false}) {
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
       if (i >= _data.strokes.length) continue;
       final s = _data.strokes[i];
-      if (s.isHighlighter || s.isShape) continue;
+      if (s.isHighlighter) continue;
+      if (s.isShape && !includeShapes) continue;
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
     return strokes;
@@ -1949,7 +1956,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Future<void> _sendMathSelectionToYuli() async {
-    final strokes = _selectedWritingStrokes();
+    final strokes = _selectedWritingStrokes(includeShapes: true);
     runMathToYuliFlow(
       context,
       ref,

@@ -973,7 +973,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // A scribble densely fills a box and would be mis-snapped to a rectangle —
     // leave it for the scribble-erase on pen-up.
     final snapPts = _active!.points;
-    if (isScribble(snapPts)) return false;
+    if (isScribble(snapPts, viewScale: _viewScale)) return false;
     final shape = ShapeRecognizer.detect(_active!.points);
     if (shape == null) return false;
     if (!_canSnapHeldShape(shape.kind, snapPts)) return false;
@@ -1543,7 +1543,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
-    if (_tool == DrawTool.pen && isScribble(_active!.points)) {
+    if (_tool == DrawTool.pen && isScribble(_active!.points, viewScale: _viewScale)) {
       final bounds = scribbleBounds(_active!.points);
       final before = _snapshot();
       final lenBefore = data.strokes.length;
@@ -2308,13 +2308,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   /// OCR the selected handwriting → editable result sheet (shared flow).
   /// Strokes are world-coords from [_allVisibleStrokes].
-  List<List<Offset>> _selectedWritingStrokes() {
+  ///
+  /// [includeShapes]: las figuras imantadas (p.ej. la barra de fracción dibujada
+  /// como línea recta con snap) deben entrar al MATH OCR — sin ellas el modelo
+  /// ve los números flotando. El OCR de texto (ML Kit) sí las excluye.
+  List<List<Offset>> _selectedWritingStrokes({bool includeShapes = false}) {
     final all = _allVisibleStrokes;
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
       if (i >= all.length) continue;
       final s = all[i];
-      if (s.isHighlighter || s.isShape) continue;
+      if (s.isHighlighter) continue;
+      if (s.isShape && !includeShapes) continue;
       strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
     }
     return strokes;
@@ -2344,7 +2349,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Future<void> _sendMathSelectionToYuli() async {
-    final strokes = _selectedWritingStrokes();
+    final strokes = _selectedWritingStrokes(includeShapes: true);
     runMathToYuliFlow(
       context,
       ref,
