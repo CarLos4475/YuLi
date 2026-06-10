@@ -67,6 +67,27 @@ class FountainPenEngine {
     return current;
   }
 
+  /// Light low-pass on the polyline (weighted 0.25/0.5/0.25, endpoints fixed).
+  /// Removes the high-frequency hand/digitizer jitter that an interpolating
+  /// spline like [catmullRom] would otherwise amplify into visible ripples on
+  /// near-straight strokes — without the corner-insetting (shrink) of Chaikin.
+  static List<Offset> smoothPolyline(List<Offset> pts, {int passes = 1}) {
+    if (pts.length < 3) return pts;
+    var cur = pts;
+    for (int k = 0; k < passes; k++) {
+      final out = <Offset>[cur.first];
+      for (int i = 1; i < cur.length - 1; i++) {
+        out.add(Offset(
+          cur[i - 1].dx * 0.25 + cur[i].dx * 0.5 + cur[i + 1].dx * 0.25,
+          cur[i - 1].dy * 0.25 + cur[i].dy * 0.5 + cur[i + 1].dy * 0.25,
+        ));
+      }
+      out.add(cur.last);
+      cur = out;
+    }
+    return cur;
+  }
+
   /// Catmull-Rom spline subdivision. Unlike Chaikin (which cuts corners and
   /// pulls the curve *inside* the points, shrinking the stroke), this passes
   /// THROUGH every original point and only interpolates smoothly between them —
@@ -278,14 +299,16 @@ class FountainPenEngine {
     final timestamps =
         raw.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
 
-    // Filter out excess density from slow strokes.
+    // Filter out excess density from slow strokes, then de-jitter so the
+    // interpolating spline doesn't amplify hand tremor into ripples.
     final (dsPts, dsPre, dsTs) = downsample(rawPts, pressures, timestamps);
+    final basePts = smoothPolyline(dsPts, passes: 2);
 
-    final rawWidths = computeWidths(dsPts, active.strokeWidth, dsPre, dsTs);
+    final rawWidths = computeWidths(basePts, active.strokeWidth, dsPre, dsTs);
     final smoothed = smoothWidths(rawWidths, windowSize: 3);
     taperWidths(smoothed);
 
-    final centerline = catmullRom(dsPts, subdiv: 4);
+    final centerline = catmullRom(basePts, subdiv: 3);
 
     // Interpolate widths to match the densified centerline.
     final widths = interpolateWidths(smoothed, centerline.length);

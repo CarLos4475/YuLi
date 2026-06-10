@@ -107,6 +107,7 @@ Path buildPencilPath(DrawingStroke stroke) {
   final ts = List<int>.filled(raw.length, 0);
   final (dsPts, dsPre, _) =
       FountainPenEngine.downsample(pts, pressures, ts, minDist: 2.0);
+  final basePts = FountainPenEngine.smoothPolyline(dsPts, passes: 2);
 
   final base = stroke.strokeWidth;
   // Centered so medium pressure ≈ the selected base width (faithful), with a
@@ -117,7 +118,7 @@ Path buildPencilPath(DrawingStroke stroke) {
   final widths = FountainPenEngine.smoothWidths(rawWidths, windowSize: 3);
   FountainPenEngine.taperWidths(widths, taperLength: 4);
 
-  final centerline = FountainPenEngine.catmullRom(dsPts, subdiv: 4);
+  final centerline = FountainPenEngine.catmullRom(basePts, subdiv: 3);
   final w = FountainPenEngine.interpolateWidths(widths, centerline.length);
   return FountainPenEngine.tessellate(centerline, w, noiseAmp: 0.0);
 }
