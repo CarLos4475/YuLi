@@ -301,7 +301,7 @@ class _DrawingCellState extends State<DrawingCell>
 
   Offset _stabilize(Offset p) => _stab?.process(p.dx, p.dy) ?? p;
 
-  void _start(Offset pos) {
+  void _start(Offset pos, {double pressure = 0.5}) {
     widget.onDrawStart();
     if (_tool == DrawTool.lasso) {
       _handleLassoDown(pos);
@@ -322,13 +322,13 @@ class _DrawingCellState extends State<DrawingCell>
         isHighlighter: _tool == DrawTool.highlighter,
         isPencil: _tool == DrawTool.pencil,
         points: [
-          [p.dx, p.dy],
+          _tool == DrawTool.pencil ? [p.dx, p.dy, pressure] : [p.dx, p.dy],
         ],
       );
     });
   }
 
-  void _move(Offset pos) {
+  void _move(Offset pos, {double pressure = 0.5}) {
     if (_tool == DrawTool.lasso) {
       _handleLassoMove(pos);
       return;
@@ -339,7 +339,8 @@ class _DrawingCellState extends State<DrawingCell>
     }
     if (_active == null) return;
     final p = _stabilize(pos);
-    _active!.points.add([p.dx, p.dy]);
+    _active!.points.add(
+        _active!.isPencil ? [p.dx, p.dy, pressure] : [p.dx, p.dy]);
     _activeTick.value++;
   }
 
@@ -1042,7 +1043,8 @@ class _DrawingCellState extends State<DrawingCell>
               return;
             }
 
-            _start(e.localPosition);
+            _start(e.localPosition,
+                pressure: e.pressure.isFinite ? e.pressure : 0.5);
           },
           onPointerMove: (e) {
             if (_ignoreForScroll(e.kind)) return;
@@ -1075,7 +1077,8 @@ class _DrawingCellState extends State<DrawingCell>
               return;
             }
             if (_active == null && _tool == DrawTool.pen) return;
-            _move(e.localPosition);
+            _move(e.localPosition,
+                pressure: e.pressure.isFinite ? e.pressure : 0.5);
           },
           onPointerUp: (e) {
             if (_ignoreForScroll(e.kind)) return;

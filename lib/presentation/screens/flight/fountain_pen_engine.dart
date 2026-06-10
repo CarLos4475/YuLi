@@ -186,8 +186,11 @@ class FountainPenEngine {
   }
 
   /// Tessellate a centerline + per-point widths into a filled polygon Path.
-  /// Adds sub-pixel deterministic noise to edges for organic feel.
-  static Path tessellate(List<Offset> centerline, List<double> widths) {
+  /// [noiseAmp] adds sub-pixel deterministic edge wobble for an organic feel
+  /// (the fountain pen wants it; the pencil passes 0 — its texture is the grain
+  /// fill, and edge wobble would only fight it).
+  static Path tessellate(List<Offset> centerline, List<double> widths,
+      {double noiseAmp = 0.15}) {
     final path = Path();
     final n = centerline.length;
     if (n < 2) return path;
@@ -222,7 +225,7 @@ class FountainPenEngine {
 
       // Deterministic sub-pixel noise — breaks mathematical perfection
       // without visible roughness.
-      final noise = math.sin(i * 0.37) * 0.15;
+      final noise = math.sin(i * 0.37) * noiseAmp;
       final w = halfW + noise;
 
       left.add(Offset(

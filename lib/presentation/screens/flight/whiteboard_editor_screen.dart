@@ -1239,7 +1239,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         isHighlighter: _tool == DrawTool.highlighter,
         isPencil: _tool == DrawTool.pencil,
         points: [
-          [sp.dx, sp.dy],
+          _tool == DrawTool.pencil
+              ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
+              : [sp.dx, sp.dy],
         ],
       );
     });
@@ -1394,7 +1396,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final dy = sp.dy - pts.last[1];
       if (dx * dx + dy * dy < _minDist2) return;
     }
-    pts.add([sp.dx, sp.dy]);
+    pts.add(_active!.isPencil
+        ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
+        : [sp.dx, sp.dy]);
     _activeTick.value++;
     if (_holdAnchor != null) {
       final dx = sp.dx - _holdAnchor!.dx;
