@@ -5,6 +5,7 @@ import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
@@ -1323,17 +1324,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   static const _minDist2 = 9.0;
 
   void _onMove(PointerMoveEvent e) {
-    // The stylus must never pan. The InteractiveViewer's pan recognizer can win
-    // the gesture arena on a fast stroke before `panEnabled` flips to false, so
-    // pin the view back to its stylus-down transform on every move — any leaked
-    // pan is undone before it can drift.
-    if (_stylusActive &&
-        _palmRejection &&
-        _transformBeforeStylus != null &&
-        !_eyedropperMode &&
-        _viewCtrl.value != _transformBeforeStylus) {
-      _viewCtrl.value = _transformBeforeStylus!;
-    }
     if (_eyedropperMode) {
       if (_activePointers.length < 2) _moveLoupe(e.localPosition);
       return;
@@ -3093,8 +3083,32 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                 RepaintBoundary(
                                   key: _canvasBoundaryKey,
                                   child: ClipRect(
-                                  child: GestureDetector(
-                                    onTapUp: _onLassoTap,
+                                  child: RawGestureDetector(
+                                    // A stylus must NEVER pan the canvas: this
+                                    // Eager recognizer (stylus-only) wins the
+                                    // gesture arena the instant a pen touches, so
+                                    // the InteractiveViewer's pan recognizer is
+                                    // rejected and never fights the stroke. Fingers
+                                    // are unaffected (it ignores touch).
+                                    gestures: <Type, GestureRecognizerFactory>{
+                                      TapGestureRecognizer:
+                                          GestureRecognizerFactoryWithHandlers<
+                                              TapGestureRecognizer>(
+                                        () => TapGestureRecognizer(),
+                                        (i) => i.onTapUp = _onLassoTap,
+                                      ),
+                                      EagerGestureRecognizer:
+                                          GestureRecognizerFactoryWithHandlers<
+                                              EagerGestureRecognizer>(
+                                        () => EagerGestureRecognizer(
+                                          supportedDevices: const {
+                                            PointerDeviceKind.stylus,
+                                            PointerDeviceKind.invertedStylus,
+                                          },
+                                        ),
+                                        (i) {},
+                                      ),
+                                    },
                                     child: Listener(
                                       behavior: HitTestBehavior.opaque,
                                       onPointerDown: _onDown,
