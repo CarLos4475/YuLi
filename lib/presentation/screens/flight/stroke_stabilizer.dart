@@ -73,7 +73,12 @@ class LiveStabilizer {
     final d = math.sqrt((x - _rawX) * (x - _rawX) + (y - _rawY) * (y - _rawY));
     _rawX = x;
     _rawY = y;
-    _speed += 0.3 * (d - _speed);
+    // Asymmetric: speed builds slowly (responsive start) but DROPS fast on
+    // deceleration. At the end of a fast stroke this relaxes the smoothing
+    // immediately, so the lagged ink catches up as a small smooth transition
+    // during the slow-down instead of snapping a long tail at lift-off.
+    final react = d < _speed ? 0.6 : 0.25;
+    _speed += react * (d - _speed);
 
     final t = ((_speed - _slowDist) / (_fastDist - _slowDist)).clamp(0.0, 1.0);
     final alphaSlow = baseAlpha + (1.0 - baseAlpha) * _slowRelax;
