@@ -117,7 +117,7 @@ Path buildPencilPath(DrawingStroke stroke) {
   final widths = FountainPenEngine.smoothWidths(rawWidths, windowSize: 3);
   FountainPenEngine.taperWidths(widths, taperLength: 4);
 
-  final centerline = FountainPenEngine.chaikinSmooth(dsPts, iterations: 1);
+  final centerline = FountainPenEngine.catmullRom(dsPts, subdiv: 4);
   final w = FountainPenEngine.interpolateWidths(widths, centerline.length);
   return FountainPenEngine.tessellate(centerline, w, noiseAmp: 0.0);
 }

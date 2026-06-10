@@ -67,6 +67,39 @@ class FountainPenEngine {
     return current;
   }
 
+  /// Catmull-Rom spline subdivision. Unlike Chaikin (which cuts corners and
+  /// pulls the curve *inside* the points, shrinking the stroke), this passes
+  /// THROUGH every original point and only interpolates smoothly between them —
+  /// so the smoothed stroke stays faithful to where the user actually drew.
+  static List<Offset> catmullRom(List<Offset> pts, {int subdiv = 4}) {
+    final n = pts.length;
+    if (n < 3) return pts;
+    final out = <Offset>[pts.first];
+    for (int i = 0; i < n - 1; i++) {
+      final p0 = pts[i == 0 ? 0 : i - 1];
+      final p1 = pts[i];
+      final p2 = pts[i + 1];
+      final p3 = pts[i + 2 >= n ? n - 1 : i + 2];
+      for (int j = 1; j <= subdiv; j++) {
+        final t = j / subdiv;
+        final t2 = t * t;
+        final t3 = t2 * t;
+        final x = 0.5 *
+            ((2 * p1.dx) +
+                (-p0.dx + p2.dx) * t +
+                (2 * p0.dx - 5 * p1.dx + 4 * p2.dx - p3.dx) * t2 +
+                (-p0.dx + 3 * p1.dx - 3 * p2.dx + p3.dx) * t3);
+        final y = 0.5 *
+            ((2 * p1.dy) +
+                (-p0.dy + p2.dy) * t +
+                (2 * p0.dy - 5 * p1.dy + 4 * p2.dy - p3.dy) * t2 +
+                (-p0.dy + 3 * p1.dy - 3 * p2.dy + p3.dy) * t3);
+        out.add(Offset(x, y));
+      }
+    }
+    return out;
+  }
+
   /// Compute per-point stroke width based on writing direction, velocity,
   /// and stylus pressure. Direction is the dominant factor (nib effect).
   static List<double> computeWidths(
@@ -252,7 +285,7 @@ class FountainPenEngine {
     final smoothed = smoothWidths(rawWidths, windowSize: 3);
     taperWidths(smoothed);
 
-    final centerline = chaikinSmooth(dsPts, iterations: 1);
+    final centerline = catmullRom(dsPts, subdiv: 4);
 
     // Interpolate widths to match the densified centerline.
     final widths = interpolateWidths(smoothed, centerline.length);
