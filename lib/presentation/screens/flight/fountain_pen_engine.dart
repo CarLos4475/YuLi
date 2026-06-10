@@ -111,26 +111,10 @@ class FountainPenEngine {
       final pressure = pressures.length > rawIdx ? pressures[rawIdx] : 0.5;
       final pressureFactor = pressureWidthFactor(pressure);
 
-      // 3. Velocity factor:  fast → slightly thinner, slow → slightly thicker.
-      double velocityFactor = 1.0;
-      if (rawN > 1 && rawIdx > 0 && timestamps.length > rawIdx) {
-        final dt = timestamps[rawIdx] - timestamps[rawIdx - 1];
-        if (dt > 0) {
-          final prev = centerline[(i - 1).clamp(0, n - 1)];
-          final segDist = math.sqrt(
-            (centerline[i].dx - prev.dx) *
-                    (centerline[i].dx - prev.dx) +
-                (centerline[i].dy - prev.dy) *
-                    (centerline[i].dy - prev.dy),
-          );
-          final vel = segDist / dt;
-          velocityFactor = 1.0 - (vel - 0.3) * 0.15;
-          velocityFactor = velocityFactor.clamp(0.80, 1.20);
-        }
-      }
-
-      widths[i] =
-          baseWidth * directionFactor * velocityFactor * pressureFactor;
+      // No velocity thinning: the live preview doesn't apply it, so applying it
+      // only at bake time made the finished stroke shrink vs what the user drew.
+      // Keep the baked width faithful to the live preview.
+      widths[i] = baseWidth * directionFactor * pressureFactor;
     }
 
     return widths;
