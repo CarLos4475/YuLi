@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
@@ -12,6 +13,7 @@ import '../../../data/services/launcher_icon_service.dart';
 import '../../widgets/app_section_divider.dart';
 import 'image_storage_screen.dart';
 import 'crash_log_screen.dart';
+import 'math_dataset_screen.dart';
 import '../trash/trash_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -193,6 +195,21 @@ class SettingsScreen extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: _TrashBlock(),
             ),
+
+            // Herramienta de dev: etiquetar trazos recolectados para el
+            // fine-tune del OCR de matemáticas (solo en builds debug).
+            if (kDebugMode) ...[
+              const SizedBox(height: 24),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: AppSectionDivider(label: 'DATASET MATH (DEBUG)'),
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: _MathDatasetBlock(),
+              ),
+            ],
 
             const SizedBox(height: 24),
             const Padding(
@@ -598,6 +615,58 @@ class _CrashLogBlock extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Ver y compartir errores registrados',
+                    style: bodyS.copyWith(color: inkGray),
+                  ),
+                ],
+              ),
+            ),
+            Icon(YuLiIcons.chevronRight, size: 18, color: inkGray),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MathDatasetBlock extends StatelessWidget {
+  const _MathDatasetBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MathDatasetScreen()),
+          ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+        ),
+        child: Row(
+          children: [
+            Icon(YuLiIcons.listChecks, size: 20, color: ink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ETIQUETAR TRAZOS',
+                    style: labelBold.copyWith(
+                      color: ink,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Corregir el LaTeX de cada math OCR para el fine-tune',
                     style: bodyS.copyWith(color: inkGray),
                   ),
                 ],
