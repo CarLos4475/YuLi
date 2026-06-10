@@ -95,6 +95,49 @@ void drawStroke(Canvas canvas, DrawingStroke stroke) {
   canvas.drawPath(cachedStrokePath(stroke, () => buildStrokePath(stroke)), paint);
 }
 
+/// Prediction strength: how many averaged input-segments past the last point to
+/// extrapolate the live ink. Masks input-to-display latency so the ink tracks
+/// the pen tip (kills the "ink lags behind, then jumps forward on lift" feel).
+/// Higher = stickier to the pen but more overshoot on sharp direction changes.
+const double _kPredict = 2.5;
+
+/// Draw the IN-PROGRESS stroke with a short predicted tip extrapolated from the
+/// recent velocity, so the live ink keeps up with the pen. The committed stroke
+/// (drawn via [drawStroke]) never includes the prediction → saved geometry stays
+/// faithful, and the prediction self-cancels when the pen slows (velocity → 0).
+void drawActiveStroke(Canvas canvas, DrawingStroke stroke) {
+  drawStroke(canvas, _withPredictedTip(stroke));
+}
+
+DrawingStroke _withPredictedTip(DrawingStroke s) {
+  final pts = s.points;
+  final n = pts.length;
+  if (n < 2 || s.isShape) return s;
+  // Averaged recent velocity (up to 3 segments) for a stable direction.
+  final m = (n - 1) < 3 ? (n - 1) : 3;
+  double vx = 0, vy = 0;
+  for (int i = n - m; i < n; i++) {
+    vx += pts[i][0] - pts[i - 1][0];
+    vy += pts[i][1] - pts[i - 1][1];
+  }
+  vx /= m;
+  vy /= m;
+  final last = pts[n - 1];
+  final tip = List<double>.from(last);
+  tip[0] = last[0] + vx * _kPredict;
+  tip[1] = last[1] + vy * _kPredict;
+  return DrawingStroke(
+    colorValue: s.colorValue,
+    strokeWidth: s.strokeWidth,
+    isFountainPen: s.isFountainPen,
+    isHighlighter: s.isHighlighter,
+    isPencil: s.isPencil,
+    isShape: s.isShape,
+    filled: s.filled,
+    points: [...pts, tip],
+  );
+}
+
 /// Build the pencil's filled outline from its raw `[x, y, pressure]` points.
 /// Downsamples first (slow strokes pack points densely, which destabilizes the
 /// edge normals and reads as noise — same fix the fountain pen uses), derives a

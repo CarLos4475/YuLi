@@ -4449,7 +4449,7 @@ class _ActiveStrokePainter extends CustomPainter {
     if (active == null) return;
     canvas.save();
     canvas.translate(0, pageTop);
-    drawStroke(canvas, active!);
+    drawActiveStroke(canvas, active!);
     canvas.restore();
   }
 

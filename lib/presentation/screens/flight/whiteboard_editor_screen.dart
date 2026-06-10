@@ -3851,7 +3851,7 @@ class _ActiveStrokePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (active == null) return;
-    drawStroke(canvas, active!);
+    drawActiveStroke(canvas, active!);
   }
 
   @override
