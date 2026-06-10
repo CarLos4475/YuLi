@@ -302,11 +302,11 @@ class FountainPenEngine {
     // Filter out excess density from slow strokes, then de-jitter so the
     // interpolating spline doesn't amplify hand tremor into ripples.
     final (dsPts, dsPre, dsTs) = downsample(rawPts, pressures, timestamps);
-    final basePts = smoothPolyline(dsPts, passes: 2);
+    final basePts = smoothPolyline(dsPts, passes: 1);
 
     final rawWidths = computeWidths(basePts, active.strokeWidth, dsPre, dsTs);
-    final smoothed = smoothWidths(rawWidths, windowSize: 3);
-    taperWidths(smoothed);
+    final smoothed = smoothWidths(rawWidths, windowSize: 5);
+    taperWidths(smoothed, taperLength: 3);
 
     final centerline = catmullRom(basePts, subdiv: 3);
 
