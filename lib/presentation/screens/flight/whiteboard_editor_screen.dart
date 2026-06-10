@@ -416,9 +416,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       img.dispose();
       return;
     }
-    final pos = resetPos
-        ? Offset(_viewport.width / 2, _viewport.height / 2)
-        : _loupePos;
+    final pos =
+        resetPos
+            ? Offset(_viewport.width / 2, _viewport.height / 2)
+            : _loupePos;
     setState(() {
       _eyedropImg?.dispose();
       _eyedropImg = img;
@@ -469,8 +470,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   List<Widget> _buildLoupeOverlay(Size viewport) {
     const loupeW = 132.0;
     const loupeH = 160.0;
-    final left = (_loupePos.dx - loupeW / 2).clamp(8.0, viewport.width - loupeW - 8);
-    final top = (_loupePos.dy - loupeH - 40).clamp(8.0, viewport.height - loupeH - 8);
+    final left = (_loupePos.dx - loupeW / 2).clamp(
+      8.0,
+      viewport.width - loupeW - 8,
+    );
+    final top = (_loupePos.dy - loupeH - 40).clamp(
+      8.0,
+      viewport.height - loupeH - 8,
+    );
     return [
       // Exact sample point.
       Positioned(
@@ -555,11 +562,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_active == null) return false;
     // A scribble densely fills a box and would be mis-snapped to a rectangle —
     // leave it for the scribble-erase on pen-up.
-    if (isScribble(_rawPen.isNotEmpty ? _rawPen : _active!.points)) {
+    final snapPts = _rawPen.isNotEmpty ? _rawPen : _active!.points;
+    if (isScribble(snapPts)) {
       return false;
     }
     final shape = ShapeRecognizer.detect(_active!.points);
     if (shape == null) return false;
+    if (!_canSnapHeldShape(shape.kind, snapPts)) return false;
     // Highlighter only snaps to straight lines (a marker arrow/box reads odd).
     if (_tool == DrawTool.highlighter && shape.kind != ShapeKind.line) {
       return false;
@@ -567,6 +576,18 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _enterShapeAdjust(shape, _active!);
     HapticFeedback.lightImpact();
     return true;
+  }
+
+  bool _canSnapHeldShape(ShapeKind kind, List<List<double>> points) {
+    if (kind == ShapeKind.line || kind == ShapeKind.arrow) return true;
+    if (!shapeKindIsClosed(kind) && kind != ShapeKind.pentagram) return true;
+    final bounds = scribbleBounds(points);
+    final diag2 = bounds.width * bounds.width + bounds.height * bounds.height;
+    if (diag2 <= 0) return false;
+    final start = Offset(points.first[0], points.first[1]);
+    final end = Offset(points.last[0], points.last[1]);
+    final dist2 = (start - end).distanceSquared;
+    return dist2 / diag2 <= 0.09;
   }
 
   /// Replace the freehand stroke with clean geometry and enter live-adjust:
@@ -1094,10 +1115,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _marqueeRectBackup = rect;
       _marqueeDrawStart = _screenToWorld(p);
       setState(
-        () => _marqueeWorld = Rect.fromPoints(
-          _marqueeDrawStart!,
-          _marqueeDrawStart!,
-        ),
+        () =>
+            _marqueeWorld = Rect.fromPoints(
+              _marqueeDrawStart!,
+              _marqueeDrawStart!,
+            ),
       );
       return;
     }
@@ -1218,12 +1240,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           strokeWidth: _strokeW,
           isFountainPen: true,
           points: [
-            [
-              sp.dx,
-              sp.dy,
-              pressure,
-              e.timeStamp.inMilliseconds.toDouble(),
-            ],
+            [sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()],
           ],
         );
       });
@@ -1342,7 +1359,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         setState(() => _marqueeWorld = _marqueeRectAtDragStart!.shift(d));
       } else {
         setState(
-          () => _marqueeWorld = _resizeMarquee(_marqueeRectAtDragStart!, drag, w),
+          () =>
+              _marqueeWorld = _resizeMarquee(_marqueeRectAtDragStart!, drag, w),
         );
       }
       return;
@@ -1396,9 +1414,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final dy = sp.dy - pts.last[1];
       if (dx * dx + dy * dy < _minDist2) return;
     }
-    pts.add(_active!.isPencil
-        ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-        : [sp.dx, sp.dy]);
+    pts.add(
+      _active!.isPencil
+          ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
+          : [sp.dx, sp.dy],
+    );
     _activeTick.value++;
     if (_holdAnchor != null) {
       final dx = sp.dx - _holdAnchor!.dx;
@@ -2628,421 +2648,443 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                       children: [
                         ModeHeader(
                           mode: 'PIZARRA',
-                          subtitle: (widget.note.title?.trim().isNotEmpty == true)
-                              ? 'INFINITA · CANVAS · PAN + ZOOM · ${widget.note.title!.trim()}'
-                              : 'INFINITA · CANVAS · PAN + ZOOM',
+                          subtitle:
+                              (widget.note.title?.trim().isNotEmpty == true)
+                                  ? 'INFINITA · CANVAS · PAN + ZOOM · ${widget.note.title!.trim()}'
+                                  : 'INFINITA · CANVAS · PAN + ZOOM',
                           color: _accent,
                           onBack: () => Navigator.pop(context),
                           headerRight: [
-                          YBadge(
-                            label: '@${widget.folder.name}',
-                            bg: widget.folder.color,
-                            fg: yCream,
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _resetView,
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: yCream,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
-                                ),
-                              ),
-                              child: const Icon(
-                                YuLiIcons.scan,
-                                color: yInk,
-                                size: 16,
-                              ),
+                            YBadge(
+                              label: '@${widget.folder.name}',
+                              bg: widget.folder.color,
+                              fg: yCream,
                             ),
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _linkToLab(spaces),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: yLab,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
-                                ),
-                              ),
-                              child: const Icon(
-                                YuLiIcons.infinity,
-                                color: yCream,
-                                size: 16,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap:
-                                hasAiKey
-                                    ? () => showAiChat(
-                                      context,
-                                      ref,
-                                      noteId: widget.note.id,
-                                      accent: _accent,
-                                      onSendToCanvas: _insertTextBlock,
-                                    )
-                                    : null,
-                            child: AiLinkBadge(
-                              active: aiLinked,
-                              color: _accent,
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _resetView,
                               child: Container(
                                 width: 32,
                                 height: 32,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: hasAiKey ? _accent : yMuted,
+                                  color: yCream,
                                   border: Border.all(
                                     color: yBorderStrong,
                                     width: yLineMid,
                                   ),
                                 ),
-                                child: Icon(
-                                  YuLiIcons.sparkles,
-                                  color: hasAiKey ? yCream : yCream2,
+                                child: const Icon(
+                                  YuLiIcons.scan,
+                                  color: yInk,
                                   size: 16,
                                 ),
                               ),
                             ),
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap:
-                                () => setState(() => _headerCollapsed = true),
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: yCream,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _linkToLab(spaces),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: yLab,
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: yLineMid,
+                                  ),
                                 ),
-                              ),
-                              child: const Icon(
-                                YuLiIcons.chevronUp,
-                                color: yInk,
-                                size: 18,
+                                child: const Icon(
+                                  YuLiIcons.infinity,
+                                  color: yCream,
+                                  size: 16,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      if (linkedSpaces.isNotEmpty)
-                        _LinkedSpacesBar(spaces: linkedSpaces),
-                      ],
-                    ),
-                  ],
-                Expanded(
-                child: LayoutBuilder(
-                  builder: (ctx, c) {
-                    _viewport = Size(c.maxWidth, c.maxHeight);
-                    _maybeInitView();
-                    final viewport = Size(c.maxWidth, c.maxHeight);
-                    final textBlockOverlays = _buildTextBlockOverlays();
-                    final taskBlockOverlays = _buildTaskBlockOverlays();
-                    return Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        RepaintBoundary(
-                          key: _canvasBoundaryKey,
-                          child: ClipRect(
-                          child: RawGestureDetector(
-                            // A stylus must NEVER pan the InteractiveViewer.
-                            // This Eager recognizer (stylus-only) wins the gesture
-                            // arena the instant a pen touches, so the IV's pan
-                            // recognizer is rejected and never fights the stroke.
-                            // Fingers are unaffected (it ignores touch).
-                            gestures: <Type, GestureRecognizerFactory>{
-                              TapGestureRecognizer:
-                                  GestureRecognizerFactoryWithHandlers<
-                                      TapGestureRecognizer>(
-                                () => TapGestureRecognizer(),
-                                (i) => i.onTapUp = _onLassoTap,
-                              ),
-                              EagerGestureRecognizer:
-                                  GestureRecognizerFactoryWithHandlers<
-                                      EagerGestureRecognizer>(
-                                () => EagerGestureRecognizer(
-                                  supportedDevices: const {
-                                    PointerDeviceKind.stylus,
-                                    PointerDeviceKind.invertedStylus,
-                                  },
-                                ),
-                                (i) {},
-                              ),
-                            },
-                            child: Listener(
+                            GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onPointerDown: _onDown,
-                              onPointerMove: _onMove,
-                              onPointerUp: _onUp,
-                              onPointerCancel: _onCancel,
-                              child: InteractiveViewer(
-                                transformationController: _viewCtrl,
-                                minScale: 0.3,
-                                maxScale: 4.0,
-                                onInteractionEnd: (_) {
-                                  // After a 2-finger pan/zoom the snapshot is
-                                  // stale → recapture so the loupe keeps sampling
-                                  // the right pixels (keeps its position).
-                                  if (_eyedropperMode &&
-                                      _eyedropCaptureMatrix != null &&
-                                      _viewCtrl.value != _eyedropCaptureMatrix) {
-                                    _captureEyedropSnapshot(resetPos: false);
-                                  }
-                                },
-                                boundaryMargin: const EdgeInsets.all(
-                                  _kCanvasW * 0.5,
-                                ),
-                                // Text mode: 1-finger drag is reserved for moving
-                                // a box (its GestureDetector), so disable pan;
-                                // 2-finger still zooms/navigates.
-                                panEnabled:
-                                    _eyedropperMode
-                                        ? _activePointers.length >= 2
-                                        : _exportMarquee
-                                        ? false
-                                        : _tool == DrawTool.text
-                                        ? false
-                                        : _tool == DrawTool.task
-                                        ? false
-                                        : _tool == DrawTool.lasso
-                                        ? (_lassoCtrl.phase ==
-                                                LassoPhase.idle &&
-                                            !_isDrawing)
-                                        : _palmRejection
-                                        ? !_stylusActive
-                                        : !_isDrawing,
-                                scaleEnabled:
-                                    _eyedropperMode
-                                        ? _activePointers.length >= 2
-                                        : _exportMarquee
-                                        ? true
-                                        : _tool == DrawTool.text
-                                        ? true
-                                        : _tool == DrawTool.task
-                                        ? true
-                                        : _tool == DrawTool.lasso
-                                        ? (_lassoCtrl.phase ==
-                                                LassoPhase.idle &&
-                                            !_isDrawing)
-                                        : !_stylusActive && !_locked,
-                                constrained: false,
-                                child: SizedBox(
-                                  width: _kCanvasW,
-                                  height: _kCanvasH,
-                                  child: Stack(
-                                    children: [
-                                      _buildWhiteboardBackgroundLayer(viewport),
-                                      // Text blocks sit BELOW the ink so strokes
-                                      // drawn over them stay visible.
-                                      ...textBlockOverlays,
-                                      _buildWhiteboardStrokeLayer(viewport),
-                                      IgnorePointer(
-                                        child: RepaintBoundary(
-                                          child: AnimatedBuilder(
-                                            animation: _activeTick,
-                                            builder:
-                                                (_, _) => CustomPaint(
-                                                  painter: _ActiveStrokePainter(
-                                                    active: _active,
-                                                    tick: _activeTick.value,
-                                                  ),
-                                                  size: const Size(
-                                                    _kCanvasW,
-                                                    _kCanvasH,
-                                                  ),
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                      // Task blocks above the ink (interactive UI).
-                                      ...taskBlockOverlays,
-                                      _buildWhiteboardLassoLayer(viewport),
-                                    ],
+                              onTap:
+                                  hasAiKey
+                                      ? () => showAiChat(
+                                        context,
+                                        ref,
+                                        noteId: widget.note.id,
+                                        accent: _accent,
+                                        onSendToCanvas: _insertTextBlock,
+                                      )
+                                      : null,
+                              child: AiLinkBadge(
+                                active: aiLinked,
+                                color: _accent,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: hasAiKey ? _accent : yMuted,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    YuLiIcons.sparkles,
+                                    color: hasAiKey ? yCream : yCream2,
+                                    size: 16,
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          ),
-                        ),
-                        // Floating palettes — sibling of the canvas Listener so
-                        // touching a palette never leaks a pointer into a stroke.
-                        // They slide off toward their edge during the eyedropper.
-                        if (_palettes != null)
-                          Positioned.fill(
-                            child: AnimatedBuilder(
-                              animation: _palettes!,
-                              builder: (_, _) => FloatingPalettesLayer(
-                                controller: _palettes!,
-                                accent: _accent,
-                                activeColor: _color,
-                                activeWidth: _strokeW,
-                                hidden: _eyedropperMode,
-                                onPickColor: _commitColor,
-                                onPickWidth: _commitWidth,
-                                onInsertShape: _insertShape,
-                                onUndo: _undo,
-                                onRedo: _redo,
-                                canUndo: _undoStack.isNotEmpty,
-                                canRedo: _redoStack.isNotEmpty,
-                                onEyedropper: () => _enterEyedropper(
-                                  onPick: (c) => _palettes?.addColor(c),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap:
+                                  () => setState(() => _headerCollapsed = true),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: yCream,
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: yLineMid,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  YuLiIcons.chevronUp,
+                                  color: yInk,
+                                  size: 18,
                                 ),
                               ),
                             ),
-                          ),
-                        if (_lassoCtrl.phase == LassoPhase.selected &&
-                            _toolbarVisible)
-                          _buildLassoMiniToolbar(),
-                        if (_showPasteAt != null) _buildPasteButton(),
-                        if (_tool == DrawTool.eraser && _eraserCursor != null)
-                          Positioned(
-                            left: _eraserCursor!.dx - _eraserScreenRadius,
-                            top: _eraserCursor!.dy - _eraserScreenRadius,
-                            child: const EraserCursor(
-                              radius: _eraserScreenRadius,
-                            ),
-                          ),
-                        // Eyedropper loupe (viewport-space, like the palettes).
-                        if (_eyedropImg != null) ..._buildLoupeOverlay(viewport),
-                        // Lives INSIDE the canvas Stack so the painter shares the
-                        // InteractiveViewer's viewport space — the same space as
-                        // `e.localPosition` used for handle hit-testing. In the
-                        // outer Stack it was offset by the header height, so the
-                        // visible handles sat above their hit area and dragging
-                        // them started a fresh marquee instead of resizing.
-                        if (_exportMarquee)
-                          Positioned.fill(
-                            child: _ExportMarqueeOverlay(
-                              accent: _accent,
-                              viewCtrl: _viewCtrl,
-                              worldRect: _marqueeWorld,
-                              onConfirm: _confirmMarquee,
-                              onCancel: _cancelMarquee,
-                            ),
-                          ),
+                          ],
+                        ),
+                        if (linkedSpaces.isNotEmpty)
+                          _LinkedSpacesBar(spaces: linkedSpaces),
                       ],
-                    );
+                    ),
+                  ],
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (ctx, c) {
+                        _viewport = Size(c.maxWidth, c.maxHeight);
+                        _maybeInitView();
+                        final viewport = Size(c.maxWidth, c.maxHeight);
+                        final textBlockOverlays = _buildTextBlockOverlays();
+                        final taskBlockOverlays = _buildTaskBlockOverlays();
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            RepaintBoundary(
+                              key: _canvasBoundaryKey,
+                              child: ClipRect(
+                                child: RawGestureDetector(
+                                  // A stylus must NEVER pan the InteractiveViewer.
+                                  // This Eager recognizer (stylus-only) wins the gesture
+                                  // arena the instant a pen touches, so the IV's pan
+                                  // recognizer is rejected and never fights the stroke.
+                                  // Fingers are unaffected (it ignores touch).
+                                  gestures: <Type, GestureRecognizerFactory>{
+                                    TapGestureRecognizer:
+                                        GestureRecognizerFactoryWithHandlers<
+                                          TapGestureRecognizer
+                                        >(
+                                          () => TapGestureRecognizer(),
+                                          (i) => i.onTapUp = _onLassoTap,
+                                        ),
+                                    EagerGestureRecognizer:
+                                        GestureRecognizerFactoryWithHandlers<
+                                          EagerGestureRecognizer
+                                        >(
+                                          () => EagerGestureRecognizer(
+                                            supportedDevices: const {
+                                              PointerDeviceKind.stylus,
+                                              PointerDeviceKind.invertedStylus,
+                                            },
+                                          ),
+                                          (i) {},
+                                        ),
+                                  },
+                                  child: Listener(
+                                    behavior: HitTestBehavior.opaque,
+                                    onPointerDown: _onDown,
+                                    onPointerMove: _onMove,
+                                    onPointerUp: _onUp,
+                                    onPointerCancel: _onCancel,
+                                    child: InteractiveViewer(
+                                      transformationController: _viewCtrl,
+                                      minScale: 0.3,
+                                      maxScale: 4.0,
+                                      onInteractionEnd: (_) {
+                                        // After a 2-finger pan/zoom the snapshot is
+                                        // stale → recapture so the loupe keeps sampling
+                                        // the right pixels (keeps its position).
+                                        if (_eyedropperMode &&
+                                            _eyedropCaptureMatrix != null &&
+                                            _viewCtrl.value !=
+                                                _eyedropCaptureMatrix) {
+                                          _captureEyedropSnapshot(
+                                            resetPos: false,
+                                          );
+                                        }
+                                      },
+                                      boundaryMargin: const EdgeInsets.all(
+                                        _kCanvasW * 0.5,
+                                      ),
+                                      // Text mode: 1-finger drag is reserved for moving
+                                      // a box (its GestureDetector), so disable pan;
+                                      // 2-finger still zooms/navigates.
+                                      panEnabled:
+                                          _eyedropperMode
+                                              ? _activePointers.length >= 2
+                                              : _exportMarquee
+                                              ? false
+                                              : _tool == DrawTool.text
+                                              ? false
+                                              : _tool == DrawTool.task
+                                              ? false
+                                              : _tool == DrawTool.lasso
+                                              ? (_lassoCtrl.phase ==
+                                                      LassoPhase.idle &&
+                                                  !_isDrawing)
+                                              : _palmRejection
+                                              ? !_stylusActive
+                                              : !_isDrawing,
+                                      scaleEnabled:
+                                          _eyedropperMode
+                                              ? _activePointers.length >= 2
+                                              : _exportMarquee
+                                              ? true
+                                              : _tool == DrawTool.text
+                                              ? true
+                                              : _tool == DrawTool.task
+                                              ? true
+                                              : _tool == DrawTool.lasso
+                                              ? (_lassoCtrl.phase ==
+                                                      LassoPhase.idle &&
+                                                  !_isDrawing)
+                                              : !_stylusActive && !_locked,
+                                      constrained: false,
+                                      child: SizedBox(
+                                        width: _kCanvasW,
+                                        height: _kCanvasH,
+                                        child: Stack(
+                                          children: [
+                                            _buildWhiteboardBackgroundLayer(
+                                              viewport,
+                                            ),
+                                            // Text blocks sit BELOW the ink so strokes
+                                            // drawn over them stay visible.
+                                            ...textBlockOverlays,
+                                            _buildWhiteboardStrokeLayer(
+                                              viewport,
+                                            ),
+                                            IgnorePointer(
+                                              child: RepaintBoundary(
+                                                child: AnimatedBuilder(
+                                                  animation: _activeTick,
+                                                  builder:
+                                                      (_, _) => CustomPaint(
+                                                        painter:
+                                                            _ActiveStrokePainter(
+                                                              active: _active,
+                                                              tick:
+                                                                  _activeTick
+                                                                      .value,
+                                                            ),
+                                                        size: const Size(
+                                                          _kCanvasW,
+                                                          _kCanvasH,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Task blocks above the ink (interactive UI).
+                                            ...taskBlockOverlays,
+                                            _buildWhiteboardLassoLayer(
+                                              viewport,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Floating palettes — sibling of the canvas Listener so
+                            // touching a palette never leaks a pointer into a stroke.
+                            // They slide off toward their edge during the eyedropper.
+                            if (_palettes != null)
+                              Positioned.fill(
+                                child: AnimatedBuilder(
+                                  animation: _palettes!,
+                                  builder:
+                                      (_, _) => FloatingPalettesLayer(
+                                        controller: _palettes!,
+                                        accent: _accent,
+                                        activeColor: _color,
+                                        activeWidth: _strokeW,
+                                        hidden: _eyedropperMode,
+                                        onPickColor: _commitColor,
+                                        onPickWidth: _commitWidth,
+                                        onInsertShape: _insertShape,
+                                        onUndo: _undo,
+                                        onRedo: _redo,
+                                        canUndo: _undoStack.isNotEmpty,
+                                        canRedo: _redoStack.isNotEmpty,
+                                        onEyedropper:
+                                            () => _enterEyedropper(
+                                              onPick:
+                                                  (c) => _palettes?.addColor(c),
+                                            ),
+                                      ),
+                                ),
+                              ),
+                            if (_lassoCtrl.phase == LassoPhase.selected &&
+                                _toolbarVisible)
+                              _buildLassoMiniToolbar(),
+                            if (_showPasteAt != null) _buildPasteButton(),
+                            if (_tool == DrawTool.eraser &&
+                                _eraserCursor != null)
+                              Positioned(
+                                left: _eraserCursor!.dx - _eraserScreenRadius,
+                                top: _eraserCursor!.dy - _eraserScreenRadius,
+                                child: const EraserCursor(
+                                  radius: _eraserScreenRadius,
+                                ),
+                              ),
+                            // Eyedropper loupe (viewport-space, like the palettes).
+                            if (_eyedropImg != null)
+                              ..._buildLoupeOverlay(viewport),
+                            // Lives INSIDE the canvas Stack so the painter shares the
+                            // InteractiveViewer's viewport space — the same space as
+                            // `e.localPosition` used for handle hit-testing. In the
+                            // outer Stack it was offset by the header height, so the
+                            // visible handles sat above their hit area and dragging
+                            // them started a fresh marquee instead of resizing.
+                            if (_exportMarquee)
+                              Positioned.fill(
+                                child: _ExportMarqueeOverlay(
+                                  accent: _accent,
+                                  viewCtrl: _viewCtrl,
+                                  worldRect: _marqueeWorld,
+                                  onConfirm: _confirmMarquee,
+                                  onCancel: _cancelMarquee,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  _toolbar(),
+                ],
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-image'),
+                open: _imagePanelOpen,
+                onDismiss: _toggleImagePanel,
+                child: ImageInsertPanel(
+                  accent: _accent,
+                  onPick: (file) {
+                    _toggleImagePanel();
+                    _insertImageFile(file);
                   },
+                  onClose: _toggleImagePanel,
                 ),
               ),
-              _toolbar(),
-            ],
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-image'),
-            open: _imagePanelOpen,
-            onDismiss: _toggleImagePanel,
-            child: ImageInsertPanel(
-              accent: _accent,
-              onPick: (file) {
-                _toggleImagePanel();
-                _insertImageFile(file);
-              },
-              onClose: _toggleImagePanel,
-            ),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-bg'),
-            open: _bgPopupOpen,
-            onDismiss: _toggleBgPopup,
-            child: BackgroundPopup(
-              pattern: _data.background,
-              color: bgPaper(_data.bgColorValue, yCream),
-              showScope: false,
-              allPages: false,
-              accent: _accent,
-              onPattern: _setBgPattern,
-              onColor: _setBgColor,
-              onMoreColors: () => setState(() {
-                _bgColorPickerOpen = true;
-                _bgPopupOpen = false;
-              }),
-              onScope: (_) {},
-              onClose: _toggleBgPopup,
-            ),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-bgcolor'),
-            open: _bgColorPickerOpen,
-            onDismiss: () => setState(() => _bgColorPickerOpen = false),
-            child: ColorPickerPopup(
-              currentColor: bgPaper(_data.bgColorValue, yCream),
-              recentColors: const [],
-              savedColors: _bgSavedColors,
-              quickColors: _bgSavedColors,
-              quickLabel: 'FAVORITOS',
-              onPreview: (c) =>
-                  setState(() => _data.bgColorValue = c.toARGB32()),
-              onCommit: _setBgColor,
-              onStar: _starBgColor,
-              onEyedropper: () {},
-              onClose: () => setState(() {
-                _bgColorPickerOpen = false;
-                _bgPopupOpen = true;
-              }),
-            ),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-eraser'),
-            open: _eraserPopupOpen,
-            onDismiss: () => setState(() => _eraserPopupOpen = false),
-            child: _eraserModePopup(),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-shape'),
-            open: _shapePopupOpen,
-            onDismiss: () => setState(() => _shapePopupOpen = false),
-            child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-more'),
-            open: _morePopupOpen,
-            onDismiss: () => setState(() => _morePopupOpen = false),
-            child: _buildMorePopup(),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-width'),
-            open: _widthPickerOpen,
-            onDismiss: _toggleWidthPicker,
-            child: StrokeWidthPopup(
-              currentWidth: _strokeW,
-              recentWidths: _recentWidths,
-              accentColor: _accent,
-              onPreview: (v) => setState(() => _strokeW = v),
-              onCommit: _commitWidth,
-              onClose: _toggleWidthPicker,
-            ),
-          ),
-          RevealPopup(
-            key: const ValueKey('rp-color'),
-            open: _colorPickerOpen,
-            onDismiss: _toggleColorPicker,
-            child: ColorPickerPopup(
-              currentColor: _color,
-              recentColors: _recentColors,
-              savedColors: _savedColors,
-              onPreview: (c) => setState(() => _color = c),
-              onCommit: _commitColor,
-              onStar: _starColor,
-              onEyedropper: () => _enterEyedropper(),
-              onClose: _toggleColorPicker,
-            ),
-          ),
+              RevealPopup(
+                key: const ValueKey('rp-bg'),
+                open: _bgPopupOpen,
+                onDismiss: _toggleBgPopup,
+                child: BackgroundPopup(
+                  pattern: _data.background,
+                  color: bgPaper(_data.bgColorValue, yCream),
+                  showScope: false,
+                  allPages: false,
+                  accent: _accent,
+                  onPattern: _setBgPattern,
+                  onColor: _setBgColor,
+                  onMoreColors:
+                      () => setState(() {
+                        _bgColorPickerOpen = true;
+                        _bgPopupOpen = false;
+                      }),
+                  onScope: (_) {},
+                  onClose: _toggleBgPopup,
+                ),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-bgcolor'),
+                open: _bgColorPickerOpen,
+                onDismiss: () => setState(() => _bgColorPickerOpen = false),
+                child: ColorPickerPopup(
+                  currentColor: bgPaper(_data.bgColorValue, yCream),
+                  recentColors: const [],
+                  savedColors: _bgSavedColors,
+                  quickColors: _bgSavedColors,
+                  quickLabel: 'FAVORITOS',
+                  onPreview:
+                      (c) => setState(() => _data.bgColorValue = c.toARGB32()),
+                  onCommit: _setBgColor,
+                  onStar: _starBgColor,
+                  onEyedropper: () {},
+                  onClose:
+                      () => setState(() {
+                        _bgColorPickerOpen = false;
+                        _bgPopupOpen = true;
+                      }),
+                ),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-eraser'),
+                open: _eraserPopupOpen,
+                onDismiss: () => setState(() => _eraserPopupOpen = false),
+                child: _eraserModePopup(),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-shape'),
+                open: _shapePopupOpen,
+                onDismiss: () => setState(() => _shapePopupOpen = false),
+                child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-more'),
+                open: _morePopupOpen,
+                onDismiss: () => setState(() => _morePopupOpen = false),
+                child: _buildMorePopup(),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-width'),
+                open: _widthPickerOpen,
+                onDismiss: _toggleWidthPicker,
+                child: StrokeWidthPopup(
+                  currentWidth: _strokeW,
+                  recentWidths: _recentWidths,
+                  accentColor: _accent,
+                  onPreview: (v) => setState(() => _strokeW = v),
+                  onCommit: _commitWidth,
+                  onClose: _toggleWidthPicker,
+                ),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-color'),
+                open: _colorPickerOpen,
+                onDismiss: _toggleColorPicker,
+                child: ColorPickerPopup(
+                  currentColor: _color,
+                  recentColors: _recentColors,
+                  savedColors: _savedColors,
+                  onPreview: (c) => setState(() => _color = c),
+                  onCommit: _commitColor,
+                  onStar: _starColor,
+                  onEyedropper: () => _enterEyedropper(),
+                  onClose: _toggleColorPicker,
+                ),
+              ),
             ],
           ),
         ),
@@ -3228,7 +3270,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       case _MarqueeHandle.draw:
         break;
     }
-    return Rect.fromLTRB(l < r ? l : r, t < b ? t : b, l < r ? r : l, t < b ? b : t);
+    return Rect.fromLTRB(
+      l < r ? l : r,
+      t < b ? t : b,
+      l < r ? r : l,
+      t < b ? b : t,
+    );
   }
 
   Future<void> _runExport(CanvasExportOptions opts, Rect region) async {
@@ -3718,11 +3765,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(
-                YuLiIcons.scan,
-                color: yInk,
-                size: 16,
-              ),
+              child: const Icon(YuLiIcons.scan, color: yInk, size: 16),
             ),
           ),
           const SizedBox(width: 6),
@@ -3775,11 +3818,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(
-                YuLiIcons.chevronDown,
-                color: yInk,
-                size: 18,
-              ),
+              child: const Icon(YuLiIcons.chevronDown, color: yInk, size: 18),
             ),
           ),
         ],
@@ -4048,9 +4087,13 @@ class _ExportMarqueeOverlay extends StatelessWidget {
                 Rect? rect;
                 if (hasRect) {
                   final a = MatrixUtils.transformPoint(
-                      viewCtrl.value, worldRect!.topLeft);
+                    viewCtrl.value,
+                    worldRect!.topLeft,
+                  );
                   final b = MatrixUtils.transformPoint(
-                      viewCtrl.value, worldRect!.bottomRight);
+                    viewCtrl.value,
+                    worldRect!.bottomRight,
+                  );
                   rect = Rect.fromPoints(a, b);
                 }
                 return CustomPaint(
@@ -4072,10 +4115,15 @@ class _ExportMarqueeOverlay extends StatelessWidget {
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: yInk,
-                        border: Border.all(color: yBorderStrong, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
                       child: Text(
                         '1 dedo: dibuja y ajusta con las manijas · 2 dedos: mover / zoom',
@@ -4098,7 +4146,10 @@ class _ExportMarqueeOverlay extends StatelessWidget {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yCream,
-                        border: Border.all(color: yBorderStrong, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
                       child: const Icon(YuLiIcons.close, color: yInk, size: 18),
                     ),
@@ -4124,7 +4175,10 @@ class _ExportMarqueeOverlay extends StatelessWidget {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: accent,
-                      border: Border.all(color: yBorderStrong, width: yLineHeavy),
+                      border: Border.all(
+                        color: yBorderStrong,
+                        width: yLineHeavy,
+                      ),
                       boxShadow: const [
                         BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
                       ],
@@ -4167,11 +4221,12 @@ class _MarqueePainter extends CustomPainter {
     final sel = rect!;
     // Dim everything outside the selection (4 bands around it).
     canvas.drawRect(Rect.fromLTRB(0, 0, size.width, sel.top), dim);
-    canvas.drawRect(
-        Rect.fromLTRB(0, sel.bottom, size.width, size.height), dim);
+    canvas.drawRect(Rect.fromLTRB(0, sel.bottom, size.width, size.height), dim);
     canvas.drawRect(Rect.fromLTRB(0, sel.top, sel.left, sel.bottom), dim);
     canvas.drawRect(
-        Rect.fromLTRB(sel.right, sel.top, size.width, sel.bottom), dim);
+      Rect.fromLTRB(sel.right, sel.top, size.width, sel.bottom),
+      dim,
+    );
     canvas.drawRect(
       sel,
       Paint()
@@ -4191,10 +4246,11 @@ class _MarqueePainter extends CustomPainter {
       sel.centerRight,
     ];
     final fill = Paint()..color = yCream;
-    final border = Paint()
-      ..color = accent
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+    final border =
+        Paint()
+          ..color = accent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2;
     const r = 6.0;
     for (final h in handles) {
       final box = Rect.fromCenter(center: h, width: r * 2, height: r * 2);

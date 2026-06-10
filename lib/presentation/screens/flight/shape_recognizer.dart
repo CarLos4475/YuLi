@@ -25,7 +25,7 @@ class ShapeRecognizer {
     if (points.length < 12) return null;
     final bb = _bbox(points);
     final diag = math.sqrt(bb.width * bb.width + bb.height * bb.height);
-    if (diag < 22) return null;
+    if (diag < 10) return null;
 
     final closed = _isClosed(points, diag);
     final resampled = _resample(points, 64);
@@ -383,7 +383,7 @@ RecognizedShape? _tryCircle(List<List<double>> pts, _BBox bb) {
     sumD += _dist(p, [cx, cy]);
   }
   final meanD = sumD / pts.length;
-  if (meanD < 10) return null;
+    if (meanD < 5) return null;
   double sumSq = 0;
   for (final p in pts) {
     final d = _dist(p, [cx, cy]);
@@ -402,7 +402,7 @@ RecognizedShape? _tryCircle(List<List<double>> pts, _BBox bb) {
   final ecy = (bb.minY + bb.maxY) / 2;
   final rx = bb.width / 2;
   final ry = bb.height / 2;
-  if (rx < 8 || ry < 8) return null;
+    if (rx < 4 || ry < 4) return null;
   double maxErr = 0;
   for (final p in pts) {
     final nx = (p[0] - ecx) / rx;
@@ -514,7 +514,7 @@ RecognizedShape? _tryPolygon(List<List<double>> pts, _BBox bb, double diag) {
   // is covered. Robust to corner-count quirks (e.g. wide/short rectangles
   // whose short sides have too few samples to yield 4 corners) while rejecting
   // triangles (one side touched only by a vertex) and circles (arcs bow in).
-  if (bb.width > 20 && bb.height > 20) {
+    if (bb.width > 10 && bb.height > 10) {
     final tol = diag * 0.05;
     if (_hugFraction(pts, bb, tol) > 0.80 &&
         _allSidesCovered(pts, bb, tol)) {
@@ -643,7 +643,7 @@ RecognizedShape? _tryStar(List<List<double>> pts) {
     if (v > maxR) maxR = v;
     if (v < minR) minR = v;
   }
-  if (maxR < 9) return null;
+    if (maxR < 8) return null;
   if (minR / maxR > 0.6) return null; // not spiky enough (circle / pentagon)
 
   // Find prominent tips: circular local maxima above a mid threshold, merged

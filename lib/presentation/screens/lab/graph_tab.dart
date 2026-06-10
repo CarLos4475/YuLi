@@ -931,17 +931,19 @@ class _GraphPainter extends CustomPainter {
             ..color = n.color.withValues(alpha: 0.8));
     }
     _slab(canvas, p, r, yCream, border: n.color, bw: 3);
-    final glyph = switch (n.noteVariant) {
-      NoteVariant.block || null => 'Tt',
-      NoteVariant.notebook => '\u25A4',
-      NoteVariant.whiteboard => '\u270E',
+    final iconData = switch (n.noteVariant) {
+      NoteVariant.block || null => YuLiIcons.textInitial,
+      NoteVariant.notebook => YuLiIcons.notebook,
+      NoteVariant.whiteboard => YuLiIcons.pencil,
     };
+    final glyph = String.fromCharCode(iconData.codePoint);
     final glyphPainter = TextPainter(
       text: TextSpan(
           text: glyph,
-          style: ySans(
-            size: n.noteVariant == NoteVariant.block ? 7.5 : 8.5,
-            weight: FontWeight.w700,
+          style: TextStyle(
+            fontFamily: 'Lucide',
+            package: 'lucide_icons_flutter',
+            fontSize: 9.5,
             color: n.color.withValues(alpha: 0.9),
             height: 1.0,
           )),
@@ -950,7 +952,7 @@ class _GraphPainter extends CustomPainter {
       maxLines: 1,
     )..layout();
     glyphPainter.paint(
-        canvas, Offset(p.dx - r * 0.68, p.dy - r * 0.82));
+        canvas, Offset(p.dx - r * 0.6, p.dy - r * 0.78));
   }
 
   void _task(Canvas canvas, GraphNode n, Offset p, double r) {

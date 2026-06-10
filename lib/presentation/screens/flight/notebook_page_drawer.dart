@@ -252,7 +252,7 @@ class _DrawerHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: yCream2,
+        color: yCream,
         border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineHeavy)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
