@@ -61,11 +61,7 @@ class DrawingPrefs {
 
   static Future<DrawingPrefsData> load() async {
     final p = await SharedPreferences.getInstance();
-    // Default OFF: the geometry pipeline (Catmull-Rom / quadratic) already
-    // smooths strokes, so a live position-lag stabilizer only adds the "extra
-    // ink" catch-up tail when you decelerate at the end of a fast stroke. Users
-    // who want extra stabilization can still turn it on.
-    final stabIdx = (p.getInt(_kStab) ?? 0)
+    final stabIdx = (p.getInt(_kStab) ?? StabilizerLevel.low.index)
         .clamp(0, StabilizerLevel.values.length - 1);
     final colors = <DrawTool, Color>{};
     final widths = <DrawTool, double>{};
