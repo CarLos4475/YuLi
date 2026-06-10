@@ -1323,6 +1323,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   static const _minDist2 = 9.0;
 
   void _onMove(PointerMoveEvent e) {
+    // The stylus must never pan. The InteractiveViewer's pan recognizer can win
+    // the gesture arena on a fast stroke before `panEnabled` flips to false, so
+    // pin the view back to its stylus-down transform on every move — any leaked
+    // pan is undone before it can drift.
+    if (_stylusActive &&
+        _palmRejection &&
+        _transformBeforeStylus != null &&
+        !_eyedropperMode &&
+        _viewCtrl.value != _transformBeforeStylus) {
+      _viewCtrl.value = _transformBeforeStylus!;
+    }
     if (_eyedropperMode) {
       if (_activePointers.length < 2) _moveLoupe(e.localPosition);
       return;
