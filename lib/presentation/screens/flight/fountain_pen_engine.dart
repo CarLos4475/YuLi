@@ -287,31 +287,43 @@ class FountainPenEngine {
     return path;
   }
 
-  /// Finalize an active (raw) fountain-pen stroke into a baked DrawingStroke.
-  ///
-  /// Input points:  [x, y, pressure, timestamp]
-  /// Output points: [x, y, bakedWidth]
-  static DrawingStroke finishStroke(DrawingStroke active) {
-    final raw = active.points;
+  /// The SINGLE source of geometry for a fountain stroke, shared by the live
+  /// preview and the baked render so they are pixel-identical (no jump / shrink
+  /// when the pen lifts). Input: raw `[x, y, pressure, timestamp]` points.
+  static (List<Offset>, List<double>) bakeGeometry(
+      List<List<double>> raw, double strokeWidth) {
     final rawPts = raw.map((p) => Offset(p[0], p[1])).toList();
-    final pressures =
-        raw.map((p) => p.length > 2 ? p[2] : 0.5).toList();
-    final timestamps =
-        raw.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
+    final pressures = raw.map((p) => p.length > 2 ? p[2] : 0.5).toList();
+    final timestamps = raw.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
 
     // Filter out excess density from slow strokes, then de-jitter so the
     // interpolating spline doesn't amplify hand tremor into ripples.
     final (dsPts, dsPre, dsTs) = downsample(rawPts, pressures, timestamps);
     final basePts = smoothPolyline(dsPts, passes: 1);
 
-    final rawWidths = computeWidths(basePts, active.strokeWidth, dsPre, dsTs);
-    final smoothed = smoothWidths(rawWidths, windowSize: 5);
+    final rawWidths = computeWidths(basePts, strokeWidth, dsPre, dsTs);
+    final smoothed = smoothWidths(rawWidths, windowSize: 3);
     taperWidths(smoothed, taperLength: 3);
 
     final centerline = catmullRom(basePts, subdiv: 3);
-
-    // Interpolate widths to match the densified centerline.
     final widths = interpolateWidths(smoothed, centerline.length);
+    return (centerline, widths);
+  }
+
+  /// Tessellated path for an in-progress (raw) fountain stroke — same geometry
+  /// the finished stroke will have.
+  static Path rawFountainPath(List<List<double>> raw, double strokeWidth) {
+    final (centerline, widths) = bakeGeometry(raw, strokeWidth);
+    return tessellate(centerline, widths);
+  }
+
+  /// Finalize an active (raw) fountain-pen stroke into a baked DrawingStroke.
+  ///
+  /// Input points:  [x, y, pressure, timestamp]
+  /// Output points: [x, y, bakedWidth]
+  static DrawingStroke finishStroke(DrawingStroke active) {
+    final (centerline, widths) =
+        bakeGeometry(active.points, active.strokeWidth);
 
     final baked = <List<double>>[];
     for (int i = 0; i < centerline.length; i++) {

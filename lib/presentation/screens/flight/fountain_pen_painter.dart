@@ -14,8 +14,35 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke) {
 
   final isRaw = stroke.points.first.length >= 4;
 
+  // In-progress stroke: render with the SAME geometry the finished stroke will
+  // have, so there's no jump/shrink when the pen lifts.
   if (isRaw) {
-    _drawRawFountainPreview(canvas, stroke);
+    if (stroke.points.length == 1) {
+      final p = stroke.points.first;
+      final pressure = p.length > 2 ? p[2] : 0.5;
+      final r = stroke.strokeWidth * pressureWidthFactor(pressure) / 2;
+      if (r > 0) {
+        canvas.drawCircle(
+          Offset(p[0], p[1]),
+          r,
+          Paint()
+            ..color = Color(stroke.colorValue)
+            ..style = PaintingStyle.fill,
+        );
+      }
+      return;
+    }
+    final path = cachedStrokePath(
+      stroke,
+      () => FountainPenEngine.rawFountainPath(
+          stroke.points, stroke.strokeWidth),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Color(stroke.colorValue)
+        ..style = PaintingStyle.fill,
+    );
     return;
   }
 
@@ -51,54 +78,3 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke) {
   );
 }
 
-void _drawRawFountainPreview(Canvas canvas, DrawingStroke stroke) {
-  final points = stroke.points;
-  final color = Color(stroke.colorValue);
-  if (points.length == 1) {
-    final pressure = points.first.length > 2 ? points.first[2] : 0.5;
-    final r = stroke.strokeWidth * pressureWidthFactor(pressure) / 2;
-    canvas.drawCircle(
-      Offset(points.first[0], points.first[1]),
-      r,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill,
-    );
-    return;
-  }
-
-  final paint =
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-
-  for (int i = 1; i < points.length; i++) {
-    final a = points[i - 1];
-    final b = points[i];
-    final start = Offset(a[0], a[1]);
-    final end = Offset(b[0], b[1]);
-    final delta = end - start;
-    final dist = delta.distance;
-    if (dist <= 0) continue;
-    final pa = a.length > 2 ? a[2] : 0.5;
-    final pb = b.length > 2 ? b[2] : 0.5;
-    final pressure = (pa + pb) * 0.5;
-    final directionFactor = 1.0 + (delta.dy / dist) * 0.35;
-    final pressureFactor = pressureWidthFactor(pressure);
-    final taper =
-        i < 4
-            ? i / 4
-            : points.length - i < 4
-            ? (points.length - i).clamp(1, 4) / 4
-            : 1.0;
-    paint.strokeWidth =
-        (stroke.strokeWidth * directionFactor * pressureFactor).clamp(
-          0.5,
-          stroke.strokeWidth * 2.0,
-        ) *
-        taper;
-    if (paint.strokeWidth > 0) canvas.drawLine(start, end, paint);
-  }
-}
