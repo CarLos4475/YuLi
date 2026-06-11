@@ -1608,7 +1608,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
     final scribblePts =
         _rawPen.length >= _active!.points.length ? _rawPen : _active!.points;
-    if (_tool == DrawTool.pen && isScribble(scribblePts, viewScale: _viewScale)) {
+    if (_tool == DrawTool.pen &&
+        isScribble(scribblePts, viewScale: _viewScale)) {
       final bounds = scribbleBounds(scribblePts);
       final before = _snapshot();
       final lenBefore = _data.strokes.length;
@@ -1647,7 +1648,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return;
     }
 
-    final baked = FountainPenEngine.finishStroke(_active!);
+    final baked = FountainPenEngine.finishStroke(
+      _active!,
+      viewScale: _viewScale,
+    );
     final before = _snapshot();
     setState(() {
       _data.strokes.add(baked);
@@ -2899,6 +2903,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                                               tick:
                                                                   _activeTick
                                                                       .value,
+                                                              viewScale:
+                                                                  _viewScale,
                                                             ),
                                                         size: const Size(
                                                           _kCanvasW,
@@ -3912,18 +3918,23 @@ void _draw(Canvas canvas, DrawingStroke stroke) => drawStroke(canvas, stroke);
 class _ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? active;
   final int tick;
+  final double viewScale;
 
-  _ActiveStrokePainter({required this.active, required this.tick});
+  _ActiveStrokePainter({
+    required this.active,
+    required this.tick,
+    this.viewScale = 1.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (active == null) return;
-    drawActiveStroke(canvas, active!);
+    drawActiveStroke(canvas, active!, viewScale: viewScale);
   }
 
   @override
   bool shouldRepaint(_ActiveStrokePainter old) =>
-      old.active != active || old.tick != tick;
+      old.active != active || old.tick != tick || old.viewScale != viewScale;
 }
 
 // ─── Linked-spaces bar (under header) ─────────────────────────────────────

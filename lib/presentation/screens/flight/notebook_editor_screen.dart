@@ -1543,7 +1543,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
-    if (_tool == DrawTool.pen && isScribble(_active!.points, viewScale: _viewScale)) {
+    if (_tool == DrawTool.pen &&
+        isScribble(_active!.points, viewScale: _viewScale)) {
       final bounds = scribbleBounds(_active!.points);
       final before = _snapshot();
       final lenBefore = data.strokes.length;
@@ -1587,7 +1588,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
-    final baked = FountainPenEngine.finishStroke(_active!);
+    final baked = FountainPenEngine.finishStroke(
+      _active!,
+      viewScale: _viewScale,
+    );
     final before = _snapshot();
     setState(() {
       data.strokes.add(baked);
@@ -3243,6 +3247,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                                               (kNotebookPageHeight +
                                                                                   kNotebookPageGap)
                                                                           : 0.0,
+                                                                  viewScale:
+                                                                      _viewScale,
                                                                 ),
                                                                 size: Size(
                                                                   kNotebookPageWidth,
@@ -4507,11 +4513,13 @@ class _ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? active;
   final int tick;
   final double pageTop;
+  final double viewScale;
 
   _ActiveStrokePainter({
     required this.active,
     required this.tick,
     required this.pageTop,
+    this.viewScale = 1.0,
   });
 
   @override
@@ -4519,11 +4527,14 @@ class _ActiveStrokePainter extends CustomPainter {
     if (active == null) return;
     canvas.save();
     canvas.translate(0, pageTop);
-    drawActiveStroke(canvas, active!);
+    drawActiveStroke(canvas, active!, viewScale: viewScale);
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_ActiveStrokePainter old) =>
-      old.active != active || old.tick != tick || old.pageTop != pageTop;
+      old.active != active ||
+      old.tick != tick ||
+      old.pageTop != pageTop ||
+      old.viewScale != viewScale;
 }

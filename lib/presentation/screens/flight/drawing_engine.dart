@@ -60,10 +60,10 @@ void fillStrokeShape(Canvas canvas, DrawingStroke stroke) {
   );
 }
 
-void drawStroke(Canvas canvas, DrawingStroke stroke) {
+void drawStroke(Canvas canvas, DrawingStroke stroke, {double viewScale = 1.0}) {
   if (stroke.points.isEmpty) return;
   if (stroke.isFountainPen) {
-    drawFountainPenStroke(canvas, stroke);
+    drawFountainPenStroke(canvas, stroke, viewScale: viewScale);
     return;
   }
   if (stroke.isPencil) {
@@ -105,14 +105,15 @@ const double _kPredict = 2.5;
 /// recent velocity, so the live ink keeps up with the pen. The committed stroke
 /// (drawn via [drawStroke]) never includes the prediction → saved geometry stays
 /// faithful, and the prediction self-cancels when the pen slows (velocity → 0).
-void drawActiveStroke(Canvas canvas, DrawingStroke stroke) {
+void drawActiveStroke(Canvas canvas, DrawingStroke stroke,
+    {double viewScale = 1.0}) {
   if (stroke.isShape) {
-    drawStroke(canvas, stroke);
+    drawStroke(canvas, stroke, viewScale: viewScale);
     return;
   }
   final tip = predictedTipPoint(stroke.points);
   if (tip == null) {
-    drawStroke(canvas, stroke);
+    drawStroke(canvas, stroke, viewScale: viewScale);
     return;
   }
   drawStroke(
@@ -127,6 +128,7 @@ void drawActiveStroke(Canvas canvas, DrawingStroke stroke) {
       filled: stroke.filled,
       points: [...stroke.points, tip],
     ),
+    viewScale: viewScale,
   );
 }
 

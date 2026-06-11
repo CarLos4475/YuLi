@@ -111,7 +111,9 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(left: BorderSide(color: yBorderStrong, width: yLineHeavy)),
+        border: Border(
+          left: BorderSide(color: yBorderStrong, width: yLineHeavy),
+        ),
       ),
       child: SafeArea(
         left: false,
@@ -143,31 +145,29 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
                       ),
                     ),
                     SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (ctx, i) {
-                          final ref = starred[i];
-                          return _PageTile(
-                            key: ValueKey('s-${ref.blockId}'),
-                            pageIndex: ref.pageIndex,
-                            blockId: ref.blockId,
-                            data: widget.pageData[ref.blockId],
-                            accentColor: widget.accentColor,
-                            imageCache: widget.imageCache,
-                            isStarred: true,
-                            isCurrent: ref.pageIndex == widget.currentPageIndex,
-                            canDelete: canDelete,
-                            showDragHandle: false,
-                            exportMode: _exportMode,
-                            isSelected: _selected.contains(ref.pageIndex),
-                            onTap: _exportMode
-                                ? () => _toggleSelect(ref.pageIndex)
-                                : () => widget.onNavigate(ref.pageIndex),
-                            onToggleStar: () => widget.onToggleStar(ref.blockId),
-                            onDelete: () => widget.onDelete(ref.pageIndex),
-                          );
-                        },
-                        childCount: starred.length,
-                      ),
+                      delegate: SliverChildBuilderDelegate((ctx, i) {
+                        final ref = starred[i];
+                        return _PageTile(
+                          key: ValueKey('s-${ref.blockId}'),
+                          pageIndex: ref.pageIndex,
+                          blockId: ref.blockId,
+                          data: widget.pageData[ref.blockId],
+                          accentColor: widget.accentColor,
+                          imageCache: widget.imageCache,
+                          isStarred: true,
+                          isCurrent: ref.pageIndex == widget.currentPageIndex,
+                          canDelete: canDelete,
+                          showDragHandle: false,
+                          exportMode: _exportMode,
+                          isSelected: _selected.contains(ref.pageIndex),
+                          onTap:
+                              _exportMode
+                                  ? () => _toggleSelect(ref.pageIndex)
+                                  : () => widget.onNavigate(ref.pageIndex),
+                          onToggleStar: () => widget.onToggleStar(ref.blockId),
+                          onDelete: () => widget.onDelete(ref.pageIndex),
+                        );
+                      }, childCount: starred.length),
                     ),
                   ],
                   SliverToBoxAdapter(
@@ -196,9 +196,10 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
                         dragIndex: i,
                         exportMode: _exportMode,
                         isSelected: _selected.contains(ref.pageIndex),
-                        onTap: _exportMode
-                            ? () => _toggleSelect(ref.pageIndex)
-                            : () => widget.onNavigate(ref.pageIndex),
+                        onTap:
+                            _exportMode
+                                ? () => _toggleSelect(ref.pageIndex)
+                                : () => widget.onNavigate(ref.pageIndex),
                         onToggleStar: () => widget.onToggleStar(ref.blockId),
                         onDelete: () => widget.onDelete(ref.pageIndex),
                       );
@@ -253,7 +254,9 @@ class _DrawerHeader extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineHeavy)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineHeavy),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       child: exportMode ? _exportRow() : _normalRow(),
@@ -459,9 +462,7 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      decoration: const BoxDecoration(
-        color: yCream,
-      ),
+      decoration: const BoxDecoration(color: yCream),
       child: Row(
         children: [
           Icon(icon, size: 13, color: yMuted),
@@ -486,11 +487,7 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Container(
-            height: 1,
-            width: 40,
-            color: yInk.withValues(alpha: 0.15),
-          ),
+          Container(height: 1, width: 40, color: yInk.withValues(alpha: 0.15)),
         ],
       ),
     );
@@ -545,9 +542,10 @@ class _PageTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: isSelected
-              ? accentColor.withValues(alpha: 0.18)
-              : isCurrent
+          color:
+              isSelected
+                  ? accentColor.withValues(alpha: 0.18)
+                  : isCurrent
                   ? accentColor.withValues(alpha: 0.1)
                   : yCream,
           border: const Border(
@@ -567,9 +565,10 @@ class _PageTile extends StatelessWidget {
                   color: isSelected ? accentColor : yCream,
                   border: Border.all(color: yBorderStrong, width: yLineMid),
                 ),
-                child: isSelected
-                    ? const Icon(YuLiIcons.check, size: 15, color: yCream)
-                    : null,
+                child:
+                    isSelected
+                        ? const Icon(YuLiIcons.check, size: 15, color: yCream)
+                        : null,
               ),
               const SizedBox(width: 10),
             ] else if (isCurrent)
@@ -594,21 +593,22 @@ class _PageTile extends StatelessWidget {
                 ],
               ),
               child: ClipRect(
-                child: data == null
-                    ? const SizedBox()
-                    // Own layer: rasterized once, so the drawer's slide-in
-                    // animation just offsets it instead of re-painting strokes.
-                    : RepaintBoundary(
-                        child: CustomPaint(
-                          painter: _PageThumbnailPainter(
-                            data: data!,
-                            accentColor: accentColor,
-                            imageCache: imageCache,
-                            scale: thumbW / kNotebookPageWidth,
+                child:
+                    data == null
+                        ? const SizedBox()
+                        // Own layer: rasterized once, so the drawer's slide-in
+                        // animation just offsets it instead of re-painting strokes.
+                        : RepaintBoundary(
+                          child: CustomPaint(
+                            painter: _PageThumbnailPainter(
+                              data: data!,
+                              accentColor: accentColor,
+                              imageCache: imageCache,
+                              scale: thumbW / kNotebookPageWidth,
+                            ),
+                            size: const Size(thumbW, thumbH),
                           ),
-                          size: const Size(thumbW, thumbH),
                         ),
-                      ),
               ),
             ),
             const SizedBox(width: 12),
@@ -666,8 +666,11 @@ class _PageTile extends StatelessWidget {
                     color: yCream2,
                     border: Border.all(color: yBorderStrong, width: 1.2),
                   ),
-                  child: const Icon(YuLiIcons.gripVertical,
-                      size: 16, color: yInk),
+                  child: const Icon(
+                    YuLiIcons.gripVertical,
+                    size: 16,
+                    color: yInk,
+                  ),
                 ),
               ),
             ],
@@ -687,79 +690,101 @@ class _PageTile extends StatelessWidget {
     }
     showDialog<void>(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: yCream,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: yCream,
-            border: Border.all(color: yBorderStrong, width: yLineMid),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'ELIMINAR PÁGINA ${pageIndex + 1}',
-                style: ySans(
-                    size: 16, weight: FontWeight.w700, color: yInk),
+      builder:
+          (ctx) => Dialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Esta página tiene $strokeCount trazo${strokeCount == 1 ? '' : 's'}. Esta acción no se puede deshacer.',
-                style: yBody(size: 13, color: yInk),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.pop(ctx),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: yCream,
-                        border: Border.all(color: yBorderStrong, width: yLineThin),
-                      ),
-                      child: Text('CANCELAR',
-                          style: yMono(
-                              size: 10,
-                              weight: FontWeight.w700,
-                              tracking: 1.4,
-                              color: yInk)),
+                  Text(
+                    'ELIMINAR PÁGINA ${pageIndex + 1}',
+                    style: ySans(
+                      size: 16,
+                      weight: FontWeight.w700,
+                      color: yInk,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      onDelete();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: yFight,
-                        border: Border.all(color: yBorderStrong, width: yLineMid),
-                      ),
-                      child: Text('ELIMINAR',
-                          style: yMono(
+                  const SizedBox(height: 8),
+                  Text(
+                    'Esta página tiene $strokeCount trazo${strokeCount == 1 ? '' : 's'}. Esta acción no se puede deshacer.',
+                    style: yBody(size: 13, color: yInk),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => Navigator.pop(ctx),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: yCream,
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineThin,
+                            ),
+                          ),
+                          child: Text(
+                            'CANCELAR',
+                            style: yMono(
                               size: 10,
                               weight: FontWeight.w700,
                               tracking: 1.4,
-                              color: yCream)),
-                    ),
+                              color: yInk,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onDelete();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: yFight,
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineMid,
+                            ),
+                          ),
+                          child: Text(
+                            'ELIMINAR',
+                            style: yMono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              tracking: 1.4,
+                              color: yCream,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 }
@@ -811,8 +836,12 @@ class _PageThumbnailPainter extends CustomPainter {
     canvas.save();
     canvas.scale(scale);
 
-    final pageRect =
-        Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight);
+    final pageRect = Rect.fromLTWH(
+      0,
+      0,
+      kNotebookPageWidth,
+      kNotebookPageHeight,
+    );
     canvas.clipRect(pageRect);
 
     final paper = bgPaper(data.bgColorValue, const Color(0xFFFFFDF8));
@@ -838,10 +867,11 @@ class _PageThumbnailPainter extends CustomPainter {
     // World-unit width so it renders ~constant px after the canvas scale.
     final bw = 0.7 / scale;
     final fill = Paint()..color = yCream;
-    final border = Paint()
-      ..color = yBorderStrong
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = bw;
+    final border =
+        Paint()
+          ..color = yBorderStrong
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = bw;
     final hint = Paint()..color = yInk.withValues(alpha: 0.28);
     final accent = Paint()..color = accentColor;
 
@@ -850,10 +880,7 @@ class _PageThumbnailPainter extends CustomPainter {
       canvas.drawRect(rect, fill);
       // Accent left stripe (mirrors the card's left border).
       final stripeW = (b.w * 0.06).clamp(4.0, 18.0);
-      canvas.drawRect(
-        Rect.fromLTWH(b.x, b.y, stripeW, b.h),
-        accent,
-      );
+      canvas.drawRect(Rect.fromLTWH(b.x, b.y, stripeW, b.h), accent);
       canvas.drawRect(rect, border);
       // A few faint lines to suggest text.
       final pad = stripeW + b.w * 0.06;
@@ -882,8 +909,12 @@ class _PageThumbnailPainter extends CustomPainter {
         final sq = Rect.fromLTWH(left, cy, box, box);
         canvas.drawRect(sq, accent);
         canvas.drawRect(
-          Rect.fromLTWH(left + box * 1.6, cy + box * 0.2,
-              b.w - (left - b.x) - box * 1.6 - b.w * 0.08, box * 0.6),
+          Rect.fromLTWH(
+            left + box * 1.6,
+            cy + box * 0.2,
+            b.w - (left - b.x) - box * 1.6 - b.w * 0.08,
+            box * 0.6,
+          ),
           hint,
         );
       }

@@ -134,47 +134,48 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
           child: Column(
             children: [
               _FolderHero(
-              folder: widget.folder,
-              onBack: () => Navigator.pop(context),
-              noteCount: notes.length,
-              lastEdit: enrichment?.lastEditedAt,
-              linkedSpaces: linkedSpaces.map((s) => s.name).toList(),
-              grid: _grid,
-              onToggleView: () => setState(() => _grid = !_grid),
-              onCreateNote: _createNote,
-            ),
-            Expanded(
-              child: Container(
-                color: yCream,
-                child:
-                    notes.isEmpty
-                        ? Center(
-                          child: Text(
-                            'SIN NOTAS — toca + NOTA',
-                            style: yMono(
-                              size: 11,
-                              color: yMuted,
-                              tracking: 1.4,
-                            ),
-                          ),
-                        )
-                        : _grid
-                        ? _NoteGrid(notes: notes, folder: widget.folder)
-                        : _NoteList(notes: notes, folder: widget.folder),
-              ),
-            ),
-            if (pending.isNotEmpty)
-              _TareasStrip(
                 folder: widget.folder,
-                tasks: pending,
-                onOpen: () {
-                  Navigator.pop(context);
-                  ref.read(currentModeProvider.notifier).state = AppMode.fight;
-                },
+                onBack: () => Navigator.pop(context),
+                noteCount: notes.length,
+                lastEdit: enrichment?.lastEditedAt,
+                linkedSpaces: linkedSpaces.map((s) => s.name).toList(),
+                grid: _grid,
+                onToggleView: () => setState(() => _grid = !_grid),
+                onCreateNote: _createNote,
               ),
-          ],
+              Expanded(
+                child: Container(
+                  color: yCream,
+                  child:
+                      notes.isEmpty
+                          ? Center(
+                            child: Text(
+                              'SIN NOTAS — toca + NOTA',
+                              style: yMono(
+                                size: 11,
+                                color: yMuted,
+                                tracking: 1.4,
+                              ),
+                            ),
+                          )
+                          : _grid
+                          ? _NoteGrid(notes: notes, folder: widget.folder)
+                          : _NoteList(notes: notes, folder: widget.folder),
+                ),
+              ),
+              if (pending.isNotEmpty)
+                _TareasStrip(
+                  folder: widget.folder,
+                  tasks: pending,
+                  onOpen: () {
+                    Navigator.pop(context);
+                    ref.read(currentModeProvider.notifier).state =
+                        AppMode.fight;
+                  },
+                ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -247,7 +248,11 @@ class _FolderHero extends StatelessWidget {
                     decoration: BoxDecoration(
                       border: Border.all(color: yBorderStrong, width: yLineMid),
                     ),
-                    child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 18),
+                    child: const Icon(
+                      YuLiIcons.arrowLeft,
+                      color: yInk,
+                      size: 18,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),

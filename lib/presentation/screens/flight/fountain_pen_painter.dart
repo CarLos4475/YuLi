@@ -9,7 +9,8 @@ import 'stroke_bounds.dart';
 /// Handles two point formats:
 /// - **Baked** (completed stroke):  [x, y, width]
 /// - **Raw** (in-progress stroke):  [x, y, pressure, timestamp]
-void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke) {
+void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
+    {double viewScale = 1.0}) {
   if (stroke.points.isEmpty) return;
 
   final isRaw = stroke.points.first.length >= 4;
@@ -35,7 +36,8 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke) {
     final path = cachedStrokePath(
       stroke,
       () => FountainPenEngine.rawFountainPath(
-          stroke.points, stroke.strokeWidth),
+          stroke.points, stroke.strokeWidth,
+          viewScale: viewScale),
     );
     canvas.drawPath(
       path,
@@ -68,7 +70,8 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke) {
     final centerline = pts.map((p) => Offset(p[0], p[1])).toList();
     final widths =
         pts.map((p) => p.length > 2 ? p[2] : stroke.strokeWidth).toList();
-    return FountainPenEngine.tessellate(centerline, widths);
+    return FountainPenEngine.tessellate(centerline, widths,
+        tangentWindow: 3, noiseAmp: 0);
   });
   canvas.drawPath(
     path,

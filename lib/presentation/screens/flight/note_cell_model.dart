@@ -4,7 +4,16 @@ import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/page_background.dart';
 
-enum DrawTool { pen, pencil, fountainPen, highlighter, eraser, lasso, text, task }
+enum DrawTool {
+  pen,
+  pencil,
+  fountainPen,
+  highlighter,
+  eraser,
+  lasso,
+  text,
+  task,
+}
 
 /// stroke = erase the whole stroke on touch (object eraser, default).
 /// partial = erase only the touched portion, splitting the stroke.
@@ -29,47 +38,46 @@ class DrawingData {
     List<CanvasTextBlock>? textBlocks,
     this.background = PageBackground.blank,
     this.bgColorValue,
-  })  : strokes = strokes ?? [],
-        images = images ?? [],
-        taskBlocks = taskBlocks ?? [],
-        textBlocks = textBlocks ?? [];
+  }) : strokes = strokes ?? [],
+       images = images ?? [],
+       taskBlocks = taskBlocks ?? [],
+       textBlocks = textBlocks ?? [];
 
   Map<String, dynamic> toJson() => {
-        'h': height,
-        's': strokes.map((s) => s.toJson()).toList(),
-        if (images.isNotEmpty) 'i': images.map((im) => im.toJson()).toList(),
-        if (taskBlocks.isNotEmpty)
-          't': taskBlocks.map((b) => b.toJson()).toList(),
-        if (textBlocks.isNotEmpty)
-          'tx': textBlocks.map((b) => b.toJson()).toList(),
-        'bg': background.toDbString(),
-        if (bgColorValue != null) 'bgc': bgColorValue,
-      };
+    'h': height,
+    's': strokes.map((s) => s.toJson()).toList(),
+    if (images.isNotEmpty) 'i': images.map((im) => im.toJson()).toList(),
+    if (taskBlocks.isNotEmpty) 't': taskBlocks.map((b) => b.toJson()).toList(),
+    if (textBlocks.isNotEmpty) 'tx': textBlocks.map((b) => b.toJson()).toList(),
+    'bg': background.toDbString(),
+    if (bgColorValue != null) 'bgc': bgColorValue,
+  };
 
   factory DrawingData.fromJson(Map<String, dynamic> json) => DrawingData(
-        height: (json['h'] as num?)?.toDouble() ?? 300,
-        strokes: (json['s'] as List?)
-                ?.map(
-                    (s) => DrawingStroke.fromJson(s as Map<String, dynamic>))
-                .toList() ??
-            [],
-        images: (json['i'] as List?)
-                ?.map((im) => CanvasImage.fromJson(im as Map<String, dynamic>))
-                .toList() ??
-            [],
-        taskBlocks: (json['t'] as List?)
-                ?.map((b) =>
-                    CanvasTaskBlock.fromJson(b as Map<String, dynamic>))
-                .toList() ??
-            [],
-        textBlocks: (json['tx'] as List?)
-                ?.map((b) =>
-                    CanvasTextBlock.fromJson(b as Map<String, dynamic>))
-                .toList() ??
-            [],
-        background: PageBackground.fromString((json['bg'] as String?) ?? ''),
-        bgColorValue: (json['bgc'] as num?)?.toInt(),
-      );
+    height: (json['h'] as num?)?.toDouble() ?? 300,
+    strokes:
+        (json['s'] as List?)
+            ?.map((s) => DrawingStroke.fromJson(s as Map<String, dynamic>))
+            .toList() ??
+        [],
+    images:
+        (json['i'] as List?)
+            ?.map((im) => CanvasImage.fromJson(im as Map<String, dynamic>))
+            .toList() ??
+        [],
+    taskBlocks:
+        (json['t'] as List?)
+            ?.map((b) => CanvasTaskBlock.fromJson(b as Map<String, dynamic>))
+            .toList() ??
+        [],
+    textBlocks:
+        (json['tx'] as List?)
+            ?.map((b) => CanvasTextBlock.fromJson(b as Map<String, dynamic>))
+            .toList() ??
+        [],
+    background: PageBackground.fromString((json['bg'] as String?) ?? ''),
+    bgColorValue: (json['bgc'] as num?)?.toInt(),
+  );
 }
 
 /// Shared mutable geometry for canvas objects driven by the lasso (images and
@@ -115,31 +123,31 @@ class CanvasImage implements CanvasGeo {
   });
 
   CanvasImage clone() => CanvasImage(
-        filename: filename,
-        x: x,
-        y: y,
-        w: w,
-        h: h,
-        rotation: rotation,
-      );
+    filename: filename,
+    x: x,
+    y: y,
+    w: w,
+    h: h,
+    rotation: rotation,
+  );
 
   Map<String, dynamic> toJson() => {
-        'f': filename,
-        'x': x,
-        'y': y,
-        'w': w,
-        'h': h,
-        if (rotation != 0) 'r': rotation,
-      };
+    'f': filename,
+    'x': x,
+    'y': y,
+    'w': w,
+    'h': h,
+    if (rotation != 0) 'r': rotation,
+  };
 
   factory CanvasImage.fromJson(Map<String, dynamic> json) => CanvasImage(
-        filename: json['f'] as String,
-        x: (json['x'] as num).toDouble(),
-        y: (json['y'] as num).toDouble(),
-        w: (json['w'] as num).toDouble(),
-        h: (json['h'] as num).toDouble(),
-        rotation: (json['r'] as num?)?.toDouble() ?? 0,
-      );
+    filename: json['f'] as String,
+    x: (json['x'] as num).toDouble(),
+    y: (json['y'] as num).toDouble(),
+    w: (json['w'] as num).toDouble(),
+    h: (json['h'] as num).toDouble(),
+    rotation: (json['r'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 /// An interactive task block placed on the drawing canvas. Geometry mirrors
@@ -177,30 +185,30 @@ class CanvasTaskBlock implements CanvasGeo {
     this.rotation = 0,
     this.scale = 1.0,
     List<int>? taskIds,
-  })  : id = id ?? const Uuid().v4(),
-        taskIds = taskIds ?? [];
+  }) : id = id ?? const Uuid().v4(),
+       taskIds = taskIds ?? [];
 
   CanvasTaskBlock clone() => CanvasTaskBlock(
-        id: id,
-        x: x,
-        y: y,
-        w: w,
-        h: h,
-        rotation: rotation,
-        scale: scale,
-        taskIds: List<int>.from(taskIds),
-      );
+    id: id,
+    x: x,
+    y: y,
+    w: w,
+    h: h,
+    rotation: rotation,
+    scale: scale,
+    taskIds: List<int>.from(taskIds),
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'x': x,
-        'y': y,
-        'w': w,
-        'h': h,
-        if (rotation != 0) 'r': rotation,
-        if (scale != 1.0) 'sc': scale,
-        'ids': taskIds,
-      };
+    'id': id,
+    'x': x,
+    'y': y,
+    'w': w,
+    'h': h,
+    if (rotation != 0) 'r': rotation,
+    if (scale != 1.0) 'sc': scale,
+    'ids': taskIds,
+  };
 
   factory CanvasTaskBlock.fromJson(Map<String, dynamic> json) =>
       CanvasTaskBlock(
@@ -211,9 +219,10 @@ class CanvasTaskBlock implements CanvasGeo {
         h: (json['h'] as num).toDouble(),
         rotation: (json['r'] as num?)?.toDouble() ?? 0,
         scale: (json['sc'] as num?)?.toDouble() ?? 1.0,
-        taskIds: ((json['ids'] as List?) ?? const [])
-            .map((e) => (e as num).toInt())
-            .toList(),
+        taskIds:
+            ((json['ids'] as List?) ?? const [])
+                .map((e) => (e as num).toInt())
+                .toList(),
       );
 }
 
@@ -262,28 +271,28 @@ class CanvasTextBlock implements CanvasGeo {
   }) : id = id ?? const Uuid().v4();
 
   CanvasTextBlock clone() => CanvasTextBlock(
-        id: id,
-        x: x,
-        y: y,
-        w: w,
-        h: h,
-        rotation: rotation,
-        scale: scale,
-        markdown: markdown,
-        isSquare: isSquare,
-      );
+    id: id,
+    x: x,
+    y: y,
+    w: w,
+    h: h,
+    rotation: rotation,
+    scale: scale,
+    markdown: markdown,
+    isSquare: isSquare,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'x': x,
-        'y': y,
-        'w': w,
-        'h': h,
-        if (rotation != 0) 'r': rotation,
-        if (scale != 1.0) 'sc': scale,
-        if (isSquare) 'sq': true,
-        'md': markdown,
-      };
+    'id': id,
+    'x': x,
+    'y': y,
+    'w': w,
+    'h': h,
+    if (rotation != 0) 'r': rotation,
+    if (scale != 1.0) 'sc': scale,
+    if (isSquare) 'sq': true,
+    'md': markdown,
+  };
 
   factory CanvasTextBlock.fromJson(Map<String, dynamic> json) =>
       CanvasTextBlock(
@@ -335,56 +344,55 @@ class DrawingStroke {
   /// Deep copy. Preserves flags and every point component (fountain-pen points
   /// carry a 3rd baked-width value).
   DrawingStroke clone() => DrawingStroke(
-        colorValue: colorValue,
-        strokeWidth: strokeWidth,
-        isFountainPen: isFountainPen,
-        filled: filled,
-        isShape: isShape,
-        isHighlighter: isHighlighter,
-        isPencil: isPencil,
-        points: points.map((p) => List<double>.from(p)).toList(),
-      );
+    colorValue: colorValue,
+    strokeWidth: strokeWidth,
+    isFountainPen: isFountainPen,
+    filled: filled,
+    isShape: isShape,
+    isHighlighter: isHighlighter,
+    isPencil: isPencil,
+    points: points.map((p) => List<double>.from(p)).toList(),
+  );
 
   DrawingStroke copyWith({
     int? colorValue,
     double? strokeWidth,
     List<List<double>>? points,
-  }) =>
-      DrawingStroke(
-        colorValue: colorValue ?? this.colorValue,
-        strokeWidth: strokeWidth ?? this.strokeWidth,
-        isFountainPen: isFountainPen,
-        filled: filled,
-        isShape: isShape,
-        isHighlighter: isHighlighter,
-        isPencil: isPencil,
-        points: points ?? this.points,
-      );
+  }) => DrawingStroke(
+    colorValue: colorValue ?? this.colorValue,
+    strokeWidth: strokeWidth ?? this.strokeWidth,
+    isFountainPen: isFountainPen,
+    filled: filled,
+    isShape: isShape,
+    isHighlighter: isHighlighter,
+    isPencil: isPencil,
+    points: points ?? this.points,
+  );
 
   Map<String, dynamic> toJson() => {
-        'c': colorValue,
-        'w': strokeWidth,
-        'p': points,
-        if (isFountainPen) 'f': 1,
-        if (filled) 'fl': 1,
-        if (isShape) 'sh': 1,
-        if (isHighlighter) 'hl': 1,
-        if (isPencil) 'pc': 1,
-      };
+    'c': colorValue,
+    'w': strokeWidth,
+    'p': points,
+    if (isFountainPen) 'f': 1,
+    if (filled) 'fl': 1,
+    if (isShape) 'sh': 1,
+    if (isHighlighter) 'hl': 1,
+    if (isPencil) 'pc': 1,
+  };
 
   factory DrawingStroke.fromJson(Map<String, dynamic> json) => DrawingStroke(
-        colorValue: json['c'] as int,
-        strokeWidth: (json['w'] as num).toDouble(),
-        points: (json['p'] as List)
-            .map((p) =>
-                (p as List).map((v) => (v as num).toDouble()).toList())
+    colorValue: json['c'] as int,
+    strokeWidth: (json['w'] as num).toDouble(),
+    points:
+        (json['p'] as List)
+            .map((p) => (p as List).map((v) => (v as num).toDouble()).toList())
             .toList(),
-        isFountainPen: (json['f'] as int?) == 1,
-        filled: (json['fl'] as int?) == 1,
-        isShape: (json['sh'] as int?) == 1,
-        isHighlighter: (json['hl'] as int?) == 1,
-        isPencil: (json['pc'] as int?) == 1,
-      );
+    isFountainPen: (json['f'] as int?) == 1,
+    filled: (json['fl'] as int?) == 1,
+    isShape: (json['sh'] as int?) == 1,
+    isHighlighter: (json['hl'] as int?) == 1,
+    isPencil: (json['pc'] as int?) == 1,
+  );
 }
 
 // ─── Scribble detection ──────────────────────────────────────────────────────
@@ -404,7 +412,7 @@ List<List<double>> _resampleTo(List<List<double>> pts, int n) {
   if (total < 1e-6) return pts;
   final interval = total / (n - 1);
   final out = <List<double>>[
-    [pts.first[0], pts.first[1]]
+    [pts.first[0], pts.first[1]],
   ];
   double accum = 0;
   var prev = pts.first;
@@ -467,8 +475,7 @@ bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
   // Without this, a scribble drawn when the app is "warm" (high event rate)
   // has consecutive segments so close they appear nearly collinear → angVar ≈ 0.
   const anN = 40;
-  final analysisPts =
-      points.length > anN ? _resampleTo(points, anN) : points;
+  final analysisPts = points.length > anN ? _resampleTo(points, anN) : points;
 
   // (B) Angular variance: average |sin(angle)| between consecutive segments.
   // Scribbles zigzag sharply; cursive flows smoothly even through loops.
@@ -494,10 +501,14 @@ bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
   for (int i = 0; i < len - 3 && crossings < 50; i++) {
     for (int j = i + 2; j < len - 1; j++) {
       if (_segmentsIntersect(
-        analysisPts[i][0], analysisPts[i][1],
-        analysisPts[i + 1][0], analysisPts[i + 1][1],
-        analysisPts[j][0], analysisPts[j][1],
-        analysisPts[j + 1][0], analysisPts[j + 1][1],
+        analysisPts[i][0],
+        analysisPts[i][1],
+        analysisPts[i + 1][0],
+        analysisPts[i + 1][1],
+        analysisPts[j][0],
+        analysisPts[j][1],
+        analysisPts[j + 1][0],
+        analysisPts[j + 1][1],
       )) {
         crossings++;
       }
@@ -510,8 +521,14 @@ bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
 }
 
 bool _segmentsIntersect(
-  double ax, double ay, double bx, double by,
-  double cx, double cy, double dx, double dy,
+  double ax,
+  double ay,
+  double bx,
+  double by,
+  double cx,
+  double cy,
+  double dx,
+  double dy,
 ) {
   double cross(double ux, double uy, double vx, double vy) => ux * vy - uy * vx;
   final d1 = cross(dx - cx, dy - cy, ax - cx, ay - cy);
@@ -525,7 +542,13 @@ bool _segmentsIntersect(
 // ─── Eraser hit test ─────────────────────────────────────────────────────────
 
 double _distToSegment2(
-    double px, double py, double ax, double ay, double bx, double by) {
+  double px,
+  double py,
+  double ax,
+  double ay,
+  double bx,
+  double by,
+) {
   final dx = bx - ax;
   final dy = by - ay;
   final len2 = dx * dx + dy * dy;
@@ -548,7 +571,10 @@ double _distToSegment2(
 /// nothing was erased. Pieces keep color/width/fountain/highlighter; the
 /// shape/fill flags are dropped (a clean shape being cut becomes plain ink).
 List<DrawingStroke> splitStrokeByEraser(
-    DrawingStroke s, Offset pos, double radius) {
+  DrawingStroke s,
+  Offset pos,
+  double radius,
+) {
   final pts = s.points;
   final r = radius + s.strokeWidth / 2;
   final r2 = r * r;
@@ -597,14 +623,16 @@ List<DrawingStroke> splitStrokeByEraser(
   if (cur.length >= 2) runs.add(cur);
   if (!anyErased) return [s];
   return runs
-      .map((pl) => DrawingStroke(
-            colorValue: s.colorValue,
-            strokeWidth: s.strokeWidth,
-            isFountainPen: s.isFountainPen,
-            isHighlighter: s.isHighlighter,
-            isPencil: s.isPencil,
-            points: pl,
-          ))
+      .map(
+        (pl) => DrawingStroke(
+          colorValue: s.colorValue,
+          strokeWidth: s.strokeWidth,
+          isFountainPen: s.isFountainPen,
+          isHighlighter: s.isHighlighter,
+          isPencil: s.isPencil,
+          points: pl,
+        ),
+      )
       .toList();
 }
 
@@ -622,8 +650,14 @@ bool strokeHitByEraser(DrawingStroke s, Offset pos, double radius) {
     return dx * dx + dy * dy < r2;
   }
   for (int i = 0; i < pts.length - 1; i++) {
-    if (_distToSegment2(pos.dx, pos.dy, pts[i][0], pts[i][1], pts[i + 1][0],
-            pts[i + 1][1]) <
+    if (_distToSegment2(
+          pos.dx,
+          pos.dy,
+          pts[i][0],
+          pts[i][1],
+          pts[i + 1][0],
+          pts[i + 1][1],
+        ) <
         r2) {
       return true;
     }
@@ -655,4 +689,3 @@ String cleanCellContent(String raw) {
   cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
   return cleaned.trim();
 }
-

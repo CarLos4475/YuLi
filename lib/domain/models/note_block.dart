@@ -10,11 +10,8 @@ enum NoteBlockType {
 
   String toDbString() => name;
 
-  static NoteBlockType fromString(String value) =>
-      NoteBlockType.values.firstWhere(
-        (t) => t.name == value,
-        orElse: () => NoteBlockType.text,
-      );
+  static NoteBlockType fromString(String value) => NoteBlockType.values
+      .firstWhere((t) => t.name == value, orElse: () => NoteBlockType.text);
 }
 
 /// Sealed-like NoteBlock with type-discriminated payload.
@@ -42,9 +39,10 @@ sealed class NoteBlock {
     required NoteBlockType type,
     required String payload,
   }) {
-    final json = payload.isEmpty
-        ? <String, dynamic>{}
-        : (jsonDecode(payload) as Map<String, dynamic>);
+    final json =
+        payload.isEmpty
+            ? <String, dynamic>{}
+            : (jsonDecode(payload) as Map<String, dynamic>);
     switch (type) {
       case NoteBlockType.text:
         return TextBlock(
@@ -75,18 +73,20 @@ sealed class NoteBlock {
           id: id,
           noteId: noteId,
           position: position,
-          items: ((json['items'] as List?) ?? const [])
-              .map((e) => e.toString())
-              .toList(),
+          items:
+              ((json['items'] as List?) ?? const [])
+                  .map((e) => e.toString())
+                  .toList(),
         );
       case NoteBlockType.tareas:
         return TareasBlock(
           id: id,
           noteId: noteId,
           position: position,
-          taskIds: ((json['taskIds'] as List?) ?? const [])
-              .map((e) => (e as num).toInt())
-              .toList(),
+          taskIds:
+              ((json['taskIds'] as List?) ?? const [])
+                  .map((e) => (e as num).toInt())
+                  .toList(),
         );
       case NoteBlockType.drawing:
         return DrawingBlock(
@@ -115,11 +115,11 @@ class TextBlock extends NoteBlock {
   }) : super(type: NoteBlockType.text);
 
   TextBlock copyWith({String? markdown}) => TextBlock(
-        id: id,
-        noteId: noteId,
-        position: position,
-        markdown: markdown ?? this.markdown,
-      );
+    id: id,
+    noteId: noteId,
+    position: position,
+    markdown: markdown ?? this.markdown,
+  );
 
   @override
   Map<String, dynamic> payloadJson() => {'md': markdown};
@@ -135,16 +135,15 @@ class MathBlock extends NoteBlock {
   }) : super(type: NoteBlockType.math);
 
   MathBlock copyWith({String? latex}) => MathBlock(
-        id: id,
-        noteId: noteId,
-        position: position,
-        latex: latex ?? this.latex,
-      );
+    id: id,
+    noteId: noteId,
+    position: position,
+    latex: latex ?? this.latex,
+  );
 
   @override
   Map<String, dynamic> payloadJson() => {'latex': latex};
 }
-
 
 class BulletsBlock extends NoteBlock {
   final List<String> items;
@@ -156,11 +155,11 @@ class BulletsBlock extends NoteBlock {
   }) : super(type: NoteBlockType.bullets);
 
   BulletsBlock copyWith({List<String>? items}) => BulletsBlock(
-        id: id,
-        noteId: noteId,
-        position: position,
-        items: items ?? this.items,
-      );
+    id: id,
+    noteId: noteId,
+    position: position,
+    items: items ?? this.items,
+  );
 
   @override
   Map<String, dynamic> payloadJson() => {'items': items};
@@ -176,11 +175,11 @@ class TareasBlock extends NoteBlock {
   }) : super(type: NoteBlockType.tareas);
 
   TareasBlock copyWith({List<int>? taskIds}) => TareasBlock(
-        id: id,
-        noteId: noteId,
-        position: position,
-        taskIds: taskIds ?? this.taskIds,
-      );
+    id: id,
+    noteId: noteId,
+    position: position,
+    taskIds: taskIds ?? this.taskIds,
+  );
 
   @override
   Map<String, dynamic> payloadJson() => {'taskIds': taskIds};
@@ -215,28 +214,27 @@ class DrawingBlock extends NoteBlock {
     String? textBlocksJson,
     String? background,
     int? bgColor,
-  }) =>
-      DrawingBlock(
-        id: id,
-        noteId: noteId,
-        position: position,
-        height: height ?? this.height,
-        strokesJson: strokesJson ?? this.strokesJson,
-        imagesJson: imagesJson ?? this.imagesJson,
-        taskBlocksJson: taskBlocksJson ?? this.taskBlocksJson,
-        textBlocksJson: textBlocksJson ?? this.textBlocksJson,
-        background: background ?? this.background,
-        bgColor: bgColor ?? this.bgColor,
-      );
+  }) => DrawingBlock(
+    id: id,
+    noteId: noteId,
+    position: position,
+    height: height ?? this.height,
+    strokesJson: strokesJson ?? this.strokesJson,
+    imagesJson: imagesJson ?? this.imagesJson,
+    taskBlocksJson: taskBlocksJson ?? this.taskBlocksJson,
+    textBlocksJson: textBlocksJson ?? this.textBlocksJson,
+    background: background ?? this.background,
+    bgColor: bgColor ?? this.bgColor,
+  );
 
   @override
   Map<String, dynamic> payloadJson() => {
-        'h': height,
-        's': jsonDecode(strokesJson),
-        'i': jsonDecode(imagesJson),
-        't': jsonDecode(taskBlocksJson),
-        'tx': jsonDecode(textBlocksJson),
-        if (background != null) 'bg': background,
-        if (bgColor != null) 'bgc': bgColor,
-      };
+    'h': height,
+    's': jsonDecode(strokesJson),
+    'i': jsonDecode(imagesJson),
+    't': jsonDecode(taskBlocksJson),
+    'tx': jsonDecode(textBlocksJson),
+    if (background != null) 'bg': background,
+    if (bgColor != null) 'bgc': bgColor,
+  };
 }
