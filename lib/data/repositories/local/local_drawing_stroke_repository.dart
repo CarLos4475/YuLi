@@ -56,6 +56,10 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     );
   }
 
+  @override
+  Future<int?> getMaxPositionByBlock(int blockId) =>
+      _db.drawingStrokesDao.getMaxPositionByBlock(blockId);
+
   List<DrawingStrokeRecord> _recordsFromRows(List<DrawingStrokeRow> rows) {
     return [
       for (final r in rows)

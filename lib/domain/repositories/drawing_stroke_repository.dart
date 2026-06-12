@@ -12,6 +12,7 @@ abstract class DrawingStrokeRepository {
     required int limit,
   });
   Future<DrawingStrokeBounds?> getBoundsByBlock(int blockId);
+  Future<int?> getMaxPositionByBlock(int blockId);
   Future<int> insert(int blockId, DrawingStrokeWrite stroke);
 
   /// In-place update of one stroke row (geometry edit; row keeps its id).

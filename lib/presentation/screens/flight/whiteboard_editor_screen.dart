@@ -145,6 +145,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   bool _viewChangedDuringHydration = false;
   DrawingBlock? _hydratingCanvas;
   Rect? _dbStrokeBounds;
+  final Map<int, int> _loadedStrokePositions = {};
+  bool _visibleHydrateRunning = false;
+  bool _visibleHydrateQueued = false;
+  bool _metadataHydrated = false;
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
 
@@ -1040,6 +1044,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _hydratingStrokes = true;
         _viewChangedDuringHydration = false;
         _hydratingCanvas = canvas;
+        _metadataHydrated = false;
+        _persistedStrokeIds.clear();
+        _dirtyStrokeIds.clear();
+        _loadedStrokePositions.clear();
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1104,9 +1112,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
       final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
       final boundsRect = bounds == null ? null : _rectFromBounds(bounds);
+      _nextStrokePos =
+          (await strokeRepo.getMaxPositionByBlock(canvas.id) ?? -1) + 1;
       final contentBounds = _unionRects(boundsRect, _metadataBounds(canvas));
       if (mounted && _blockId == canvas.id && contentBounds != null) {
         _dbStrokeBounds = contentBounds;
+        if (!_metadataHydrated) {
+          final metadata = _decodeMetadata(canvas);
+          metadata.strokes = _data.strokes;
+          _data = metadata;
+          _metadataHydrated = true;
+        }
         if (!_viewChangedDuringHydration) {
           _viewInitialized = false;
           _maybeInitView();
@@ -1117,15 +1133,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         }
       }
       if (!mounted || _blockId != canvas.id) return;
-      final data = await _decodeDataInBatches(canvas, strokeRepo);
-      if (!mounted || _blockId != canvas.id) return;
       setState(() {
-        _data = data;
         _hydratingStrokes = false;
-        _hydratingCanvas = null;
         _paintVersion++;
       });
-      _strokeTiles.rebuild(_data.strokes);
       if (!_viewChangedDuringHydration) {
         _viewInitialized = false;
         _maybeInitView();
@@ -1152,37 +1163,151 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     DrawingStrokeRepository strokeRepo,
   ) async {
     if (!mounted || _viewport == Size.zero) return;
+    if (_visibleHydrateRunning) {
+      _visibleHydrateQueued = true;
+      return;
+    }
+    _visibleHydrateRunning = true;
     final visible = _visibleRectFor(_viewport);
     final overscan = math.max(visible.width, visible.height);
     final region = visible.inflate(overscan).intersect(bounds);
-    if (region.width <= 0 || region.height <= 0) return;
+    try {
+      if (region.width <= 0 || region.height <= 0) return;
+      final sw = Stopwatch()..start();
+      final rows = await strokeRepo.getByBlockBounds(
+        canvas.id,
+        _boundsFromRect(region),
+      );
+      if (!mounted || _blockId != canvas.id) return;
+      if (!_metadataHydrated) {
+        final metadata = _decodeMetadata(canvas);
+        metadata.strokes = _data.strokes;
+        _data = metadata;
+        _metadataHydrated = true;
+      }
+      _mergeLoadedStrokeRows(rows, region.inflate(overscan));
+      setState(() => _paintVersion++);
+      _strokeTiles.rebuild(_data.strokes);
+      sw.stop();
+      final pts = _pointCount(_data.strokes);
+      CrashLogger.instance.note(
+        'PERF hydrate-visible-pizarra: ${_data.strokes.length} live, '
+        '${rows.length} query, $pts puntos, ${sw.elapsedMilliseconds}ms',
+      );
+    } finally {
+      _visibleHydrateRunning = false;
+      if (_visibleHydrateQueued && mounted && _blockId == canvas.id) {
+        _visibleHydrateQueued = false;
+        unawaited(_hydrateVisibleCanvasStrokes(canvas, bounds, strokeRepo));
+      }
+    }
+  }
+
+  void _mergeLoadedStrokeRows(
+    List<DrawingStrokeRecord> rows,
+    Rect keepRegion, {
+    bool evict = true,
+  }) {
+    final byId = <int, DrawingStroke>{
+      for (final s in _data.strokes)
+        if (s.dbId != null) s.dbId!: s,
+    };
+    for (final r in rows) {
+      _loadedStrokePositions[r.id] = r.position;
+      _persistedStrokeIds.add(r.id);
+      if (_dirtyStrokeIds.contains(r.id)) continue;
+      final existing = byId[r.id];
+      if (existing != null) continue;
+      final stroke = strokeFromRecord(r);
+      _data.strokes.add(stroke);
+      byId[r.id] = stroke;
+    }
+    final canEvict =
+        _undoStack.isEmpty &&
+        _redoStack.isEmpty &&
+        _lassoCtrl.phase == LassoPhase.idle &&
+        !_isDrawing &&
+        !_persistDirty &&
+        !_persisting;
+    if (evict && canEvict) {
+      _data.strokes.removeWhere((stroke) {
+        final id = stroke.dbId;
+        if (id == null || _dirtyStrokeIds.contains(id)) return false;
+        if (strokeBounds(stroke).overlaps(keepRegion)) return false;
+        _persistedStrokeIds.remove(id);
+        _loadedStrokePositions.remove(id);
+        return true;
+      });
+    }
+    _data.strokes.sort((a, b) {
+      final ap =
+          a.dbId == null ? _nextStrokePos : _loadedStrokePositions[a.dbId] ?? 0;
+      final bp =
+          b.dbId == null ? _nextStrokePos : _loadedStrokePositions[b.dbId] ?? 0;
+      return ap.compareTo(bp);
+    });
+  }
+
+  Future<void> _ensureStrokesLoadedForRegion(Rect region) async {
+    final blockId = _blockId;
+    if (blockId == null) return;
     final sw = Stopwatch()..start();
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
     final rows = await strokeRepo.getByBlockBounds(
-      canvas.id,
+      blockId,
       _boundsFromRect(region),
     );
-    if (!mounted || _blockId != canvas.id || !_hydratingStrokes) return;
-    final data = _decodeMetadata(canvas);
-    data.strokes = rows.map(strokeFromRecord).toList();
-    setState(() {
-      _data = data;
-      _paintVersion++;
-    });
+    if (!mounted || _blockId != blockId) return;
+    _mergeLoadedStrokeRows(rows, region, evict: false);
     _strokeTiles.rebuild(_data.strokes);
+    setState(() => _paintVersion++);
     sw.stop();
-    final pts = _pointCount(data.strokes);
     CrashLogger.instance.note(
-      'PERF hydrate-visible-pizarra: ${data.strokes.length} trazos, '
-      '$pts puntos, ${sw.elapsedMilliseconds}ms',
+      'PERF hydrate-region-pizarra: ${rows.length} query, '
+      '${_data.strokes.length} live, ${sw.elapsedMilliseconds}ms',
+    );
+  }
+
+  Future<void> _ensureAllStrokesLoadedForGlobalOp() async {
+    final blockId = _blockId;
+    if (blockId == null) return;
+    final sw = Stopwatch()..start();
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+    const batchSize = 600;
+    var afterPosition = -1;
+    var batches = 0;
+    var rowsRead = 0;
+    while (mounted && _blockId == blockId) {
+      final rows = await strokeRepo.getByBlockAfterPosition(
+        blockId,
+        afterPosition: afterPosition,
+        limit: batchSize,
+      );
+      if (rows.isEmpty) break;
+      _mergeLoadedStrokeRows(
+        rows,
+        const Rect.fromLTRB(-1e12, -1e12, 1e12, 1e12),
+        evict: false,
+      );
+      afterPosition = rows.last.position;
+      rowsRead += rows.length;
+      batches++;
+      await SchedulerBinding.instance.endOfFrame;
+    }
+    if (!mounted || _blockId != blockId) return;
+    _strokeTiles.rebuild(_data.strokes);
+    setState(() => _paintVersion++);
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF hydrate-all-pizarra: $rowsRead query, '
+      '${_data.strokes.length} live, $batches batches, '
+      '${sw.elapsedMilliseconds}ms',
     );
   }
 
   void _refreshVisibleHydration() {
     final canvas = _hydratingCanvas;
-    if (!_hydratingStrokes ||
-        canvas == null ||
-        _blockId != canvas.id ||
-        _viewport == Size.zero) {
+    if (canvas == null || _blockId != canvas.id || _viewport == Size.zero) {
       return;
     }
     unawaited(() async {
@@ -1260,59 +1385,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return data;
   }
 
-  Future<DrawingData> _decodeDataInBatches(
-    DrawingBlock b,
-    DrawingStrokeRepository strokeRepo,
-  ) async {
-    final payload = b.payloadJson();
-    final args = <String, dynamic>{
-      's': b.strokesJson,
-      'i': b.imagesJson,
-      't': b.taskBlocksJson,
-      if (payload['tx'] != null) 'tx': payload['tx'],
-      'bg': payload['bg'],
-      'bgc': payload['bgc'],
-    };
-    final sw = Stopwatch()..start();
-    final data = _decodeWhiteboardData(args);
-    const batchSize = 450;
-    final loaded = <DrawingStroke>[];
-    _persistedStrokeIds.clear();
-    _dirtyStrokeIds.clear();
-    var lastPosition = -1;
-    var maxPos = -1;
-    var batches = 0;
-    while (mounted && _blockId == b.id) {
-      final rows = await strokeRepo.getByBlockAfterPosition(
-        b.id,
-        afterPosition: lastPosition,
-        limit: batchSize,
-      );
-      if (rows.isEmpty) break;
-      for (final r in rows) {
-        loaded.add(strokeFromRecord(r));
-        _persistedStrokeIds.add(r.id);
-        lastPosition = r.position;
-        if (r.position > maxPos) maxPos = r.position;
-      }
-      batches++;
-      await SchedulerBinding.instance.endOfFrame;
-    }
-    if (loaded.isNotEmpty) {
-      data.strokes = loaded;
-      _nextStrokePos = maxPos + 1;
-    } else {
-      _nextStrokePos = 0;
-    }
-    sw.stop();
-    final pts = data.strokes.fold<int>(0, (a, s) => a + s.points.length);
-    CrashLogger.instance.note(
-      'PERF abrir-pizarra-batches: ${data.strokes.length} trazos, '
-      '$pts puntos, $batches batches, ${sw.elapsedMilliseconds}ms',
-    );
-    return data;
-  }
-
   Future<void> _persistNow() async {
     if (_blockId == null) return;
     if (_hydratingStrokes) return;
@@ -1342,6 +1414,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         ]);
         for (int i = 0; i < _data.strokes.length && i < ids.length; i++) {
           _data.strokes[i].dbId = ids[i];
+          _loadedStrokePositions[ids[i]] = i;
         }
         _persistedStrokeIds
           ..clear()
@@ -1357,12 +1430,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             continue;
           }
           stroke.dbId = null;
-          final id = await strokeRepo.insert(
-            blockId,
-            strokeWrite(_nextStrokePos++, stroke),
-          );
+          final pos = _nextStrokePos++;
+          final id = await strokeRepo.insert(blockId, strokeWrite(pos, stroke));
           stroke.dbId = id;
           _persistedStrokeIds.add(id);
+          _loadedStrokePositions[id] = pos;
           inserted++;
         }
         // 2) Updates: in-place geometry edits flagged dirty.
@@ -1390,6 +1462,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         if (toDelete.isNotEmpty) {
           await strokeRepo.deleteByIds(toDelete.toList());
           _persistedStrokeIds.removeAll(toDelete);
+          for (final id in toDelete) {
+            _loadedStrokePositions.remove(id);
+          }
           deleted = toDelete.length;
         }
       }
@@ -3498,7 +3573,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Future<void> _confirmClear() async {
-    if (_data.strokes.isEmpty) return;
+    if (_data.strokes.isEmpty && _dbStrokeBounds == null) return;
     final ok = await showDialog<bool>(
       context: context,
       builder:
@@ -3525,6 +3600,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           ),
     );
     if (ok == true) {
+      await _ensureAllStrokesLoadedForGlobalOp();
+      if (!mounted) return;
       final before = _snapshot();
       setState(() => _data.strokes = []);
       _strokeTiles.rebuild(_data.strokes);
@@ -5207,6 +5284,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final blocks = <ExportBlockImage>[];
     ui.Image? rendered;
     try {
+      await _ensureStrokesLoadedForRegion(region);
+      if (!mounted) return;
       final pr = exportPixelRatio(region);
       final specs = _exportBlockSpecs(opts.includeTasks);
       blocks.addAll(

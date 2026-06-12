@@ -168,6 +168,17 @@ void main() {
     expect(rows.map((r) => r.position).toList(), [2, 3]);
   });
 
+  test('getMaxPositionByBlock returns highest stored position', () async {
+    final blockId = await makeDrawingBlock();
+    expect(await strokeRepo.getMaxPositionByBlock(blockId), isNull);
+
+    await strokeRepo.insert(blockId, strokeWrite(7, pen(0, 0)));
+    await strokeRepo.insert(blockId, strokeWrite(3, pen(10, 10)));
+    await strokeRepo.insert(blockId, strokeWrite(11, pen(20, 20)));
+
+    expect(await strokeRepo.getMaxPositionByBlock(blockId), 11);
+  });
+
   test(
     'round-trips every real stroke kind (fountain/shape/highlighter)',
     () async {

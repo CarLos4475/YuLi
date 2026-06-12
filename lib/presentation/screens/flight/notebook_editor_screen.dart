@@ -569,8 +569,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       '${_pageData.length} decoded, ${_pendingDecode.length} pending, '
       '${sw.elapsedMilliseconds}ms',
     );
-
-    if (_pendingDecode.isNotEmpty) _scheduleDeferredDecode();
   }
 
   /// Decode a few deferred pages per frame so even a 50-page note opens without
@@ -673,7 +671,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final wanted = <int>{};
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final top = _pageOffsetY(i);
-      final rect = Rect.fromLTWH(0, top, kNotebookPageWidth, kNotebookPageHeight);
+      final rect = Rect.fromLTWH(
+        0,
+        top,
+        kNotebookPageWidth,
+        kNotebookPageHeight,
+      );
       if (!rect.overlaps(visible)) continue;
       for (int j = i - margin; j <= i + margin; j++) {
         if (j >= 0 && j < _pageBlockIds.length) wanted.add(j);

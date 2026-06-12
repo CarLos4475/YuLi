@@ -76,6 +76,20 @@ class DrawingStrokesDao extends DatabaseAccessor<AppDatabase>
     return (minX: minX, minY: minY, maxX: maxX, maxY: maxY);
   }
 
+  Future<int?> getMaxPositionByBlock(int blockId) async {
+    final row =
+        await customSelect(
+          '''
+          SELECT MAX(position) AS max_position
+          FROM drawing_strokes
+          WHERE block_id = ?
+          ''',
+          variables: [Variable.withInt(blockId)],
+          readsFrom: {drawingStrokes},
+        ).getSingle();
+    return row.readNullable<int>('max_position');
+  }
+
   Future<int> insertStroke(DrawingStrokesCompanion row) =>
       into(drawingStrokes).insert(row);
 
