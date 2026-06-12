@@ -8,7 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/scheduler.dart' show SchedulerBinding, FrameTiming;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, FrameTiming, Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -158,6 +158,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   int _overviewBakedCount = 0; // strokes already in the image
   bool _overviewBaking = false;
   bool _overviewBakePending = false;
+  // The baked image is valid only for an append-only history (the delta draws
+  // the un-baked tail live). A move/resize/rotate (count unchanged) or
+  // erase/delete (count shrank) mutates already-baked strokes → the image is
+  // stale and the delta can't fix it → fall to tiles until the re-bake, else the
+  // edited ink ghosts at its OLD spot for a frame on release. Set in _persist,
+  // cleared when _bakeOverview produces a fresh image.
+  bool _overviewDirty = false;
   Timer? _overviewTimer;
   ui.Image? _zoomSnapshotImage;
   Size? _zoomSnapshotSize;
@@ -167,7 +174,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   bool _zoomGestureActive = false;
   bool _zoomGestureSeen = false;
   double _zoomGestureScale = 1;
-  Offset _zoomGestureStartFocal = Offset.zero;
+  final Offset _zoomGestureStartFocal = Offset.zero;
   Offset _zoomGestureCurrentFocal = Offset.zero;
   // True while a 2-finger pan/zoom is in flight. The overview stays up for the
   // WHOLE gesture (even past its crisp threshold) and only hands back to the
@@ -175,7 +182,36 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // zooming in re-rasterizes tiles mid-pinch and janks. Zooming OUT still flips
   // to the overview the instant it crosses the threshold (it's cheap).
   bool _viewGestureActive = false;
-  bool _overviewStickyThisGesture = false;
+  // True once a view-transform gesture actually moved the canvas (vs a bare
+  // touch) → distinguishes a real pan from a tap so the overview doesn't flash in
+  // on every finger-down. Mirrors the notebook (the validated reference).
+  bool _viewMoved = false;
+  // The overview stays mounted from gesture-end through the WHOLE fling; the
+  // settle Ticker drops it back to crisp tiles only when the view truly stops, so
+  // the tile re-raster never lands mid-motion. A fixed timer was wrong (the fling
+  // outlasts it → re-raster while still moving = visible stutter).
+  bool _overviewLinger = false;
+  // Per-frame matrix poll to detect the true stop (incl. the fling tail). The
+  // controller's change notifications proved unreliable through the fling.
+  Ticker? _settleTicker;
+  Matrix4? _lastSettleMatrix;
+  int _settleStillFrames = 0;
+  static const int _settleStillFramesNeeded = 12; // ~200ms at 60fps
+  // ─── Pyramid Level 0: viewport-region FOCUS tile ──────────────────────────
+  // The base overview above is ONE whole-board image at low density (crisp only
+  // zoomed out). Panning zoomed-in over it looks blurry — and since the zoom is
+  // fixed during a pan, the blur is constant and obvious. The focus tile fixes
+  // that: a high-res raster of just the visible region (+ overscan), culled to
+  // the strokes there and baked at the settled zoom, layered over the base. The
+  // infinite canvas has no pages, so it's a viewport tile (not per-page); panning
+  // past it falls back to the blurry base until the next settle re-bakes. RAM
+  // only; dropped when zoomed back out or on edit.
+  ui.Image? _focusImage;
+  Rect? _focusBounds;
+  double _focusScale = 0;
+  int _focusBakedCount = 0;
+  bool _focusBaking = false;
+  static const double _focusMaxDim = 3072.0;
 
   // ─── Heat / pan-zoom frame timing (temporary diagnostics) ─────────────────
   // True when the last stroke-layer build fell back to the single uncached
@@ -787,6 +823,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     _overviewTimer?.cancel();
     _overviewImage?.dispose();
+    _settleTicker?.dispose();
+    _focusImage?.dispose();
     _zoomSnapshotTimer?.cancel();
     _zoomSnapshotImage?.dispose();
     _eyedropImg?.dispose();
@@ -999,7 +1037,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _strokeTiles.rebuild(_data.strokes);
       // Bake the zoomed-out overview now so it's ready before the user zooms out.
       _scheduleOverviewBake();
-      _scheduleZoomSnapshotBake();
     } catch (e, st) {
       // A silent throw here leaves _blockId null → empty board, default bg,
       // corner view, and NO persistence. Surface it instead of losing data.
@@ -1167,7 +1204,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     });
     // Ink changed → the zoomed-out overview image is stale; re-bake once settled.
     _scheduleOverviewBake();
-    _scheduleZoomSnapshotBake();
+    // In-place edit (move/resize/rotate = same count, erase/delete = fewer) →
+    // the baked image's prefix changed and the append-only delta can't fix it.
+    // Mark dirty so the overview steps aside for tiles until the re-bake lands.
+    if (_data.strokes.length <= _overviewBakedCount) _overviewDirty = true;
+    // The focus tile has the OLD strokes baked in → drop it (erase/lasso would
+    // ghost). Falls back to base+delta; re-bakes on the next settle.
+    _disposeFocus();
   }
 
   int _pointCount(Iterable<DrawingStroke> strokes) =>
@@ -3348,6 +3391,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _overviewBounds = null;
       _overviewThreshold = 0;
       _overviewBakedCount = 0;
+      _overviewDirty = false;
       old0?.dispose();
       if (mounted) setState(() {});
       return;
@@ -3423,6 +3467,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _overviewImage = image;
       _overviewBounds = bounds;
       _overviewBakedCount = count;
+      _overviewDirty = false; // fresh image matches _data → overview safe again
       // Only show the overview while it stays crisp: screen px (zoom·dpr) must
       // not exceed the image density. Capped so it never replaces the detailed
       // zoomed-in view.
@@ -3438,6 +3483,156 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           if (mounted) unawaited(_bakeOverview());
         });
       }
+    }
+  }
+
+  // ─── Settle watch + focus bake (Pyramid L0) ───────────────────────────────
+
+  /// True while a view-transform gesture (pan/zoom, not draw/lasso) is moving
+  /// the canvas → show the overview raster instead of re-rastering tiles per
+  /// frame. Engages on 2 fingers at once, or 1 finger once it has actually moved.
+  bool get _viewTransformActive =>
+      _viewGestureActive &&
+      !_isDrawing &&
+      _lassoCtrl.phase != LassoPhase.moving &&
+      _lassoCtrl.phase != LassoPhase.resizing &&
+      _lassoCtrl.phase != LassoPhase.rotating &&
+      (_activePointers.length >= 2 || _viewMoved);
+
+  /// Start watching for the view to fully stop (finger lifted + fling done). A
+  /// Ticker samples the transform each frame; once it's identical for
+  /// [_settleStillFramesNeeded] frames we hand the overview back to crisp tiles
+  /// (in stillness) and bake the focus — both invisible because nothing moves.
+  void _beginSettleWatch() {
+    _settleStillFrames = 0;
+    _lastSettleMatrix = null;
+    _settleTicker ??= createTicker(_onSettleTick);
+    if (!_settleTicker!.isActive) _settleTicker!.start();
+  }
+
+  void _stopSettleWatch() {
+    if (_settleTicker?.isActive ?? false) _settleTicker!.stop();
+    _settleStillFrames = 0;
+    _lastSettleMatrix = null;
+  }
+
+  void _onSettleTick(Duration _) {
+    if (!mounted) {
+      _stopSettleWatch();
+      return;
+    }
+    if (_viewGestureActive || _activePointers.isNotEmpty || _isDrawing) {
+      _settleStillFrames = 0;
+      _lastSettleMatrix = null;
+      return;
+    }
+    final m = _viewCtrl.value;
+    if (_lastSettleMatrix != null && m == _lastSettleMatrix) {
+      _settleStillFrames++;
+    } else {
+      _settleStillFrames = 0;
+      _lastSettleMatrix = m.clone();
+    }
+    if (_settleStillFrames >= _settleStillFramesNeeded) {
+      _stopSettleWatch();
+      if (_overviewLinger && mounted) {
+        setState(() => _overviewLinger = false);
+      }
+      unawaited(_bakeFocus());
+    }
+  }
+
+  void _disposeFocus() {
+    final img = _focusImage;
+    if (img != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+    _focusImage = null;
+    _focusBounds = null;
+    _focusScale = 0;
+    _focusBakedCount = 0;
+  }
+
+  /// Bake the high-res focus tile for the current view, culled to the strokes in
+  /// the visible region (+ overscan). Only when zoomed in past where the base
+  /// stays crisp; dropped otherwise. Runs in stillness (settle), main isolate.
+  Future<void> _bakeFocus() async {
+    if (_focusBaking || !mounted || _viewport == Size.zero) return;
+    if (_viewGestureActive || _activePointers.isNotEmpty || _isDrawing) {
+      _beginSettleWatch();
+      return;
+    }
+    if (_viewScale <= _overviewThreshold) {
+      _disposeFocus();
+      return;
+    }
+    final strokes = _data.strokes;
+    final content = _contentBounds();
+    if (strokes.isEmpty || content == null) {
+      _disposeFocus();
+      return;
+    }
+    final visible = _visibleRectFor(_viewport);
+    final overscan = math.max(visible.width, visible.height) * 0.5;
+    final region = visible.inflate(overscan).intersect(content);
+    if (region.width <= 0 || region.height <= 0) {
+      _disposeFocus();
+      return;
+    }
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final cap = _focusMaxDim / region.longestSide;
+    // Region too large for a denser-than-base image (low zoom, near the
+    // threshold) → the base already covers this view. Skip focus: avoids an
+    // inverted clamp AND a pointless bake that'd be blurrier than the base.
+    if (cap < 2.0) {
+      _disposeFocus();
+      return;
+    }
+    final imgScale = math.min(_viewScale * dpr, cap);
+    final count = strokes.length;
+    // Resident focus already covers the viewport at this density+count → skip.
+    if (_focusImage != null &&
+        _focusBounds != null &&
+        _focusBounds!.contains(visible.topLeft) &&
+        _focusBounds!.contains(visible.bottomRight) &&
+        (_focusScale - imgScale).abs() / imgScale < 0.12 &&
+        _focusBakedCount == count) {
+      return;
+    }
+    _focusBaking = true;
+    try {
+      final w = (region.width * imgScale).ceil();
+      final h = (region.height * imgScale).ceil();
+      if (w <= 0 || h <= 0) return;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-region.left, -region.top);
+      canvas.clipRect(region);
+      for (int i = 0; i < count; i++) {
+        final s = strokes[i];
+        if (strokeBounds(s).overlaps(region)) drawStroke(canvas, s);
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(w, h);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _focusImage;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _focusImage = image;
+      _focusBounds = region;
+      _focusScale = imgScale;
+      _focusBakedCount = count;
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeFocus pizarra');
+    } finally {
+      _focusBaking = false;
     }
   }
 
@@ -3701,8 +3896,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // overhead isn't worth it — ink is tiny on screen anyway — so fall back to a
   // single direct painter.
   static const int _kMaxLiveTiles = 48;
-  static const int _kOverviewPressureTiles = 18;
-  static const double _kOverviewInteractionScale = 0.98;
 
   /// The zoomed-out overview: the cached ink image positioned in world space
   /// (the InteractiveViewer scales it), plus any strokes added since the last
@@ -3712,11 +3905,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final baked = _overviewBakedCount.clamp(0, _data.strokes.length);
     final delta =
         baked < _data.strokes.length ? _data.strokes.sublist(baked) : null;
+    final focus = _focusImage;
+    final focusBounds = _focusBounds;
     return Positioned.fill(
       child: IgnorePointer(
         child: Stack(
           clipBehavior: Clip.none,
           children: [
+            // Base: the whole-board image (low density — blurry when zoomed in).
             Positioned.fromRect(
               rect: bounds,
               child: RawImage(
@@ -3725,6 +3921,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 filterQuality: FilterQuality.medium,
               ),
             ),
+            // Focus tile (Pyramid L0): crisp high-res of the visible region,
+            // baked at the settled zoom, laid over the blurry base.
+            if (focus != null && focusBounds != null)
+              Positioned.fromRect(
+                rect: focusBounds,
+                child: RawImage(
+                  image: focus,
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.medium,
+                ),
+              ),
             if (delta != null)
               Positioned.fromRect(
                 rect: renderRect,
@@ -3779,7 +3986,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           viewport,
         ).inflate(_strokeTiles.tileSize);
         final tileKeys = _strokeTiles.tilesInRect(renderRect).toList();
-        final tilePressure = tileKeys.length > _kOverviewPressureTiles;
         _strokeFallbackActive = tileKeys.length > _kMaxLiveTiles;
         // Decimate stroke detail when zoomed out so dense tiles rasterize fast.
         final lod = lodForScale(_viewScale);
@@ -3789,15 +3995,19 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         // can't hide the live selection) → tiles take over there.
         final overview = _overviewImage;
         final canOverview =
-            overview != null && _overviewBounds != null && !inGesture;
-        final softZoomOut = _viewScale < _kOverviewInteractionScale;
+            overview != null &&
+            _overviewBounds != null &&
+            !inGesture &&
+            !_overviewDirty;
+        // Show the overview whenever it's crisp (zoomed out), under tile
+        // pressure, OR through ANY moving view gesture + the post-fling linger
+        // (the focus tile keeps it crisp when zoomed in). Mirrors the notebook.
         _overviewActive =
             canOverview &&
             (_viewScale < _overviewThreshold ||
                 _strokeFallbackActive ||
-                (tilePressure && softZoomOut) ||
-                (_viewGestureActive &&
-                    (softZoomOut || _overviewStickyThisGesture)));
+                _viewTransformActive ||
+                _overviewLinger);
         if (_overviewActive) {
           return _overviewStrokeLayer(overview!, renderRect);
         }
@@ -4194,24 +4404,30 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       minScale: 0.3,
                                       maxScale: 4.0,
                                       onInteractionStart: (details) {
-                                        // Pin the overview for the whole gesture if
-                                        // it's currently showing (so zooming IN
-                                        // doesn't swap to tiles mid-pinch).
-                                        _zoomSnapshotTimer?.cancel();
                                         _viewGestureActive = true;
+                                        _viewMoved = false;
                                         _zoomGestureActive = false;
                                         _zoomGestureSeen = false;
                                         _zoomGestureScale = 1;
-                                        _zoomGestureStartFocal =
-                                            details.localFocalPoint;
-                                        _zoomGestureCurrentFocal =
-                                            details.localFocalPoint;
-                                        _overviewStickyThisGesture =
-                                            _overviewActive;
+                                        // New gesture interrupts the prior fling's
+                                        // settle watch (re-armed on its end); the
+                                        // overview stays up across the chain.
+                                        _stopSettleWatch();
                                       },
                                       onInteractionUpdate: (details) {
                                         final zooming =
                                             (details.scale - 1.0).abs() > 0.01;
+                                        if (!_viewMoved &&
+                                            (zooming ||
+                                                details
+                                                        .focalPointDelta
+                                                        .distance >
+                                                    0.5)) {
+                                          // First real pan/zoom frame → swap to
+                                          // the overview (not a bare touch).
+                                          _viewMoved = true;
+                                          if (mounted) setState(() {});
+                                        }
                                         _zoomGestureScale = details.scale;
                                         _zoomGestureCurrentFocal =
                                             details.localFocalPoint;
@@ -4224,14 +4440,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                         }
                                       },
                                       onInteractionEnd: (_) {
-                                        // Gesture settled → re-evaluate; hand back to
-                                        // the crisp tiles now if we zoomed in past the
-                                        // overview threshold.
                                         _viewGestureActive = false;
+                                        _viewMoved = false;
                                         _zoomGestureActive = false;
                                         _zoomGestureSeen = false;
                                         _zoomGestureScale = 1;
-                                        _scheduleZoomSnapshotBake();
+                                        // Keep the overview up through the whole
+                                        // fling; the settle Ticker drops it back to
+                                        // crisp tiles + bakes the focus only once the
+                                        // view truly stops (swap lands in stillness).
+                                        _overviewLinger = true;
+                                        _beginSettleWatch();
                                         if (mounted) setState(() {});
                                         // After a 2-finger pan/zoom the snapshot is
                                         // stale → recapture so the loupe keeps sampling

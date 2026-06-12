@@ -250,7 +250,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final Map<int, ui.Image> _overviewByPage = {};
   final Map<int, int> _overviewBakedCountByPage = {};
   final Set<int> _overviewBakingPages = {};
-  final Set<int> _overviewDirtyPages = {};
+  final Set<int> _overviewDirtyPages = {}; // pages queued for a re-bake
+  // Pages whose baked image is STALE because an in-place edit (lasso
+  // move/resize/rotate = same count, erase = fewer) changed already-baked
+  // strokes — the append-only delta can't fix it. Those pages fall to tiles
+  // until the re-bake, else the edited ink ghosts at its old spot on release.
+  final Set<int> _overviewStalePages = {};
   double _overviewThreshold = 0;
   Timer? _overviewTimer;
   // ─── Pyramid Level 0: per-page FOCUS overview ─────────────────────────────
@@ -1036,11 +1041,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       unawaited(_flushPendingPersists());
     });
     // Page ink changed → its zoomed-out overview image is stale.
-    _scheduleOverviewBake(_pageBlockIds[pageIndex]);
+    final bid = _pageBlockIds[pageIndex];
+    _scheduleOverviewBake(bid);
+    // In-place edit (move/resize/rotate = same count, erase = fewer) changed
+    // already-baked strokes → the append-only delta can't fix it. Mark the page
+    // stale so it shows tiles until the re-bake, else the edited ink ghosts at
+    // its old spot on release. Appends (count grows) stay on overview+delta.
+    final data = _pageData[bid];
+    if (data != null &&
+        data.strokes.length <= (_overviewBakedCountByPage[bid] ?? 0)) {
+      _overviewStalePages.add(bid);
+    }
     // Drop the high-res focus too: it has the OLD strokes baked in, so an erase
     // or lasso-move would leave a ghost. Falls back to base+delta; the focus
     // re-bakes on the next settle. (At rest zoomed-in you're on vector anyway.)
-    _disposeFocus(_pageBlockIds[pageIndex]);
+    _disposeFocus(bid);
     // Retired (Phase A is overview-based): the viewport-raster / zoom-snapshot
     // bakes ran on every edit but their layers are now inert, so they were pure
     // waste. Kept callable for a possible Phase B LOD pyramid.
@@ -1118,6 +1133,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       }
       _overviewByPage[blockId] = image;
       _overviewBakedCountByPage[blockId] = count;
+      _overviewStalePages.remove(blockId); // fresh image matches _data again
       _overviewThreshold = (imgScale / dpr).clamp(0.0, 0.65);
       setState(() {});
     } catch (e, st) {
@@ -4736,9 +4752,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
               // Prefer the high-res focus image (crisp at the settled zoom);
               // fall back to the base image while a focus bakes / on fast pan.
-              final focusImg = _overviewActive ? _overviewFocusByPage[bid] : null;
+              // A stale page (in-place edit pending re-bake) shows tiles instead,
+              // so the edited ink never ghosts at its old spot.
+              final pageOverviewOk =
+                  _overviewActive && !_overviewStalePages.contains(bid);
+              final focusImg =
+                  pageOverviewOk ? _overviewFocusByPage[bid] : null;
               final pageImg =
-                  focusImg ?? (_overviewActive ? _overviewByPage[bid] : null);
+                  focusImg ?? (pageOverviewOk ? _overviewByPage[bid] : null);
               if (pageImg != null) {
                 // Cached ink image for this page (blit instead of re-drawing).
                 tiles.add(
