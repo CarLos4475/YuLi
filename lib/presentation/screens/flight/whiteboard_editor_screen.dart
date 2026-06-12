@@ -8,7 +8,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/scheduler.dart' show SchedulerBinding, FrameTiming, Ticker;
+import 'package:flutter/scheduler.dart'
+    show SchedulerBinding, FrameTiming, Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -30,6 +31,7 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
+import '../../../domain/repositories/drawing_stroke_repository.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
 import 'color_picker.dart';
@@ -139,6 +141,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     with TickerProviderStateMixin {
   int? _blockId;
   DrawingData _data = DrawingData();
+  bool _hydratingStrokes = false;
+  bool _viewChangedDuringHydration = false;
+  DrawingBlock? _hydratingCanvas;
+  Rect? _dbStrokeBounds;
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
 
@@ -211,7 +217,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   double _focusScale = 0;
   int _focusBakedCount = 0;
   bool _focusBaking = false;
-  static const double _focusMaxDim = 3072.0;
+  static const double _focusMaxDim = 4096.0;
 
   // ─── Heat / pan-zoom frame timing (temporary diagnostics) ─────────────────
   // True when the last stroke-layer build fell back to the single uncached
@@ -850,6 +856,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// are tracked only in the block payload, so that's the source of truth.
   /// Safe here because the undo history is discarded on exit.
   void _reconcileImageFiles() {
+    if (_hydratingStrokes) return;
     final dirPath = _imageDirPath;
     if (dirPath == null) return;
     final referenced = _data.images.map((im) => im.filename).toSet();
@@ -1026,17 +1033,18 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         '(${existing == null ? 'CREADO nuevo' : 'encontrado'}), '
         '${blocks.length} bloques en la nota',
       );
-      final data = await _decodeData(canvas);
-      if (!mounted) return;
+      final data = _decodeShellMetadata(canvas);
       setState(() {
         _blockId = id;
         _data = data;
+        _hydratingStrokes = true;
+        _viewChangedDuringHydration = false;
+        _hydratingCanvas = canvas;
       });
-      // Seed the tile index from the loaded ink BEFORE the stroke layer builds —
-      // otherwise the board renders blank (the index would be empty).
-      _strokeTiles.rebuild(_data.strokes);
-      // Bake the zoomed-out overview now so it's ready before the user zooms out.
-      _scheduleOverviewBake();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_hydrateCanvasStrokes(canvas));
+      });
     } catch (e, st) {
       // A silent throw here leaves _blockId null → empty board, default bg,
       // corner view, and NO persistence. Surface it instead of losing data.
@@ -1044,7 +1052,169 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
   }
 
-  Future<DrawingData> _decodeData(DrawingBlock b) async {
+  DrawingData _decodeMetadata(DrawingBlock b) {
+    final payload = b.payloadJson();
+    return _decodeWhiteboardData({
+      's': b.strokesJson,
+      'i': b.imagesJson,
+      't': b.taskBlocksJson,
+      if (payload['tx'] != null) 'tx': payload['tx'],
+      'bg': payload['bg'],
+      'bgc': payload['bgc'],
+    });
+  }
+
+  DrawingData _decodeShellMetadata(DrawingBlock b) {
+    final payload = b.payloadJson();
+    return DrawingData(
+      height: _kCanvasH,
+      background: PageBackground.fromString((payload['bg'] as String?) ?? ''),
+      bgColorValue: (payload['bgc'] as num?)?.toInt(),
+    );
+  }
+
+  Rect? _metadataBounds(DrawingBlock b) {
+    final data = _decodeMetadata(b);
+    Rect? out;
+    for (final im in data.images) {
+      out = _unionRects(out, Rect.fromLTWH(im.x, im.y, im.w, im.h));
+    }
+    for (final block in data.taskBlocks) {
+      out = _unionRects(out, Rect.fromLTWH(block.x, block.y, block.w, block.h));
+    }
+    for (final block in data.textBlocks) {
+      out = _unionRects(out, Rect.fromLTWH(block.x, block.y, block.w, block.h));
+    }
+    return out;
+  }
+
+  Rect? _unionRects(Rect? a, Rect? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return Rect.fromLTRB(
+      math.min(a.left, b.left),
+      math.min(a.top, b.top),
+      math.max(a.right, b.right),
+      math.max(a.bottom, b.bottom),
+    );
+  }
+
+  Future<void> _hydrateCanvasStrokes(DrawingBlock canvas) async {
+    try {
+      final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+      final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
+      final boundsRect = bounds == null ? null : _rectFromBounds(bounds);
+      final contentBounds = _unionRects(boundsRect, _metadataBounds(canvas));
+      if (mounted && _blockId == canvas.id && contentBounds != null) {
+        _dbStrokeBounds = contentBounds;
+        if (!_viewChangedDuringHydration) {
+          _viewInitialized = false;
+          _maybeInitView();
+          await SchedulerBinding.instance.endOfFrame;
+        }
+        if (boundsRect != null) {
+          await _hydrateVisibleCanvasStrokes(canvas, boundsRect, strokeRepo);
+        }
+      }
+      if (!mounted || _blockId != canvas.id) return;
+      final data = await _decodeDataInBatches(canvas, strokeRepo);
+      if (!mounted || _blockId != canvas.id) return;
+      setState(() {
+        _data = data;
+        _hydratingStrokes = false;
+        _hydratingCanvas = null;
+        _paintVersion++;
+      });
+      _strokeTiles.rebuild(_data.strokes);
+      if (!_viewChangedDuringHydration) {
+        _viewInitialized = false;
+        _maybeInitView();
+      }
+      _scheduleOverviewBake();
+    } catch (e, st) {
+      if (mounted) {
+        setState(() {
+          _hydratingStrokes = false;
+          _hydratingCanvas = null;
+        });
+      }
+      CrashLogger.instance.record(
+        e,
+        st,
+        context: 'hydrateCanvasStrokes pizarra',
+      );
+    }
+  }
+
+  Future<void> _hydrateVisibleCanvasStrokes(
+    DrawingBlock canvas,
+    Rect bounds,
+    DrawingStrokeRepository strokeRepo,
+  ) async {
+    if (!mounted || _viewport == Size.zero) return;
+    final visible = _visibleRectFor(_viewport);
+    final overscan = math.max(visible.width, visible.height);
+    final region = visible.inflate(overscan).intersect(bounds);
+    if (region.width <= 0 || region.height <= 0) return;
+    final sw = Stopwatch()..start();
+    final rows = await strokeRepo.getByBlockBounds(
+      canvas.id,
+      _boundsFromRect(region),
+    );
+    if (!mounted || _blockId != canvas.id || !_hydratingStrokes) return;
+    final data = _decodeMetadata(canvas);
+    data.strokes = rows.map(strokeFromRecord).toList();
+    setState(() {
+      _data = data;
+      _paintVersion++;
+    });
+    _strokeTiles.rebuild(_data.strokes);
+    sw.stop();
+    final pts = _pointCount(data.strokes);
+    CrashLogger.instance.note(
+      'PERF hydrate-visible-pizarra: ${data.strokes.length} trazos, '
+      '$pts puntos, ${sw.elapsedMilliseconds}ms',
+    );
+  }
+
+  void _refreshVisibleHydration() {
+    final canvas = _hydratingCanvas;
+    if (!_hydratingStrokes ||
+        canvas == null ||
+        _blockId != canvas.id ||
+        _viewport == Size.zero) {
+      return;
+    }
+    unawaited(() async {
+      try {
+        final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+        final boundsRect = _dbStrokeBounds;
+        if (boundsRect != null) {
+          await _hydrateVisibleCanvasStrokes(canvas, boundsRect, strokeRepo);
+          return;
+        }
+        final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
+        if (bounds == null) return;
+        await _hydrateVisibleCanvasStrokes(
+          canvas,
+          _rectFromBounds(bounds),
+          strokeRepo,
+        );
+      } catch (e, st) {
+        CrashLogger.instance.record(
+          e,
+          st,
+          context: 'refreshVisibleHydration pizarra',
+        );
+      }
+    }());
+  }
+
+  // ignore: unused_element
+  Future<DrawingData> _decodeData(
+    DrawingBlock b, [
+    DrawingStrokeRepository? strokeRepo,
+  ]) async {
     final payload = b.payloadJson();
     final args = <String, dynamic>{
       's': b.strokesJson,
@@ -1062,9 +1232,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     // HANG on device, leaving _decodeData (and thus _blockId/_data) never set →
     // no persistence + corner view. See [[ink-persistence-refactor]].
     final data = _decodeWhiteboardData(args);
-    final rows = await ref
-        .read(drawingStrokeRepositoryProvider)
-        .getByBlock(b.id);
+    final rows =
+        strokeRepo == null
+            ? await ref.read(drawingStrokeRepositoryProvider).getByBlock(b.id)
+            : await strokeRepo.getByBlock(b.id);
     _persistedStrokeIds.clear();
     _dirtyStrokeIds.clear();
     if (rows.isNotEmpty) {
@@ -1089,8 +1260,62 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return data;
   }
 
+  Future<DrawingData> _decodeDataInBatches(
+    DrawingBlock b,
+    DrawingStrokeRepository strokeRepo,
+  ) async {
+    final payload = b.payloadJson();
+    final args = <String, dynamic>{
+      's': b.strokesJson,
+      'i': b.imagesJson,
+      't': b.taskBlocksJson,
+      if (payload['tx'] != null) 'tx': payload['tx'],
+      'bg': payload['bg'],
+      'bgc': payload['bgc'],
+    };
+    final sw = Stopwatch()..start();
+    final data = _decodeWhiteboardData(args);
+    const batchSize = 450;
+    final loaded = <DrawingStroke>[];
+    _persistedStrokeIds.clear();
+    _dirtyStrokeIds.clear();
+    var lastPosition = -1;
+    var maxPos = -1;
+    var batches = 0;
+    while (mounted && _blockId == b.id) {
+      final rows = await strokeRepo.getByBlockAfterPosition(
+        b.id,
+        afterPosition: lastPosition,
+        limit: batchSize,
+      );
+      if (rows.isEmpty) break;
+      for (final r in rows) {
+        loaded.add(strokeFromRecord(r));
+        _persistedStrokeIds.add(r.id);
+        lastPosition = r.position;
+        if (r.position > maxPos) maxPos = r.position;
+      }
+      batches++;
+      await SchedulerBinding.instance.endOfFrame;
+    }
+    if (loaded.isNotEmpty) {
+      data.strokes = loaded;
+      _nextStrokePos = maxPos + 1;
+    } else {
+      _nextStrokePos = 0;
+    }
+    sw.stop();
+    final pts = data.strokes.fold<int>(0, (a, s) => a + s.points.length);
+    CrashLogger.instance.note(
+      'PERF abrir-pizarra-batches: ${data.strokes.length} trazos, '
+      '$pts puntos, $batches batches, ${sw.elapsedMilliseconds}ms',
+    );
+    return data;
+  }
+
   Future<void> _persistNow() async {
     if (_blockId == null) return;
+    if (_hydratingStrokes) return;
     // Guard against overlapping runs: a debounce can fire while a previous
     // persist is still awaiting. The straggler re-runs once this pass finishes.
     if (_persisting) {
@@ -1197,6 +1422,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   void _persist() {
     _persistDirty = true;
+    _dbStrokeBounds = null;
     _persistTimer?.cancel();
     _persistTimer = Timer(const Duration(milliseconds: 180), () {
       if (!mounted) return;
@@ -1595,6 +1821,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return Rect.fromPoints(tl, br);
   }
 
+  Rect _rectFromBounds(DrawingStrokeBounds b) =>
+      Rect.fromLTRB(b.minX, b.minY, b.maxX, b.maxY);
+
+  DrawingStrokeBounds _boundsFromRect(Rect r) => DrawingStrokeBounds(
+    minX: r.left,
+    minY: r.top,
+    maxX: r.right,
+    maxY: r.bottom,
+  );
+
   /// Padded render rect with PREDICTIVE hysteresis. The stroke/background painters
   /// cull and cache against this rect, which only grows (→ a repaint) once the
   /// live visible rect leaves it — so a pan within the buffer reuses the
@@ -1761,6 +1997,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
       }
     }
+    if (_hydratingStrokes) return;
 
     if (_showPasteAt != null) {
       setState(() => _showPasteAt = null);
@@ -3319,6 +3556,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Rect? _contentBounds() {
     double minX = double.infinity, minY = double.infinity;
     double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    final dbBounds = _dbStrokeBounds;
+    if (dbBounds != null) {
+      minX = dbBounds.left;
+      minY = dbBounds.top;
+      maxX = dbBounds.right;
+      maxY = dbBounds.bottom;
+    }
     for (final s in _data.strokes) {
       for (final p in s.points) {
         if (p[0] < minX) minX = p[0];
@@ -4404,6 +4648,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       minScale: 0.3,
                                       maxScale: 4.0,
                                       onInteractionStart: (details) {
+                                        if (_hydratingStrokes) {
+                                          _viewChangedDuringHydration = true;
+                                        }
                                         _viewGestureActive = true;
                                         _viewMoved = false;
                                         _zoomGestureActive = false;
@@ -4463,6 +4710,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                             resetPos: false,
                                           );
                                         }
+                                        _refreshVisibleHydration();
                                       },
                                       boundaryMargin: EdgeInsets.symmetric(
                                         horizontal: c.maxWidth,

@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' show Offset, Rect;
 import 'package:uuid/uuid.dart';
 
@@ -399,6 +400,73 @@ class DrawingStroke {
     isHighlighter: (json['hl'] as int?) == 1,
     isPencil: (json['pc'] as int?) == 1,
   );
+
+  static const int _binFountainPen = 1;
+  static const int _binFilled = 2;
+  static const int _binShape = 4;
+  static const int _binHighlighter = 8;
+  static const int _binPencil = 16;
+
+  /// Compact binary encoding of a single stroke (see [DrawingStroke.fromBytes]).
+  /// Stored as a BLOB per row — ~2-3x smaller than the JSON payload and far
+  /// cheaper to decode (no string tokenising / number-from-text parsing, the
+  /// real bottleneck when opening dense notes). [dbId] is NOT encoded — it's the
+  /// row id, owned by the persistence layer. Little-endian, host-portable.
+  Uint8List toBytes() {
+    final comps = points.isEmpty ? 2 : points.first.length;
+    final n = points.length;
+    final bd = ByteData(16 + n * comps * 4);
+    bd.setUint8(0, 1); // format version
+    var flags = 0;
+    if (isFountainPen) flags |= _binFountainPen;
+    if (filled) flags |= _binFilled;
+    if (isShape) flags |= _binShape;
+    if (isHighlighter) flags |= _binHighlighter;
+    if (isPencil) flags |= _binPencil;
+    bd.setUint8(1, flags);
+    bd.setUint8(2, comps);
+    bd.setUint8(3, 0); // reserved
+    bd.setUint32(4, colorValue, Endian.little);
+    bd.setFloat32(8, strokeWidth, Endian.little);
+    bd.setUint32(12, n, Endian.little);
+    var off = 16;
+    for (final p in points) {
+      for (var c = 0; c < comps; c++) {
+        bd.setFloat32(off, c < p.length ? p[c] : 0.0, Endian.little);
+        off += 4;
+      }
+    }
+    return bd.buffer.asUint8List();
+  }
+
+  factory DrawingStroke.fromBytes(Uint8List bytes) {
+    final bd = ByteData.sublistView(bytes);
+    final flags = bd.getUint8(1);
+    final comps = bd.getUint8(2);
+    final color = bd.getUint32(4, Endian.little);
+    final width = bd.getFloat32(8, Endian.little);
+    final n = bd.getUint32(12, Endian.little);
+    final pts = <List<double>>[];
+    var off = 16;
+    for (var i = 0; i < n; i++) {
+      final p = <double>[];
+      for (var c = 0; c < comps; c++) {
+        p.add(bd.getFloat32(off, Endian.little));
+        off += 4;
+      }
+      pts.add(p);
+    }
+    return DrawingStroke(
+      colorValue: color,
+      strokeWidth: width,
+      points: pts,
+      isFountainPen: flags & _binFountainPen != 0,
+      filled: flags & _binFilled != 0,
+      isShape: flags & _binShape != 0,
+      isHighlighter: flags & _binHighlighter != 0,
+      isPencil: flags & _binPencil != 0,
+    );
+  }
 }
 
 // ─── Scribble detection ──────────────────────────────────────────────────────

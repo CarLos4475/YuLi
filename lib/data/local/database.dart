@@ -73,7 +73,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -211,6 +211,14 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             "UPDATE note_blocks SET payload = '{\"s\":[]}' WHERE type = 'drawing'",
           );
+        } catch (_) {}
+      }
+      if (from <= 22) {
+        // drawing_strokes payload TEXT(JSON) → data BLOB (compact binary stroke
+        // codec). Test data only, no JSON→binary backfill: drop & recreate.
+        try {
+          await m.deleteTable('drawing_strokes');
+          await m.createTable(drawingStrokes);
         } catch (_) {}
       }
     },

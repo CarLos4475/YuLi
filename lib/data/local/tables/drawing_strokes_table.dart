@@ -8,7 +8,7 @@ class DrawingStrokes extends Table {
   IntColumn get blockId =>
       integer().references(NoteBlocks, #id, onDelete: KeyAction.cascade)();
   IntColumn get position => integer()();
-  TextColumn get payload => text()();
+  BlobColumn get data => blob()();
   RealColumn get minX => real()();
   RealColumn get minY => real()();
   RealColumn get maxX => real()();

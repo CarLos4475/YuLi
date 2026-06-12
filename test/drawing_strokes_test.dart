@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/data/local/database.dart';
 import 'package:yuli/data/repositories/local/local_drawing_stroke_repository.dart';
 import 'package:yuli/data/repositories/local/local_note_block_repository.dart';
+import 'package:yuli/domain/models/drawing_stroke_record.dart';
 import 'package:yuli/domain/models/note_block.dart';
 import 'package:yuli/presentation/screens/flight/drawing_stroke_persistence.dart';
 import 'package:yuli/presentation/screens/flight/note_cell_model.dart';
@@ -127,6 +128,44 @@ void main() {
     await strokeRepo.deleteByIds([a.dbId!, c.dbId!]);
     final rows = await strokeRepo.getByBlock(blockId);
     expect(rows.map((r) => r.id).toList(), [b.dbId]);
+  });
+
+  test(
+    'getByBlockBounds returns strokes intersecting the query rect',
+    () async {
+      final blockId = await makeDrawingBlock();
+      await strokeRepo.insert(blockId, strokeWrite(0, pen(0, 0)));
+      await strokeRepo.insert(blockId, strokeWrite(1, pen(100, 100)));
+      await strokeRepo.insert(blockId, strokeWrite(2, pen(300, 300)));
+
+      final bounds = await strokeRepo.getBoundsByBlock(blockId);
+      expect(bounds, isNotNull);
+      expect(bounds!.minX, -3.5);
+      expect(bounds.minY, -3.5);
+      expect(bounds.maxX, 313.5);
+      expect(bounds.maxY, 313.5);
+
+      final rows = await strokeRepo.getByBlockBounds(
+        blockId,
+        const DrawingStrokeBounds(minX: 90, minY: 90, maxX: 120, maxY: 120),
+      );
+      expect(rows.map((r) => r.position).toList(), [1]);
+    },
+  );
+
+  test('getByBlockAfterPosition pages rows by position', () async {
+    final blockId = await makeDrawingBlock();
+    await strokeRepo.insert(blockId, strokeWrite(0, pen(0, 0)));
+    await strokeRepo.insert(blockId, strokeWrite(1, pen(10, 10)));
+    await strokeRepo.insert(blockId, strokeWrite(2, pen(20, 20)));
+    await strokeRepo.insert(blockId, strokeWrite(3, pen(30, 30)));
+
+    final rows = await strokeRepo.getByBlockAfterPosition(
+      blockId,
+      afterPosition: 1,
+      limit: 2,
+    );
+    expect(rows.map((r) => r.position).toList(), [2, 3]);
   });
 
   test(

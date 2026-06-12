@@ -2,6 +2,16 @@ import '../models/drawing_stroke_record.dart';
 
 abstract class DrawingStrokeRepository {
   Future<List<DrawingStrokeRecord>> getByBlock(int blockId);
+  Future<List<DrawingStrokeRecord>> getByBlockBounds(
+    int blockId,
+    DrawingStrokeBounds bounds,
+  );
+  Future<List<DrawingStrokeRecord>> getByBlockAfterPosition(
+    int blockId, {
+    required int afterPosition,
+    required int limit,
+  });
+  Future<DrawingStrokeBounds?> getBoundsByBlock(int blockId);
   Future<int> insert(int blockId, DrawingStrokeWrite stroke);
 
   /// In-place update of one stroke row (geometry edit; row keeps its id).

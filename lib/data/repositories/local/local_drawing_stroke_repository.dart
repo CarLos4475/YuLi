@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:drift/drift.dart';
 
 import '../../../domain/models/drawing_stroke_record.dart';
@@ -14,22 +12,55 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
   @override
   Future<List<DrawingStrokeRecord>> getByBlock(int blockId) async {
     final rows = await _db.drawingStrokesDao.getByBlock(blockId);
-    final records = <DrawingStrokeRecord>[];
-    for (final r in rows) {
-      try {
-        final payload = jsonDecode(r.payload);
-        if (payload is Map<String, dynamic>) {
-          records.add(
-            DrawingStrokeRecord(
-              id: r.id,
-              position: r.position,
-              payload: payload,
-            ),
-          );
-        }
-      } catch (_) {}
-    }
-    return records;
+    return _recordsFromRows(rows);
+  }
+
+  @override
+  Future<List<DrawingStrokeRecord>> getByBlockBounds(
+    int blockId,
+    DrawingStrokeBounds bounds,
+  ) async {
+    final rows = await _db.drawingStrokesDao.getByBlockBounds(
+      blockId,
+      minX: bounds.minX,
+      minY: bounds.minY,
+      maxX: bounds.maxX,
+      maxY: bounds.maxY,
+    );
+    return _recordsFromRows(rows);
+  }
+
+  @override
+  Future<List<DrawingStrokeRecord>> getByBlockAfterPosition(
+    int blockId, {
+    required int afterPosition,
+    required int limit,
+  }) async {
+    final rows = await _db.drawingStrokesDao.getByBlockAfterPosition(
+      blockId,
+      afterPosition: afterPosition,
+      limit: limit,
+    );
+    return _recordsFromRows(rows);
+  }
+
+  @override
+  Future<DrawingStrokeBounds?> getBoundsByBlock(int blockId) async {
+    final bounds = await _db.drawingStrokesDao.getBoundsByBlock(blockId);
+    if (bounds == null) return null;
+    return DrawingStrokeBounds(
+      minX: bounds.minX,
+      minY: bounds.minY,
+      maxX: bounds.maxX,
+      maxY: bounds.maxY,
+    );
+  }
+
+  List<DrawingStrokeRecord> _recordsFromRows(List<DrawingStrokeRow> rows) {
+    return [
+      for (final r in rows)
+        DrawingStrokeRecord(id: r.id, position: r.position, data: r.data),
+    ];
   }
 
   @override
@@ -76,7 +107,7 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     DrawingStrokeWrite stroke,
     DateTime updatedAt,
   ) => DrawingStrokesCompanion(
-    payload: Value(jsonEncode(stroke.payload)),
+    data: Value(stroke.data),
     minX: Value(stroke.minX),
     minY: Value(stroke.minY),
     maxX: Value(stroke.maxX),
@@ -90,7 +121,7 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     return DrawingStrokesCompanion.insert(
       blockId: blockId,
       position: stroke.position,
-      payload: jsonEncode(stroke.payload),
+      data: stroke.data,
       minX: stroke.minX,
       minY: stroke.minY,
       maxX: stroke.maxX,

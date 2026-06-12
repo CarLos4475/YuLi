@@ -8,7 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -131,10 +131,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     with TickerProviderStateMixin {
   final Map<int, DrawingData> _pageData = {};
   final List<int> _pageBlockIds = [];
+  final Map<int, DrawingBlock> _pageShells = {};
   // Pages whose JSON hasn't been decoded yet. Decoding every page up front
   // blocks the first frame (the open jank); these stream in after it. A page
   // here is absent from _pageData → treated as empty (blank chrome) until ready.
   final Map<int, DrawingBlock> _pendingDecode = {};
+  final Set<int> _hydratingPages = {};
+  static const int _livePageMargin = 2;
+  static const int _evictPageMargin = 4;
 
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
@@ -222,7 +226,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _multiFingerMoved = false;
   DateTime? _multiFingerDownTime;
   final Map<int, Offset> _pointerDownPos = {};
-  bool _decodeInteractionActive = false;
 
   @override
   void setState(VoidCallback fn) {
@@ -287,9 +290,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // before fully stopping; requiring a longer identical streak guarantees the
   // bake lands in true stillness (cost is only a slightly later crisp swap).
   static const int _settleStillFramesNeeded = 12; // ~200ms at 60fps
-  // Cap a focus image's longest side (px). 3072 ≈ crisp to ~1.8x at dpr 2, ~26MB
-  // per page; only the visible neighbourhood is kept resident.
-  static const double _focusMaxDim = 3072.0;
+  // Cap a focus image's longest side (px). 4096 ≈ crisp to ~2.4x at dpr 2, ~47MB
+  // per page; only the visible neighbourhood is kept resident. This is also the
+  // ceiling: a page at this density is 4092px tall, just under the 4096 GPU
+  // texture limit — higher would be rejected on some Android GPUs.
+  static const double _focusMaxDim = 4096.0;
   static const double _baseOverviewDensity = 2.0;
   // Pin the overview through a 2-finger zoom gesture; hand back to crisp tiles
   // only when it ends (avoids re-rastering tiles mid-pinch → jank).
@@ -446,7 +451,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       await _loadPages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _applyInitialScroll();
-        _scheduleDeferredDecode(const Duration(milliseconds: 220));
+        _scheduleDeferredDecode(Duration.zero);
         // Retired non-overview rasters (see _persistPage). Page overviews are
         // baked from the decode sites, so the first pan already has images.
         // _scheduleZoomSnapshotBake();
@@ -544,35 +549,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
-    // Register all pages (cheap — drives layout/scroll/height) but DEFER the
-    // heavy stroke decode of off-screen pages off the open path. The initial
-    // scroll lands on the bottom, so decode the last page (+ its neighbor) now;
-    // the rest stream in after the first frame (see _decodeMorePages).
+    // Register page shells only; stroke rows hydrate after the first frame.
     for (final b in drawingBlocks) {
       _pageBlockIds.add(b.id);
+      _pageShells[b.id] = b;
       _pendingDecode[b.id] = b;
       if (b.starred) _starredBlockIds.add(b.id);
     }
 
-    // Decode the pages the first frames touch: the last page (where the scroll
-    // lands) and the first (shown for the frame before the scroll applies). The
-    // rest stream in. Still O(1) work on the open path, not O(pages).
-    for (final id in {drawingBlocks.first.id, drawingBlocks.last.id}) {
-      final b = _pendingDecode.remove(id);
-      if (b != null) {
-        _pageData[id] = await _decodeData(b);
-        _pageTileIndex(id).rebuild(_pageData[id]!.strokes);
-        _rebuildWorldStrokeCache(id);
-        _scheduleOverviewBake(id);
-      }
-    }
-
-    // Inherit new-page background from the last page.
-    final last = _pageData[_pageBlockIds.last];
-    if (last != null) {
-      _lastBg = last.background;
-      _lastBgColor = last.bgColorValue;
-    }
+    // New pages inherit the last page background without decoding its strokes.
+    _lastBg = PageBackground.fromString(drawingBlocks.last.background ?? '');
+    _lastBgColor = drawingBlocks.last.bgColor;
 
     setState(() {});
 
@@ -587,69 +574,198 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   /// Decode a few deferred pages per frame so even a 50-page note opens without
-  /// a single blocking decode. Bottom-up: the user lands at the last page and
-  /// scrolls up, so decode toward where they're heading first.
+  /// a single blocking decode. The visible page wins, then neighbors, then the
+  /// background stops; far pages remain cold on disk.
   Future<void> _decodeMorePages() async {
-    if (!mounted || _pendingDecode.isEmpty) return;
-    if (_decodeInteractionActive || _activePointers.isNotEmpty || _isDrawing) {
+    if (!mounted) return;
+    if (_isDrawing) {
       _scheduleDeferredDecode();
       return;
     }
     final sw = Stopwatch()..start();
     const perBatch = 1;
     var n = 0;
-    for (int i = _pageBlockIds.length - 1; i >= 0 && n < perBatch; i--) {
-      final b = _pendingDecode.remove(_pageBlockIds[i]);
+    while (n < perBatch) {
+      final blockId = _nextPendingDecodeBlockId();
+      if (blockId == null) break;
+      final b = _pendingDecode.remove(blockId);
       if (b != null) {
-        _pageData[_pageBlockIds[i]] = await _decodeData(b);
-        final rebuildSw = Stopwatch()..start();
-        _pageTileIndex(
-          _pageBlockIds[i],
-        ).rebuild(_pageData[_pageBlockIds[i]]!.strokes);
-        _rebuildWorldStrokeCache(_pageBlockIds[i]);
-        _scheduleOverviewBake(_pageBlockIds[i]);
-        rebuildSw.stop();
-        final data = _pageData[_pageBlockIds[i]]!;
-        final pts = _pointCount(data.strokes);
-        CrashLogger.instance.note(
-          'PERF tile-cuaderno: page $i, ${data.strokes.length} trazos, '
-          '$pts puntos, ${rebuildSw.elapsedMilliseconds}ms',
-        );
-        n++;
+        _hydratingPages.add(blockId);
+        try {
+          final decoded = await _decodeData(b);
+          if (!mounted) return;
+          _pageData[blockId] = decoded;
+          final rebuildSw = Stopwatch()..start();
+          _pageTileIndex(blockId).rebuild(_pageData[blockId]!.strokes);
+          _rebuildWorldStrokeCache(blockId);
+          _scheduleOverviewBake(blockId);
+          rebuildSw.stop();
+          final data = _pageData[blockId]!;
+          final pts = _pointCount(data.strokes);
+          final pageIndex = _pageBlockIds.indexOf(blockId);
+          CrashLogger.instance.note(
+            'PERF tile-cuaderno: page $pageIndex, ${data.strokes.length} trazos, '
+            '$pts puntos, ${rebuildSw.elapsedMilliseconds}ms',
+          );
+          n++;
+        } catch (e, st) {
+          _pendingDecode[blockId] = b;
+          CrashLogger.instance.record(
+            e,
+            st,
+            context: 'decodeMorePages cuaderno',
+          );
+        } finally {
+          _hydratingPages.remove(blockId);
+        }
       }
     }
-    if (n > 0) {
+    final evicted = _evictColdPages();
+    if (n > 0 || evicted > 0) {
       // Bump so the painter (which compares paintVersion, not the mutated
       // pageData map) repaints any newly-decoded page that's already in view.
       _paintVersion++;
       setState(() {});
     }
-    if (_pendingDecode.isNotEmpty) {
+    if (_hasPendingDecodeInLiveWindow()) {
       _scheduleDeferredDecode();
     }
     sw.stop();
-    if (n > 0) {
+    if (n > 0 || evicted > 0) {
       CrashLogger.instance.note(
         'PERF decode-batch-cuaderno: $n paginas, '
-        '${_pendingDecode.length} pending, ${sw.elapsedMilliseconds}ms',
+        '$evicted evicted, ${_pendingDecode.length} pending, '
+        '${_pageData.length} live, ${sw.elapsedMilliseconds}ms',
       );
     }
   }
 
-  void _pauseDeferredDecode() {
-    _decodeInteractionActive = true;
-    _deferredDecodeTimer?.cancel();
-    _deferredDecodeTimer = null;
+  int? _nextPendingDecodeBlockId() {
+    if (_pageBlockIds.isEmpty || _pendingDecode.isEmpty) return null;
+    final live = _livePageIndices();
+    final order =
+        live.toList()..sort((a, b) {
+          final current = _currentVisiblePage;
+          final da = (a - current).abs();
+          final db = (b - current).abs();
+          return da.compareTo(db);
+        });
+    for (final pageIndex in order) {
+      final blockId = _pageBlockIds[pageIndex];
+      if (_pendingDecode.containsKey(blockId) &&
+          !_hydratingPages.contains(blockId)) {
+        return blockId;
+      }
+    }
+    return null;
+  }
+
+  Set<int> _livePageIndices({int margin = _livePageMargin}) {
+    if (_pageBlockIds.isEmpty) return const {};
+    if (_viewport == Size.zero) {
+      final current = _currentVisiblePage;
+      return {
+        for (int i = current - margin; i <= current + margin; i++)
+          if (i >= 0 && i < _pageBlockIds.length) i,
+      };
+    }
+    final visible = _visibleRectFor(_viewport);
+    final wanted = <int>{};
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final top = _pageOffsetY(i);
+      final rect = Rect.fromLTWH(0, top, kNotebookPageWidth, kNotebookPageHeight);
+      if (!rect.overlaps(visible)) continue;
+      for (int j = i - margin; j <= i + margin; j++) {
+        if (j >= 0 && j < _pageBlockIds.length) wanted.add(j);
+      }
+    }
+    if (wanted.isEmpty) {
+      final current = _currentVisiblePage;
+      for (int i = current - margin; i <= current + margin; i++) {
+        if (i >= 0 && i < _pageBlockIds.length) wanted.add(i);
+      }
+    }
+    return wanted;
+  }
+
+  bool _hasPendingDecodeInLiveWindow() {
+    if (_pendingDecode.isEmpty) return false;
+    for (final pageIndex in _livePageIndices()) {
+      final blockId = _pageBlockIds[pageIndex];
+      if (_pendingDecode.containsKey(blockId) &&
+          !_hydratingPages.contains(blockId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasEvictableColdPages() {
+    if (_pageData.isEmpty ||
+        _undoStack.isNotEmpty ||
+        _redoStack.isNotEmpty ||
+        _isDrawing ||
+        _activePageIndex != null ||
+        _lassoCtrl.phase != LassoPhase.idle) {
+      return false;
+    }
+    final keep = _livePageIndices(margin: _evictPageMargin);
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      if (keep.contains(i)) continue;
+      final blockId = _pageBlockIds[i];
+      if (_pageData.containsKey(blockId) &&
+          !_dirtyPersistPages.contains(blockId) &&
+          !_hydratingPages.contains(blockId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  int _evictColdPages() {
+    if (_pageData.isEmpty ||
+        _undoStack.isNotEmpty ||
+        _redoStack.isNotEmpty ||
+        _isDrawing ||
+        _activePageIndex != null ||
+        _lassoCtrl.phase != LassoPhase.idle) {
+      return 0;
+    }
+    final keep = _livePageIndices(margin: _evictPageMargin);
+    var evicted = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      if (keep.contains(i)) continue;
+      final blockId = _pageBlockIds[i];
+      if (!_pageData.containsKey(blockId) ||
+          _dirtyPersistPages.contains(blockId) ||
+          _hydratingPages.contains(blockId)) {
+        continue;
+      }
+      final shell = _pageShells[blockId];
+      if (shell == null) continue;
+      _pageData.remove(blockId);
+      _pendingDecode[blockId] = shell;
+      _pageWorldStrokeCache.remove(blockId);
+      _pageTiles.remove(blockId)?.dispose();
+      _persistedStrokeIdsByBlock.remove(blockId);
+      _dirtyStrokeIdsByBlock.remove(blockId);
+      _nextStrokePosByBlock.remove(blockId);
+      _disposeFocus(blockId);
+      evicted++;
+    }
+    return evicted;
   }
 
   void _scheduleDeferredDecode([
-    Duration delay = const Duration(milliseconds: 140),
+    Duration delay = const Duration(milliseconds: 16),
   ]) {
-    if (!mounted || _pendingDecode.isEmpty) return;
+    if (!mounted ||
+        (!_hasPendingDecodeInLiveWindow() && !_hasEvictableColdPages())) {
+      return;
+    }
     _deferredDecodeTimer?.cancel();
     _deferredDecodeTimer = Timer(delay, () {
       if (!mounted) return;
-      _decodeInteractionActive = false;
       unawaited(_decodeMorePages());
     });
   }
@@ -696,10 +812,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       'bg': b.background,
       'bgc': b.bgColor,
     });
-    sw.stop();
-    final rows = await ref
-        .read(drawingStrokeRepositoryProvider)
-        .getByBlock(b.id);
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+    const batchSize = 450;
+    final rows = <DrawingStrokeRecord>[];
+    var lastPosition = -1;
+    var batches = 0;
+    while (mounted) {
+      final batch = await strokeRepo.getByBlockAfterPosition(
+        b.id,
+        afterPosition: lastPosition,
+        limit: batchSize,
+      );
+      if (batch.isEmpty) break;
+      rows.addAll(batch);
+      lastPosition = batch.last.position;
+      batches++;
+      await SchedulerBinding.instance.endOfFrame;
+    }
     final persisted = _persistedStrokeIdsByBlock.putIfAbsent(b.id, () => {});
     persisted.clear();
     _dirtyStrokeIdsByBlock.putIfAbsent(b.id, () => {}).clear();
@@ -716,10 +845,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     final pts = _pointCount(data.strokes);
     final pageIndex = _pageBlockIds.indexOf(b.id);
+    sw.stop();
     CrashLogger.instance.note(
       'PERF decode-cuaderno: page $pageIndex, ${data.strokes.length} trazos, '
       '$pts puntos, json ${(b.strokesJson.length / 1024).round()}KB, '
-      '${sw.elapsedMilliseconds}ms',
+      '$batches batches, ${sw.elapsedMilliseconds}ms',
     );
     return data;
   }
@@ -917,6 +1047,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               )
               as DrawingBlock;
       _pageBlockIds.add(block.id);
+      _pageShells[block.id] = block;
       _pageData[block.id] = DrawingData(
         height: kNotebookPageHeight,
         background: _lastBg,
@@ -1022,6 +1153,22 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (data.bgColorValue != null) 'bgc': data.bgColorValue,
       'starred': _starredBlockIds.contains(blockId),
     });
+    final shell = _pageShells[blockId];
+    if (shell != null) {
+      _pageShells[blockId] = shell.copyWith(
+        strokesJson: '[]',
+        imagesJson: jsonEncode(data.images.map((im) => im.toJson()).toList()),
+        taskBlocksJson: jsonEncode(
+          data.taskBlocks.map((b) => b.toJson()).toList(),
+        ),
+        textBlocksJson: jsonEncode(
+          data.textBlocks.map((b) => b.toJson()).toList(),
+        ),
+        background: data.background.toDbString(),
+        bgColor: data.bgColorValue,
+        starred: _starredBlockIds.contains(blockId),
+      );
+    }
     sw.stop();
     CrashLogger.instance.note(
       'PERF guardar-cuaderno: page $pageIndex, ${data.strokes.length} trazos, '
@@ -2024,20 +2171,41 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final dx = (vw - kNotebookPageWidth) / 2;
     final dy = -pageTop + 40;
     _viewCtrl.value = Matrix4.translationValues(dx, dy, 0);
+    _scheduleDeferredDecode(Duration.zero);
     _togglePageDrawer();
   }
 
   Future<void> _toggleStarred(int blockId) async {
     final idx = _pageBlockIds.indexOf(blockId);
     if (idx < 0) return;
+    final starred = !_starredBlockIds.contains(blockId);
     setState(() {
-      if (_starredBlockIds.contains(blockId)) {
-        _starredBlockIds.remove(blockId);
-      } else {
+      if (starred) {
         _starredBlockIds.add(blockId);
+      } else {
+        _starredBlockIds.remove(blockId);
       }
     });
-    await _persistPageNow(idx);
+    if (_pageData.containsKey(blockId)) {
+      await _persistPageNow(idx);
+    } else {
+      final shell = _pageShells[blockId];
+      if (shell != null) {
+        final updated = shell.copyWith(starred: starred);
+        _pageShells[blockId] = updated;
+        _pendingDecode[blockId] = updated;
+        await ref.read(noteBlockRepositoryProvider).updatePayload(blockId, {
+          'h': kNotebookPageHeight,
+          's': const [],
+          'i': jsonDecode(updated.imagesJson),
+          't': jsonDecode(updated.taskBlocksJson),
+          'tx': jsonDecode(updated.textBlocksJson),
+          if (updated.background != null) 'bg': updated.background,
+          if (updated.bgColor != null) 'bgc': updated.bgColor,
+          'starred': starred,
+        });
+      }
+    }
     HapticFeedback.lightImpact();
   }
 
@@ -2050,6 +2218,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     setState(() {
       _pageBlockIds.removeAt(pageIndex);
       _pageData.remove(blockId);
+      _pageShells.remove(blockId);
+      _pendingDecode.remove(blockId);
+      _hydratingPages.remove(blockId);
       _starredBlockIds.remove(blockId);
       if (_activePageIndex == pageIndex) _activePageIndex = null;
       _undoStack.clear();
@@ -2442,7 +2613,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _onDown(PointerDownEvent e) {
-    _pauseDeferredDecode();
     if (_eyedropperMode) {
       _activePointers.add(e.pointer);
       // 1 pointer drags the loupe; 2+ hands the gesture to pan/zoom.
@@ -2553,6 +2723,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (pageIdx >= _pageBlockIds.length) {
       _ensurePageAt(pageIdx);
       if (pageIdx >= _pageBlockIds.length) return;
+    }
+    final blockId = _pageBlockIds[pageIdx];
+    if (!_pageData.containsKey(blockId)) {
+      _scheduleDeferredDecode(Duration.zero);
+      return;
     }
 
     _activePageIndex = pageIdx;

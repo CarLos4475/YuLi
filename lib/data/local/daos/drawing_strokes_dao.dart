@@ -16,6 +16,66 @@ class DrawingStrokesDao extends DatabaseAccessor<AppDatabase>
             ..orderBy([(s) => OrderingTerm.asc(s.position)]))
           .get();
 
+  Future<List<DrawingStrokeRow>> getByBlockBounds(
+    int blockId, {
+    required double minX,
+    required double minY,
+    required double maxX,
+    required double maxY,
+  }) =>
+      (select(drawingStrokes)
+            ..where(
+              (s) =>
+                  s.blockId.equals(blockId) &
+                  s.maxX.isBiggerOrEqualValue(minX) &
+                  s.minX.isSmallerOrEqualValue(maxX) &
+                  s.maxY.isBiggerOrEqualValue(minY) &
+                  s.minY.isSmallerOrEqualValue(maxY),
+            )
+            ..orderBy([(s) => OrderingTerm.asc(s.position)]))
+          .get();
+
+  Future<List<DrawingStrokeRow>> getByBlockAfterPosition(
+    int blockId, {
+    required int afterPosition,
+    required int limit,
+  }) =>
+      (select(drawingStrokes)
+            ..where(
+              (s) =>
+                  s.blockId.equals(blockId) &
+                  s.position.isBiggerThanValue(afterPosition),
+            )
+            ..orderBy([(s) => OrderingTerm.asc(s.position)])
+            ..limit(limit))
+          .get();
+
+  Future<({double minX, double minY, double maxX, double maxY})?>
+  getBoundsByBlock(int blockId) async {
+    final row =
+        await customSelect(
+          '''
+          SELECT
+            MIN(min_x) AS min_x,
+            MIN(min_y) AS min_y,
+            MAX(max_x) AS max_x,
+            MAX(max_y) AS max_y
+          FROM drawing_strokes
+          WHERE block_id = ?
+          ''',
+          variables: [Variable.withInt(blockId)],
+          readsFrom: {drawingStrokes},
+        ).getSingle();
+    final minX = row.readNullable<double>('min_x');
+    final minY = row.readNullable<double>('min_y');
+    final maxX = row.readNullable<double>('max_x');
+    final maxY = row.readNullable<double>('max_y');
+    if (minX == null || minY == null || maxX == null || maxY == null) {
+      return null;
+    }
+    return (minX: minX, minY: minY, maxX: maxX, maxY: maxY);
+  }
+
   Future<int> insertStroke(DrawingStrokesCompanion row) =>
       into(drawingStrokes).insert(row);
 

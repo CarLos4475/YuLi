@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../widgets/yuli_design.dart';
@@ -50,6 +52,93 @@ class NotebookPageDrawer extends StatefulWidget {
 class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
   bool _exportMode = false;
   final Set<int> _selected = {};
+
+  final Map<int, ui.Image> _thumbCache = {};
+  final Map<int, DrawingData> _thumbSrc = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAll();
+  }
+
+  @override
+  void didUpdateWidget(NotebookPageDrawer old) {
+    super.didUpdateWidget(old);
+    _scheduleDirty();
+  }
+
+  @override
+  void dispose() {
+    for (final img in _thumbCache.values) {
+      img.dispose();
+    }
+    _thumbCache.clear();
+    _thumbSrc.clear();
+    super.dispose();
+  }
+
+  void _scheduleAll() {
+    for (final entry in widget.pageData.entries) {
+      _thumbSrc[entry.key] = entry.value;
+      _renderThumb(entry.key, entry.value);
+    }
+  }
+
+  void _scheduleDirty() {
+    for (final entry in widget.pageData.entries) {
+      if (_thumbSrc[entry.key] != entry.value) {
+        _thumbSrc[entry.key] = entry.value;
+        _renderThumb(entry.key, entry.value);
+      }
+    }
+    _thumbCache.keys
+        .where((k) => !widget.pageData.containsKey(k))
+        .toList()
+        .forEach(_thumbCache.remove);
+    _thumbSrc.keys
+        .where((k) => !widget.pageData.containsKey(k))
+        .toList()
+        .forEach(_thumbSrc.remove);
+  }
+
+  Future<void> _renderThumb(int blockId, DrawingData data) async {
+    const thumbW = 96.0;
+    final thumbH = thumbW * kNotebookPageHeight / kNotebookPageWidth;
+    final scale = thumbW / kNotebookPageWidth;
+    final imageCache = widget.imageCache;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    canvas.scale(scale);
+    final pageRect = Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight);
+    canvas.clipRect(pageRect);
+
+    final paper = bgPaper(data.bgColorValue, const Color(0xFFFFFDF8));
+    canvas.drawRect(pageRect, Paint()..color = paper);
+    paintBgPattern(canvas, pageRect, data.background, bgMark(paper));
+
+    for (final im in data.images) {
+      drawCanvasImage(canvas, imageCache?.get(im.filename), im);
+    }
+    _drawThumbBlocks(canvas, data, widget.accentColor, scale);
+    for (final stroke in data.strokes) {
+      drawStroke(canvas, stroke);
+    }
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(thumbW.round(), thumbH.round());
+    picture.dispose();
+
+    if (!mounted) {
+      image.dispose();
+      return;
+    }
+    _thumbCache[blockId]?.dispose();
+    _thumbCache[blockId] = image;
+    setState(() {});
+  }
 
   void _enterExport() {
     setState(() {
@@ -154,6 +243,7 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
                           data: widget.pageData[ref.blockId],
                           accentColor: widget.accentColor,
                           imageCache: widget.imageCache,
+                          thumbnail: _thumbCache[ref.blockId],
                           isStarred: true,
                           isCurrent: ref.pageIndex == widget.currentPageIndex,
                           canDelete: canDelete,
@@ -189,6 +279,7 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
                         data: widget.pageData[ref.blockId],
                         accentColor: widget.accentColor,
                         imageCache: widget.imageCache,
+                        thumbnail: _thumbCache[ref.blockId],
                         isStarred: false,
                         isCurrent: ref.pageIndex == widget.currentPageIndex,
                         canDelete: canDelete,
@@ -213,6 +304,60 @@ class _NotebookPageDrawerState extends State<NotebookPageDrawer> {
         ),
       ),
     );
+  }
+}
+
+void _drawThumbBlocks(Canvas canvas, DrawingData data, Color accentColor, double scale) {
+  final bw = 0.7 / scale;
+  final fill = Paint()..color = yCream;
+  final border =
+      Paint()
+        ..color = yBorderStrong
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = bw;
+  final hint = Paint()..color = yInk.withValues(alpha: 0.28);
+  final accent = Paint()..color = accentColor;
+
+  for (final b in data.textBlocks) {
+    final rect = Rect.fromLTWH(b.x, b.y, b.w, b.h);
+    canvas.drawRect(rect, fill);
+    final stripeW = (b.w * 0.06).clamp(4.0, 18.0);
+    canvas.drawRect(Rect.fromLTWH(b.x, b.y, stripeW, b.h), accent);
+    canvas.drawRect(rect, border);
+    final pad = stripeW + b.w * 0.06;
+    final lh = b.h / 5;
+    for (int i = 1; i <= 3; i++) {
+      final y = b.y + lh * i;
+      if (y > b.y + b.h - lh * 0.5) break;
+      canvas.drawRect(
+        Rect.fromLTWH(b.x + pad, y, (b.w - pad - b.w * 0.08), bw * 1.5),
+        hint,
+      );
+    }
+  }
+
+  for (final b in data.taskBlocks) {
+    final rect = Rect.fromLTWH(b.x, b.y, b.w, b.h);
+    canvas.drawRect(rect, fill);
+    canvas.drawRect(rect, border);
+    final rowH = (b.h / 4).clamp(1.0, b.h);
+    final box = (rowH * 0.5).clamp(2.0, 40.0);
+    final left = b.x + b.w * 0.08;
+    for (int i = 0; i < 3; i++) {
+      final cy = b.y + rowH * (i + 0.6);
+      if (cy + box > b.y + b.h) break;
+      final sq = Rect.fromLTWH(left, cy, box, box);
+      canvas.drawRect(sq, accent);
+      canvas.drawRect(
+        Rect.fromLTWH(
+          left + box * 1.6,
+          cy + box * 0.2,
+          b.w - (left - b.x) - box * 1.6 - b.w * 0.08,
+          box * 0.6,
+        ),
+        hint,
+      );
+    }
   }
 }
 
@@ -500,6 +645,7 @@ class _PageTile extends StatelessWidget {
   final DrawingData? data;
   final Color accentColor;
   final CanvasImageCache? imageCache;
+  final ui.Image? thumbnail;
   final bool isStarred;
   final bool isCurrent;
   final bool canDelete;
@@ -518,6 +664,7 @@ class _PageTile extends StatelessWidget {
     required this.data,
     required this.accentColor,
     this.imageCache,
+    this.thumbnail,
     required this.isStarred,
     required this.isCurrent,
     required this.canDelete,
@@ -532,7 +679,7 @@ class _PageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const thumbW = 72.0;
+    const thumbW = 96.0;
     const thumbH = thumbW * kNotebookPageHeight / kNotebookPageWidth;
 
     final strokeCount = data?.strokes.length ?? 0;
@@ -601,10 +748,12 @@ class _PageTile extends StatelessWidget {
                         : RepaintBoundary(
                           child: CustomPaint(
                             painter: _PageThumbnailPainter(
+                              blockId: blockId,
                               data: data!,
                               accentColor: accentColor,
                               imageCache: imageCache,
                               scale: thumbW / kNotebookPageWidth,
+                              cachedImage: thumbnail,
                             ),
                             size: const Size(thumbW, thumbH),
                           ),
@@ -815,116 +964,40 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-/// Renders a page thumbnail with the SAME primitives as [_NotebookCanvasPainter]
-/// (paper color + pattern + images + strokes), per-page background, so a tile
-/// looks like a shrunk page instead of the old hand-rolled approximation.
+/// Draws a pre-rendered [cachedImage] at the thumbnail size. When the image
+/// is not yet available (async generation in progress), draws a fast paper-
+/// colored placeholder so the drawer opens instantly without painting strokes.
 class _PageThumbnailPainter extends CustomPainter {
+  final int blockId;
   final DrawingData data;
   final Color accentColor;
   final CanvasImageCache? imageCache;
   final double scale;
+  final ui.Image? cachedImage;
 
   _PageThumbnailPainter({
+    required this.blockId,
     required this.data,
     required this.accentColor,
-    required this.imageCache,
+    this.imageCache,
     required this.scale,
+    this.cachedImage,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.scale(scale);
-
-    final pageRect = Rect.fromLTWH(
-      0,
-      0,
-      kNotebookPageWidth,
-      kNotebookPageHeight,
+    final img = cachedImage;
+    if (img != null) {
+      canvas.drawImage(img, Offset.zero, Paint());
+      return;
+    }
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFFFFFDF8),
     );
-    canvas.clipRect(pageRect);
-
-    final paper = bgPaper(data.bgColorValue, const Color(0xFFFFFDF8));
-    canvas.drawRect(pageRect, Paint()..color = paper);
-    paintBgPattern(canvas, pageRect, data.background, bgMark(paper));
-
-    for (final im in data.images) {
-      drawCanvasImage(canvas, imageCache?.get(im.filename), im);
-    }
-    // Text/task blocks are widget overlays (never painted) — at thumbnail scale
-    // their text is illegible, so draw a representative card box at each block's
-    // position so the page preview isn't missing content. Above images, below
-    // strokes (matches the live layer order).
-    _drawBlocks(canvas);
-    for (final stroke in data.strokes) {
-      drawStroke(canvas, stroke);
-    }
-
-    canvas.restore();
-  }
-
-  void _drawBlocks(Canvas canvas) {
-    // World-unit width so it renders ~constant px after the canvas scale.
-    final bw = 0.7 / scale;
-    final fill = Paint()..color = yCream;
-    final border =
-        Paint()
-          ..color = yBorderStrong
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = bw;
-    final hint = Paint()..color = yInk.withValues(alpha: 0.28);
-    final accent = Paint()..color = accentColor;
-
-    for (final b in data.textBlocks) {
-      final rect = Rect.fromLTWH(b.x, b.y, b.w, b.h);
-      canvas.drawRect(rect, fill);
-      // Accent left stripe (mirrors the card's left border).
-      final stripeW = (b.w * 0.06).clamp(4.0, 18.0);
-      canvas.drawRect(Rect.fromLTWH(b.x, b.y, stripeW, b.h), accent);
-      canvas.drawRect(rect, border);
-      // A few faint lines to suggest text.
-      final pad = stripeW + b.w * 0.06;
-      final lh = b.h / 5;
-      for (int i = 1; i <= 3; i++) {
-        final y = b.y + lh * i;
-        if (y > b.y + b.h - lh * 0.5) break;
-        canvas.drawRect(
-          Rect.fromLTWH(b.x + pad, y, (b.w - pad - b.w * 0.08), bw * 1.5),
-          hint,
-        );
-      }
-    }
-
-    for (final b in data.taskBlocks) {
-      final rect = Rect.fromLTWH(b.x, b.y, b.w, b.h);
-      canvas.drawRect(rect, fill);
-      canvas.drawRect(rect, border);
-      // Rows of [checkbox + line] to suggest a checklist.
-      final rowH = (b.h / 4).clamp(1.0, b.h);
-      final box = (rowH * 0.5).clamp(2.0, 40.0);
-      final left = b.x + b.w * 0.08;
-      for (int i = 0; i < 3; i++) {
-        final cy = b.y + rowH * (i + 0.6);
-        if (cy + box > b.y + b.h) break;
-        final sq = Rect.fromLTWH(left, cy, box, box);
-        canvas.drawRect(sq, accent);
-        canvas.drawRect(
-          Rect.fromLTWH(
-            left + box * 1.6,
-            cy + box * 0.2,
-            b.w - (left - b.x) - box * 1.6 - b.w * 0.08,
-            box * 0.6,
-          ),
-          hint,
-        );
-      }
-    }
   }
 
   @override
   bool shouldRepaint(_PageThumbnailPainter old) =>
-      old.data != data ||
-      old.accentColor != accentColor ||
-      old.imageCache != imageCache ||
-      old.scale != scale;
+      old.cachedImage != cachedImage || old.scale != scale;
 }

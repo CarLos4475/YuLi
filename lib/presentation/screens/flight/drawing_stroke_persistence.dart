@@ -3,7 +3,7 @@ import 'note_cell_model.dart';
 import 'stroke_bounds.dart';
 
 DrawingStroke strokeFromRecord(DrawingStrokeRecord record) {
-  final stroke = DrawingStroke.fromJson(record.payload);
+  final stroke = DrawingStroke.fromBytes(record.data);
   stroke.dbId = record.id;
   return stroke;
 }
@@ -12,7 +12,7 @@ DrawingStrokeWrite strokeWrite(int position, DrawingStroke stroke) {
   final b = strokeBounds(stroke);
   return DrawingStrokeWrite(
     position: position,
-    payload: stroke.toJson()..remove('dbid'),
+    data: stroke.toBytes(),
     minX: b.left,
     minY: b.top,
     maxX: b.right,

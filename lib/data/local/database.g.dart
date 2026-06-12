@@ -3041,15 +3041,13 @@ class $DrawingStrokesTable extends DrawingStrokes
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _payloadMeta = const VerificationMeta(
-    'payload',
-  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
   @override
-  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
-    'payload',
+  late final GeneratedColumn<Uint8List> data = GeneratedColumn<Uint8List>(
+    'data',
     aliasedName,
     false,
-    type: DriftSqlType.string,
+    type: DriftSqlType.blob,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _minXMeta = const VerificationMeta('minX');
@@ -3128,7 +3126,7 @@ class $DrawingStrokesTable extends DrawingStrokes
     id,
     blockId,
     position,
-    payload,
+    data,
     minX,
     minY,
     maxX,
@@ -3168,13 +3166,13 @@ class $DrawingStrokesTable extends DrawingStrokes
     } else if (isInserting) {
       context.missing(_positionMeta);
     }
-    if (data.containsKey('payload')) {
+    if (data.containsKey('data')) {
       context.handle(
-        _payloadMeta,
-        payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta),
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
       );
     } else if (isInserting) {
-      context.missing(_payloadMeta);
+      context.missing(_dataMeta);
     }
     if (data.containsKey('min_x')) {
       context.handle(
@@ -3252,10 +3250,10 @@ class $DrawingStrokesTable extends DrawingStrokes
             DriftSqlType.int,
             data['${effectivePrefix}position'],
           )!,
-      payload:
+      data:
           attachedDatabase.typeMapping.read(
-            DriftSqlType.string,
-            data['${effectivePrefix}payload'],
+            DriftSqlType.blob,
+            data['${effectivePrefix}data'],
           )!,
       minX:
           attachedDatabase.typeMapping.read(
@@ -3306,7 +3304,7 @@ class DrawingStrokeRow extends DataClass
   final int id;
   final int blockId;
   final int position;
-  final String payload;
+  final Uint8List data;
   final double minX;
   final double minY;
   final double maxX;
@@ -3318,7 +3316,7 @@ class DrawingStrokeRow extends DataClass
     required this.id,
     required this.blockId,
     required this.position,
-    required this.payload,
+    required this.data,
     required this.minX,
     required this.minY,
     required this.maxX,
@@ -3333,7 +3331,7 @@ class DrawingStrokeRow extends DataClass
     map['id'] = Variable<int>(id);
     map['block_id'] = Variable<int>(blockId);
     map['position'] = Variable<int>(position);
-    map['payload'] = Variable<String>(payload);
+    map['data'] = Variable<Uint8List>(data);
     map['min_x'] = Variable<double>(minX);
     map['min_y'] = Variable<double>(minY);
     map['max_x'] = Variable<double>(maxX);
@@ -3349,7 +3347,7 @@ class DrawingStrokeRow extends DataClass
       id: Value(id),
       blockId: Value(blockId),
       position: Value(position),
-      payload: Value(payload),
+      data: Value(data),
       minX: Value(minX),
       minY: Value(minY),
       maxX: Value(maxX),
@@ -3369,7 +3367,7 @@ class DrawingStrokeRow extends DataClass
       id: serializer.fromJson<int>(json['id']),
       blockId: serializer.fromJson<int>(json['blockId']),
       position: serializer.fromJson<int>(json['position']),
-      payload: serializer.fromJson<String>(json['payload']),
+      data: serializer.fromJson<Uint8List>(json['data']),
       minX: serializer.fromJson<double>(json['minX']),
       minY: serializer.fromJson<double>(json['minY']),
       maxX: serializer.fromJson<double>(json['maxX']),
@@ -3386,7 +3384,7 @@ class DrawingStrokeRow extends DataClass
       'id': serializer.toJson<int>(id),
       'blockId': serializer.toJson<int>(blockId),
       'position': serializer.toJson<int>(position),
-      'payload': serializer.toJson<String>(payload),
+      'data': serializer.toJson<Uint8List>(data),
       'minX': serializer.toJson<double>(minX),
       'minY': serializer.toJson<double>(minY),
       'maxX': serializer.toJson<double>(maxX),
@@ -3401,7 +3399,7 @@ class DrawingStrokeRow extends DataClass
     int? id,
     int? blockId,
     int? position,
-    String? payload,
+    Uint8List? data,
     double? minX,
     double? minY,
     double? maxX,
@@ -3413,7 +3411,7 @@ class DrawingStrokeRow extends DataClass
     id: id ?? this.id,
     blockId: blockId ?? this.blockId,
     position: position ?? this.position,
-    payload: payload ?? this.payload,
+    data: data ?? this.data,
     minX: minX ?? this.minX,
     minY: minY ?? this.minY,
     maxX: maxX ?? this.maxX,
@@ -3427,7 +3425,7 @@ class DrawingStrokeRow extends DataClass
       id: data.id.present ? data.id.value : this.id,
       blockId: data.blockId.present ? data.blockId.value : this.blockId,
       position: data.position.present ? data.position.value : this.position,
-      payload: data.payload.present ? data.payload.value : this.payload,
+      data: data.data.present ? data.data.value : this.data,
       minX: data.minX.present ? data.minX.value : this.minX,
       minY: data.minY.present ? data.minY.value : this.minY,
       maxX: data.maxX.present ? data.maxX.value : this.maxX,
@@ -3445,7 +3443,7 @@ class DrawingStrokeRow extends DataClass
           ..write('id: $id, ')
           ..write('blockId: $blockId, ')
           ..write('position: $position, ')
-          ..write('payload: $payload, ')
+          ..write('data: $data, ')
           ..write('minX: $minX, ')
           ..write('minY: $minY, ')
           ..write('maxX: $maxX, ')
@@ -3462,7 +3460,7 @@ class DrawingStrokeRow extends DataClass
     id,
     blockId,
     position,
-    payload,
+    $driftBlobEquality.hash(data),
     minX,
     minY,
     maxX,
@@ -3478,7 +3476,7 @@ class DrawingStrokeRow extends DataClass
           other.id == this.id &&
           other.blockId == this.blockId &&
           other.position == this.position &&
-          other.payload == this.payload &&
+          $driftBlobEquality.equals(other.data, this.data) &&
           other.minX == this.minX &&
           other.minY == this.minY &&
           other.maxX == this.maxX &&
@@ -3492,7 +3490,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
   final Value<int> id;
   final Value<int> blockId;
   final Value<int> position;
-  final Value<String> payload;
+  final Value<Uint8List> data;
   final Value<double> minX;
   final Value<double> minY;
   final Value<double> maxX;
@@ -3504,7 +3502,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
     this.id = const Value.absent(),
     this.blockId = const Value.absent(),
     this.position = const Value.absent(),
-    this.payload = const Value.absent(),
+    this.data = const Value.absent(),
     this.minX = const Value.absent(),
     this.minY = const Value.absent(),
     this.maxX = const Value.absent(),
@@ -3517,7 +3515,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
     this.id = const Value.absent(),
     required int blockId,
     required int position,
-    required String payload,
+    required Uint8List data,
     required double minX,
     required double minY,
     required double maxX,
@@ -3527,7 +3525,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
     this.updatedAt = const Value.absent(),
   }) : blockId = Value(blockId),
        position = Value(position),
-       payload = Value(payload),
+       data = Value(data),
        minX = Value(minX),
        minY = Value(minY),
        maxX = Value(maxX),
@@ -3537,7 +3535,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
     Expression<int>? id,
     Expression<int>? blockId,
     Expression<int>? position,
-    Expression<String>? payload,
+    Expression<Uint8List>? data,
     Expression<double>? minX,
     Expression<double>? minY,
     Expression<double>? maxX,
@@ -3550,7 +3548,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
       if (id != null) 'id': id,
       if (blockId != null) 'block_id': blockId,
       if (position != null) 'position': position,
-      if (payload != null) 'payload': payload,
+      if (data != null) 'data': data,
       if (minX != null) 'min_x': minX,
       if (minY != null) 'min_y': minY,
       if (maxX != null) 'max_x': maxX,
@@ -3565,7 +3563,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
     Value<int>? id,
     Value<int>? blockId,
     Value<int>? position,
-    Value<String>? payload,
+    Value<Uint8List>? data,
     Value<double>? minX,
     Value<double>? minY,
     Value<double>? maxX,
@@ -3578,7 +3576,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
       id: id ?? this.id,
       blockId: blockId ?? this.blockId,
       position: position ?? this.position,
-      payload: payload ?? this.payload,
+      data: data ?? this.data,
       minX: minX ?? this.minX,
       minY: minY ?? this.minY,
       maxX: maxX ?? this.maxX,
@@ -3601,8 +3599,8 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
     if (position.present) {
       map['position'] = Variable<int>(position.value);
     }
-    if (payload.present) {
-      map['payload'] = Variable<String>(payload.value);
+    if (data.present) {
+      map['data'] = Variable<Uint8List>(data.value);
     }
     if (minX.present) {
       map['min_x'] = Variable<double>(minX.value);
@@ -3634,7 +3632,7 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
           ..write('id: $id, ')
           ..write('blockId: $blockId, ')
           ..write('position: $position, ')
-          ..write('payload: $payload, ')
+          ..write('data: $data, ')
           ..write('minX: $minX, ')
           ..write('minY: $minY, ')
           ..write('maxX: $maxX, ')
@@ -12722,7 +12720,7 @@ typedef $$DrawingStrokesTableCreateCompanionBuilder =
       Value<int> id,
       required int blockId,
       required int position,
-      required String payload,
+      required Uint8List data,
       required double minX,
       required double minY,
       required double maxX,
@@ -12736,7 +12734,7 @@ typedef $$DrawingStrokesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int> blockId,
       Value<int> position,
-      Value<String> payload,
+      Value<Uint8List> data,
       Value<double> minX,
       Value<double> minY,
       Value<double> maxX,
@@ -12794,8 +12792,8 @@ class $$DrawingStrokesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get payload => $composableBuilder(
-    column: $table.payload,
+  ColumnFilters<Uint8List> get data => $composableBuilder(
+    column: $table.data,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12877,8 +12875,8 @@ class $$DrawingStrokesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get payload => $composableBuilder(
-    column: $table.payload,
+  ColumnOrderings<Uint8List> get data => $composableBuilder(
+    column: $table.data,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -12956,8 +12954,8 @@ class $$DrawingStrokesTableAnnotationComposer
   GeneratedColumn<int> get position =>
       $composableBuilder(column: $table.position, builder: (column) => column);
 
-  GeneratedColumn<String> get payload =>
-      $composableBuilder(column: $table.payload, builder: (column) => column);
+  GeneratedColumn<Uint8List> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
 
   GeneratedColumn<double> get minX =>
       $composableBuilder(column: $table.minX, builder: (column) => column);
@@ -13043,7 +13041,7 @@ class $$DrawingStrokesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> blockId = const Value.absent(),
                 Value<int> position = const Value.absent(),
-                Value<String> payload = const Value.absent(),
+                Value<Uint8List> data = const Value.absent(),
                 Value<double> minX = const Value.absent(),
                 Value<double> minY = const Value.absent(),
                 Value<double> maxX = const Value.absent(),
@@ -13055,7 +13053,7 @@ class $$DrawingStrokesTableTableManager
                 id: id,
                 blockId: blockId,
                 position: position,
-                payload: payload,
+                data: data,
                 minX: minX,
                 minY: minY,
                 maxX: maxX,
@@ -13069,7 +13067,7 @@ class $$DrawingStrokesTableTableManager
                 Value<int> id = const Value.absent(),
                 required int blockId,
                 required int position,
-                required String payload,
+                required Uint8List data,
                 required double minX,
                 required double minY,
                 required double maxX,
@@ -13081,7 +13079,7 @@ class $$DrawingStrokesTableTableManager
                 id: id,
                 blockId: blockId,
                 position: position,
-                payload: payload,
+                data: data,
                 minX: minX,
                 minY: minY,
                 maxX: maxX,
