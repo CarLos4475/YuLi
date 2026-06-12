@@ -3420,6 +3420,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final dirtyByPage = <int, Rect>{};
     final removalsByPage = <int, List<int>>{};
     final appendsByPage = <int, List<DrawingStroke>>{};
+    // Each selected stroke's final (page, object) so we can re-derive the flat
+    // selection indices AFTER all list mutations settle. A cross-page move
+    // removes from the source + appends to the target → every later flat index
+    // shifts; without re-deriving, selectedIndices point at the wrong strokes
+    // (the selection "grows" and grabs different ink on the next interaction).
+    final placed = <(int, DrawingStroke)>[];
     var touched = 0;
     var points = 0;
 
@@ -3469,9 +3475,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         } else {
           _rebuildWorldStrokeCache(sourceBlockId);
         }
+        placed.add((sourcePage, newLocal));
       } else {
         (removalsByPage[sourcePage] ??= []).add(sourceLocal);
         (appendsByPage[targetPage] ??= []).add(newLocal);
+        placed.add((targetPage, newLocal));
       }
       touched++;
       points += worldStroke.points.length;
@@ -3513,6 +3521,22 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (data == null) continue;
       _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
       _persistPage(pageIndex);
+    }
+
+    // Re-derive the flat selection from where each stroke actually ended up (by
+    // identity, after removals/appends shifted local indices). No-op for a
+    // same-page move (indices unchanged); fixes the cross-page desync.
+    if (placed.isNotEmpty) {
+      final newSel = <int>{};
+      for (final (page, stroke) in placed) {
+        if (page < 0 || page >= _pageBlockIds.length) continue;
+        final data = _pageData[_pageBlockIds[page]];
+        if (data == null) continue;
+        final local = data.strokes.indexWhere((s) => identical(s, stroke));
+        if (local < 0) continue;
+        newSel.add(_worldStrokeIndexFromPageLocal(page, local));
+      }
+      _lassoCtrl.selectedIndices = newSel;
     }
 
     return (touched, points);
