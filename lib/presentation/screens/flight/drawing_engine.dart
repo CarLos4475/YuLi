@@ -60,8 +60,90 @@ void fillStrokeShape(Canvas canvas, DrawingStroke stroke) {
   );
 }
 
-void drawStroke(Canvas canvas, DrawingStroke stroke, {double viewScale = 1.0}) {
+/// Level-of-detail for a given canvas zoom. At low zoom a stroke is only a few
+/// screen pixels, so its grain texture / fountain-width / extra points are
+/// sub-pixel — drawing them in full is pure raster cost (the heat on dense,
+/// zoomed-out boards). LOD 0 = full fidelity; 1/2 = decimated flat polyline.
+int lodForScale(double scale) {
+  if (scale >= 0.6) return 0;
+  if (scale >= 0.32) return 1;
+  return 2;
+}
+
+int _decimationStep(int lod) => lod <= 1 ? 3 : 6;
+
+/// Cheap fallback render used at LOD ≥ 1: a flat anti-aliased polyline through
+/// every Nth point, no grain / no blend / no per-segment width. Visually
+/// indistinguishable when the stroke is a few px tall, far cheaper to rasterize.
+class _SimpPathEntry {
+  final int step, pointCount;
+  final double firstX, firstY, lastX, lastY;
+  final Path path;
+  const _SimpPathEntry(this.step, this.pointCount, this.firstX, this.firstY,
+      this.lastX, this.lastY, this.path);
+  bool matches(DrawingStroke s, int step) {
+    final p = s.points;
+    return this.step == step &&
+        pointCount == p.length &&
+        firstX == p.first[0] &&
+        firstY == p.first[1] &&
+        lastX == p.last[0] &&
+        lastY == p.last[1];
+  }
+}
+
+// Decimated path cached per stroke (one LOD at a time — a stroke is only drawn
+// at the current zoom). Without this, crossing an LOD threshold rebuilt every
+// visible stroke's polyline on the UI thread → a 100ms+ build spike on zoom.
+final _simpPathCache = Expando<_SimpPathEntry>();
+
+Path _cachedSimplifiedPath(DrawingStroke stroke, int step) {
+  final cached = _simpPathCache[stroke];
+  if (cached != null && cached.matches(stroke, step)) return cached.path;
+  final pts = stroke.points;
+  final path = Path()..moveTo(pts[0][0], pts[0][1]);
+  for (int i = step; i < pts.length; i += step) {
+    path.lineTo(pts[i][0], pts[i][1]);
+  }
+  final last = pts[pts.length - 1];
+  path.lineTo(last[0], last[1]); // always close on the true endpoint
+  _simpPathCache[stroke] = _SimpPathEntry(step, pts.length, pts.first[0],
+      pts.first[1], pts.last[0], pts.last[1], path);
+  return path;
+}
+
+void _drawStrokeSimplified(Canvas canvas, DrawingStroke stroke, int step) {
+  final pts = stroke.points;
+  final paint = Paint()
+    ..color = stroke.isHighlighter
+        ? Color(stroke.colorValue).withValues(alpha: 0.4)
+        : Color(stroke.colorValue)
+    ..strokeWidth = stroke.strokeWidth
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round
+    ..style = PaintingStyle.stroke;
+  if (pts.length == 1) {
+    canvas.drawCircle(
+      Offset(pts[0][0], pts[0][1]),
+      stroke.strokeWidth / 2,
+      paint..style = PaintingStyle.fill,
+    );
+    return;
+  }
+  canvas.drawPath(_cachedSimplifiedPath(stroke, step), paint);
+}
+
+void drawStroke(
+  Canvas canvas,
+  DrawingStroke stroke, {
+  double viewScale = 1.0,
+  int lod = 0,
+}) {
   if (stroke.points.isEmpty) return;
+  if (lod > 0) {
+    _drawStrokeSimplified(canvas, stroke, _decimationStep(lod));
+    return;
+  }
   if (stroke.isFountainPen) {
     drawFountainPenStroke(canvas, stroke, viewScale: viewScale);
     return;

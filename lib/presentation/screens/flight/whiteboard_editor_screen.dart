@@ -3483,6 +3483,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         ).inflate(_strokeTiles.tileSize);
         final tileKeys = _strokeTiles.tilesInRect(renderRect).toList();
         _strokeFallbackActive = tileKeys.length > _kMaxLiveTiles;
+        // Decimate stroke detail when zoomed out so dense tiles rasterize fast.
+        final lod = lodForScale(_viewScale);
 
         if (_strokeFallbackActive) {
           // Zoomed-out fallback: one painter, strokes drawn directly + culled.
@@ -3503,6 +3505,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                     hiddenIndices:
                         inGesture ? _lassoCtrl.selectedIndices : null,
                     drawBackground: false,
+                    lod: lod,
                   ),
                   size: renderRect.size,
                 ),
@@ -3529,6 +3532,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 index: _strokeTiles,
                 localRect: renderRect,
                 hiddenStrokes: hidden,
+                lod: lod,
               ),
             ),
           ),
@@ -4944,6 +4948,7 @@ class _CanvasPainter extends CustomPainter {
   /// is the tiled [strokeTileWidgets].
   final bool drawBackground;
   final bool drawStrokes;
+  final int lod;
 
   _CanvasPainter({
     required this.strokes,
@@ -4958,6 +4963,7 @@ class _CanvasPainter extends CustomPainter {
     this.hiddenImageIndices,
     this.drawBackground = true,
     this.drawStrokes = true,
+    this.lod = 0,
   });
 
   @override
@@ -4985,7 +4991,9 @@ class _CanvasPainter extends CustomPainter {
       final hidden = hiddenIndices;
       for (int i = 0; i < strokes.length; i++) {
         if (hidden != null && hidden.contains(i)) continue;
-        if (strokeOverlapsRect(strokes[i], vr)) _draw(canvas, strokes[i]);
+        if (strokeOverlapsRect(strokes[i], vr)) {
+          drawStroke(canvas, strokes[i], lod: lod);
+        }
       }
       canvas.restore();
     }
@@ -5001,11 +5009,10 @@ class _CanvasPainter extends CustomPainter {
       old.paper != paper ||
       old.drawBackground != drawBackground ||
       old.drawStrokes != drawStrokes ||
+      old.lod != lod ||
       old.hiddenIndices != hiddenIndices ||
       old.hiddenImageIndices != hiddenImageIndices;
 }
-
-void _draw(Canvas canvas, DrawingStroke stroke) => drawStroke(canvas, stroke);
 
 /// Paints only the in-progress stroke (world coords), in its own
 /// RepaintBoundary, so live point additions don't repaint the whole canvas.

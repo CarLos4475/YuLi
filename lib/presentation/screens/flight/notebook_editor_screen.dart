@@ -4030,6 +4030,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           builder: (_, _) {
             final visible = _visibleRectFor(viewport).inflate(kStrokeTileSize);
             final hiddenByPage = _hiddenStrokes();
+            // Decimate stroke detail when zoomed out (dense tiles cheap to raster).
+            final lod = lodForScale(_viewScale);
 
             final tiles = <Widget>[];
             for (int i = 0; i < _pageBlockIds.length; i++) {
@@ -4084,6 +4086,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     kNotebookPageWidth,
                     kNotebookPageHeight,
                   ),
+                  lod: lod,
                 ),
               );
             }
@@ -4101,6 +4104,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     hiddenStrokes: hiddenByPage,
                     imageCache: _imgCache,
                     drawBackground: false,
+                    lod: lod,
                   ),
                   size: canvasSize,
                 ),
@@ -6053,6 +6057,7 @@ class _NotebookCanvasPainter extends CustomPainter {
   /// zoomed-out fallback; the normal stroke layer is the tiled [strokeTileWidgets].
   final bool drawBackground;
   final bool drawStrokes;
+  final int lod;
 
   _NotebookCanvasPainter({
     required this.pageBlockIds,
@@ -6065,6 +6070,7 @@ class _NotebookCanvasPainter extends CustomPainter {
     this.imageCache,
     this.drawBackground = true,
     this.drawStrokes = true,
+    this.lod = 0,
   });
 
   @override
@@ -6152,7 +6158,7 @@ class _NotebookCanvasPainter extends CustomPainter {
           for (int si = 0; si < data.strokes.length; si++) {
             if (skip != null && skip.contains(si)) continue;
             if (!strokeOverlapsRect(data.strokes[si], pageVisible)) continue;
-            drawStroke(canvas, data.strokes[si]);
+            drawStroke(canvas, data.strokes[si], lod: lod);
           }
           canvas.restore();
         }
@@ -6169,6 +6175,7 @@ class _NotebookCanvasPainter extends CustomPainter {
       old.accentColor != accentColor ||
       old.drawBackground != drawBackground ||
       old.drawStrokes != drawStrokes ||
+      old.lod != lod ||
       old.hiddenStrokes != hiddenStrokes ||
       old.hiddenImages != hiddenImages;
 }

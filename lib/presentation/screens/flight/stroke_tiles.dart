@@ -162,11 +162,16 @@ class StrokeTilePainter extends CustomPainter {
     required this.version,
     this.hidden,
     this.clipBounds,
+    this.lod = 0,
   });
 
   final List<DrawingStroke> strokes;
   final Offset tileOrigin;
   final int version;
+
+  /// Level-of-detail for the current zoom (0 = full). At higher LOD strokes are
+  /// drawn as cheap decimated polylines so zoomed-out tiles rasterize fast.
+  final int lod;
 
   /// Strokes to skip (identity set) — the lasso selection during a live
   /// move/resize/rotate, drawn by the overlay instead. Null when nothing hidden.
@@ -187,13 +192,14 @@ class StrokeTilePainter extends CustomPainter {
     final h = hidden;
     for (final s in strokes) {
       if (h != null && h.contains(s)) continue;
-      drawStroke(canvas, s);
+      drawStroke(canvas, s, lod: lod);
     }
   }
 
   @override
   bool shouldRepaint(StrokeTilePainter old) =>
       old.version != version ||
+      old.lod != lod ||
       !identical(old.strokes, strokes) ||
       !identical(old.hidden, hidden) ||
       old.clipBounds != clipBounds;
@@ -212,6 +218,7 @@ List<Widget> strokeTileWidgets({
   Set<DrawingStroke>? hiddenStrokes,
   Object keyPrefix = 0,
   Rect? clipBounds,
+  int lod = 0,
 }) {
   final out = <Widget>[];
   final size = index.tileSize;
@@ -244,6 +251,7 @@ List<Widget> strokeTileWidgets({
               version: index.versionAt(key),
               hidden: hidden,
               clipBounds: clipBounds,
+              lod: lod,
             ),
             size: Size(size, size),
           ),
