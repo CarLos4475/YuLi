@@ -141,10 +141,35 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
 
+  // ─── Zoomed-out overview ──────────────────────────────────────────────────
+  // At deep zoom-out the tiled layer re-rasterizes thousands of strokes every
+  // pan frame (raster cache doesn't hold under the gesture). Below
+  // [_overviewThreshold] we show ONE cached downsampled image of all the ink
+  // instead — the GPU just blits a texture. The image is strokes-only
+  // (transparent), composited over the live paper layer, so the swap is
+  // invisible. Strokes drawn after the last bake render live on top (the delta)
+  // so editing while zoomed out still shows instantly; a debounced re-bake folds
+  // them in. Tiles are the fallback whenever the image isn't ready or a lasso
+  // gesture needs per-stroke hiding.
+  ui.Image? _overviewImage;
+  Rect? _overviewBounds;
+  double _overviewThreshold = 0; // show overview when _viewScale < this
+  int _overviewBakedCount = 0; // strokes already in the image
+  bool _overviewBaking = false;
+  Timer? _overviewTimer;
+  // True while a 2-finger pan/zoom is in flight. The overview stays up for the
+  // WHOLE gesture (even past its crisp threshold) and only hands back to the
+  // crisp tiles when the gesture ENDS — otherwise crossing the threshold while
+  // zooming in re-rasterizes tiles mid-pinch and janks. Zooming OUT still flips
+  // to the overview the instant it crosses the threshold (it's cheap).
+  bool _viewGestureActive = false;
+  bool _overviewStickyThisGesture = false;
+
   // ─── Heat / pan-zoom frame timing (temporary diagnostics) ─────────────────
   // True when the last stroke-layer build fell back to the single uncached
   // painter (zoomed out past the tile budget) — the suspected heat source.
   bool _strokeFallbackActive = false;
+  bool _overviewActive = false;
   int _slowFrames = 0;
   double _worstFrameMs = 0, _worstBuildMs = 0, _worstRasterMs = 0;
   DateTime _lastFrameLog = DateTime.fromMillisecondsSinceEpoch(0);
@@ -170,6 +195,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         '(build ${_worstBuildMs.round()} + raster ${_worstRasterMs.round()}), '
         'zoom ${_viewScale.toStringAsFixed(2)}, '
         'fallback ${_strokeFallbackActive ? 'SI' : 'no'}, '
+        'overview ${_overviewActive ? 'SI' : 'no'}, '
         'trazos ${_data.strokes.length}',
       );
       _slowFrames = 0;
@@ -746,6 +772,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   @override
   void dispose() {
     SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
+    _overviewTimer?.cancel();
+    _overviewImage?.dispose();
     _eyedropImg?.dispose();
     // Pins live in the process-level store — do NOT dispose them here, or they'd
     // vanish on navigation. They're freed on close (X) or app kill.
@@ -954,6 +982,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // Seed the tile index from the loaded ink BEFORE the stroke layer builds —
       // otherwise the board renders blank (the index would be empty).
       _strokeTiles.rebuild(_data.strokes);
+      // Bake the zoomed-out overview now so it's ready before the user zooms out.
+      _scheduleOverviewBake();
     } catch (e, st) {
       // A silent throw here leaves _blockId null → empty board, default bg,
       // corner view, and NO persistence. Surface it instead of losing data.
@@ -1119,6 +1149,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       if (!mounted) return;
       unawaited(_persistNow());
     });
+    // Ink changed → the zoomed-out overview image is stale; re-bake once settled.
+    _scheduleOverviewBake();
   }
 
   int _pointCount(Iterable<DrawingStroke> strokes) =>
@@ -3255,6 +3287,120 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
+  /// Debounced re-bake of the zoomed-out overview after the ink settles.
+  void _scheduleOverviewBake() {
+    _overviewTimer?.cancel();
+    _overviewTimer = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) unawaited(_bakeOverview());
+    });
+  }
+
+  /// Render all strokes once into a downsampled, strokes-only [ui.Image] used in
+  /// place of the tile layer when zoomed out. Async (the raster runs off the UI
+  /// thread); cheap to display (one blit) and to keep crisp (only shown while
+  /// the image has at least as many pixels as the screen).
+  /// True if every stroke from [from] onward fits inside [bounds] (so an
+  /// incremental bake can blit the old image + draw only the new strokes).
+  bool _strokesWithin(Rect bounds, List<DrawingStroke> strokes, int from) {
+    for (int i = from; i < strokes.length; i++) {
+      final b = strokeBounds(strokes[i]);
+      if (b.left < bounds.left ||
+          b.top < bounds.top ||
+          b.right > bounds.right ||
+          b.bottom > bounds.bottom) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _bakeOverview() async {
+    if (_overviewBaking || !mounted) return;
+    final fullBounds = _contentBounds();
+    if (fullBounds == null || fullBounds.width <= 0 || fullBounds.height <= 0) {
+      final old0 = _overviewImage;
+      _overviewImage = null;
+      _overviewBounds = null;
+      _overviewThreshold = 0;
+      old0?.dispose();
+      if (mounted) setState(() {});
+      return;
+    }
+    _overviewBaking = true;
+    try {
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      const maxDim = 4096.0;
+      final strokes = _data.strokes;
+      final count = strokes.length;
+      final oldImage = _overviewImage;
+      final oldBounds = _overviewBounds;
+      final oldBaked = _overviewBakedCount;
+
+      // Incremental bake: only new strokes appended, all inside the existing
+      // bounds → blit the old image + draw just the new ones. Avoids the raster
+      // spike of re-rendering every stroke on each pen-up while zoomed out.
+      final incremental = oldImage != null &&
+          oldBounds != null &&
+          count > oldBaked &&
+          _strokesWithin(oldBounds, strokes, oldBaked);
+
+      final bounds = incremental ? oldBounds : fullBounds;
+      // As crisp as possible (up to 2× world px) but capped so the texture fits.
+      final imgScale = (maxDim / bounds.longestSide).clamp(0.05, 2.0);
+      final w = (bounds.width * imgScale).ceil();
+      final h = (bounds.height * imgScale).ceil();
+      if (w <= 0 || h <= 0) return;
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-bounds.left, -bounds.top);
+      var from = 0;
+      if (incremental) {
+        canvas.drawImageRect(
+          oldImage,
+          Rect.fromLTWH(
+            0,
+            0,
+            oldImage.width.toDouble(),
+            oldImage.height.toDouble(),
+          ),
+          oldBounds, // same size 1:1 → no quality loss
+          Paint()..filterQuality = FilterQuality.medium,
+        );
+        from = oldBaked;
+      }
+      for (int i = from; i < count; i++) {
+        drawStroke(canvas, strokes[i]); // full fidelity — the master copy
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(w, h);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      // Free the previous image only AFTER the next frame composits the new one,
+      // so a RawImage still referencing it never paints a disposed texture.
+      final old = _overviewImage;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _overviewImage = image;
+      _overviewBounds = bounds;
+      _overviewBakedCount = count;
+      // Only show the overview while it stays crisp: screen px (zoom·dpr) must
+      // not exceed the image density. Capped so it never replaces the detailed
+      // zoomed-in view.
+      _overviewThreshold = (imgScale / dpr).clamp(0.0, 0.65);
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeOverview pizarra');
+    } finally {
+      _overviewBaking = false;
+    }
+  }
+
   bool _viewInitialized = false;
 
   /// Open centered: a new (empty) whiteboard lands on the canvas centre — far
@@ -3463,6 +3609,57 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // single direct painter.
   static const int _kMaxLiveTiles = 48;
 
+  /// The zoomed-out overview: the cached ink image positioned in world space
+  /// (the InteractiveViewer scales it), plus any strokes added since the last
+  /// bake drawn live on top so editing while zoomed out shows instantly.
+  Widget _overviewStrokeLayer(ui.Image image, Rect renderRect) {
+    final bounds = _overviewBounds!;
+    final baked = _overviewBakedCount.clamp(0, _data.strokes.length);
+    final delta =
+        baked < _data.strokes.length ? _data.strokes.sublist(baked) : null;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fromRect(
+              rect: bounds,
+              child: RawImage(
+                image: image,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.medium,
+              ),
+            ),
+            if (delta != null)
+              Positioned.fromRect(
+                rect: renderRect,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _CanvasPainter(
+                      strokes: delta,
+                      images: const [],
+                      imageCache: null,
+                      background: _data.background,
+                      paper: yCream,
+                      visibleRect: renderRect,
+                      origin: renderRect.topLeft,
+                      paintVersion: _paintVersion + _strokeTiles.revision,
+                      drawBackground: false,
+                      // Full detail so an un-baked stroke looks identical to the
+                      // live preview and to the baked image — no visible "pop"
+                      // when it moves between layers.
+                      lod: 0,
+                    ),
+                    size: renderRect.size,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWhiteboardStrokeLayer(Size viewport) {
     return AnimatedBuilder(
       // Rebuilds on pan/zoom, lasso phase, and any ink change (the index is a
@@ -3485,6 +3682,20 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _strokeFallbackActive = tileKeys.length > _kMaxLiveTiles;
         // Decimate stroke detail when zoomed out so dense tiles rasterize fast.
         final lod = lodForScale(_viewScale);
+
+        // Zoomed-out overview: blit the cached ink image instead of re-drawing
+        // every stroke per frame. Skipped during a lasso gesture (the image
+        // can't hide the live selection) → tiles take over there.
+        final overview = _overviewImage;
+        final canOverview =
+            overview != null && _overviewBounds != null && !inGesture;
+        // Below the crisp threshold OR sticky through an in-flight zoom gesture.
+        _overviewActive = canOverview &&
+            (_viewScale < _overviewThreshold ||
+                (_viewGestureActive && _overviewStickyThisGesture));
+        if (_overviewActive) {
+          return _overviewStrokeLayer(overview!, renderRect);
+        }
 
         if (_strokeFallbackActive) {
           // Zoomed-out fallback: one painter, strokes drawn directly + culled.
@@ -3836,7 +4047,20 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       transformationController: _viewCtrl,
                                       minScale: 0.3,
                                       maxScale: 4.0,
+                                      onInteractionStart: (_) {
+                                        // Pin the overview for the whole gesture if
+                                        // it's currently showing (so zooming IN
+                                        // doesn't swap to tiles mid-pinch).
+                                        _viewGestureActive = true;
+                                        _overviewStickyThisGesture =
+                                            _overviewActive;
+                                      },
                                       onInteractionEnd: (_) {
+                                        // Gesture settled → re-evaluate; hand back to
+                                        // the crisp tiles now if we zoomed in past the
+                                        // overview threshold.
+                                        _viewGestureActive = false;
+                                        if (mounted) setState(() {});
                                         // After a 2-finger pan/zoom the snapshot is
                                         // stale → recapture so the loupe keeps sampling
                                         // the right pixels (keeps its position).

@@ -223,6 +223,24 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Offset? _pastePos;
   Offset? _showPasteAt;
 
+  // ─── Zoomed-out overview (per page) ───────────────────────────────────────
+  // Below [_overviewThreshold] each page shows ONE cached downsampled ink image
+  // instead of its tiles, so deep zoom-out blits textures instead of redrawing
+  // thousands of strokes per frame. Per-page (not one giant image) keeps each at
+  // a high, crisp density. Strokes-only/transparent over the live page chrome;
+  // RAM only (never persisted). See [[canvas-heat-zoomout]].
+  final Map<int, ui.Image> _overviewByPage = {};
+  final Map<int, int> _overviewBakedCountByPage = {};
+  final Set<int> _overviewBakingPages = {};
+  final Set<int> _overviewDirtyPages = {};
+  double _overviewThreshold = 0;
+  Timer? _overviewTimer;
+  // Pin the overview through a 2-finger zoom gesture; hand back to crisp tiles
+  // only when it ends (avoids re-rastering tiles mid-pinch → jank).
+  bool _viewGestureActive = false;
+  bool _overviewStickyThisGesture = false;
+  bool _overviewActive = false;
+
   // Lasso action toolbar is summoned by tapping the selection, not shown on
   // select. Tap outside hides it (selection kept); tap outside again deselects.
   bool _toolbarVisible = false;
@@ -357,6 +375,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _holdTimer?.cancel();
     _deferredDecodeTimer?.cancel();
     _persistTimer?.cancel();
+    _overviewTimer?.cancel();
+    for (final img in _overviewByPage.values) {
+      img.dispose();
+    }
+    _overviewByPage.clear();
     if (_dirtyPersistPages.isNotEmpty) unawaited(_flushPendingPersists());
     for (final index in _pageTiles.values) {
       index.dispose();
@@ -440,6 +463,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _pageData[id] = await _decodeData(b);
         _pageTileIndex(id).rebuild(_pageData[id]!.strokes);
         _rebuildWorldStrokeCache(id);
+        _scheduleOverviewBake(id);
       }
     }
 
@@ -483,6 +507,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           _pageBlockIds[i],
         ).rebuild(_pageData[_pageBlockIds[i]]!.strokes);
         _rebuildWorldStrokeCache(_pageBlockIds[i]);
+        _scheduleOverviewBake(_pageBlockIds[i]);
         rebuildSw.stop();
         final data = _pageData[_pageBlockIds[i]]!;
         final pts = _pointCount(data.strokes);
@@ -915,6 +940,86 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (!mounted) return;
       unawaited(_flushPendingPersists());
     });
+    // Page ink changed → its zoomed-out overview image is stale.
+    _scheduleOverviewBake(_pageBlockIds[pageIndex]);
+  }
+
+  /// Debounced re-bake of one page's zoomed-out overview after its ink settles.
+  void _scheduleOverviewBake(int blockId) {
+    _overviewDirtyPages.add(blockId);
+    _overviewTimer?.cancel();
+    _overviewTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      final pages = _overviewDirtyPages.toList();
+      _overviewDirtyPages.clear();
+      for (final bid in pages) {
+        unawaited(_bakePageOverview(bid));
+      }
+    });
+  }
+
+  /// Render one page's strokes into a downsampled, strokes-only [ui.Image] used
+  /// in place of that page's tiles when zoomed out. Pages are a fixed size so
+  /// the image is small and high-density; incremental when only appends happened.
+  Future<void> _bakePageOverview(int blockId) async {
+    if (_overviewBakingPages.contains(blockId) || !mounted) return;
+    final data = _pageData[blockId];
+    if (data == null) return;
+    _overviewBakingPages.add(blockId);
+    try {
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      const maxDim = 4096.0;
+      final imgScale = (maxDim / kNotebookPageHeight).clamp(0.05, 2.0);
+      final w = (kNotebookPageWidth * imgScale).ceil();
+      final h = (kNotebookPageHeight * imgScale).ceil();
+      final strokes = data.strokes;
+      final count = strokes.length;
+      final oldImage = _overviewByPage[blockId];
+      final oldBaked = _overviewBakedCountByPage[blockId] ?? 0;
+      // Page bounds are fixed, so any new stroke fits → appends are incremental.
+      final incremental = oldImage != null && count > oldBaked;
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale); // strokes are already page-local — no translate
+      var from = 0;
+      if (incremental) {
+        canvas.drawImageRect(
+          oldImage,
+          Rect.fromLTWH(
+            0,
+            0,
+            oldImage.width.toDouble(),
+            oldImage.height.toDouble(),
+          ),
+          const Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight),
+          Paint()..filterQuality = FilterQuality.medium,
+        );
+        from = oldBaked;
+      }
+      for (int i = from; i < count; i++) {
+        drawStroke(canvas, strokes[i]);
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(w, h);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _overviewByPage[blockId];
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _overviewByPage[blockId] = image;
+      _overviewBakedCountByPage[blockId] = count;
+      _overviewThreshold = (imgScale / dpr).clamp(0.0, 0.65);
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakePageOverview cuaderno');
+    } finally {
+      _overviewBakingPages.remove(blockId);
+    }
   }
 
   Future<void> _flushPendingPersists() async {
@@ -4032,6 +4137,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             final hiddenByPage = _hiddenStrokes();
             // Decimate stroke detail when zoomed out (dense tiles cheap to raster).
             final lod = lodForScale(_viewScale);
+            // Show the cached per-page overview images instead of tiles when
+            // zoomed out (or pinned through a zoom gesture); never during a lasso
+            // gesture (the image can't hide the live selection).
+            final inLasso = _lassoCtrl.phase == LassoPhase.moving ||
+                _lassoCtrl.phase == LassoPhase.resizing ||
+                _lassoCtrl.phase == LassoPhase.rotating;
+            _overviewActive = !inLasso &&
+                _overviewByPage.isNotEmpty &&
+                (_viewScale < _overviewThreshold ||
+                    (_viewGestureActive && _overviewStickyThisGesture));
 
             final tiles = <Widget>[];
             for (int i = 0; i < _pageBlockIds.length; i++) {
@@ -4071,27 +4186,73 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 }
               }
 
-              tiles.addAll(
-                strokeTileWidgets(
-                  index: index,
-                  localRect: localRect,
-                  worldOffset: Offset(0, pageTop),
-                  hiddenStrokes: hidden,
-                  keyPrefix: bid,
-                  // Clip ink to the page so strokes can't bleed into the lateral
-                  // margin or the inter-page gap (tiles span past page edges).
-                  clipBounds: const Rect.fromLTWH(
-                    0,
-                    0,
-                    kNotebookPageWidth,
-                    kNotebookPageHeight,
+              final pageImg = _overviewActive ? _overviewByPage[bid] : null;
+              if (pageImg != null) {
+                // Cached ink image for this page (blit instead of re-drawing).
+                tiles.add(
+                  Positioned.fromRect(
+                    key: ValueKey('ov:$bid'),
+                    rect: pageWorld,
+                    child: RawImage(
+                      image: pageImg,
+                      fit: BoxFit.fill,
+                      filterQuality: FilterQuality.medium,
+                    ),
                   ),
-                  lod: lod,
-                ),
-              );
+                );
+                // Strokes drawn since the last bake → live on top, full detail.
+                final baked = (_overviewBakedCountByPage[bid] ?? 0)
+                    .clamp(0, data.strokes.length);
+                if (baked < data.strokes.length) {
+                  tiles.add(
+                    Positioned.fromRect(
+                      key: ValueKey('ovd:$bid'),
+                      rect: pageWorld,
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: StrokeTilePainter(
+                            strokes: data.strokes.sublist(baked),
+                            tileOrigin: Offset.zero,
+                            version: data.strokes.length,
+                            clipBounds: const Rect.fromLTWH(
+                              0,
+                              0,
+                              kNotebookPageWidth,
+                              kNotebookPageHeight,
+                            ),
+                          ),
+                          size: const Size(
+                            kNotebookPageWidth,
+                            kNotebookPageHeight,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+              } else {
+                tiles.addAll(
+                  strokeTileWidgets(
+                    index: index,
+                    localRect: localRect,
+                    worldOffset: Offset(0, pageTop),
+                    hiddenStrokes: hidden,
+                    keyPrefix: bid,
+                    // Clip ink to the page so strokes can't bleed into the lateral
+                    // margin or the inter-page gap (tiles span past page edges).
+                    clipBounds: const Rect.fromLTWH(
+                      0,
+                      0,
+                      kNotebookPageWidth,
+                      kNotebookPageHeight,
+                    ),
+                    lod: lod,
+                  ),
+                );
+              }
             }
 
-            if (tiles.length > _kMaxLiveTiles) {
+            if (!_overviewActive && tiles.length > _kMaxLiveTiles) {
               // Zoomed-out fallback: one direct painter over all pages.
               return RepaintBoundary(
                 child: CustomPaint(
@@ -4768,7 +4929,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                   _viewCtrl,
                                               minScale: 0.3,
                                               maxScale: 4.0,
+                                              onInteractionStart: (_) {
+                                                // Pin the overview for the whole
+                                                // gesture if it's showing, so
+                                                // zooming in doesn't swap to tiles
+                                                // mid-pinch.
+                                                _viewGestureActive = true;
+                                                _overviewStickyThisGesture =
+                                                    _overviewActive;
+                                              },
                                               onInteractionEnd: (_) {
+                                                _viewGestureActive = false;
+                                                if (mounted) setState(() {});
                                                 if (_eyedropperMode &&
                                                     _eyedropCaptureMatrix !=
                                                         null &&
