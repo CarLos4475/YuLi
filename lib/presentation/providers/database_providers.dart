@@ -4,6 +4,7 @@ import '../../data/repositories/local/local_task_repository.dart';
 import '../../data/repositories/local/local_folder_repository.dart';
 import '../../data/repositories/local/local_note_repository.dart';
 import '../../data/repositories/local/local_note_block_repository.dart';
+import '../../data/repositories/local/local_drawing_stroke_repository.dart';
 import '../../data/repositories/local/local_lab_space_repository.dart';
 import '../../data/repositories/local/local_kanban_repository.dart';
 import '../../data/repositories/local/local_notification_repository.dart';
@@ -17,6 +18,7 @@ import '../../domain/repositories/task_repository.dart';
 import '../../domain/repositories/folder_repository.dart';
 import '../../domain/repositories/note_repository.dart';
 import '../../domain/repositories/note_block_repository.dart';
+import '../../domain/repositories/drawing_stroke_repository.dart';
 import '../../domain/repositories/lab_space_repository.dart';
 import '../../domain/repositories/kanban_card_repository.dart';
 import '../../domain/models/notification_item.dart';
@@ -59,6 +61,12 @@ final noteRepositoryProvider = Provider<NoteRepository>((ref) {
 
 final noteBlockRepositoryProvider = Provider<NoteBlockRepository>((ref) {
   return LocalNoteBlockRepository(ref.watch(databaseProvider));
+});
+
+final drawingStrokeRepositoryProvider = Provider<DrawingStrokeRepository>((
+  ref,
+) {
+  return LocalDrawingStrokeRepository(ref.watch(databaseProvider));
 });
 
 final labSpaceRepositoryProvider = Provider<LabSpaceRepository>((ref) {

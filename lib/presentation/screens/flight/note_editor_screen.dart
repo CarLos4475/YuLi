@@ -23,8 +23,10 @@ import 'block_pdf_export_sheet.dart';
 import 'block_insert_menu.dart';
 import 'block_insert_panels.dart';
 import 'canvas_export_sheet.dart';
+import 'drawing_stroke_persistence.dart';
 import 'format_toolbar.dart';
 import 'note_block_widgets.dart';
+import 'note_cell_model.dart';
 import 'note_export_view.dart';
 import 'ai_chat_sheet.dart';
 import '../lab/lab_space_detail_screen.dart';
@@ -226,6 +228,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           opts.includeTasks
               ? await _loadExportTasks(blocks)
               : const <int, Task>{};
+      final drawingStrokesByBlock = await _loadExportDrawingStrokes(blocks);
       if (!mounted) return;
       await exportNoteToPdf(
         context: context,
@@ -237,6 +240,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         accent: _accent,
         options: opts,
         tasksById: tasksById,
+        drawingStrokesByBlock: drawingStrokesByBlock,
       );
     } catch (_) {
       if (!mounted) return;
@@ -265,6 +269,22 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       for (final entry in entries)
         if (entry.value != null) entry.key: entry.value!,
     };
+  }
+
+  Future<Map<int, List<DrawingStroke>>> _loadExportDrawingStrokes(
+    List<NoteBlock> blocks,
+  ) async {
+    final ids = blocks.whereType<DrawingBlock>().map((b) => b.id).toList();
+    if (ids.isEmpty) return const {};
+    final repo = ref.read(drawingStrokeRepositoryProvider);
+    final loaded = <int, List<DrawingStroke>>{};
+    for (final id in ids) {
+      final rows = await repo.getByBlock(id);
+      if (rows.isNotEmpty) {
+        loaded[id] = rows.map(strokeFromRecord).toList();
+      }
+    }
+    return loaded;
   }
 
   void _onTextBlockFocusChanged(TextEditingController? ctrl) {

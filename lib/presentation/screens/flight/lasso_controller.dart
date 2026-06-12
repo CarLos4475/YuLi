@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart' show Offset, Rect, VoidCallback, Matrix4;
 import 'note_cell_model.dart';
 
@@ -27,6 +28,15 @@ class LassoMoveResult {
 
 class LassoController {
   LassoPhase phase = LassoPhase.idle;
+
+  ui.Image? liftedInk;
+  Rect? liftedRect;
+
+  void disposeLiftedInk() {
+    liftedInk?.dispose();
+    liftedInk = null;
+    liftedRect = null;
+  }
 
   /// Current view scale (1.0 when there's no zoom). Handle hit-areas are kept
   /// constant in *screen* pixels by dividing the base radius by this — so they
@@ -141,6 +151,7 @@ class LassoController {
       [List<CanvasImage> images = const [],
       List<CanvasTaskBlock> blocks = const []]) {
     if (phase != LassoPhase.selected) return;
+    disposeLiftedInk();
     _dragStart = worldPos;
     dragOffset = Offset.zero;
     _snapshotStrokes(strokes);
@@ -192,6 +203,7 @@ class LassoController {
     _snapshotBeforeMove = null;
     _imageSnapshot = null;
     _blockSnapshot = null;
+    disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -363,6 +375,7 @@ class LassoController {
     _snapshotBeforeMove = null;
     _imageSnapshot = null;
     _blockSnapshot = null;
+    disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -475,6 +488,7 @@ class LassoController {
     _resetResizeState();
     _imageSnapshot = null;
     _blockSnapshot = null;
+    disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -552,6 +566,7 @@ class LassoController {
     _snapshotBeforeMove = null;
     _imageSnapshot = null;
     _blockSnapshot = null;
+    disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
     return result;
@@ -951,6 +966,7 @@ class LassoController {
     _rotationCenter = null;
     _imageSnapshot = null;
     _blockSnapshot = null;
+    disposeLiftedInk();
     _notify();
   }
 

@@ -24,6 +24,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../domain/models/note_block.dart';
 import '../../domain/models/task.dart';
 import '../screens/flight/block_pdf_export_sheet.dart';
+import '../screens/flight/note_cell_model.dart';
 import '../screens/flight/note_export_view.dart';
 import '../widgets/yuli_design.dart';
 import 'canvas_export.dart';
@@ -50,6 +51,7 @@ Future<void> exportNoteToPdf({
     includeTasks: true,
   ),
   Map<int, Task> tasksById = const {},
+  Map<int, List<DrawingStroke>> drawingStrokesByBlock = const {},
 }) async {
   final format = _pageFormat(options);
   final margin = _marginValue(options.margins);
@@ -62,6 +64,7 @@ Future<void> exportNoteToPdf({
     accent: accent,
     title: options.includeTitle ? cleanTitle : null,
     tasksById: tasksById,
+    drawingStrokesByBlock: drawingStrokesByBlock,
     includeTasks: options.includeTasks,
   );
 
@@ -100,9 +103,7 @@ Future<void> exportNoteToPdf({
         final png = await imageToPngBytes(strip);
         final wPts = strip.width / _pixelRatio;
         final hPts = strip.height / _pixelRatio;
-        widgets.add(
-          pw.Image(pw.MemoryImage(png), width: wPts, height: hPts),
-        );
+        widgets.add(pw.Image(pw.MemoryImage(png), width: wPts, height: hPts));
         widgets.add(pw.SizedBox(height: 8));
       }
     }

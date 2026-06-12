@@ -59,6 +59,8 @@ class YuLiIcons {
   static const IconData crop = LucideIcons.crop;
   static const IconData eraser = LucideIcons.eraser;
   static const IconData lasso = LucideIcons.lasso;
+  static const IconData squareDashedMousePointer =
+      LucideIcons.squareDashedMousePointer;
   static const IconData mousePointer = LucideIcons.mousePointer2;
   static const IconData shapes = LucideIcons.shapes;
   static const IconData circle = LucideIcons.circle;
@@ -109,6 +111,7 @@ class YuLiIcons {
   static const IconData infinity = LucideIcons.infinity;
   static const IconData scan = LucideIcons.scan;
   static const IconData maximize = LucideIcons.maximize;
+  static const IconData discAlbum = LucideIcons.discAlbum;
   static const IconData filter = LucideIcons.filter;
   static const IconData timeline = LucideIcons.timeline;
   static const IconData star = LucideIcons.star;

@@ -7,12 +7,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, FrameTiming;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../data/services/crash_logger.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../widgets/ai_link_badge.dart';
@@ -21,6 +23,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
+import '../../../domain/models/drawing_stroke_record.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
@@ -32,10 +35,12 @@ import 'color_picker.dart';
 import 'color_loupe.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
+import 'drawing_stroke_persistence.dart';
 import 'eraser_mode_popup.dart';
 import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
 import 'note_cell_model.dart';
+import 'pinned_snapshots.dart';
 import 'popup_reveal.dart';
 import 'shape_recognizer.dart';
 import 'shape_picker_popup.dart';
@@ -53,6 +58,7 @@ import 'canvas_text_block.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
 import 'stroke_bounds.dart';
+import 'stroke_tiles.dart';
 import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
 import '../lab/lab_space_detail_screen.dart';
@@ -61,6 +67,57 @@ import '../lab/lab_space_detail_screen.dart';
 // pans inside this via InteractiveViewer. ~10kx10k logical pixels.
 const double _kCanvasW = 10000;
 const double _kCanvasH = 10000;
+
+typedef _WhiteboardSnapshot =
+    (
+      List<DrawingStroke>,
+      List<CanvasImage>,
+      List<CanvasTaskBlock>,
+      List<CanvasTextBlock>,
+    );
+
+abstract class _WhiteboardHistoryEntry {
+  const _WhiteboardHistoryEntry();
+}
+
+class _WhiteboardSnapshotEntry extends _WhiteboardHistoryEntry {
+  final _WhiteboardSnapshot snapshot;
+
+  const _WhiteboardSnapshotEntry(this.snapshot);
+}
+
+class _WhiteboardStrokeAddEntry extends _WhiteboardHistoryEntry {
+  final DrawingStroke stroke;
+
+  const _WhiteboardStrokeAddEntry(this.stroke);
+}
+
+/// Decode a whiteboard block's stored JSON into [DrawingData]. Pure and
+/// top-level so it can run in a background isolate via [compute] — the parse +
+/// object construction of a dense board is the "tirón al abrir", and doing it
+/// off the UI thread keeps the first frame responsive. All fields are plain data
+/// (numbers/strings/lists/enum), so the result ships across the isolate port.
+DrawingData _decodeWhiteboardData(Map<String, dynamic> args) {
+  List<dynamic> dec(String? s) {
+    if (s == null) return const [];
+    try {
+      final decoded = jsonDecode(s);
+      return decoded is List ? decoded : const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  return DrawingData.fromJson({
+    'h': _kCanvasH,
+    's': dec(args['s'] as String?),
+    'i': dec(args['i'] as String?),
+    't': dec(args['t'] as String?),
+    if (args['tx'] != null) 'tx': args['tx'],
+    'bg': args['bg'],
+    'bgc': args['bgc'],
+  });
+}
 
 class WhiteboardEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -83,6 +140,44 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   DrawingData _data = DrawingData();
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
+
+  // ─── Heat / pan-zoom frame timing (temporary diagnostics) ─────────────────
+  // True when the last stroke-layer build fell back to the single uncached
+  // painter (zoomed out past the tile budget) — the suspected heat source.
+  bool _strokeFallbackActive = false;
+  int _slowFrames = 0;
+  double _worstFrameMs = 0, _worstBuildMs = 0, _worstRasterMs = 0;
+  DateTime _lastFrameLog = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _onFrameTimings(List<FrameTiming> timings) {
+    for (final t in timings) {
+      final b = t.buildDuration.inMicroseconds / 1000.0;
+      final r = t.rasterDuration.inMicroseconds / 1000.0;
+      final tot = b + r;
+      if (tot <= 24) continue; // ignore frames that hit the budget
+      _slowFrames++;
+      if (tot > _worstFrameMs) {
+        _worstFrameMs = tot;
+        _worstBuildMs = b;
+        _worstRasterMs = r;
+      }
+    }
+    final now = DateTime.now();
+    if (_slowFrames > 0 && now.difference(_lastFrameLog).inMilliseconds > 700) {
+      _lastFrameLog = now;
+      CrashLogger.instance.note(
+        'PERF frames-pizarra: $_slowFrames lentos, peor ${_worstFrameMs.round()}ms '
+        '(build ${_worstBuildMs.round()} + raster ${_worstRasterMs.round()}), '
+        'zoom ${_viewScale.toStringAsFixed(2)}, '
+        'fallback ${_strokeFallbackActive ? 'SI' : 'no'}, '
+        'trazos ${_data.strokes.length}',
+      );
+      _slowFrames = 0;
+      _worstFrameMs = 0;
+      _worstBuildMs = 0;
+      _worstRasterMs = 0;
+    }
+  }
   Rect? _renderRect;
   Offset? _lastVisibleCenter;
   Color _color = yInk;
@@ -108,6 +203,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   bool _eraserPopupOpen = false;
   bool _shapePopupOpen = false;
   bool _morePopupOpen = false;
+  bool _floatingToolbarsPopupOpen = false;
   Offset? _eraserCursor; // screen pos for the eraser indicator
   // Raw (un-stabilized) pen points — used for scribble-erase detection so the
   // stabilizer's smoothing doesn't hide the zigzags.
@@ -118,43 +214,60 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<
-    (
-      List<DrawingStroke>,
-      List<CanvasImage>,
-      List<CanvasTaskBlock>,
-      List<CanvasTextBlock>,
-    )
-  >
-  _undoStack = [];
-  final List<
-    (
-      List<DrawingStroke>,
-      List<CanvasImage>,
-      List<CanvasTaskBlock>,
-      List<CanvasTextBlock>,
-    )
-  >
-  _redoStack = [];
-  (
-    List<DrawingStroke>,
-    List<CanvasImage>,
-    List<CanvasTaskBlock>,
-    List<CanvasTextBlock>,
-  )?
-  _gestureBefore;
+  final List<_WhiteboardHistoryEntry> _undoStack = [];
+  final List<_WhiteboardHistoryEntry> _redoStack = [];
+  _WhiteboardSnapshot? _gestureBefore;
+  // World-space bounding box of the selection at the moment a move/resize/rotate
+  // grab started — unioned with the post-gesture box to invalidate only the
+  // tiles the edit actually touched (vs. nuking the whole tile cache).
+  Rect? _gestureRegionBefore;
   bool _gestureChanged = false;
   DrawingStroke? _active;
+  Stopwatch? _inkPerfSw;
+  int _inkMoveSamples = 0;
+  int _inkSlowMoves = 0;
+  int _inkWorstMoveUs = 0;
   // Ticked on every live point added to [_active]. Repaints only the active
   // stroke layer (its own RepaintBoundary) without a full-canvas setState, so
   // the wet stroke keeps up with the stylus instead of trailing it.
   final ValueNotifier<int> _activeTick = ValueNotifier(0);
+  final StrokeTileIndex _strokeTiles = StrokeTileIndex();
+  // Repaints only the lasso overlay during a continuous gesture (move/resize/
+  // rotate/trace) so it follows the pointer immediately without a tree setState.
+  final ValueNotifier<int> _lassoGestureTick = ValueNotifier(0);
+  // Bumped on a grab/release (selected ↔ gesture) so the ink layers + toolbar
+  // update their phase-dependent bits WITHOUT a full-tree setState — the latter
+  // rebuilds every page/overlay/provider and is the jank (and crash risk on
+  // big notes) felt at the moment you grab or drop a selection.
+  final ValueNotifier<int> _lassoPhaseTick = ValueNotifier(0);
   Timer? _holdTimer;
+  Timer? _persistTimer;
+  bool _persistDirty = false;
+  bool _persisting = false;
+  bool _strokesNeedFullPersist = false;
+
+  // ─── Incremental stroke persistence ───────────────────────────────────────
+  // The stroke list is mirrored into the drawing_strokes table one row per
+  // stroke, edited surgically: pen-up = 1 INSERT, geometry edit = UPDATE of the
+  // touched rows, erase/lasso-delete = DELETE of the gone rows. This replaces
+  // the old "rewrite the whole block" path (O(N) per edit) — see
+  // [[ink-persistence-refactor]].
+  //
+  //  • _persistedStrokeIds: dbIds currently materialized in the table for this
+  //    block. Diffed against the live strokes at persist time to find deletes.
+  //  • _dirtyStrokeIds: dbIds whose geometry changed in place (move/resize/
+  //    rotate/flip/color/width) and need an UPDATE.
+  //  • _nextStrokePos: monotonic z-order position for freshly inserted rows
+  //    (never reused after deletes, so order survives reload).
+  final Set<int> _persistedStrokeIds = {};
+  final Set<int> _dirtyStrokeIds = {};
+  int _nextStrokePos = 0;
   Offset? _holdAnchor;
   static const _holdTolerance2 = 400.0; // 20px squared
   late final List<Color> _palette;
   final LassoController _lassoCtrl = LassoController();
   late final AnimationController _lassoAnimCtrl;
+  LassoPhase _lastLassoPhase = LassoPhase.idle;
   Matrix4? _transformBeforeStylus;
   Timer? _pasteTimer;
   Offset? _pastePos;
@@ -201,6 +314,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // Eyedropper loupe: a raster snapshot of the visible canvas is sampled per
   // pixel (anything: paper, strokes, images, text), not stroke hit-testing.
   final GlobalKey _canvasBoundaryKey = GlobalKey();
+
+  // Pinned snapshots (PiN): frozen raster cut-outs that float over the canvas.
+  // Held in a process-level store keyed by note, so they survive leaving and
+  // re-entering the note; only an app kill (or closing a window) drops them.
+  late final List<PinnedSnapshot> _pins = PinnedSnapshotStore.instance.forNote(
+    widget.note.id,
+  );
+
   ui.Image? _eyedropImg;
   ByteData? _eyedropBytes;
   double _eyedropDpr = 1;
@@ -215,10 +336,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   DateTime? _multiFingerDownTime;
   final Map<int, Offset> _pointerDownPos = {};
 
-  @override
-  void setState(VoidCallback fn) {
+  void _markCanvasDirty() {
     _paintVersion++;
-    super.setState(fn);
+    _renderRect = null;
   }
 
   @override
@@ -229,10 +349,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       vsync: this,
       duration: const Duration(seconds: 1),
     );
-    _lassoCtrl.onChanged = () {
-      _syncLassoTicker();
-      setState(() {});
-    };
+    _lassoCtrl.onChanged = _onLassoChanged;
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
       setState(() => _recentWidths = widths);
@@ -274,12 +391,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _imgCache = CanvasImageCache(
           dirPath: path,
           onLoaded: () {
-            if (mounted) setState(() {});
+            // Bump paintVersion: the background _CanvasPainter (which draws
+            // images) only repaints when paintVersion/visibleRect change, so a
+            // bare setState wouldn't show a freshly decoded image.
+            if (mounted) setState(() => _paintVersion++);
           },
         );
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCanvasBlock());
+    SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
   }
 
   void _selectTool(DrawTool t) {
@@ -444,6 +565,107 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     });
   }
 
+  // ─── Pinned snapshots (PiN) ───────────────────────────────────────────────
+
+  /// Capture the current lasso selection as a frozen raster cut-out and pin it
+  /// over the canvas. Captures EVERYTHING under the selection (paper, ink,
+  /// images, blocks) — same boundary the eyedropper samples.
+  Future<void> _pinSelection() async {
+    final bb = _lassoCtrl.boundingBox;
+    if (bb == null) return;
+    final vp = Rect.fromLTWH(0, 0, _viewport.width, _viewport.height);
+    final screenRect = MatrixUtils.transformRect(
+      _viewCtrl.value,
+      bb,
+    ).intersect(vp);
+    if (screenRect.width < 8 || screenRect.height < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Acerca la selección para fijarla'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
+      return;
+    }
+
+    // Drop the lasso overlay so its box/handles aren't baked into the capture.
+    _lassoCtrl.deselect();
+    setState(() {});
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final boundary =
+        _canvasBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final full = await boundary.toImage(pixelRatio: dpr);
+
+    final outW = (screenRect.width * dpr).round();
+    final outH = (screenRect.height * dpr).round();
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawImageRect(
+      full,
+      Rect.fromLTWH(
+        screenRect.left * dpr,
+        screenRect.top * dpr,
+        screenRect.width * dpr,
+        screenRect.height * dpr,
+      ),
+      Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble()),
+      Paint()..filterQuality = FilterQuality.high,
+    );
+    final cropped = await recorder.endRecording().toImage(outW, outH);
+    full.dispose();
+    if (!mounted) {
+      cropped.dispose();
+      return;
+    }
+
+    setState(() {
+      _pins.add(
+        PinnedSnapshot(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          image: cropped,
+          pos: Offset(
+            screenRect.left.clamp(8.0, _viewport.width - 60),
+            screenRect.top.clamp(8.0, _viewport.height - 60),
+          ),
+          width: screenRect.width.clamp(120.0, _viewport.width * 0.6),
+        ),
+      );
+    });
+    HapticFeedback.mediumImpact();
+  }
+
+  void _movePin(String id, Offset delta) {
+    final p = _pins.where((e) => e.id == id).firstOrNull;
+    if (p == null) return;
+    setState(() {
+      p.pos = Offset(
+        (p.pos.dx + delta.dx).clamp(48 - p.width, _viewport.width - 48),
+        (p.pos.dy + delta.dy).clamp(8.0, _viewport.height - 48),
+      );
+    });
+  }
+
+  void _resizePin(String id, double dWidth) {
+    final p = _pins.where((e) => e.id == id).firstOrNull;
+    if (p == null) return;
+    setState(
+      () => p.width = (p.width + dWidth).clamp(100.0, _viewport.width * 0.95),
+    );
+  }
+
+  void _closePin(String id) {
+    final i = _pins.indexWhere((e) => e.id == id);
+    if (i < 0) return;
+    setState(() {
+      _pins[i].dispose();
+      _pins.removeAt(i);
+    });
+  }
+
   void _confirmLoupe() {
     final c = _loupeColor;
     final cb = _eyedropOnPick;
@@ -523,14 +745,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   @override
   void dispose() {
+    SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     _eyedropImg?.dispose();
+    // Pins live in the process-level store — do NOT dispose them here, or they'd
+    // vanish on navigation. They're freed on close (X) or app kill.
     _reconcileImageFiles();
     _holdTimer?.cancel();
+    _persistTimer?.cancel();
+    if (_persistDirty) unawaited(_persistNow());
+    _strokeTiles.dispose();
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
     _imgCache?.dispose();
     _viewCtrl.dispose();
     _activeTick.dispose();
+    _lassoGestureTick.dispose();
+    _lassoPhaseTick.dispose();
     super.dispose();
   }
 
@@ -656,16 +886,36 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _commitShapeAdjust() {
+    final sw = Stopwatch()..start();
     final shape = _active;
     _clearSnap();
     if (shape == null) return;
+    final snapSw = Stopwatch()..start();
     final before = _snapshot();
+    snapSw.stop();
     setState(() {
       _data.strokes.add(shape);
       _active = null;
     });
-    _commit(before);
+    final appendSw = Stopwatch()..start();
+    _strokeTiles.append(shape);
+    appendSw.stop();
+    final historySw = Stopwatch()..start();
+    _commitSnapshot(before);
+    historySw.stop();
+    final persistSw = Stopwatch()..start();
     _persist();
+    persistSw.stop();
+    sw.stop();
+    _logInkPerf(
+      'shape-snap',
+      shape,
+      finishMs: sw.elapsedMilliseconds,
+      appendMs: appendSw.elapsedMilliseconds,
+      historyMs: historySw.elapsedMilliseconds,
+      persistMs: persistSw.elapsedMilliseconds,
+      snapshotMs: snapSw.elapsedMilliseconds,
+    );
   }
 
   void _clearSnap() {
@@ -676,63 +926,248 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Future<void> _ensureCanvasBlock() async {
-    final repo = ref.read(noteBlockRepositoryProvider);
-    final blocks = await repo.getByNote(widget.note.id);
-    DrawingBlock? canvas = blocks.whereType<DrawingBlock>().firstOrNull;
-    canvas ??=
-        await repo.insertAtEnd(
-              widget.note.id,
-              NoteBlockType.drawing,
-              payload: {'h': _kCanvasH, 's': [], 'whiteboard': true},
-            )
-            as DrawingBlock;
-    if (!mounted) return;
-    setState(() {
-      _blockId = canvas!.id;
-      _data = _decodeData(canvas);
-    });
+    try {
+      final repo = ref.read(noteBlockRepositoryProvider);
+      final blocks = await repo.getByNote(widget.note.id);
+      final existing = blocks.whereType<DrawingBlock>().firstOrNull;
+      final canvas =
+          existing ??
+          await repo.insertAtEnd(
+                widget.note.id,
+                NoteBlockType.drawing,
+                payload: {'h': _kCanvasH, 's': [], 'whiteboard': true},
+              )
+              as DrawingBlock;
+      if (!mounted) return;
+      final id = canvas.id;
+      CrashLogger.instance.note(
+        'PERF abrir-pizarra: note ${widget.note.id}, block $id '
+        '(${existing == null ? 'CREADO nuevo' : 'encontrado'}), '
+        '${blocks.length} bloques en la nota',
+      );
+      final data = await _decodeData(canvas);
+      if (!mounted) return;
+      setState(() {
+        _blockId = id;
+        _data = data;
+      });
+      // Seed the tile index from the loaded ink BEFORE the stroke layer builds —
+      // otherwise the board renders blank (the index would be empty).
+      _strokeTiles.rebuild(_data.strokes);
+    } catch (e, st) {
+      // A silent throw here leaves _blockId null → empty board, default bg,
+      // corner view, and NO persistence. Surface it instead of losing data.
+      CrashLogger.instance.record(e, st, context: 'ensureCanvasBlock pizarra');
+    }
   }
 
-  DrawingData _decodeData(DrawingBlock b) {
-    List<dynamic> strokes = const [];
-    List<dynamic> images = const [];
-    List<dynamic> taskBlocks = const [];
+  Future<DrawingData> _decodeData(DrawingBlock b) async {
     final payload = b.payloadJson();
-    try {
-      final decoded = jsonDecode(b.strokesJson);
-      if (decoded is List) strokes = decoded;
-    } catch (_) {}
-    try {
-      final decoded = jsonDecode(b.imagesJson);
-      if (decoded is List) images = decoded;
-    } catch (_) {}
-    try {
-      final decoded = jsonDecode(b.taskBlocksJson);
-      if (decoded is List) taskBlocks = decoded;
-    } catch (_) {}
-    return DrawingData.fromJson({
-      'h': _kCanvasH,
-      's': strokes,
-      'i': images,
-      't': taskBlocks,
+    final args = <String, dynamic>{
+      's': b.strokesJson,
+      'i': b.imagesJson,
+      't': b.taskBlocksJson,
       if (payload['tx'] != null) 'tx': payload['tx'],
       'bg': payload['bg'],
       'bgc': payload['bgc'],
+    };
+    final sw = Stopwatch()..start();
+    final jsonBytes = b.strokesJson.length;
+    // Decode INLINE (no compute/isolate). The payload no longer carries strokes
+    // — they live in the drawing_strokes table — so this is a trivial decode of
+    // background/images/blocks. compute() was spawning an isolate that could
+    // HANG on device, leaving _decodeData (and thus _blockId/_data) never set →
+    // no persistence + corner view. See [[ink-persistence-refactor]].
+    final data = _decodeWhiteboardData(args);
+    final rows = await ref
+        .read(drawingStrokeRepositoryProvider)
+        .getByBlock(b.id);
+    _persistedStrokeIds.clear();
+    _dirtyStrokeIds.clear();
+    if (rows.isNotEmpty) {
+      data.strokes = rows.map(strokeFromRecord).toList();
+      var maxPos = -1;
+      for (final r in rows) {
+        _persistedStrokeIds.add(r.id);
+        if (r.position > maxPos) maxPos = r.position;
+      }
+      _nextStrokePos = maxPos + 1;
+    } else {
+      // Legacy payload strokes (not yet in the table) carry no dbId and get
+      // inserted on the first persist; positions start fresh.
+      _nextStrokePos = 0;
+    }
+    sw.stop();
+    final pts = data.strokes.fold<int>(0, (a, s) => a + s.points.length);
+    CrashLogger.instance.note(
+      'PERF abrir-pizarra: ${data.strokes.length} trazos, $pts puntos, '
+      'json ${(jsonBytes / 1024).round()}KB, decode ${sw.elapsedMilliseconds}ms',
+    );
+    return data;
+  }
+
+  Future<void> _persistNow() async {
+    if (_blockId == null) return;
+    // Guard against overlapping runs: a debounce can fire while a previous
+    // persist is still awaiting. The straggler re-runs once this pass finishes.
+    if (_persisting) {
+      _persistDirty = true;
+      return;
+    }
+    _persisting = true;
+    _persistDirty = false;
+    final blockId = _blockId!;
+    // Capture repos BEFORE any await. _persistNow also runs from dispose() (the
+    // exit flush): touching `ref` after an await on a disposed widget throws and
+    // silently drops the save — which was wiping the board on close.
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+    final blockRepo = ref.read(noteBlockRepositoryProvider);
+    final sw = Stopwatch()..start();
+    int inserted = 0, updated = 0, deleted = 0;
+    try {
+      if (_strokesNeedFullPersist) {
+        // Order changed wholesale (undo/redo/clear) — cheapest to rewrite and
+        // reseat ids/positions. Rare path.
+        final ids = await strokeRepo.replaceBlock(blockId, [
+          for (int i = 0; i < _data.strokes.length; i++)
+            strokeWrite(i, _data.strokes[i]),
+        ]);
+        for (int i = 0; i < _data.strokes.length && i < ids.length; i++) {
+          _data.strokes[i].dbId = ids[i];
+        }
+        _persistedStrokeIds
+          ..clear()
+          ..addAll(ids);
+        _dirtyStrokeIds.clear();
+        _nextStrokePos = _data.strokes.length;
+        _strokesNeedFullPersist = false;
+      } else {
+        // 1) Inserts: strokes with no dbId yet (pen-up, duplicate, paste, split).
+        for (final stroke in _data.strokes) {
+          if (stroke.dbId != null &&
+              _persistedStrokeIds.contains(stroke.dbId)) {
+            continue;
+          }
+          stroke.dbId = null;
+          final id = await strokeRepo.insert(
+            blockId,
+            strokeWrite(_nextStrokePos++, stroke),
+          );
+          stroke.dbId = id;
+          _persistedStrokeIds.add(id);
+          inserted++;
+        }
+        // 2) Updates: in-place geometry edits flagged dirty.
+        if (_dirtyStrokeIds.isNotEmpty) {
+          final byId = <int, DrawingStroke>{
+            for (final s in _data.strokes)
+              if (s.dbId != null) s.dbId!: s,
+          };
+          final updates = <int, DrawingStrokeWrite>{};
+          for (final id in _dirtyStrokeIds.toList()) {
+            final s = byId[id];
+            if (s == null) continue;
+            updates[id] = strokeWrite(0, s);
+          }
+          await strokeRepo.updateMany(updates);
+          updated = updates.length;
+          _dirtyStrokeIds.clear();
+        }
+        // 3) Deletes: rows whose stroke is gone (erase, lasso-delete).
+        final currentIds = <int>{
+          for (final s in _data.strokes)
+            if (s.dbId != null) s.dbId!,
+        };
+        final toDelete = _persistedStrokeIds.difference(currentIds);
+        if (toDelete.isNotEmpty) {
+          await strokeRepo.deleteByIds(toDelete.toList());
+          _persistedStrokeIds.removeAll(toDelete);
+          deleted = toDelete.length;
+        }
+      }
+      final strokeMs = sw.elapsedMilliseconds;
+      await blockRepo.updatePayload(blockId, {
+        'h': _kCanvasH,
+        's': const [],
+        'i': _data.images.map((im) => im.toJson()).toList(),
+        't': _data.taskBlocks.map((b) => b.toJson()).toList(),
+        'tx': _data.textBlocks.map((b) => b.toJson()).toList(),
+        'bg': _data.background.toDbString(),
+        if (_data.bgColorValue != null) 'bgc': _data.bgColorValue,
+        'whiteboard': true,
+      });
+      sw.stop();
+      CrashLogger.instance.note(
+        'PERF guardar-pizarra: ${_data.strokes.length} trazos, '
+        '+$inserted ~$updated -$deleted, '
+        'strokesDB ${strokeMs}ms, total(+DB) ${sw.elapsedMilliseconds}ms',
+      );
+    } catch (e, st) {
+      // unawaited() callers swallow errors → a failed save was invisible. Log it.
+      CrashLogger.instance.record(e, st, context: 'persistNow pizarra');
+    } finally {
+      _persisting = false;
+    }
+    // Edits that arrived mid-persist (or a guarded straggler) → flush once more.
+    if (_persistDirty && mounted) unawaited(_persistNow());
+  }
+
+  void _persist() {
+    _persistDirty = true;
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      unawaited(_persistNow());
     });
   }
 
-  Future<void> _persist() async {
-    if (_blockId == null) return;
-    await ref.read(noteBlockRepositoryProvider).updatePayload(_blockId!, {
-      'h': _kCanvasH,
-      's': _data.strokes.map((s) => s.toJson()).toList(),
-      'i': _data.images.map((im) => im.toJson()).toList(),
-      't': _data.taskBlocks.map((b) => b.toJson()).toList(),
-      'tx': _data.textBlocks.map((b) => b.toJson()).toList(),
-      'bg': _data.background.toDbString(),
-      if (_data.bgColorValue != null) 'bgc': _data.bgColorValue,
-      'whiteboard': true,
-    });
+  int _pointCount(Iterable<DrawingStroke> strokes) =>
+      strokes.fold<int>(0, (total, s) => total + s.points.length);
+
+  void _beginInkPerf() {
+    _inkPerfSw = Stopwatch()..start();
+    _inkMoveSamples = 0;
+    _inkSlowMoves = 0;
+    _inkWorstMoveUs = 0;
+  }
+
+  void _recordInkMove(int micros) {
+    _inkMoveSamples++;
+    if (micros > _inkWorstMoveUs) _inkWorstMoveUs = micros;
+    if (micros >= 8000) _inkSlowMoves++;
+  }
+
+  void _resetInkPerf() {
+    _inkPerfSw = null;
+    _inkMoveSamples = 0;
+    _inkSlowMoves = 0;
+    _inkWorstMoveUs = 0;
+  }
+
+  void _logInkPerf(
+    String kind,
+    DrawingStroke stroke, {
+    required int finishMs,
+    int? appendMs,
+    int? historyMs,
+    int? persistMs,
+    int? snapshotMs,
+  }) {
+    final countSw = Stopwatch()..start();
+    final totalPoints = _pointCount(_data.strokes);
+    countSw.stop();
+    final totalMs = _inkPerfSw?.elapsedMilliseconds ?? finishMs;
+    CrashLogger.instance.note(
+      'PERF escribir-pizarra: $kind, trazo ${stroke.points.length} puntos, '
+      'total ${_data.strokes.length} trazos/$totalPoints puntos, '
+      'moves $_inkMoveSamples, slowMoves $_inkSlowMoves, '
+      'worstMove ${(_inkWorstMoveUs / 1000).toStringAsFixed(1)}ms, '
+      'total ${totalMs}ms, finish ${finishMs}ms, '
+      'snapshot ${snapshotMs ?? -1}ms, append ${appendMs ?? -1}ms, '
+      'history ${historyMs ?? -1}ms, persist-schedule ${persistMs ?? -1}ms, '
+      'count ${countSw.elapsedMilliseconds}ms',
+    );
+    _resetInkPerf();
   }
 
   void _toggleImagePanel() {
@@ -811,8 +1246,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         h: worldH,
       );
       final before = _snapshot();
-      setState(() => _data.images.add(img));
-      _commit(before);
+      // Bump paintVersion so the background painter repaints with the new image
+      // (it keys off paintVersion, not the images list) — otherwise it shows up
+      // only after a pan/lasso forces a repaint.
+      setState(() {
+        _data.images.add(img);
+        _paintVersion++;
+      });
+      _commitSnapshot(before);
       _persist();
       _imgCache?.get(filename);
       HapticFeedback.lightImpact();
@@ -841,7 +1282,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _data.taskBlocks.add(block);
       _tool = DrawTool.task;
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persist();
     HapticFeedback.lightImpact();
   }
@@ -869,7 +1310,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _data.textBlocks.add(block);
       _tool = DrawTool.text;
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persist();
     HapticFeedback.lightImpact();
   }
@@ -907,7 +1348,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       );
       _toolbarVisible = false;
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persist();
     HapticFeedback.lightImpact();
   }
@@ -930,6 +1371,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     setState(() {
       _morePopupOpen = !_morePopupOpen;
       if (_morePopupOpen) {
+        _floatingToolbarsPopupOpen = false;
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _imagePanelOpen = false;
+        _bgPopupOpen = false;
+        _eraserPopupOpen = false;
+        _shapePopupOpen = false;
+      }
+    });
+  }
+
+  void _toggleFloatingToolbarsPopup() {
+    setState(() {
+      _floatingToolbarsPopupOpen = !_floatingToolbarsPopupOpen;
+      if (_floatingToolbarsPopupOpen) {
+        _morePopupOpen = false;
         _colorPickerOpen = false;
         _widthPickerOpen = false;
         _imagePanelOpen = false;
@@ -962,10 +1419,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _shapePopupOpen = false;
       _toolbarVisible = false;
     });
+    // Index the shape (same instance) so the tiled layer paints it immediately;
+    // without this it's invisible until a lasso edit invalidates the region.
+    _strokeTiles.append(stroke);
     final idx = _data.strokes.length - 1;
     _lassoCtrl.hitScale = _viewScale;
     _lassoCtrl.selectRange(_data.strokes, idx, idx + 1);
-    _commit(before);
+    _commitSnapshot(before);
     _persist();
     HapticFeedback.lightImpact();
   }
@@ -981,6 +1441,54 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_lassoAnimCtrl.isAnimating) _lassoAnimCtrl.stop();
     if (_lassoAnimCtrl.value != 0) _lassoAnimCtrl.value = 0;
   }
+
+  /// Lasso change callback. During a continuous gesture (tracing/moving/
+  /// resizing/rotating) the lasso overlay already repaints every frame from
+  /// _lassoAnimCtrl, so a full-tree setState per stylus point (~240Hz) is pure
+  /// waste and janks the canvas on dense pages. Only rebuild on a phase change
+  /// (toolbar visibility / pan-enable flip).
+  static const _kLassoGesturePhases = {
+    LassoPhase.moving,
+    LassoPhase.resizing,
+    LassoPhase.rotating,
+  };
+
+  void _onLassoChanged() {
+    _syncLassoTicker();
+    final phase = _lassoCtrl.phase;
+    final prev = _lastLassoPhase;
+    _lastLassoPhase = phase;
+
+    const continuous = {LassoPhase.tracing, ..._kLassoGesturePhases};
+    // Same-phase continuous update (per stylus point): never rebuild the tree.
+    // The lasso overlay and any selected block's Transform listen to
+    // _lassoGestureTick and repaint in place. A full setState here janks dense /
+    // many-page notes.
+    if (phase == prev && continuous.contains(phase)) {
+      _lassoGestureTick.value++;
+      return;
+    }
+
+    // Grab / release: selected ↔ a gesture phase. panEnabled is unchanged and
+    // the lasso layer stays visible, so skip the full-tree setState (which
+    // rebuilds every page/overlay/provider — the grab/drop jank). The ink
+    // layers + toolbar refresh via _lassoPhaseTick. EXCEPTION: block selections,
+    // whose overlays must (un)wrap their live-transform in build().
+    final grabOrRelease =
+        (prev == LassoPhase.selected && _kLassoGesturePhases.contains(phase)) ||
+        (_kLassoGesturePhases.contains(prev) && phase == LassoPhase.selected);
+    if (grabOrRelease && !_selectionHasBlocks) {
+      _lassoPhaseTick.value++;
+      _lassoGestureTick.value++;
+      return;
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  bool get _selectionHasBlocks =>
+      _lassoCtrl.selectedBlockIndices.isNotEmpty ||
+      _lassoCtrl.selectedTextBlockIndices.isNotEmpty;
 
   Rect _visibleRectFor(Size viewport) {
     final inv = Matrix4.inverted(_viewCtrl.value);
@@ -1204,7 +1712,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             _lassoCtrl.hitTestCornerHandle(p) != null ||
             _lassoCtrl.hitTestSideHandle(p) != null ||
             _lassoCtrl.isTapInsideBoundingBox(p)) {
-          setState(() => _isDrawing = true);
+          _isDrawing =
+              true; // lasso: no rebuild needed (see _onDown note below)
           _handleLassoDown(p);
           return;
         }
@@ -1215,7 +1724,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
 
     final willDraw = _shouldDraw(e.kind);
-    setState(() => _isDrawing = willDraw);
+    // Lasso never needs a rebuild just for _isDrawing — its panEnabled is gated
+    // by phase, not _isDrawing — so skip the setState to avoid a full-tree
+    // rebuild at grab. Phase-driven rebuilds still fire via _onLassoChanged.
+    if (_tool == DrawTool.lasso) {
+      _isDrawing = willDraw;
+    } else {
+      setState(() => _isDrawing = willDraw);
+    }
     if (!willDraw) return;
 
     final p = _screenToWorld(e.localPosition);
@@ -1232,6 +1748,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
     _stab = _newStabilizer();
     final sp = _stabilize(p);
+    _beginInkPerf();
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
       setState(() {
@@ -1395,6 +1912,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return;
     }
     if (_active == null) return;
+    final moveSw = _inkPerfSw == null ? null : (Stopwatch()..start());
     final sp = _stabilize(p);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
@@ -1405,6 +1923,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         e.timeStamp.inMilliseconds.toDouble(),
       ]);
       _activeTick.value++;
+      moveSw?.stop();
+      if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
       return;
     }
     final pts = _active!.points;
@@ -1412,7 +1932,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (pts.isNotEmpty && !_stabilizer.isOn) {
       final dx = sp.dx - pts.last[0];
       final dy = sp.dy - pts.last[1];
-      if (dx * dx + dy * dy < _minDist2) return;
+      if (dx * dx + dy * dy < _minDist2) {
+        moveSw?.stop();
+        if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
+        return;
+      }
     }
     pts.add(
       _active!.isPencil
@@ -1420,6 +1944,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           : [sp.dx, sp.dy],
     );
     _activeTick.value++;
+    moveSw?.stop();
+    if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
     if (_holdAnchor != null) {
       final dx = sp.dx - _holdAnchor!.dx;
       final dy = sp.dy - _holdAnchor!.dy;
@@ -1462,7 +1988,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _transformBeforeStylus = null;
     }
     _stylusActive = false;
-    setState(() => _isDrawing = false);
+    // Lasso: no rebuild for _isDrawing (phase-gated panEnabled). Releasing a
+    // stroke selection then routes through _handleLassoUp → _onLassoChanged,
+    // which refreshes via _lassoPhaseTick instead of a full-tree setState.
+    if (_tool == DrawTool.lasso) {
+      _isDrawing = false;
+    } else {
+      setState(() => _isDrawing = false);
+    }
 
     if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
       final elapsed =
@@ -1558,6 +2091,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       setState(() => _active = null);
       _clearSnap();
       _stab = null;
+      _resetInkPerf();
       return;
     }
     if (_tool == DrawTool.eraser) {
@@ -1568,6 +2102,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_tool == DrawTool.fountainPen) {
       _active = null;
       _stab = null;
+      _resetInkPerf();
       return;
     }
     _finishStroke();
@@ -1575,27 +2110,54 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _doScribbleErase() {
+    final sw = Stopwatch()..start();
     final scribblePts = _rawPen;
     if (!isScribble(scribblePts, viewScale: _viewScale)) return;
     final bounds = scribbleBounds(scribblePts);
+    final snapSw = Stopwatch()..start();
     final before = _snapshot();
+    snapSw.stop();
     final lenBefore = _data.strokes.length;
+    final activeStroke = _active?.clone();
+    Rect? dirty;
     _data.strokes.removeWhere((s) {
       for (final p in s.points) {
-        if (bounds.contains(Offset(p[0], p[1]))) return true;
+        if (bounds.contains(Offset(p[0], p[1]))) {
+          final b = strokeBounds(s);
+          dirty = dirty == null ? b : dirty!.expandToInclude(b);
+          return true;
+        }
       }
       return false;
     });
     setState(() => _active = null);
     if (_data.strokes.length != lenBefore) {
-      _commit(before);
+      if (dirty != null) {
+        _strokeTiles.invalidateRegion(dirty!.inflate(4), _data.strokes);
+      } else {
+        _strokeTiles.rebuild(_data.strokes);
+      }
+      _commitSnapshot(before);
       HapticFeedback.lightImpact();
+      // Removed strokes → handled by the delete-diff pass in _persistNow.
       _persist();
+    }
+    sw.stop();
+    if (activeStroke != null) {
+      _logInkPerf(
+        'scribble-erase',
+        activeStroke,
+        finishMs: sw.elapsedMilliseconds,
+        snapshotMs: snapSw.elapsedMilliseconds,
+      );
+    } else {
+      _resetInkPerf();
     }
     _rawPen = [];
   }
 
   void _finishStroke() {
+    final sw = Stopwatch()..start();
     if (_snapKind != null) return;
     if (_active == null) return;
     _active!.points.removeWhere(
@@ -1603,6 +2165,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     );
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
+      _resetInkPerf();
       return;
     }
 
@@ -1611,81 +2174,188 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_tool == DrawTool.pen &&
         isScribble(scribblePts, viewScale: _viewScale)) {
       final bounds = scribbleBounds(scribblePts);
+      final snapSw = Stopwatch()..start();
       final before = _snapshot();
+      snapSw.stop();
       final lenBefore = _data.strokes.length;
+      final activeStroke = _active!.clone();
+      Rect? dirty;
       _data.strokes.removeWhere((s) {
         for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) return true;
+          if (bounds.contains(Offset(p[0], p[1]))) {
+            final b = strokeBounds(s);
+            dirty = dirty == null ? b : dirty!.expandToInclude(b);
+            return true;
+          }
         }
         return false;
       });
       setState(() => _active = null);
       if (_data.strokes.length != lenBefore) {
-        _commit(before);
+        if (dirty != null) {
+          _strokeTiles.invalidateRegion(dirty!.inflate(4), _data.strokes);
+        } else {
+          _strokeTiles.rebuild(_data.strokes);
+        }
+        _commitSnapshot(before);
         HapticFeedback.lightImpact();
+        // Removed strokes → handled by the delete-diff pass in _persistNow.
         _persist();
       }
+      sw.stop();
+      _logInkPerf(
+        'scribble-erase',
+        activeStroke,
+        finishMs: sw.elapsedMilliseconds,
+        snapshotMs: snapSw.elapsedMilliseconds,
+      );
       _rawPen = [];
       return;
     }
 
-    final before = _snapshot();
+    // The committed stroke object must be the SAME instance in both _data.strokes
+    // and the tile index — the lasso hides the live selection by IDENTITY, so a
+    // clone in the tiles wouldn't match and would ghost at the old spot on move.
+    final addedStroke = _active!.clone();
     setState(() {
-      _data.strokes.add(_active!);
+      _data.strokes.add(addedStroke);
       _active = null;
     });
-    _commit(before);
+    final appendSw = Stopwatch()..start();
+    _strokeTiles.append(addedStroke);
+    appendSw.stop();
+    final historySw = Stopwatch()..start();
+    _commitStrokeAdd(addedStroke);
+    historySw.stop();
+    final persistSw = Stopwatch()..start();
     _persist();
+    persistSw.stop();
+    sw.stop();
+    _logInkPerf(
+      'stroke',
+      addedStroke,
+      finishMs: sw.elapsedMilliseconds,
+      appendMs: appendSw.elapsedMilliseconds,
+      historyMs: historySw.elapsedMilliseconds,
+      persistMs: persistSw.elapsedMilliseconds,
+    );
   }
 
   void _finishFountainStroke() {
+    final sw = Stopwatch()..start();
     if (_active == null) return;
     _active!.points.removeWhere(
       (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
     );
     if (_active!.points.length < 2) {
       setState(() => _active = null);
+      _resetInkPerf();
       return;
     }
 
+    final bakeSw = Stopwatch()..start();
     final baked = FountainPenEngine.finishStroke(
       _active!,
       viewScale: _viewScale,
     );
-    final before = _snapshot();
+    bakeSw.stop();
     setState(() {
       _data.strokes.add(baked);
       _active = null;
     });
-    _commit(before);
+    final appendSw = Stopwatch()..start();
+    _strokeTiles.append(baked);
+    appendSw.stop();
+    final historySw = Stopwatch()..start();
+    _commitStrokeAdd(baked);
+    historySw.stop();
+    final persistSw = Stopwatch()..start();
     _persist();
+    persistSw.stop();
+    sw.stop();
+    _logInkPerf(
+      'fountain',
+      baked,
+      finishMs: sw.elapsedMilliseconds,
+      appendMs: appendSw.elapsedMilliseconds,
+      historyMs: historySw.elapsedMilliseconds + bakeSw.elapsedMilliseconds,
+      persistMs: persistSw.elapsedMilliseconds,
+    );
   }
 
   static const _eraserScreenRadius = 7.0;
 
+  /// Strokes whose tiles overlap a [radius] box around [pos], pulled from the
+  /// spatial index. Lets hit-testing (eraser, tap-select) stay local instead of
+  /// scanning every stroke on the board.
+  Set<DrawingStroke> _strokesNear(Offset pos, double radius) {
+    final rect = Rect.fromCircle(center: pos, radius: radius);
+    final out = <DrawingStroke>{};
+    for (final key in _strokeTiles.tilesInRect(rect)) {
+      final list = _strokeTiles.strokesAt(key);
+      if (list != null) out.addAll(list);
+    }
+    return out;
+  }
+
   void _eraseNear(Offset pos) {
     final radius = _eraserScreenRadius / _viewScale;
     bool changed = false;
+    // Accumulate the bounds of every stroke the eraser touched so only those
+    // tiles are rebuilt (a removed stroke can reach far past the eraser point).
+    Rect? dirty;
+    void markDirty(DrawingStroke s) {
+      final b = strokeBounds(s);
+      dirty = dirty == null ? b : dirty!.expandToInclude(b);
+    }
+
+    // Only strokes in the tiles around the eraser can be touched — gather them
+    // from the spatial index instead of hit-testing all N strokes per move
+    // (which was O(N·points) every pointer event → the eraser lag on dense
+    // boards). Inflated generously to cover wide strokes whose centre line sits
+    // just outside the eraser circle.
+    final candidates = _strokesNear(pos, radius + 64);
+    if (candidates.isEmpty) return;
+
     if (_eraserMode == EraserMode.partial) {
       final out = <DrawingStroke>[];
       for (final s in _data.strokes) {
+        if (!candidates.contains(s)) {
+          out.add(s);
+          continue;
+        }
         final pieces = splitStrokeByEraser(s, pos, radius);
         if (pieces.length == 1 && identical(pieces.first, s)) {
           out.add(s);
         } else {
+          markDirty(s);
           out.addAll(pieces);
           changed = true;
         }
       }
       if (changed) _data.strokes = out;
     } else {
-      final before = _data.strokes.length;
-      _data.strokes.removeWhere((s) => strokeHitByEraser(s, pos, radius));
-      changed = _data.strokes.length != before;
+      final hits = <DrawingStroke>{};
+      for (final s in candidates) {
+        if (strokeHitByEraser(s, pos, radius)) {
+          hits.add(s);
+          markDirty(s);
+        }
+      }
+      if (hits.isNotEmpty) {
+        _data.strokes.removeWhere(hits.contains);
+        changed = true;
+      }
     }
     if (changed) {
       _gestureChanged = true;
+      if (dirty != null) {
+        _strokeTiles.invalidateRegion(dirty!.inflate(4), _data.strokes);
+      } else {
+        _strokeTiles.rebuild(_data.strokes);
+      }
       setState(() {});
+      // Removed strokes → handled by the delete-diff pass in _persistNow.
       _persist();
     }
   }
@@ -1700,6 +2370,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return;
     }
     if (_lassoCtrl.phase == LassoPhase.selected) {
+      // Capture the pre-gesture selection box for surgical tile invalidation on
+      // drop (any of rotate/resize/move below).
+      _gestureRegionBefore = _lassoCtrl.boundingBox;
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startRotation(
@@ -1742,6 +2415,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           _data.images,
           _data.taskBlocks,
         );
+        _captureLassoSelection();
         return;
       }
       // Outside the selection: defer. A tap (no drag) dismisses the toolbar /
@@ -1815,6 +2489,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           false; // a fresh selection starts with the toolbar hidden
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
+      // Clone the selection right before finishMove mutates points in place, so
+      // the start-of-gesture snapshot keeps the originals. ONLY on a real move:
+      // a tap (which toggles the action toolbar) must not swap object identity,
+      // or the tiles desync from _data.strokes and the ghost returns next move.
+      if (moved) _cloneSelectedStrokesInPlace();
       _lassoCtrl.finishMove(
         _data.strokes,
         _data.images,
@@ -1832,6 +2511,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           side
               ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
               : (cornerScale - 1).abs() > 0.02;
+      if (moved) _cloneSelectedStrokesInPlace(); // only a real edit clones
       side
           ? _lassoCtrl.finishSideResize(
             _data.strokes,
@@ -1863,6 +2543,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
+      if (moved) _cloneSelectedStrokesInPlace(); // only a real edit clones
       _lassoCtrl.finishRotation(
         _data.strokes,
         _data.images,
@@ -1877,9 +2558,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// tap on the selection → toggle the action toolbar (no undo step).
   void _finishTransformOrTap(bool moved) {
     if (moved) {
+      // Geometry mutated in place → the tile cache for the touched region is now
+      // stale. Without this the moved ink ghosts at its old spot and is invisible
+      // at the new one until the board is re-entered.
+      _invalidateEditedTiles(_gestureRegionBefore, _lassoCtrl.boundingBox);
+      _gestureRegionBefore = null;
       _commitGesture();
+      // The moved/resized/rotated rows keep their dbId → UPDATE in place.
+      _markSelectionDirty();
       _persist();
     } else {
+      _gestureRegionBefore = null;
       _gestureBefore = null;
       setState(() => _toolbarVisible = !_toolbarVisible);
     }
@@ -2002,7 +2691,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       );
       _lassoCtrl.deselect();
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persist();
     _imgCache?.get(newName);
   }
@@ -2030,7 +2719,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               !selected &&
               !gesture &&
               (_tool == DrawTool.lasso || _palmRejection),
-          onPersist: _persist,
+          onPersist: () async {
+            _persist();
+          },
           onTasksChanged: () {
             if (mounted) setState(() {});
           },
@@ -2055,16 +2746,30 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           _lassoCtrl.phase == LassoPhase.rotating ||
           (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
       if (isLiveTransform && selected) {
-        final off = Offset(b.x, b.y);
-        final tm =
-            Matrix4.translationValues(-off.dx, -off.dy, 0) *
-            _lassoCtrl.liveGestureMatrix() *
-            Matrix4.translationValues(off.dx, off.dy, 0);
-        overlay = Transform(transform: tm, child: overlay);
+        overlay = _liveGestureTransform(overlay, b.x, b.y);
       }
       out.add(Positioned(left: b.x, top: b.y, child: overlay));
     }
     return out;
+  }
+
+  /// Wraps a selected block overlay so it follows the live lasso gesture WITHOUT
+  /// a full-tree rebuild: only this Transform reacts to _lassoGestureTick (the
+  /// block content rides through as `child`, built once). Lets a 20-page note's
+  /// blocks move smoothly — the old per-frame setState rebuilt every overlay.
+  Widget _liveGestureTransform(Widget child, double bx, double by) {
+    final off = Offset(bx, by);
+    return ValueListenableBuilder<int>(
+      valueListenable: _lassoGestureTick,
+      child: child,
+      builder: (_, _, child) {
+        final tm =
+            Matrix4.translationValues(-off.dx, -off.dy, 0) *
+            _lassoCtrl.liveGestureMatrix() *
+            Matrix4.translationValues(off.dx, off.dy, 0);
+        return Transform(transform: tm, child: child);
+      },
+    );
   }
 
   List<Widget> _buildTextBlockOverlays() {
@@ -2087,7 +2792,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           // also avoids a multi-touch crash (finger on block + 2-finger zoom).
           interactive: !selected && !gesture && _tool == DrawTool.text,
           movable: !selected && !gesture && _tool == DrawTool.text,
-          onPersist: _persist,
+          onPersist: () async {
+            _persist();
+          },
           onChanged: () {
             if (mounted) setState(() {});
           },
@@ -2114,12 +2821,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           _lassoCtrl.phase == LassoPhase.rotating ||
           (_lassoCtrl.phase == LassoPhase.resizing && !_lassoCtrl.isSideResize);
       if (isLiveTransform && selected) {
-        final off = Offset(b.x, b.y);
-        final tm =
-            Matrix4.translationValues(-off.dx, -off.dy, 0) *
-            _lassoCtrl.liveGestureMatrix() *
-            Matrix4.translationValues(off.dx, off.dy, 0);
-        overlay = Transform(transform: tm, child: overlay);
+        overlay = _liveGestureTransform(overlay, b.x, b.y);
       }
       out.add(Positioned(left: b.x, top: b.y, child: overlay));
     }
@@ -2142,6 +2844,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       child: LassoMiniToolbar(
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
+        onPin: () {
+          _pinSelection();
+        },
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
@@ -2246,75 +2951,193 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   // ─── Undo / redo (snapshot history) ─────────────────────────────────────
 
-  (
-    List<DrawingStroke>,
-    List<CanvasImage>,
-    List<CanvasTaskBlock>,
-    List<CanvasTextBlock>,
-  )
-  _snapshot() => (
-    _data.strokes.map((s) => s.clone()).toList(),
-    _data.images.map((im) => im.clone()).toList(),
-    _data.taskBlocks.map((b) => b.clone()).toList(),
-    _data.textBlocks.map((b) => b.clone()).toList(),
-  );
+  _WhiteboardSnapshot _snapshot() {
+    // Strokes are captured by REFERENCE — a shallow O(strokes) pointer copy, not
+    // a deep clone of every point (which was 90-119ms on dense boards). The
+    // invariant that keeps undo correct: any op that mutates a stroke IN PLACE
+    // first calls _cloneSelectedStrokesInPlace, so no stroke referenced by a
+    // live snapshot is ever mutated. Images/blocks are few → still deep-cloned.
+    return (
+      List<DrawingStroke>.of(_data.strokes),
+      _data.images.map((im) => im.clone()).toList(),
+      _data.taskBlocks.map((b) => b.clone()).toList(),
+      _data.textBlocks.map((b) => b.clone()).toList(),
+    );
+  }
 
-  void _commit(
-    (
-      List<DrawingStroke>,
-      List<CanvasImage>,
-      List<CanvasTaskBlock>,
-      List<CanvasTextBlock>,
-    )
-    before,
-  ) {
-    _undoStack.add(before);
+  /// Replace each currently-selected stroke with a fresh clone, so an imminent
+  /// in-place geometry edit (move/resize/rotate/flip) mutates the clone and
+  /// leaves the original — still referenced by snapshots on the undo stack —
+  /// untouched. clone() preserves dbId, so the row is UPDATEd, not re-inserted.
+  void _cloneSelectedStrokesInPlace() {
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < _data.strokes.length) {
+        _data.strokes[i] = _data.strokes[i].clone();
+      }
+    }
+  }
+
+  /// Flag the current selection's rows for an in-place UPDATE on the next
+  /// persist (their geometry/color/width changed but identity and order did
+  /// not). Freshly created strokes (duplicate/paste, dbId == null) are skipped —
+  /// the insert pass picks them up.
+  void _markSelectionDirty() {
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < _data.strokes.length) {
+        final id = _data.strokes[i].dbId;
+        if (id != null) _dirtyStrokeIds.add(id);
+      }
+    }
+  }
+
+  void _pushHistory(_WhiteboardHistoryEntry entry) {
+    _undoStack.add(entry);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
-  void _restore(
-    (
-      List<DrawingStroke>,
-      List<CanvasImage>,
-      List<CanvasTaskBlock>,
-      List<CanvasTextBlock>,
-    )
-    snap,
-  ) {
+  void _commitSnapshot(_WhiteboardSnapshot before) {
+    _markCanvasDirty();
+    _pushHistory(_WhiteboardSnapshotEntry(before));
+  }
+
+  void _commitStrokeAdd(DrawingStroke stroke) {
+    _markCanvasDirty();
+    _pushHistory(_WhiteboardStrokeAddEntry(stroke.clone()));
+  }
+
+  void _restore(_WhiteboardSnapshot snap) {
+    final dirty = _restoreDirtyRect(snap);
+    _markRestoreStrokeDirty(snap.$1);
     _data.strokes = snap.$1;
     _data.images = snap.$2;
     _data.taskBlocks = snap.$3;
     _data.textBlocks = snap.$4;
+    _markCanvasDirty();
+    if (dirty != null) {
+      _strokeTiles.invalidateRegion(dirty, _data.strokes);
+    } else {
+      _strokeTiles.rebuild(_data.strokes);
+    }
+  }
+
+  Rect? _restoreDirtyRect(_WhiteboardSnapshot snap) {
+    Rect? dirty;
+    final currentById = <int, DrawingStroke>{
+      for (final s in _data.strokes)
+        if (s.dbId != null) s.dbId!: s,
+    };
+    final targetIds = <int>{};
+    for (final stroke in snap.$1) {
+      final id = stroke.dbId;
+      if (id != null) targetIds.add(id);
+      final current = id == null ? null : currentById[id];
+      if (current == null) {
+        dirty = _expandDirty(dirty, stroke);
+      } else if (!identical(current, stroke)) {
+        dirty = _expandDirty(_expandDirty(dirty, current), stroke);
+      }
+    }
+    for (final stroke in _data.strokes) {
+      final id = stroke.dbId;
+      if (id != null && !targetIds.contains(id)) {
+        dirty = _expandDirty(dirty, stroke);
+      }
+    }
+    return dirty;
+  }
+
+  Rect? _expandDirty(Rect? dirty, DrawingStroke stroke) {
+    final rect = strokeBounds(stroke).inflate(stroke.strokeWidth + 4);
+    return dirty == null ? rect : dirty.expandToInclude(rect);
+  }
+
+  void _markRestoreStrokeDirty(List<DrawingStroke> target) {
+    final currentById = <int, DrawingStroke>{
+      for (final s in _data.strokes)
+        if (s.dbId != null) s.dbId!: s,
+    };
+    for (final stroke in target) {
+      final id = stroke.dbId;
+      if (id == null || !_persistedStrokeIds.contains(id)) continue;
+      final current = currentById[id];
+      if (current != null && !identical(current, stroke)) {
+        _dirtyStrokeIds.add(id);
+      }
+    }
   }
 
   void _commitGesture() {
     if (_gestureBefore != null) {
-      _commit(_gestureBefore!);
+      _commitSnapshot(_gestureBefore!);
       _gestureBefore = null;
     }
   }
 
   void _commitEraseGesture() {
     if (_gestureBefore != null && _gestureChanged) {
-      _commit(_gestureBefore!);
+      _commitSnapshot(_gestureBefore!);
     }
     _gestureBefore = null;
     _gestureChanged = false;
   }
 
+  /// Invalidate only the tiles the last selection edit touched: the union of the
+  /// selection box BEFORE the edit and AFTER it, inflated to cover stroke width
+  /// (a resize can scale ink well past the point bounds). Falls back to a full
+  /// invalidate when neither box is known.
+  void _invalidateEditedTiles(Rect? before, Rect? after) {
+    Rect? region = before;
+    if (after != null) {
+      region = region == null ? after : region.expandToInclude(after);
+    }
+    if (region == null) {
+      _strokeTiles.rebuild(_data.strokes);
+      return;
+    }
+    double maxW = 24;
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < _data.strokes.length) {
+        final w = _data.strokes[i].strokeWidth;
+        if (w > maxW) maxW = w;
+      }
+    }
+    _strokeTiles.invalidateRegion(region.inflate(maxW + 48), _data.strokes);
+  }
+
   void _lassoMutate(VoidCallback op) {
     final before = _snapshot();
+    // Protect the snapshot's references from any in-place edit inside op (flip
+    // mutates points directly). Color/width/delete/duplicate don't mutate
+    // existing objects, so this is a cheap no-harm clone of the selection.
+    _cloneSelectedStrokesInPlace();
+    final regionBefore = _lassoCtrl.boundingBox;
     op();
-    _commit(before);
+    _invalidateEditedTiles(regionBefore, _lassoCtrl.boundingBox);
+    _commitSnapshot(before);
+    // Post-op selection: edited rows (color/width/flip) → UPDATE; new copies
+    // (duplicate/paste, dbId == null) → insert pass; deleted → diff pass.
+    _markSelectionDirty();
     _persist();
   }
 
   void _undo() {
     if (_undoStack.isEmpty) return;
-    _redoStack.add(_snapshot());
+    final entry = _undoStack.removeLast();
     setState(() {
-      _restore(_undoStack.removeLast());
+      if (entry is _WhiteboardSnapshotEntry) {
+        _redoStack.add(_WhiteboardSnapshotEntry(_snapshot()));
+        _restore(entry.snapshot);
+      } else if (entry is _WhiteboardStrokeAddEntry &&
+          _data.strokes.isNotEmpty) {
+        final removed = _data.strokes.removeLast();
+        _markCanvasDirty();
+        _redoStack.add(_WhiteboardStrokeAddEntry(removed.clone()));
+        _strokeTiles.invalidateRegion(
+          strokeBounds(removed).inflate(removed.strokeWidth + 4),
+          _data.strokes,
+        );
+      }
       _lassoCtrl.deselect();
       _active = null;
     });
@@ -2323,9 +3146,20 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   void _redo() {
     if (_redoStack.isEmpty) return;
-    _undoStack.add(_snapshot());
+    final entry = _redoStack.removeLast();
     setState(() {
-      _restore(_redoStack.removeLast());
+      if (entry is _WhiteboardSnapshotEntry) {
+        _undoStack.add(_WhiteboardSnapshotEntry(_snapshot()));
+        _restore(entry.snapshot);
+      } else if (entry is _WhiteboardStrokeAddEntry) {
+        // Same instance in _data.strokes and the tile index (identity-based
+        // lasso hide); the undo entry keeps its own independent clone.
+        final restored = entry.stroke.clone();
+        _data.strokes.add(restored);
+        _markCanvasDirty();
+        _undoStack.add(_WhiteboardStrokeAddEntry(entry.stroke.clone()));
+        _strokeTiles.append(restored);
+      }
       _lassoCtrl.deselect();
       _active = null;
     });
@@ -2362,7 +3196,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (ok == true) {
       final before = _snapshot();
       setState(() => _data.strokes = []);
-      _commit(before);
+      _strokeTiles.rebuild(_data.strokes);
+      _commitSnapshot(before);
+      _strokesNeedFullPersist = true;
       _persist();
     }
   }
@@ -2455,12 +3291,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final sy = (vh - pad) / box.height;
     final scale = sx < sy ? sx : sy;
     final s = scale.clamp(0.3, 4.0);
-    final c = box.center;
     setState(() {
       _viewCtrl.value =
           Matrix4.translationValues(vw / 2, vh / 2, 0)
             ..multiply(Matrix4.diagonal3Values(s, s, 1))
-            ..multiply(Matrix4.translationValues(-c.dx, -c.dy, 0));
+            ..multiply(
+              Matrix4.translationValues(-box.center.dx, -box.center.dy, 0),
+            );
     });
   }
 
@@ -2522,45 +3359,79 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     );
   }
 
+  Future<void> _captureLassoSelection() async {
+    final bb = _lassoCtrl.boundingBox;
+    if (bb == null || bb == Rect.zero) return;
+
+    final selectedIndices = Set<int>.from(_lassoCtrl.selectedIndices);
+    final selectedImageIndices = Set<int>.from(_lassoCtrl.selectedImageIndices);
+
+    if (selectedIndices.isEmpty && selectedImageIndices.isEmpty) return;
+
+    final strokes = _data.strokes;
+    final images = _data.images;
+    final imageCache = _imgCache;
+
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+
+      canvas.translate(-bb.left, -bb.top);
+
+      for (final i in selectedImageIndices) {
+        if (i < images.length) {
+          final im = images[i];
+          final img = imageCache?.get(im.filename);
+          drawCanvasImage(canvas, img, im);
+        }
+      }
+
+      for (final i in selectedIndices) {
+        if (i < strokes.length) {
+          drawStroke(canvas, strokes[i]);
+        }
+      }
+
+      final picture = recorder.endRecording();
+      final width = bb.width.ceil();
+      final height = bb.height.ceil();
+      final img = await picture.toImage(
+        width > 0 ? width : 1,
+        height > 0 ? height : 1,
+      );
+      picture.dispose();
+
+      if (mounted &&
+          _lassoCtrl.phase == LassoPhase.moving &&
+          _lassoCtrl.boundingBox == bb) {
+        _lassoCtrl.liftedInk = img;
+        _lassoCtrl.liftedRect = bb;
+        _lassoGestureTick.value++;
+      } else {
+        img.dispose();
+      }
+    } catch (_) {}
+  }
+
   Color get _accent => widget.note.color ?? widget.folder.color;
+
+  Rect _activeStrokeRect() {
+    final active = _active;
+    if (active == null || active.points.isEmpty) return Rect.zero;
+    final pad = (_strokeW * 6).clamp(24.0, 96.0);
+    return strokeBounds(
+      active,
+    ).inflate(pad).intersect(const Rect.fromLTWH(0, 0, _kCanvasW, _kCanvasH));
+  }
 
   Widget _buildWhiteboardBackgroundLayer(Size viewport) {
     return AnimatedBuilder(
-      animation: _viewCtrl,
+      animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
       builder: (_, _) {
         final visibleRect = _renderRectFor(viewport);
-        return RepaintBoundary(
-          child: CustomPaint(
-            painter: _CanvasPainter(
-              strokes: _data.strokes,
-              images: _data.images,
-              imageCache: _imgCache,
-              background: _data.background,
-              paper: bgPaper(_data.bgColorValue, yCream),
-              visibleRect: visibleRect,
-              paintVersion: _paintVersion,
-              hiddenImageIndices:
-                  (_lassoCtrl.phase == LassoPhase.moving ||
-                          _lassoCtrl.phase == LassoPhase.resizing ||
-                          _lassoCtrl.phase == LassoPhase.rotating)
-                      ? _lassoCtrl.selectedImageIndices
-                      : null,
-              drawStrokes: false,
-            ),
-            size: const Size(_kCanvasW, _kCanvasH),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildWhiteboardStrokeLayer(Size viewport) {
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _viewCtrl,
-        builder: (_, _) {
-          final visibleRect = _renderRectFor(viewport);
-          return RepaintBoundary(
+        return Positioned.fromRect(
+          rect: visibleRect,
+          child: RepaintBoundary(
             child: CustomPaint(
               painter: _CanvasPainter(
                 strokes: _data.strokes,
@@ -2569,39 +3440,129 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 background: _data.background,
                 paper: bgPaper(_data.bgColorValue, yCream),
                 visibleRect: visibleRect,
+                origin: visibleRect.topLeft,
                 paintVersion: _paintVersion,
-                hiddenIndices:
+                hiddenImageIndices:
                     (_lassoCtrl.phase == LassoPhase.moving ||
                             _lassoCtrl.phase == LassoPhase.resizing ||
                             _lassoCtrl.phase == LassoPhase.rotating)
-                        ? _lassoCtrl.selectedIndices
+                        ? _lassoCtrl.selectedImageIndices
                         : null,
-                drawBackground: false,
+                drawStrokes: false,
               ),
-              size: const Size(_kCanvasW, _kCanvasH),
+              size: visibleRect.size,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Beyond this many visible tiles (zoomed way out) the per-tile RepaintBoundary
+  // overhead isn't worth it — ink is tiny on screen anyway — so fall back to a
+  // single direct painter.
+  static const int _kMaxLiveTiles = 48;
+
+  Widget _buildWhiteboardStrokeLayer(Size viewport) {
+    return AnimatedBuilder(
+      // Rebuilds on pan/zoom, lasso phase, and any ink change (the index is a
+      // ChangeNotifier). Each rebuild just re-emits tile widgets (cheap); only
+      // tiles whose version changed actually re-rasterize.
+      animation: Listenable.merge([_viewCtrl, _lassoPhaseTick, _strokeTiles]),
+      builder: (_, _) {
+        final inGesture =
+            _lassoCtrl.phase == LassoPhase.moving ||
+            _lassoCtrl.phase == LassoPhase.resizing ||
+            _lassoCtrl.phase == LassoPhase.rotating;
+
+        // Per-tile RepaintBoundaries cache their own raster, so a tight visible
+        // rect + a one-tile lookahead ring is enough (no aggressive predictive
+        // buffer needed — tiles entering view rasterize once and stay cached).
+        final renderRect = _visibleRectFor(
+          viewport,
+        ).inflate(_strokeTiles.tileSize);
+        final tileKeys = _strokeTiles.tilesInRect(renderRect).toList();
+        _strokeFallbackActive = tileKeys.length > _kMaxLiveTiles;
+
+        if (_strokeFallbackActive) {
+          // Zoomed-out fallback: one painter, strokes drawn directly + culled.
+          return Positioned.fromRect(
+            rect: renderRect,
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _CanvasPainter(
+                    strokes: _data.strokes,
+                    images: _data.images,
+                    imageCache: _imgCache,
+                    background: _data.background,
+                    paper: bgPaper(_data.bgColorValue, yCream),
+                    visibleRect: renderRect,
+                    origin: renderRect.topLeft,
+                    paintVersion: _paintVersion + _strokeTiles.revision,
+                    hiddenIndices:
+                        inGesture ? _lassoCtrl.selectedIndices : null,
+                    drawBackground: false,
+                  ),
+                  size: renderRect.size,
+                ),
+              ),
             ),
           );
-        },
-      ),
+        }
+
+        // Hide the live selection in the base tiles; the lasso overlay draws it
+        // following the pointer. Identity set so == overrides can't mismatch.
+        Set<DrawingStroke>? hidden;
+        if (inGesture && _lassoCtrl.selectedIndices.isNotEmpty) {
+          hidden = Set<DrawingStroke>.identity();
+          for (final i in _lassoCtrl.selectedIndices) {
+            if (i < _data.strokes.length) hidden.add(_data.strokes[i]);
+          }
+        }
+
+        return Positioned.fill(
+          child: IgnorePointer(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: strokeTileWidgets(
+                index: _strokeTiles,
+                localRect: renderRect,
+                hiddenStrokes: hidden,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildWhiteboardLassoLayer(Size viewport) {
     if (_lassoCtrl.phase == LassoPhase.idle) return const SizedBox.shrink();
     return AnimatedBuilder(
-      animation: Listenable.merge([_viewCtrl, _lassoAnimCtrl]),
+      animation: Listenable.merge([
+        _viewCtrl,
+        _lassoAnimCtrl,
+        _lassoGestureTick,
+      ]),
       builder: (_, _) {
         final visibleRect = _visibleRectFor(viewport);
-        return CustomPaint(
-          painter: LassoPainter(
-            ctrl: _lassoCtrl,
-            animValue: _lassoAnimCtrl.value,
-            strokes: _data.strokes,
-            images: _data.images,
-            imageCache: _imgCache,
-            visibleRect: visibleRect,
+        // Own RepaintBoundary: the marching-ants + gesture ghost repaint every
+        // frame; without isolation that re-composites the whole canvas (all
+        // pages) each tick. The boundary is clipped to the viewport, not 10k².
+        return RepaintBoundary(
+          child: CustomPaint(
+            painter: LassoPainter(
+              ctrl: _lassoCtrl,
+              animValue: _lassoAnimCtrl.value,
+              strokes: _data.strokes,
+              images: _data.images,
+              imageCache: _imgCache,
+              visibleRect: visibleRect,
+              liftedInk: _lassoCtrl.liftedInk,
+            ),
+            size: const Size(_kCanvasW, _kCanvasH),
           ),
-          size: const Size(_kCanvasW, _kCanvasH),
         );
       },
     );
@@ -2644,6 +3605,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                       noteTitle: widget.note.title ?? '',
                       onExpand: () => setState(() => _headerCollapsed = false),
                       onReset: _resetView,
+                      onZoomToFit: _zoomToFit,
+                      onExport: _startExport,
                       onLink: () => _linkToLab(spaces),
                       onAi:
                           () => showAiChat(
@@ -2687,6 +3650,48 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 ),
                                 child: const Icon(
                                   YuLiIcons.scan,
+                                  color: yInk,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _zoomToFit,
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: yCream,
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: yLineMid,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  YuLiIcons.discAlbum,
+                                  color: yInk,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _startExport,
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: yCream,
+                                  border: Border.all(
+                                    color: yBorderStrong,
+                                    width: yLineMid,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  YuLiIcons.share,
                                   color: yInk,
                                   size: 16,
                                 ),
@@ -2840,8 +3845,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                           );
                                         }
                                       },
-                                      boundaryMargin: const EdgeInsets.all(
-                                        _kCanvasW * 0.5,
+                                      boundaryMargin: EdgeInsets.symmetric(
+                                        horizontal: c.maxWidth,
+                                        vertical: c.maxHeight,
                                       ),
                                       // Text mode: 1-finger drag is reserved for moving
                                       // a box (its GestureDetector), so disable pan;
@@ -2885,18 +3891,23 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                             _buildWhiteboardBackgroundLayer(
                                               viewport,
                                             ),
-                                            // Text blocks sit BELOW the ink so strokes
-                                            // drawn over them stay visible.
                                             ...textBlockOverlays,
                                             _buildWhiteboardStrokeLayer(
                                               viewport,
                                             ),
-                                            IgnorePointer(
-                                              child: RepaintBoundary(
-                                                child: AnimatedBuilder(
-                                                  animation: _activeTick,
-                                                  builder:
-                                                      (_, _) => CustomPaint(
+                                            AnimatedBuilder(
+                                              animation: _activeTick,
+                                              builder: (_, _) {
+                                                final activeRect =
+                                                    _activeStrokeRect();
+                                                if (activeRect == Rect.zero) {
+                                                  return const SizedBox.shrink();
+                                                }
+                                                return Positioned.fromRect(
+                                                  rect: activeRect,
+                                                  child: IgnorePointer(
+                                                    child: RepaintBoundary(
+                                                      child: CustomPaint(
                                                         painter:
                                                             _ActiveStrokePainter(
                                                               active: _active,
@@ -2905,16 +3916,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                                                       .value,
                                                               viewScale:
                                                                   _viewScale,
+                                                              origin:
+                                                                  activeRect
+                                                                      .topLeft,
                                                             ),
-                                                        size: const Size(
-                                                          _kCanvasW,
-                                                          _kCanvasH,
-                                                        ),
+                                                        size: activeRect.size,
                                                       ),
-                                                ),
-                                              ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                             ),
-                                            // Task blocks above the ink (interactive UI).
                                             ...taskBlockOverlays,
                                             _buildWhiteboardLassoLayer(
                                               viewport,
@@ -2956,9 +3968,27 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       ),
                                 ),
                               ),
-                            if (_lassoCtrl.phase == LassoPhase.selected &&
-                                _toolbarVisible)
-                              _buildLassoMiniToolbar(),
+                            if (_pins.isNotEmpty)
+                              Positioned.fill(
+                                child: PinnedSnapshotsLayer(
+                                  pins: _pins,
+                                  onMove: _movePin,
+                                  onResize: _resizePin,
+                                  onClose: _closePin,
+                                ),
+                              ),
+                            // Reactive to _lassoPhaseTick so a grab/release
+                            // hides/shows it without a full-tree setState.
+                            ValueListenableBuilder<int>(
+                              valueListenable: _lassoPhaseTick,
+                              builder: (_, _, _) {
+                                if (_lassoCtrl.phase == LassoPhase.selected &&
+                                    _toolbarVisible) {
+                                  return _buildLassoMiniToolbar();
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
                             if (_showPasteAt != null) _buildPasteButton(),
                             if (_tool == DrawTool.eraser &&
                                 _eraserCursor != null)
@@ -3069,6 +4099,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 open: _morePopupOpen,
                 onDismiss: () => setState(() => _morePopupOpen = false),
                 child: _buildMorePopup(),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-floating-toolbars'),
+                open: _floatingToolbarsPopupOpen,
+                onDismiss:
+                    () => setState(() => _floatingToolbarsPopupOpen = false),
+                child: _buildFloatingToolbarsPopup(),
               ),
               RevealPopup(
                 key: const ValueKey('rp-width'),
@@ -3416,7 +4453,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: YuLiIcons.lasso,
+                icon: YuLiIcons.squareDashedMousePointer,
                 active: _tool == DrawTool.lasso,
                 tooltip: 'Lazo',
                 onTap: () => _selectTool(DrawTool.lasso),
@@ -3634,6 +4671,50 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
+            icon: YuLiIcons.lineSquiggle,
+            active: _floatingToolbarsPopupOpen,
+            label: 'TOOLBARS FLOTANTES',
+            onTap: _toggleFloatingToolbarsPopup,
+          ),
+          _toolBtn(
+            icon: YuLiIcons.layoutGrid,
+            active: _bgPopupOpen,
+            label: 'FONDO',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _toggleBgPopup();
+            },
+          ),
+          _toolBtn(
+            icon: YuLiIcons.trash,
+            active: false,
+            label: 'BORRAR',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _confirmClear();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingToolbarsPopup() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _toolBtn(
             icon: YuLiIcons.palette,
             active: _palettes?.isOpen(FloatingPaletteKind.colors) ?? false,
             label: 'P · COLORES',
@@ -3657,39 +4738,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             label: 'P · DESHACER',
             onTap: () => _togglePalette(FloatingPaletteKind.undoRedo),
           ),
-          _toolBtn(
-            icon: YuLiIcons.layoutGrid,
-            active: _bgPopupOpen,
-            label: 'FONDO',
-            onTap: () {
-              setState(() => _morePopupOpen = false);
-              _toggleBgPopup();
-            },
-          ),
-          _toolBtn(
-            icon: YuLiIcons.maximize,
-            active: false,
-            label: 'ENCUADRAR',
-            onTap: () {
-              setState(() => _morePopupOpen = false);
-              _zoomToFit();
-            },
-          ),
-          _toolBtn(
-            icon: YuLiIcons.share,
-            active: false,
-            label: 'EXPORTAR',
-            onTap: _startExport,
-          ),
-          _toolBtn(
-            icon: YuLiIcons.trash,
-            active: false,
-            label: 'BORRAR',
-            onTap: () {
-              setState(() => _morePopupOpen = false);
-              _confirmClear();
-            },
-          ),
         ],
       ),
     );
@@ -3705,6 +4753,8 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
   final String noteTitle;
   final VoidCallback onExpand;
   final VoidCallback onReset;
+  final VoidCallback onZoomToFit;
+  final VoidCallback onExport;
   final VoidCallback onLink;
   final VoidCallback onAi;
 
@@ -3717,6 +4767,8 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
     required this.noteTitle,
     required this.onExpand,
     required this.onReset,
+    required this.onZoomToFit,
+    required this.onExport,
     required this.onLink,
     required this.onAi,
   });
@@ -3779,6 +4831,36 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(YuLiIcons.scan, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onZoomToFit,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+              ),
+              child: const Icon(YuLiIcons.discAlbum, color: yInk, size: 16),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onExport,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+              ),
+              child: const Icon(YuLiIcons.share, color: yInk, size: 16),
             ),
           ),
           const SizedBox(width: 6),
@@ -3849,6 +4931,7 @@ class _CanvasPainter extends CustomPainter {
   final PageBackground background;
   final Color paper;
   final Rect visibleRect;
+  final Offset origin;
   final int paintVersion;
   final Set<int>? hiddenIndices;
   final Set<int>? hiddenImageIndices;
@@ -3856,6 +4939,9 @@ class _CanvasPainter extends CustomPainter {
   /// Layer split so strokes can render ABOVE the text-block overlays: the bottom
   /// layer paints paper+pattern+images ([drawStrokes] false), and a second
   /// layer above the text overlays paints only strokes ([drawBackground] false).
+  /// Strokes are drawn directly + culled — used for the background layer
+  /// ([drawStrokes] false) and the zoomed-out fallback; the normal stroke layer
+  /// is the tiled [strokeTileWidgets].
   final bool drawBackground;
   final bool drawStrokes;
 
@@ -3866,6 +4952,7 @@ class _CanvasPainter extends CustomPainter {
     required this.background,
     required this.paper,
     required this.visibleRect,
+    required this.origin,
     required this.paintVersion,
     this.hiddenIndices,
     this.hiddenImageIndices,
@@ -3876,6 +4963,8 @@ class _CanvasPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final vr = visibleRect;
+    canvas.save();
+    canvas.translate(-origin.dx, -origin.dy);
     if (drawBackground) {
       // Paper + pattern — only the visible portion.
       canvas.drawRect(vr, Paint()..color = paper);
@@ -3891,18 +4980,23 @@ class _CanvasPainter extends CustomPainter {
       }
     }
     if (drawStrokes) {
-      // Strokes — skip those that don't intersect the visible rect.
+      canvas.save();
+      canvas.clipRect(vr);
+      final hidden = hiddenIndices;
       for (int i = 0; i < strokes.length; i++) {
-        if (hiddenIndices != null && hiddenIndices!.contains(i)) continue;
+        if (hidden != null && hidden.contains(i)) continue;
         if (strokeOverlapsRect(strokes[i], vr)) _draw(canvas, strokes[i]);
       }
+      canvas.restore();
     }
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(_CanvasPainter old) =>
       old.paintVersion != paintVersion ||
       old.visibleRect != visibleRect ||
+      old.origin != origin ||
       old.background != background ||
       old.paper != paper ||
       old.drawBackground != drawBackground ||
@@ -3919,22 +5013,28 @@ class _ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? active;
   final int tick;
   final double viewScale;
+  final Offset origin;
 
   _ActiveStrokePainter({
     required this.active,
     required this.tick,
     this.viewScale = 1.0,
+    required this.origin,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (active == null) return;
+    canvas.translate(-origin.dx, -origin.dy);
     drawActiveStroke(canvas, active!, viewScale: viewScale);
   }
 
   @override
   bool shouldRepaint(_ActiveStrokePainter old) =>
-      old.active != active || old.tick != tick || old.viewScale != viewScale;
+      old.active != active ||
+      old.tick != tick ||
+      old.viewScale != viewScale ||
+      old.origin != origin;
 }
 
 // ─── Linked-spaces bar (under header) ─────────────────────────────────────

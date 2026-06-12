@@ -309,6 +309,7 @@ class CanvasTextBlock implements CanvasGeo {
 }
 
 class DrawingStroke {
+  int? dbId;
   final int colorValue;
   final double strokeWidth;
   final List<List<double>> points;
@@ -331,6 +332,7 @@ class DrawingStroke {
   final bool isPencil;
 
   DrawingStroke({
+    this.dbId,
     required this.colorValue,
     required this.strokeWidth,
     List<List<double>>? points,
@@ -344,6 +346,7 @@ class DrawingStroke {
   /// Deep copy. Preserves flags and every point component (fountain-pen points
   /// carry a 3rd baked-width value).
   DrawingStroke clone() => DrawingStroke(
+    dbId: dbId,
     colorValue: colorValue,
     strokeWidth: strokeWidth,
     isFountainPen: isFountainPen,
@@ -359,6 +362,7 @@ class DrawingStroke {
     double? strokeWidth,
     List<List<double>>? points,
   }) => DrawingStroke(
+    dbId: dbId,
     colorValue: colorValue ?? this.colorValue,
     strokeWidth: strokeWidth ?? this.strokeWidth,
     isFountainPen: isFountainPen,
@@ -370,6 +374,7 @@ class DrawingStroke {
   );
 
   Map<String, dynamic> toJson() => {
+    if (dbId != null) 'dbid': dbId,
     'c': colorValue,
     'w': strokeWidth,
     'p': points,
@@ -381,6 +386,7 @@ class DrawingStroke {
   };
 
   factory DrawingStroke.fromJson(Map<String, dynamic> json) => DrawingStroke(
+    dbId: (json['dbid'] as num?)?.toInt(),
     colorValue: json['c'] as int,
     strokeWidth: (json['w'] as num).toDouble(),
     points:

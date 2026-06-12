@@ -2997,6 +2997,656 @@ class NoteBlocksCompanion extends UpdateCompanion<NoteBlockRow> {
   }
 }
 
+class $DrawingStrokesTable extends DrawingStrokes
+    with TableInfo<$DrawingStrokesTable, DrawingStrokeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DrawingStrokesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _blockIdMeta = const VerificationMeta(
+    'blockId',
+  );
+  @override
+  late final GeneratedColumn<int> blockId = GeneratedColumn<int>(
+    'block_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES note_blocks (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadMeta = const VerificationMeta(
+    'payload',
+  );
+  @override
+  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
+    'payload',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _minXMeta = const VerificationMeta('minX');
+  @override
+  late final GeneratedColumn<double> minX = GeneratedColumn<double>(
+    'min_x',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _minYMeta = const VerificationMeta('minY');
+  @override
+  late final GeneratedColumn<double> minY = GeneratedColumn<double>(
+    'min_y',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _maxXMeta = const VerificationMeta('maxX');
+  @override
+  late final GeneratedColumn<double> maxX = GeneratedColumn<double>(
+    'max_x',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _maxYMeta = const VerificationMeta('maxY');
+  @override
+  late final GeneratedColumn<double> maxY = GeneratedColumn<double>(
+    'max_y',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pointCountMeta = const VerificationMeta(
+    'pointCount',
+  );
+  @override
+  late final GeneratedColumn<int> pointCount = GeneratedColumn<int>(
+    'point_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    blockId,
+    position,
+    payload,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    pointCount,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'drawing_strokes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DrawingStrokeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('block_id')) {
+      context.handle(
+        _blockIdMeta,
+        blockId.isAcceptableOrUnknown(data['block_id']!, _blockIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_blockIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('payload')) {
+      context.handle(
+        _payloadMeta,
+        payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadMeta);
+    }
+    if (data.containsKey('min_x')) {
+      context.handle(
+        _minXMeta,
+        minX.isAcceptableOrUnknown(data['min_x']!, _minXMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_minXMeta);
+    }
+    if (data.containsKey('min_y')) {
+      context.handle(
+        _minYMeta,
+        minY.isAcceptableOrUnknown(data['min_y']!, _minYMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_minYMeta);
+    }
+    if (data.containsKey('max_x')) {
+      context.handle(
+        _maxXMeta,
+        maxX.isAcceptableOrUnknown(data['max_x']!, _maxXMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_maxXMeta);
+    }
+    if (data.containsKey('max_y')) {
+      context.handle(
+        _maxYMeta,
+        maxY.isAcceptableOrUnknown(data['max_y']!, _maxYMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_maxYMeta);
+    }
+    if (data.containsKey('point_count')) {
+      context.handle(
+        _pointCountMeta,
+        pointCount.isAcceptableOrUnknown(data['point_count']!, _pointCountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pointCountMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DrawingStrokeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DrawingStrokeRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      blockId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}block_id'],
+          )!,
+      position:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}position'],
+          )!,
+      payload:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}payload'],
+          )!,
+      minX:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}min_x'],
+          )!,
+      minY:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}min_y'],
+          )!,
+      maxX:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}max_x'],
+          )!,
+      maxY:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}max_y'],
+          )!,
+      pointCount:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}point_count'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      updatedAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}updated_at'],
+          )!,
+    );
+  }
+
+  @override
+  $DrawingStrokesTable createAlias(String alias) {
+    return $DrawingStrokesTable(attachedDatabase, alias);
+  }
+}
+
+class DrawingStrokeRow extends DataClass
+    implements Insertable<DrawingStrokeRow> {
+  final int id;
+  final int blockId;
+  final int position;
+  final String payload;
+  final double minX;
+  final double minY;
+  final double maxX;
+  final double maxY;
+  final int pointCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const DrawingStrokeRow({
+    required this.id,
+    required this.blockId,
+    required this.position,
+    required this.payload,
+    required this.minX,
+    required this.minY,
+    required this.maxX,
+    required this.maxY,
+    required this.pointCount,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['block_id'] = Variable<int>(blockId);
+    map['position'] = Variable<int>(position);
+    map['payload'] = Variable<String>(payload);
+    map['min_x'] = Variable<double>(minX);
+    map['min_y'] = Variable<double>(minY);
+    map['max_x'] = Variable<double>(maxX);
+    map['max_y'] = Variable<double>(maxY);
+    map['point_count'] = Variable<int>(pointCount);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  DrawingStrokesCompanion toCompanion(bool nullToAbsent) {
+    return DrawingStrokesCompanion(
+      id: Value(id),
+      blockId: Value(blockId),
+      position: Value(position),
+      payload: Value(payload),
+      minX: Value(minX),
+      minY: Value(minY),
+      maxX: Value(maxX),
+      maxY: Value(maxY),
+      pointCount: Value(pointCount),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory DrawingStrokeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DrawingStrokeRow(
+      id: serializer.fromJson<int>(json['id']),
+      blockId: serializer.fromJson<int>(json['blockId']),
+      position: serializer.fromJson<int>(json['position']),
+      payload: serializer.fromJson<String>(json['payload']),
+      minX: serializer.fromJson<double>(json['minX']),
+      minY: serializer.fromJson<double>(json['minY']),
+      maxX: serializer.fromJson<double>(json['maxX']),
+      maxY: serializer.fromJson<double>(json['maxY']),
+      pointCount: serializer.fromJson<int>(json['pointCount']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'blockId': serializer.toJson<int>(blockId),
+      'position': serializer.toJson<int>(position),
+      'payload': serializer.toJson<String>(payload),
+      'minX': serializer.toJson<double>(minX),
+      'minY': serializer.toJson<double>(minY),
+      'maxX': serializer.toJson<double>(maxX),
+      'maxY': serializer.toJson<double>(maxY),
+      'pointCount': serializer.toJson<int>(pointCount),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  DrawingStrokeRow copyWith({
+    int? id,
+    int? blockId,
+    int? position,
+    String? payload,
+    double? minX,
+    double? minY,
+    double? maxX,
+    double? maxY,
+    int? pointCount,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => DrawingStrokeRow(
+    id: id ?? this.id,
+    blockId: blockId ?? this.blockId,
+    position: position ?? this.position,
+    payload: payload ?? this.payload,
+    minX: minX ?? this.minX,
+    minY: minY ?? this.minY,
+    maxX: maxX ?? this.maxX,
+    maxY: maxY ?? this.maxY,
+    pointCount: pointCount ?? this.pointCount,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  DrawingStrokeRow copyWithCompanion(DrawingStrokesCompanion data) {
+    return DrawingStrokeRow(
+      id: data.id.present ? data.id.value : this.id,
+      blockId: data.blockId.present ? data.blockId.value : this.blockId,
+      position: data.position.present ? data.position.value : this.position,
+      payload: data.payload.present ? data.payload.value : this.payload,
+      minX: data.minX.present ? data.minX.value : this.minX,
+      minY: data.minY.present ? data.minY.value : this.minY,
+      maxX: data.maxX.present ? data.maxX.value : this.maxX,
+      maxY: data.maxY.present ? data.maxY.value : this.maxY,
+      pointCount:
+          data.pointCount.present ? data.pointCount.value : this.pointCount,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DrawingStrokeRow(')
+          ..write('id: $id, ')
+          ..write('blockId: $blockId, ')
+          ..write('position: $position, ')
+          ..write('payload: $payload, ')
+          ..write('minX: $minX, ')
+          ..write('minY: $minY, ')
+          ..write('maxX: $maxX, ')
+          ..write('maxY: $maxY, ')
+          ..write('pointCount: $pointCount, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    blockId,
+    position,
+    payload,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    pointCount,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DrawingStrokeRow &&
+          other.id == this.id &&
+          other.blockId == this.blockId &&
+          other.position == this.position &&
+          other.payload == this.payload &&
+          other.minX == this.minX &&
+          other.minY == this.minY &&
+          other.maxX == this.maxX &&
+          other.maxY == this.maxY &&
+          other.pointCount == this.pointCount &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
+  final Value<int> id;
+  final Value<int> blockId;
+  final Value<int> position;
+  final Value<String> payload;
+  final Value<double> minX;
+  final Value<double> minY;
+  final Value<double> maxX;
+  final Value<double> maxY;
+  final Value<int> pointCount;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const DrawingStrokesCompanion({
+    this.id = const Value.absent(),
+    this.blockId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.payload = const Value.absent(),
+    this.minX = const Value.absent(),
+    this.minY = const Value.absent(),
+    this.maxX = const Value.absent(),
+    this.maxY = const Value.absent(),
+    this.pointCount = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  DrawingStrokesCompanion.insert({
+    this.id = const Value.absent(),
+    required int blockId,
+    required int position,
+    required String payload,
+    required double minX,
+    required double minY,
+    required double maxX,
+    required double maxY,
+    required int pointCount,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : blockId = Value(blockId),
+       position = Value(position),
+       payload = Value(payload),
+       minX = Value(minX),
+       minY = Value(minY),
+       maxX = Value(maxX),
+       maxY = Value(maxY),
+       pointCount = Value(pointCount);
+  static Insertable<DrawingStrokeRow> custom({
+    Expression<int>? id,
+    Expression<int>? blockId,
+    Expression<int>? position,
+    Expression<String>? payload,
+    Expression<double>? minX,
+    Expression<double>? minY,
+    Expression<double>? maxX,
+    Expression<double>? maxY,
+    Expression<int>? pointCount,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (blockId != null) 'block_id': blockId,
+      if (position != null) 'position': position,
+      if (payload != null) 'payload': payload,
+      if (minX != null) 'min_x': minX,
+      if (minY != null) 'min_y': minY,
+      if (maxX != null) 'max_x': maxX,
+      if (maxY != null) 'max_y': maxY,
+      if (pointCount != null) 'point_count': pointCount,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  DrawingStrokesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? blockId,
+    Value<int>? position,
+    Value<String>? payload,
+    Value<double>? minX,
+    Value<double>? minY,
+    Value<double>? maxX,
+    Value<double>? maxY,
+    Value<int>? pointCount,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return DrawingStrokesCompanion(
+      id: id ?? this.id,
+      blockId: blockId ?? this.blockId,
+      position: position ?? this.position,
+      payload: payload ?? this.payload,
+      minX: minX ?? this.minX,
+      minY: minY ?? this.minY,
+      maxX: maxX ?? this.maxX,
+      maxY: maxY ?? this.maxY,
+      pointCount: pointCount ?? this.pointCount,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (blockId.present) {
+      map['block_id'] = Variable<int>(blockId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (payload.present) {
+      map['payload'] = Variable<String>(payload.value);
+    }
+    if (minX.present) {
+      map['min_x'] = Variable<double>(minX.value);
+    }
+    if (minY.present) {
+      map['min_y'] = Variable<double>(minY.value);
+    }
+    if (maxX.present) {
+      map['max_x'] = Variable<double>(maxX.value);
+    }
+    if (maxY.present) {
+      map['max_y'] = Variable<double>(maxY.value);
+    }
+    if (pointCount.present) {
+      map['point_count'] = Variable<int>(pointCount.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DrawingStrokesCompanion(')
+          ..write('id: $id, ')
+          ..write('blockId: $blockId, ')
+          ..write('position: $position, ')
+          ..write('payload: $payload, ')
+          ..write('minX: $minX, ')
+          ..write('minY: $minY, ')
+          ..write('maxX: $maxX, ')
+          ..write('maxY: $maxY, ')
+          ..write('pointCount: $pointCount, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LabSpacesTable extends LabSpaces
     with TableInfo<$LabSpacesTable, LabSpaceRow> {
   @override
@@ -8441,6 +9091,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NoteVersionsTable noteVersions = $NoteVersionsTable(this);
   late final $NoteTaskLinksTable noteTaskLinks = $NoteTaskLinksTable(this);
   late final $NoteBlocksTable noteBlocks = $NoteBlocksTable(this);
+  late final $DrawingStrokesTable drawingStrokes = $DrawingStrokesTable(this);
   late final $LabSpacesTable labSpaces = $LabSpacesTable(this);
   late final $KanbanColumnsTable kanbanColumns = $KanbanColumnsTable(this);
   late final $KanbanCardsTable kanbanCards = $KanbanCardsTable(this);
@@ -8467,6 +9118,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final TasksDao tasksDao = TasksDao(this as AppDatabase);
   late final NotesDao notesDao = NotesDao(this as AppDatabase);
   late final NoteBlocksDao noteBlocksDao = NoteBlocksDao(this as AppDatabase);
+  late final DrawingStrokesDao drawingStrokesDao = DrawingStrokesDao(
+    this as AppDatabase,
+  );
   late final FoldersDao foldersDao = FoldersDao(this as AppDatabase);
   late final LabSpacesDao labSpacesDao = LabSpacesDao(this as AppDatabase);
   late final KanbanDao kanbanDao = KanbanDao(this as AppDatabase);
@@ -8486,6 +9140,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     noteVersions,
     noteTaskLinks,
     noteBlocks,
+    drawingStrokes,
     labSpaces,
     kanbanColumns,
     kanbanCards,
@@ -8507,6 +9162,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('note_blocks', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'note_blocks',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('drawing_strokes', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -11648,6 +12310,27 @@ final class $$NoteBlocksTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$DrawingStrokesTable, List<DrawingStrokeRow>>
+  _drawingStrokesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.drawingStrokes,
+    aliasName: $_aliasNameGenerator(
+      db.noteBlocks.id,
+      db.drawingStrokes.blockId,
+    ),
+  );
+
+  $$DrawingStrokesTableProcessedTableManager get drawingStrokesRefs {
+    final manager = $$DrawingStrokesTableTableManager(
+      $_db,
+      $_db.drawingStrokes,
+    ).filter((f) => f.blockId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_drawingStrokesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$NoteBlocksTableFilterComposer
@@ -11710,6 +12393,31 @@ class $$NoteBlocksTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> drawingStrokesRefs(
+    Expression<bool> Function($$DrawingStrokesTableFilterComposer f) f,
+  ) {
+    final $$DrawingStrokesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.drawingStrokes,
+      getReferencedColumn: (t) => t.blockId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DrawingStrokesTableFilterComposer(
+            $db: $db,
+            $table: $db.drawingStrokes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -11825,6 +12533,31 @@ class $$NoteBlocksTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> drawingStrokesRefs<T extends Object>(
+    Expression<T> Function($$DrawingStrokesTableAnnotationComposer a) f,
+  ) {
+    final $$DrawingStrokesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.drawingStrokes,
+      getReferencedColumn: (t) => t.blockId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DrawingStrokesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.drawingStrokes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$NoteBlocksTableTableManager
@@ -11840,7 +12573,7 @@ class $$NoteBlocksTableTableManager
           $$NoteBlocksTableUpdateCompanionBuilder,
           (NoteBlockRow, $$NoteBlocksTableReferences),
           NoteBlockRow,
-          PrefetchHooks Function({bool noteId})
+          PrefetchHooks Function({bool noteId, bool drawingStrokesRefs})
         > {
   $$NoteBlocksTableTableManager(_$AppDatabase db, $NoteBlocksTable table)
     : super(
@@ -11899,10 +12632,15 @@ class $$NoteBlocksTableTableManager
                         ),
                       )
                       .toList(),
-          prefetchHooksCallback: ({noteId = false}) {
+          prefetchHooksCallback: ({
+            noteId = false,
+            drawingStrokesRefs = false,
+          }) {
             return PrefetchHooks(
               db: db,
-              explicitlyWatchedTables: [],
+              explicitlyWatchedTables: [
+                if (drawingStrokesRefs) db.drawingStrokes,
+              ],
               addJoins: <
                 T extends TableManagerState<
                   dynamic,
@@ -11934,7 +12672,30 @@ class $$NoteBlocksTableTableManager
                 return state;
               },
               getPrefetchedDataCallback: (items) async {
-                return [];
+                return [
+                  if (drawingStrokesRefs)
+                    await $_getPrefetchedData<
+                      NoteBlockRow,
+                      $NoteBlocksTable,
+                      DrawingStrokeRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NoteBlocksTableReferences
+                          ._drawingStrokesRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NoteBlocksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).drawingStrokesRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.blockId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
               },
             );
           },
@@ -11954,7 +12715,449 @@ typedef $$NoteBlocksTableProcessedTableManager =
       $$NoteBlocksTableUpdateCompanionBuilder,
       (NoteBlockRow, $$NoteBlocksTableReferences),
       NoteBlockRow,
-      PrefetchHooks Function({bool noteId})
+      PrefetchHooks Function({bool noteId, bool drawingStrokesRefs})
+    >;
+typedef $$DrawingStrokesTableCreateCompanionBuilder =
+    DrawingStrokesCompanion Function({
+      Value<int> id,
+      required int blockId,
+      required int position,
+      required String payload,
+      required double minX,
+      required double minY,
+      required double maxX,
+      required double maxY,
+      required int pointCount,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$DrawingStrokesTableUpdateCompanionBuilder =
+    DrawingStrokesCompanion Function({
+      Value<int> id,
+      Value<int> blockId,
+      Value<int> position,
+      Value<String> payload,
+      Value<double> minX,
+      Value<double> minY,
+      Value<double> maxX,
+      Value<double> maxY,
+      Value<int> pointCount,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$DrawingStrokesTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $DrawingStrokesTable, DrawingStrokeRow> {
+  $$DrawingStrokesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $NoteBlocksTable _blockIdTable(_$AppDatabase db) =>
+      db.noteBlocks.createAlias(
+        $_aliasNameGenerator(db.drawingStrokes.blockId, db.noteBlocks.id),
+      );
+
+  $$NoteBlocksTableProcessedTableManager get blockId {
+    final $_column = $_itemColumn<int>('block_id')!;
+
+    final manager = $$NoteBlocksTableTableManager(
+      $_db,
+      $_db.noteBlocks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_blockIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DrawingStrokesTableFilterComposer
+    extends Composer<_$AppDatabase, $DrawingStrokesTable> {
+  $$DrawingStrokesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get minX => $composableBuilder(
+    column: $table.minX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get minY => $composableBuilder(
+    column: $table.minY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get maxX => $composableBuilder(
+    column: $table.maxX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get maxY => $composableBuilder(
+    column: $table.maxY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get pointCount => $composableBuilder(
+    column: $table.pointCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NoteBlocksTableFilterComposer get blockId {
+    final $$NoteBlocksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.blockId,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableFilterComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DrawingStrokesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DrawingStrokesTable> {
+  $$DrawingStrokesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get minX => $composableBuilder(
+    column: $table.minX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get minY => $composableBuilder(
+    column: $table.minY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get maxX => $composableBuilder(
+    column: $table.maxX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get maxY => $composableBuilder(
+    column: $table.maxY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get pointCount => $composableBuilder(
+    column: $table.pointCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NoteBlocksTableOrderingComposer get blockId {
+    final $$NoteBlocksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.blockId,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableOrderingComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DrawingStrokesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DrawingStrokesTable> {
+  $$DrawingStrokesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get payload =>
+      $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<double> get minX =>
+      $composableBuilder(column: $table.minX, builder: (column) => column);
+
+  GeneratedColumn<double> get minY =>
+      $composableBuilder(column: $table.minY, builder: (column) => column);
+
+  GeneratedColumn<double> get maxX =>
+      $composableBuilder(column: $table.maxX, builder: (column) => column);
+
+  GeneratedColumn<double> get maxY =>
+      $composableBuilder(column: $table.maxY, builder: (column) => column);
+
+  GeneratedColumn<int> get pointCount => $composableBuilder(
+    column: $table.pointCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$NoteBlocksTableAnnotationComposer get blockId {
+    final $$NoteBlocksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.blockId,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DrawingStrokesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DrawingStrokesTable,
+          DrawingStrokeRow,
+          $$DrawingStrokesTableFilterComposer,
+          $$DrawingStrokesTableOrderingComposer,
+          $$DrawingStrokesTableAnnotationComposer,
+          $$DrawingStrokesTableCreateCompanionBuilder,
+          $$DrawingStrokesTableUpdateCompanionBuilder,
+          (DrawingStrokeRow, $$DrawingStrokesTableReferences),
+          DrawingStrokeRow,
+          PrefetchHooks Function({bool blockId})
+        > {
+  $$DrawingStrokesTableTableManager(
+    _$AppDatabase db,
+    $DrawingStrokesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$DrawingStrokesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () =>
+                  $$DrawingStrokesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$DrawingStrokesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> blockId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String> payload = const Value.absent(),
+                Value<double> minX = const Value.absent(),
+                Value<double> minY = const Value.absent(),
+                Value<double> maxX = const Value.absent(),
+                Value<double> maxY = const Value.absent(),
+                Value<int> pointCount = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => DrawingStrokesCompanion(
+                id: id,
+                blockId: blockId,
+                position: position,
+                payload: payload,
+                minX: minX,
+                minY: minY,
+                maxX: maxX,
+                maxY: maxY,
+                pointCount: pointCount,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int blockId,
+                required int position,
+                required String payload,
+                required double minX,
+                required double minY,
+                required double maxX,
+                required double maxY,
+                required int pointCount,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => DrawingStrokesCompanion.insert(
+                id: id,
+                blockId: blockId,
+                position: position,
+                payload: payload,
+                minX: minX,
+                minY: minY,
+                maxX: maxX,
+                maxY: maxY,
+                pointCount: pointCount,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$DrawingStrokesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({blockId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (blockId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.blockId,
+                            referencedTable: $$DrawingStrokesTableReferences
+                                ._blockIdTable(db),
+                            referencedColumn:
+                                $$DrawingStrokesTableReferences
+                                    ._blockIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DrawingStrokesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DrawingStrokesTable,
+      DrawingStrokeRow,
+      $$DrawingStrokesTableFilterComposer,
+      $$DrawingStrokesTableOrderingComposer,
+      $$DrawingStrokesTableAnnotationComposer,
+      $$DrawingStrokesTableCreateCompanionBuilder,
+      $$DrawingStrokesTableUpdateCompanionBuilder,
+      (DrawingStrokeRow, $$DrawingStrokesTableReferences),
+      DrawingStrokeRow,
+      PrefetchHooks Function({bool blockId})
     >;
 typedef $$LabSpacesTableCreateCompanionBuilder =
     LabSpacesCompanion Function({
@@ -17234,6 +18437,8 @@ class $AppDatabaseManager {
       $$NoteTaskLinksTableTableManager(_db, _db.noteTaskLinks);
   $$NoteBlocksTableTableManager get noteBlocks =>
       $$NoteBlocksTableTableManager(_db, _db.noteBlocks);
+  $$DrawingStrokesTableTableManager get drawingStrokes =>
+      $$DrawingStrokesTableTableManager(_db, _db.drawingStrokes);
   $$LabSpacesTableTableManager get labSpaces =>
       $$LabSpacesTableTableManager(_db, _db.labSpaces);
   $$KanbanColumnsTableTableManager get kanbanColumns =>

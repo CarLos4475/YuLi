@@ -8,14 +8,19 @@
 // them in a Column with gaps, while the exporter rasterizes each item on its own
 // for clean page breaks.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
+import '../../providers/database_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import 'drawing_engine.dart';
+import 'drawing_stroke_persistence.dart';
 import 'note_block_widgets.dart';
 import 'note_cell_model.dart';
 import 'stroke_bounds.dart';
@@ -30,6 +35,7 @@ List<Widget> buildNoteExportItems({
   required Color accent,
   String? title,
   Map<int, Task> tasksById = const {},
+  Map<int, List<DrawingStroke>> drawingStrokesByBlock = const {},
   bool includeTasks = true,
 }) {
   final items = <Widget>[];
@@ -38,7 +44,13 @@ List<Widget> buildNoteExportItems({
     items.add(_ExportTitle(title: cleanTitle));
   }
   for (final block in blocks) {
-    final item = _blockItem(block, accent, tasksById, includeTasks);
+    final item = _blockItem(
+      block,
+      accent,
+      tasksById,
+      drawingStrokesByBlock,
+      includeTasks,
+    );
     if (item != null) items.add(item);
   }
   return items;
@@ -48,6 +60,7 @@ Widget? _blockItem(
   NoteBlock block,
   Color accent,
   Map<int, Task> tasksById,
+  Map<int, List<DrawingStroke>> drawingStrokesByBlock,
   bool includeTasks,
 ) {
   return switch (block) {
@@ -55,11 +68,14 @@ Widget? _blockItem(
       t.markdown.trim().isEmpty
           ? null
           : NoteMarkdownPreview(data: t.markdown, accent: accent),
-    MathBlock m => m.latex.trim().isEmpty ? null : _MathItem(latex: m.latex, accent: accent),
+    MathBlock m =>
+      m.latex.trim().isEmpty ? null : _MathItem(latex: m.latex, accent: accent),
     BulletsBlock b => b.items.isEmpty ? null : _BulletsItem(items: b.items),
-    TareasBlock t =>
-      includeTasks ? _tasksItem(t, tasksById) : null,
-    DrawingBlock d => _DrawingItem(block: d),
+    TareasBlock t => includeTasks ? _tasksItem(t, tasksById) : null,
+    DrawingBlock d => _DrawingItem(
+      block: d,
+      strokes: drawingStrokesByBlock[d.id],
+    ),
   };
 }
 
@@ -82,11 +98,12 @@ Widget? _tasksItem(TareasBlock block, Map<int, Task> tasksById) {
 
 /// Stacks [buildNoteExportItems] into a Column for the in-editor preview pane.
 /// (The editor wraps this in its own scroll view.)
-class NoteExportView extends StatelessWidget {
+class NoteExportView extends ConsumerStatefulWidget {
   final List<NoteBlock> blocks;
   final Color accent;
   final String? title;
   final Map<int, Task> tasksById;
+  final Map<int, List<DrawingStroke>> drawingStrokesByBlock;
   final bool includeTasks;
 
   const NoteExportView({
@@ -95,17 +112,70 @@ class NoteExportView extends StatelessWidget {
     required this.accent,
     this.title,
     this.tasksById = const {},
+    this.drawingStrokesByBlock = const {},
     this.includeTasks = true,
   });
 
   @override
+  ConsumerState<NoteExportView> createState() => _NoteExportViewState();
+}
+
+class _NoteExportViewState extends ConsumerState<NoteExportView> {
+  Map<int, List<DrawingStroke>> _loadedDrawingStrokes = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadDrawingStrokes());
+  }
+
+  @override
+  void didUpdateWidget(covariant NoteExportView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldIds = oldWidget.blocks
+        .whereType<DrawingBlock>()
+        .map((b) => b.id)
+        .join(',');
+    final newIds = widget.blocks
+        .whereType<DrawingBlock>()
+        .map((b) => b.id)
+        .join(',');
+    if (oldIds != newIds || oldWidget.blocks != widget.blocks) {
+      unawaited(_loadDrawingStrokes());
+    }
+  }
+
+  Future<void> _loadDrawingStrokes() async {
+    final ids =
+        widget.blocks.whereType<DrawingBlock>().map((b) => b.id).toList();
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _loadedDrawingStrokes = const {});
+      return;
+    }
+    final repo = ref.read(drawingStrokeRepositoryProvider);
+    final loaded = <int, List<DrawingStroke>>{};
+    for (final id in ids) {
+      final rows = await repo.getByBlock(id);
+      if (rows.isNotEmpty) {
+        loaded[id] = rows.map(strokeFromRecord).toList();
+      }
+    }
+    if (mounted) setState(() => _loadedDrawingStrokes = loaded);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final drawingStrokesByBlock = {
+      ..._loadedDrawingStrokes,
+      ...widget.drawingStrokesByBlock,
+    };
     final items = buildNoteExportItems(
-      blocks: blocks,
-      accent: accent,
-      title: title,
-      tasksById: tasksById,
-      includeTasks: includeTasks,
+      blocks: widget.blocks,
+      accent: widget.accent,
+      title: widget.title,
+      tasksById: widget.tasksById,
+      drawingStrokesByBlock: drawingStrokesByBlock,
+      includeTasks: widget.includeTasks,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,7 +268,10 @@ class _BulletsItem extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: Text(it, style: yBody(size: 14, color: yInk2, height: 1.5)),
+                  child: Text(
+                    it,
+                    style: yBody(size: 14, color: yInk2, height: 1.5),
+                  ),
                 ),
               ],
             ),
@@ -210,14 +283,15 @@ class _BulletsItem extends StatelessWidget {
 
 class _DrawingItem extends StatelessWidget {
   final DrawingBlock block;
-  const _DrawingItem({required this.block});
+  final List<DrawingStroke>? strokes;
+  const _DrawingItem({required this.block, this.strokes});
 
   @override
   Widget build(BuildContext context) {
     final data = DrawingData.fromJson(block.payloadJson());
+    if (strokes != null) data.strokes = strokes!;
     final region =
-        _strokesRegion(data.strokes) ??
-        Rect.fromLTWH(0, 0, 400, block.height);
+        _strokesRegion(data.strokes) ?? Rect.fromLTWH(0, 0, 400, block.height);
     // Scale the drawing to fill the available width (the page is narrower than
     // the landscape editor), preserving aspect ratio so nothing is clipped.
     return SizedBox(
@@ -285,7 +359,12 @@ class _TasksItem extends StatelessWidget {
         children: [
           Text(
             'TAREAS',
-            style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted),
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yMuted,
+            ),
           ),
           const SizedBox(height: 8),
           for (final task in tasks)
@@ -309,9 +388,11 @@ class _TasksItem extends StatelessWidget {
                       task.content,
                       style:
                           task.status == TaskStatus.done
-                              ? yBody(size: 14, color: yMuted, height: 1.4).copyWith(
-                                decoration: TextDecoration.lineThrough,
-                              )
+                              ? yBody(
+                                size: 14,
+                                color: yMuted,
+                                height: 1.4,
+                              ).copyWith(decoration: TextDecoration.lineThrough)
                               : yBody(size: 14, color: yInk2, height: 1.4),
                     ),
                   ),

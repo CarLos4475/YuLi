@@ -8,6 +8,7 @@ import 'tables/note_images_table.dart';
 import 'tables/note_versions_table.dart';
 import 'tables/note_task_links_table.dart';
 import 'tables/note_blocks_table.dart';
+import 'tables/drawing_strokes_table.dart';
 import 'tables/lab_spaces_table.dart';
 import 'tables/kanban_columns_table.dart';
 import 'tables/kanban_cards_table.dart';
@@ -23,6 +24,7 @@ import 'tables/schedule_week_notes_table.dart';
 import 'daos/tasks_dao.dart';
 import 'daos/notes_dao.dart';
 import 'daos/note_blocks_dao.dart';
+import 'daos/drawing_strokes_dao.dart';
 import 'daos/folders_dao.dart';
 import 'daos/lab_spaces_dao.dart';
 import 'daos/kanban_dao.dart';
@@ -40,6 +42,7 @@ part 'database.g.dart';
     NoteVersions,
     NoteTaskLinks,
     NoteBlocks,
+    DrawingStrokes,
     LabSpaces,
     KanbanColumns,
     KanbanCards,
@@ -57,6 +60,7 @@ part 'database.g.dart';
     TasksDao,
     NotesDao,
     NoteBlocksDao,
+    DrawingStrokesDao,
     FoldersDao,
     LabSpacesDao,
     KanbanDao,
@@ -69,7 +73,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -199,6 +203,14 @@ class AppDatabase extends _$AppDatabase {
         try {
           await m.addColumn(canvasContextSources, canvasContextSources.enabled);
           await m.addColumn(spaceContextSources, spaceContextSources.enabled);
+        } catch (_) {}
+      }
+      if (from <= 21) {
+        try {
+          await m.createTable(drawingStrokes);
+          await customStatement(
+            "UPDATE note_blocks SET payload = '{\"s\":[]}' WHERE type = 'drawing'",
+          );
         } catch (_) {}
       }
     },
@@ -430,6 +442,13 @@ class AppDatabase extends _$AppDatabase {
   // the future "enable FK + onDelete" alternative.
 
   Future<void> _deleteNoteChildren(int noteId) async {
+    await customUpdate(
+      "DELETE FROM drawing_strokes WHERE block_id IN "
+      "(SELECT id FROM note_blocks WHERE note_id = ?)",
+      variables: [Variable.withInt(noteId)],
+      updates: {drawingStrokes},
+      updateKind: UpdateKind.delete,
+    );
     await (delete(noteBlocks)..where((b) => b.noteId.equals(noteId))).go();
     await (delete(noteVersions)..where((v) => v.noteId.equals(noteId))).go();
     await (delete(noteImages)..where((i) => i.noteId.equals(noteId))).go();

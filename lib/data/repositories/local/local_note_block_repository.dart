@@ -12,9 +12,9 @@ class LocalNoteBlockRepository implements NoteBlockRepository {
   LocalNoteBlockRepository(this._db);
 
   @override
-  Stream<List<NoteBlock>> watchByNote(int noteId) =>
-      _db.noteBlocksDao.watchByNote(noteId).map(
-          (rows) => rows.map(_rowToBlock).toList());
+  Stream<List<NoteBlock>> watchByNote(int noteId) => _db.noteBlocksDao
+      .watchByNote(noteId)
+      .map((rows) => rows.map(_rowToBlock).toList());
 
   @override
   Future<List<NoteBlock>> getByNote(int noteId) async {
@@ -23,8 +23,11 @@ class LocalNoteBlockRepository implements NoteBlockRepository {
   }
 
   @override
-  Future<NoteBlock> insertAtEnd(int noteId, NoteBlockType type,
-      {Map<String, dynamic> payload = const {}}) async {
+  Future<NoteBlock> insertAtEnd(
+    int noteId,
+    NoteBlockType type, {
+    Map<String, dynamic> payload = const {},
+  }) async {
     final maxPos = await _db.noteBlocksDao.getMaxPosition(noteId);
     final row = await _db.noteBlocksDao.insertBlock(
       NoteBlocksCompanion.insert(
@@ -38,9 +41,12 @@ class LocalNoteBlockRepository implements NoteBlockRepository {
   }
 
   @override
-  Future<NoteBlock> insertAfter(int noteId, int afterPosition,
-      NoteBlockType type,
-      {Map<String, dynamic> payload = const {}}) async {
+  Future<NoteBlock> insertAfter(
+    int noteId,
+    int afterPosition,
+    NoteBlockType type, {
+    Map<String, dynamic> payload = const {},
+  }) async {
     // Shift all blocks with position > afterPosition by +1.
     await _db.customUpdate(
       "UPDATE note_blocks SET position = position + 1 "
@@ -71,17 +77,20 @@ class LocalNoteBlockRepository implements NoteBlockRepository {
       );
 
   @override
-  Future<void> delete(int blockId) => _db.noteBlocksDao.deleteBlock(blockId);
+  Future<void> delete(int blockId) async {
+    await _db.drawingStrokesDao.deleteByBlock(blockId);
+    await _db.noteBlocksDao.deleteBlock(blockId);
+  }
 
   @override
   Future<void> reorder(int noteId, List<int> orderedIds) =>
       _db.noteBlocksDao.reorder(noteId, orderedIds);
 
   NoteBlock _rowToBlock(NoteBlockRow row) => NoteBlock.fromPayload(
-        id: row.id,
-        noteId: row.noteId,
-        position: row.position,
-        type: NoteBlockType.fromString(row.type),
-        payload: row.payload,
-      );
+    id: row.id,
+    noteId: row.noteId,
+    position: row.position,
+    type: NoteBlockType.fromString(row.type),
+    payload: row.payload,
+  );
 }

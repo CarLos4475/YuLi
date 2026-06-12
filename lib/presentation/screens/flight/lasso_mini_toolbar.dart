@@ -11,6 +11,7 @@ class LassoMiniToolbar extends StatefulWidget {
   final VoidCallback onFlipV;
   final VoidCallback onCopy;
   final VoidCallback onCut;
+  final VoidCallback? onPin; // pin a frozen cut-out of the selection over the canvas
   final VoidCallback? onCrop; // only when a single image is selected
   final VoidCallback? onRecognizeText; // only when selection has handwriting
   final VoidCallback? onSendToYuli; // only when selection can become AI context
@@ -28,6 +29,7 @@ class LassoMiniToolbar extends StatefulWidget {
     required this.onFlipV,
     required this.onCopy,
     required this.onCut,
+    this.onPin,
     this.onCrop,
     this.onRecognizeText,
     this.onSendToYuli,
@@ -181,6 +183,14 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
                 onTap: widget.onDuplicate,
               ),
               _sep(),
+              if (widget.onPin != null) ...[
+                _Btn(
+                  icon: YuLiIcons.pin,
+                  label: 'FIJAR',
+                  onTap: widget.onPin!,
+                ),
+                _sep(),
+              ],
               _Btn(
                 icon: YuLiIcons.palette,
                 label: 'COLOR',

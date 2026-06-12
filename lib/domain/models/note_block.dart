@@ -100,6 +100,7 @@ sealed class NoteBlock {
           textBlocksJson: jsonEncode(json['tx'] ?? const []),
           background: json['bg'] as String?,
           bgColor: (json['bgc'] as num?)?.toInt(),
+          starred: json['starred'] == true,
         );
     }
   }
@@ -193,6 +194,7 @@ class DrawingBlock extends NoteBlock {
   final String textBlocksJson;
   final String? background;
   final int? bgColor;
+  final bool starred;
   const DrawingBlock({
     required super.id,
     required super.noteId,
@@ -204,6 +206,7 @@ class DrawingBlock extends NoteBlock {
     this.textBlocksJson = '[]',
     this.background,
     this.bgColor,
+    this.starred = false,
   }) : super(type: NoteBlockType.drawing);
 
   DrawingBlock copyWith({
@@ -214,6 +217,7 @@ class DrawingBlock extends NoteBlock {
     String? textBlocksJson,
     String? background,
     int? bgColor,
+    bool? starred,
   }) => DrawingBlock(
     id: id,
     noteId: noteId,
@@ -225,6 +229,7 @@ class DrawingBlock extends NoteBlock {
     textBlocksJson: textBlocksJson ?? this.textBlocksJson,
     background: background ?? this.background,
     bgColor: bgColor ?? this.bgColor,
+    starred: starred ?? this.starred,
   );
 
   @override
@@ -236,5 +241,6 @@ class DrawingBlock extends NoteBlock {
     'tx': jsonDecode(textBlocksJson),
     if (background != null) 'bg': background,
     if (bgColor != null) 'bgc': bgColor,
+    if (starred) 'starred': true,
   };
 }

@@ -775,7 +775,7 @@ class _DrawingCellState extends State<DrawingCell>
             ),
             const SizedBox(width: 4),
             _toolBtn(
-              icon: YuLiIcons.lasso,
+              icon: YuLiIcons.squareDashedMousePointer,
               active: _tool == DrawTool.lasso,
               label: 'LAZO',
               onTap: () => _selectTool(DrawTool.lasso),

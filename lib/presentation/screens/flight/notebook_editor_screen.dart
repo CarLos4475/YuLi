@@ -13,6 +13,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../data/services/crash_logger.dart';
+import '../../../domain/models/drawing_stroke_record.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
@@ -39,6 +41,7 @@ import 'color_loupe.dart';
 import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
+import 'drawing_stroke_persistence.dart';
 import 'eraser_mode_popup.dart';
 import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
@@ -51,13 +54,45 @@ import 'ocr_flow.dart';
 import '../lab/lab_space_detail_screen.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
+import 'pinned_snapshots.dart';
 import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
 import 'shape_picker_popup.dart';
 import 'stroke_bounds.dart';
+import 'stroke_tiles.dart';
 import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
+
+typedef _NotebookSnapshot =
+    Map<
+      int,
+      (
+        List<DrawingStroke>,
+        List<CanvasImage>,
+        List<CanvasTaskBlock>,
+        List<CanvasTextBlock>,
+      )
+    >;
+
+abstract class _NotebookHistoryEntry {
+  const _NotebookHistoryEntry();
+}
+
+class _NotebookSnapshotEntry extends _NotebookHistoryEntry {
+  final _NotebookSnapshot snapshot;
+
+  const _NotebookSnapshotEntry(this.snapshot);
+}
+
+class _NotebookStrokeAddEntry extends _NotebookHistoryEntry {
+  final int blockId;
+  final DrawingStroke stroke;
+
+  const _NotebookStrokeAddEntry(this.blockId, this.stroke);
+}
+
+enum _LassoSyncMode { full, lengthStable, deleteSelected, appendSelected }
 
 class NotebookEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -78,6 +113,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     with TickerProviderStateMixin {
   final Map<int, DrawingData> _pageData = {};
   final List<int> _pageBlockIds = [];
+  // Pages whose JSON hasn't been decoded yet. Decoding every page up front
+  // blocks the first frame (the open jank); these stream in after it. A page
+  // here is absent from _pageData → treated as empty (blank chrome) until ready.
+  final Map<int, DrawingBlock> _pendingDecode = {};
 
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
@@ -88,10 +127,30 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _palmRejection = true;
   DrawingStroke? _active;
   int? _activePageIndex;
+  Stopwatch? _inkPerfSw;
+  int _inkMoveSamples = 0;
+  int _inkSlowMoves = 0;
+  int _inkWorstMoveUs = 0;
   // Ticked on every live point added to [_active]. Repaints only the active
   // stroke layer (its own RepaintBoundary) without a full-canvas setState, so
   // the wet stroke keeps up with the stylus instead of trailing it.
   final ValueNotifier<int> _activeTick = ValueNotifier(0);
+  // Per-page spatial tile index of strokes. Each page renders as a grid of
+  // RepaintBoundary tiles so a stroke edit re-rasterizes only the touched tile,
+  // not the whole page (the dense-page writing/lasso jank).
+  final Map<int, StrokeTileIndex> _pageTiles = {};
+  final Map<int, List<DrawingStroke>> _pageWorldStrokeCache = {};
+  // Bumped on any page-ink change so the (single) tile layer rebuilds and
+  // re-emits tile widgets with fresh versions; only changed tiles repaint.
+  final ValueNotifier<int> _inkTick = ValueNotifier(0);
+  // Repaints only the lasso overlay during a continuous gesture (move/resize/
+  // rotate/trace) so it follows the pointer immediately without a tree setState.
+  final ValueNotifier<int> _lassoGestureTick = ValueNotifier(0);
+  // Bumped on a grab/release (selected ↔ gesture) so the ink layers + toolbar
+  // refresh their phase-dependent bits WITHOUT a full-tree setState — the latter
+  // rebuilds every page/overlay/provider and is the grab/drop jank (and crash
+  // risk on big notebooks).
+  final ValueNotifier<int> _lassoPhaseTick = ValueNotifier(0);
   StabilizerLevel _stabilizer = StabilizerLevel.off;
   LiveStabilizer? _stab;
   bool _fillShapes = false;
@@ -102,57 +161,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _imagePanelOpen = false;
   bool _shapePopupOpen = false;
   bool _morePopupOpen = false;
+  bool _floatingToolbarsPopupOpen = false;
   // Post-snap live adjust state.
   ShapeKind? _snapKind;
   List<List<double>>? _snapBasePoints;
   Offset? _snapCenter;
   Offset? _snapAnchor;
   double _snapRefDist = 1;
-  final List<
-    Map<
-      int,
-      (
-        List<DrawingStroke>,
-        List<CanvasImage>,
-        List<CanvasTaskBlock>,
-        List<CanvasTextBlock>,
-      )
-    >
-  >
-  _undoStack = [];
-  final List<
-    Map<
-      int,
-      (
-        List<DrawingStroke>,
-        List<CanvasImage>,
-        List<CanvasTaskBlock>,
-        List<CanvasTextBlock>,
-      )
-    >
-  >
-  _redoStack = [];
-  Map<
-    int,
-    (
-      List<DrawingStroke>,
-      List<CanvasImage>,
-      List<CanvasTaskBlock>,
-      List<CanvasTextBlock>,
-    )
-  >?
-  _gestureBefore;
+  final List<_NotebookHistoryEntry> _undoStack = [];
+  final List<_NotebookHistoryEntry> _redoStack = [];
+  _NotebookSnapshot? _gestureBefore;
+  // World-space selection box captured when a move/resize/rotate grab starts, so
+  // the drop only re-buckets + persists the pages the edit actually spans
+  // (vs. rewriting and DB-writing every page in the notebook).
+  Rect? _gestureBoxBefore;
   bool _gestureChanged = false;
   bool _isDrawing = false;
   bool _stylusActive = false;
   bool _headerCollapsed = true;
   final Set<int> _activePointers = {};
   Timer? _holdTimer;
+  Timer? _deferredDecodeTimer;
   Offset? _holdAnchor;
   static const _holdTolerance2 = 400.0;
   late final List<Color> _palette;
   final LassoController _lassoCtrl = LassoController();
   late final AnimationController _lassoAnimCtrl;
+  LassoPhase _lastLassoPhase = LassoPhase.idle;
   late final AnimationController _pullAnimCtrl;
   bool _pendingPageAdd = false;
   bool _scrollApplied = false;
@@ -169,6 +204,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _multiFingerMoved = false;
   DateTime? _multiFingerDownTime;
   final Map<int, Offset> _pointerDownPos = {};
+  bool _decodeInteractionActive = false;
 
   @override
   void setState(VoidCallback fn) {
@@ -177,6 +213,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Timer? _pasteTimer;
+  Timer? _persistTimer;
+  final Set<int> _dirtyPersistPages = {};
+  final Set<int> _fullStrokePersistBlocks = {};
+  final Map<int, Set<int>> _persistedStrokeIdsByBlock = {};
+  final Map<int, Set<int>> _dirtyStrokeIdsByBlock = {};
+  final Map<int, int> _nextStrokePosByBlock = {};
+  bool _persisting = false;
   Offset? _pastePos;
   Offset? _showPasteAt;
 
@@ -209,6 +252,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // Eyedropper loupe: per-pixel sampling of a raster snapshot (anything on the
   // canvas), not stroke hit-testing. See whiteboard editor for details.
   final GlobalKey _canvasBoundaryKey = GlobalKey();
+
+  // Pinned snapshots (PiN): process-level store keyed by note so they survive
+  // leaving and re-entering. See pinned_snapshots.dart.
+  late final List<PinnedSnapshot> _pins = PinnedSnapshotStore.instance.forNote(
+    widget.note.id,
+  );
+
   ui.Image? _eyedropImg;
   ByteData? _eyedropBytes;
   double _eyedropDpr = 1;
@@ -242,10 +292,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     ).animate(
       CurvedAnimation(parent: _drawerAnimCtrl, curve: Curves.easeOutCubic),
     );
-    _lassoCtrl.onChanged = () {
-      _syncLassoTicker();
-      setState(() {});
-    };
+    _lassoCtrl.onChanged = _onLassoChanged;
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
       setState(() => _recentWidths = widths);
@@ -287,7 +334,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _imgCache = CanvasImageCache(
           dirPath: path,
           onLoaded: () {
-            if (mounted) setState(() {});
+            // Bump paintVersion: the background painter (which draws images)
+            // keys off it, so a bare setState wouldn't show a decoded image.
+            if (mounted) setState(() => _paintVersion++);
           },
         );
       });
@@ -296,6 +345,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       await _loadPages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _applyInitialScroll();
+        _scheduleDeferredDecode(const Duration(milliseconds: 220));
       });
     });
   }
@@ -305,6 +355,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _eyedropImg?.dispose();
     _reconcileImageFiles();
     _holdTimer?.cancel();
+    _deferredDecodeTimer?.cancel();
+    _persistTimer?.cancel();
+    if (_dirtyPersistPages.isNotEmpty) unawaited(_flushPendingPersists());
+    for (final index in _pageTiles.values) {
+      index.dispose();
+    }
+    _pageTiles.clear();
+    _pageWorldStrokeCache.clear();
+    _inkTick.dispose();
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
     _pullAnimCtrl.dispose();
@@ -312,6 +371,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _imgCache?.dispose();
     _viewCtrl.dispose();
     _activeTick.dispose();
+    _lassoGestureTick.dispose();
+    _lassoPhaseTick.dispose();
     super.dispose();
   }
 
@@ -320,6 +381,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _reconcileImageFiles() {
     final dirPath = _imageDirPath;
     if (dirPath == null) return;
+    // Pages still pending decode aren't in _pageData; their images would look
+    // unreferenced and get wrongly deleted. Skip cleanup until everything's
+    // loaded — the startup GC (cleanupOrphanedImages) catches real orphans.
+    if (_pendingDecode.isNotEmpty) return;
     final referenced = <String>{};
     for (final data in _pageData.values) {
       for (final im in data.images) {
@@ -344,6 +409,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // ─── Page management ───────────────────────────────────────────────────
 
   Future<void> _loadPages() async {
+    final sw = Stopwatch()..start();
     final repo = ref.read(noteBlockRepositoryProvider);
     final blocks = await repo.getByNote(widget.note.id);
     final drawingBlocks =
@@ -352,25 +418,115 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
     if (drawingBlocks.isEmpty) {
       await _ensurePageAt(0);
-    } else {
-      for (final b in drawingBlocks) {
-        _pageBlockIds.add(b.id);
-        _pageData[b.id] = _decodeData(b);
-        try {
-          if (b.payloadJson()['starred'] == true) {
-            _starredBlockIds.add(b.id);
-          }
-        } catch (_) {}
-      }
-      // Inherit new-page background from the last page.
-      final last = _pageData[_pageBlockIds.last];
-      if (last != null) {
-        _lastBg = last.background;
-        _lastBgColor = last.bgColorValue;
+      return;
+    }
+
+    // Register all pages (cheap — drives layout/scroll/height) but DEFER the
+    // heavy stroke decode of off-screen pages off the open path. The initial
+    // scroll lands on the bottom, so decode the last page (+ its neighbor) now;
+    // the rest stream in after the first frame (see _decodeMorePages).
+    for (final b in drawingBlocks) {
+      _pageBlockIds.add(b.id);
+      _pendingDecode[b.id] = b;
+      if (b.starred) _starredBlockIds.add(b.id);
+    }
+
+    // Decode the pages the first frames touch: the last page (where the scroll
+    // lands) and the first (shown for the frame before the scroll applies). The
+    // rest stream in. Still O(1) work on the open path, not O(pages).
+    for (final id in {drawingBlocks.first.id, drawingBlocks.last.id}) {
+      final b = _pendingDecode.remove(id);
+      if (b != null) {
+        _pageData[id] = await _decodeData(b);
+        _pageTileIndex(id).rebuild(_pageData[id]!.strokes);
+        _rebuildWorldStrokeCache(id);
       }
     }
 
+    // Inherit new-page background from the last page.
+    final last = _pageData[_pageBlockIds.last];
+    if (last != null) {
+      _lastBg = last.background;
+      _lastBgColor = last.bgColorValue;
+    }
+
     setState(() {});
+
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF abrir-cuaderno: ${drawingBlocks.length} paginas, '
+      '${_pageData.length} decoded, ${_pendingDecode.length} pending, '
+      '${sw.elapsedMilliseconds}ms',
+    );
+
+    if (_pendingDecode.isNotEmpty) _scheduleDeferredDecode();
+  }
+
+  /// Decode a few deferred pages per frame so even a 50-page note opens without
+  /// a single blocking decode. Bottom-up: the user lands at the last page and
+  /// scrolls up, so decode toward where they're heading first.
+  Future<void> _decodeMorePages() async {
+    if (!mounted || _pendingDecode.isEmpty) return;
+    if (_decodeInteractionActive || _activePointers.isNotEmpty || _isDrawing) {
+      _scheduleDeferredDecode();
+      return;
+    }
+    final sw = Stopwatch()..start();
+    const perBatch = 1;
+    var n = 0;
+    for (int i = _pageBlockIds.length - 1; i >= 0 && n < perBatch; i--) {
+      final b = _pendingDecode.remove(_pageBlockIds[i]);
+      if (b != null) {
+        _pageData[_pageBlockIds[i]] = await _decodeData(b);
+        final rebuildSw = Stopwatch()..start();
+        _pageTileIndex(
+          _pageBlockIds[i],
+        ).rebuild(_pageData[_pageBlockIds[i]]!.strokes);
+        _rebuildWorldStrokeCache(_pageBlockIds[i]);
+        rebuildSw.stop();
+        final data = _pageData[_pageBlockIds[i]]!;
+        final pts = _pointCount(data.strokes);
+        CrashLogger.instance.note(
+          'PERF tile-cuaderno: page $i, ${data.strokes.length} trazos, '
+          '$pts puntos, ${rebuildSw.elapsedMilliseconds}ms',
+        );
+        n++;
+      }
+    }
+    if (n > 0) {
+      // Bump so the painter (which compares paintVersion, not the mutated
+      // pageData map) repaints any newly-decoded page that's already in view.
+      _paintVersion++;
+      setState(() {});
+    }
+    if (_pendingDecode.isNotEmpty) {
+      _scheduleDeferredDecode();
+    }
+    sw.stop();
+    if (n > 0) {
+      CrashLogger.instance.note(
+        'PERF decode-batch-cuaderno: $n paginas, '
+        '${_pendingDecode.length} pending, ${sw.elapsedMilliseconds}ms',
+      );
+    }
+  }
+
+  void _pauseDeferredDecode() {
+    _decodeInteractionActive = true;
+    _deferredDecodeTimer?.cancel();
+    _deferredDecodeTimer = null;
+  }
+
+  void _scheduleDeferredDecode([
+    Duration delay = const Duration(milliseconds: 140),
+  ]) {
+    if (!mounted || _pendingDecode.isEmpty) return;
+    _deferredDecodeTimer?.cancel();
+    _deferredDecodeTimer = Timer(delay, () {
+      if (!mounted) return;
+      _decodeInteractionActive = false;
+      unawaited(_decodeMorePages());
+    });
   }
 
   void _applyInitialScroll() {
@@ -384,11 +540,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _viewCtrl.value = Matrix4.translationValues(dx, dy, 0);
   }
 
-  DrawingData _decodeData(DrawingBlock b) {
+  Future<DrawingData> _decodeData(DrawingBlock b) async {
+    final sw = Stopwatch()..start();
     List<dynamic> strokes = const [];
     List<dynamic> images = const [];
     List<dynamic> taskBlocks = const [];
-    final payload = b.payloadJson();
+    List<dynamic> textBlocks = const [];
     try {
       final decoded = jsonDecode(b.strokesJson);
       if (decoded is List) strokes = decoded;
@@ -401,15 +558,222 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final decoded = jsonDecode(b.taskBlocksJson);
       if (decoded is List) taskBlocks = decoded;
     } catch (_) {}
-    return DrawingData.fromJson({
+    try {
+      final decoded = jsonDecode(b.textBlocksJson);
+      if (decoded is List) textBlocks = decoded;
+    } catch (_) {}
+    final data = DrawingData.fromJson({
       'h': kNotebookPageHeight,
       's': strokes,
       'i': images,
       't': taskBlocks,
-      if (payload['tx'] != null) 'tx': payload['tx'],
-      'bg': payload['bg'],
-      'bgc': payload['bgc'],
+      'tx': textBlocks,
+      'bg': b.background,
+      'bgc': b.bgColor,
     });
+    sw.stop();
+    final rows = await ref
+        .read(drawingStrokeRepositoryProvider)
+        .getByBlock(b.id);
+    final persisted = _persistedStrokeIdsByBlock.putIfAbsent(b.id, () => {});
+    persisted.clear();
+    _dirtyStrokeIdsByBlock.putIfAbsent(b.id, () => {}).clear();
+    if (rows.isNotEmpty) {
+      data.strokes = rows.map(strokeFromRecord).toList();
+      var maxPos = -1;
+      for (final r in rows) {
+        persisted.add(r.id);
+        if (r.position > maxPos) maxPos = r.position;
+      }
+      _nextStrokePosByBlock[b.id] = maxPos + 1;
+    } else {
+      _nextStrokePosByBlock[b.id] = 0;
+    }
+    final pts = _pointCount(data.strokes);
+    final pageIndex = _pageBlockIds.indexOf(b.id);
+    CrashLogger.instance.note(
+      'PERF decode-cuaderno: page $pageIndex, ${data.strokes.length} trazos, '
+      '$pts puntos, json ${(b.strokesJson.length / 1024).round()}KB, '
+      '${sw.elapsedMilliseconds}ms',
+    );
+    return data;
+  }
+
+  int _pointCount(Iterable<DrawingStroke> strokes) =>
+      strokes.fold<int>(0, (total, s) => total + s.points.length);
+
+  Set<int> _persistedStrokeIds(int blockId) =>
+      _persistedStrokeIdsByBlock.putIfAbsent(blockId, () => {});
+
+  Set<int> _dirtyStrokeIds(int blockId) =>
+      _dirtyStrokeIdsByBlock.putIfAbsent(blockId, () => {});
+
+  int _nextStrokePos(int blockId) => _nextStrokePosByBlock[blockId] ?? 0;
+
+  void _markWorldStrokeDirty(DrawingStroke stroke) {
+    final id = stroke.dbId;
+    if (id == null || stroke.points.isEmpty) return;
+    var sumY = 0.0;
+    for (final p in stroke.points) {
+      sumY += p[1];
+    }
+    final pageIndex = _nearestPageIndex(sumY / stroke.points.length);
+    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
+    final blockId = _pageBlockIds[pageIndex];
+    if (_persistedStrokeIds(blockId).contains(id)) {
+      _dirtyStrokeIds(blockId).add(id);
+    }
+  }
+
+  void _markSelectedWorldStrokesDirty(List<DrawingStroke> worldStrokes) {
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < worldStrokes.length) {
+        _markWorldStrokeDirty(worldStrokes[i]);
+      }
+    }
+  }
+
+  void _beginInkPerf() {
+    _inkPerfSw = Stopwatch()..start();
+    _inkMoveSamples = 0;
+    _inkSlowMoves = 0;
+    _inkWorstMoveUs = 0;
+  }
+
+  void _recordInkMove(int micros) {
+    _inkMoveSamples++;
+    if (micros > _inkWorstMoveUs) _inkWorstMoveUs = micros;
+    if (micros >= 8000) _inkSlowMoves++;
+  }
+
+  void _resetInkPerf() {
+    _inkPerfSw = null;
+    _inkMoveSamples = 0;
+    _inkSlowMoves = 0;
+    _inkWorstMoveUs = 0;
+  }
+
+  void _logInkPerf(
+    String kind,
+    DrawingStroke stroke, {
+    required int pageIndex,
+    required int finishMs,
+    int? appendMs,
+    int? historyMs,
+    int? persistMs,
+    int? snapshotMs,
+  }) {
+    final data = _pageData[_pageBlockIds[pageIndex]];
+    final countSw = Stopwatch()..start();
+    final pagePoints = data == null ? -1 : _pointCount(data.strokes);
+    countSw.stop();
+    final totalMs = _inkPerfSw?.elapsedMilliseconds ?? finishMs;
+    CrashLogger.instance.note(
+      'PERF escribir-cuaderno: $kind, pagina $pageIndex, '
+      'trazo ${stroke.points.length} puntos, '
+      'pagina ${data?.strokes.length ?? -1} trazos/$pagePoints puntos, '
+      'moves $_inkMoveSamples, slowMoves $_inkSlowMoves, '
+      'worstMove ${(_inkWorstMoveUs / 1000).toStringAsFixed(1)}ms, '
+      'total ${totalMs}ms, finish ${finishMs}ms, '
+      'snapshot ${snapshotMs ?? -1}ms, append ${appendMs ?? -1}ms, '
+      'history ${historyMs ?? -1}ms, persist-schedule ${persistMs ?? -1}ms, '
+      'count ${countSw.elapsedMilliseconds}ms',
+    );
+    _resetInkPerf();
+  }
+
+  // ─── Per-page tile index ──────────────────────────────────────────────────
+
+  StrokeTileIndex _pageTileIndex(int blockId) =>
+      _pageTiles.putIfAbsent(blockId, StrokeTileIndex.new);
+
+  /// Append one committed stroke to a page's tile index (O(1)) and repaint.
+  void _appendToPage(int blockId, DrawingStroke stroke) {
+    _pageTileIndex(blockId).append(stroke);
+    _appendWorldStrokeCache(blockId, stroke);
+    _inkTick.value++;
+  }
+
+  Set<DrawingStroke> _strokesNearPage(
+    int blockId,
+    Offset local,
+    double radius,
+  ) {
+    final rect = Rect.fromCircle(center: local, radius: radius);
+    final out = <DrawingStroke>{};
+    final index = _pageTiles[blockId];
+    if (index == null) return out;
+    for (final key in index.tilesInRect(rect)) {
+      final list = index.strokesAt(key);
+      if (list != null) out.addAll(list);
+    }
+    return out;
+  }
+
+  DrawingStroke _worldStrokeForPage(int pageIndex, DrawingStroke stroke) {
+    final c = stroke.clone();
+    final offset = _pageOffsetY(pageIndex);
+    for (final pt in c.points) {
+      pt[1] += offset;
+    }
+    return c;
+  }
+
+  void _rebuildWorldStrokeCache(int blockId) {
+    final pageIndex = _pageBlockIds.indexOf(blockId);
+    final data = _pageData[blockId];
+    if (pageIndex < 0 || data == null) {
+      _pageWorldStrokeCache.remove(blockId);
+      return;
+    }
+    _pageWorldStrokeCache[blockId] = [
+      for (final stroke in data.strokes) _worldStrokeForPage(pageIndex, stroke),
+    ];
+  }
+
+  void _appendWorldStrokeCache(int blockId, DrawingStroke stroke) {
+    final pageIndex = _pageBlockIds.indexOf(blockId);
+    if (pageIndex < 0) return;
+    (_pageWorldStrokeCache[blockId] ??= []).add(
+      _worldStrokeForPage(pageIndex, stroke),
+    );
+  }
+
+  List<DrawingStroke> _worldStrokeCacheForPage(int pageIndex) {
+    final blockId = _pageBlockIds[pageIndex];
+    if (!_pageWorldStrokeCache.containsKey(blockId)) {
+      _rebuildWorldStrokeCache(blockId);
+    }
+    return _pageWorldStrokeCache[blockId] ?? const [];
+  }
+
+  (int, int)? _worldStrokePageLocalIndex(int worldIndex) {
+    if (worldIndex < 0) return null;
+    var start = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final count = _worldStrokeCacheForPage(i).length;
+      final end = start + count;
+      if (worldIndex < end) return (i, worldIndex - start);
+      start = end;
+    }
+    return null;
+  }
+
+  int _worldStrokeIndexFromPageLocal(int pageIndex, int localIndex) {
+    var start = 0;
+    for (int i = 0; i < pageIndex; i++) {
+      start += _worldStrokeCacheForPage(i).length;
+    }
+    return start + localIndex;
+  }
+
+  DrawingStroke _localStrokeFromWorld(int pageIndex, DrawingStroke stroke) {
+    final c = stroke.clone();
+    final offset = _pageOffsetY(pageIndex);
+    for (final pt in c.points) {
+      pt[1] -= offset;
+    }
+    return c;
   }
 
   Future<void> _ensurePageAt(int pageIndex) async {
@@ -433,6 +797,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         background: _lastBg,
         bgColorValue: _lastBgColor,
       );
+      _persistedStrokeIdsByBlock[block.id] = {};
+      _dirtyStrokeIdsByBlock[block.id] = {};
+      _nextStrokePosByBlock[block.id] = 0;
     }
     setState(() {});
   }
@@ -443,14 +810,86 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _ensurePageAt(_pageBlockIds.length).then((_) => _pendingPageAdd = false);
   }
 
-  Future<void> _persistPage(int pageIndex) async {
+  Future<void> _persistPageNow(int pageIndex) async {
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
     final blockId = _pageBlockIds[pageIndex];
     final data = _pageData[blockId];
-    if (data == null) return;
-    await ref.read(noteBlockRepositoryProvider).updatePayload(blockId, {
+    if (data == null) {
+      _dirtyPersistPages.remove(blockId);
+      return;
+    }
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+    final blockRepo = ref.read(noteBlockRepositoryProvider);
+    final sw = Stopwatch()..start();
+    int inserted = 0, updated = 0, deleted = 0;
+    if (_fullStrokePersistBlocks.remove(blockId)) {
+      final ids = await strokeRepo.replaceBlock(blockId, [
+        for (int i = 0; i < data.strokes.length; i++)
+          strokeWrite(i, data.strokes[i]),
+      ]);
+      for (int i = 0; i < data.strokes.length && i < ids.length; i++) {
+        data.strokes[i].dbId = ids[i];
+      }
+      _rebuildWorldStrokeCache(blockId);
+      _persistedStrokeIds(blockId)
+        ..clear()
+        ..addAll(ids);
+      _dirtyStrokeIds(blockId).clear();
+      _nextStrokePosByBlock[blockId] = data.strokes.length;
+      inserted = ids.length;
+    } else {
+      final persisted = _persistedStrokeIds(blockId);
+      var nextPos = _nextStrokePos(blockId);
+      final strokesSnapshot = List<DrawingStroke>.of(data.strokes);
+      for (final stroke in strokesSnapshot) {
+        if (stroke.dbId != null && persisted.contains(stroke.dbId)) {
+          continue;
+        }
+        stroke.dbId = null;
+        final id = await strokeRepo.insert(
+          blockId,
+          strokeWrite(nextPos++, stroke),
+        );
+        stroke.dbId = id;
+        final cacheIndex = data.strokes.indexOf(stroke);
+        final cache = _pageWorldStrokeCache[blockId];
+        if (cache != null && cacheIndex >= 0 && cacheIndex < cache.length) {
+          cache[cacheIndex].dbId = id;
+        }
+        persisted.add(id);
+        inserted++;
+      }
+      _nextStrokePosByBlock[blockId] = nextPos;
+
+      final byId = <int, DrawingStroke>{
+        for (final s in data.strokes)
+          if (s.dbId != null && persisted.contains(s.dbId)) s.dbId!: s,
+      };
+      final dirty = _dirtyStrokeIds(blockId);
+      if (dirty.isNotEmpty) {
+        final updates = <int, DrawingStrokeWrite>{};
+        for (final id in dirty.toList()) {
+          final stroke = byId[id];
+          if (stroke == null) continue;
+          updates[id] = strokeWrite(0, stroke);
+        }
+        await strokeRepo.updateMany(updates);
+        updated = updates.length;
+        dirty.clear();
+      }
+
+      final currentIds = byId.keys.toSet();
+      final toDelete = persisted.difference(currentIds);
+      if (toDelete.isNotEmpty) {
+        await strokeRepo.deleteByIds(toDelete.toList());
+        persisted.removeAll(toDelete);
+        deleted = toDelete.length;
+      }
+    }
+    final strokeMs = sw.elapsedMilliseconds;
+    await blockRepo.updatePayload(blockId, {
       'h': kNotebookPageHeight,
-      's': data.strokes.map((s) => s.toJson()).toList(),
+      's': const [],
       'i': data.images.map((im) => im.toJson()).toList(),
       't': data.taskBlocks.map((b) => b.toJson()).toList(),
       'tx': data.textBlocks.map((b) => b.toJson()).toList(),
@@ -458,6 +897,59 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (data.bgColorValue != null) 'bgc': data.bgColorValue,
       'starred': _starredBlockIds.contains(blockId),
     });
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF guardar-cuaderno: page $pageIndex, ${data.strokes.length} trazos, '
+      '${_pointCount(data.strokes)} puntos, +$inserted ~$updated -$deleted, '
+      'strokesDB ${strokeMs}ms, '
+      'total(+DB) ${sw.elapsedMilliseconds}ms',
+    );
+    _dirtyPersistPages.remove(blockId);
+  }
+
+  void _persistPage(int pageIndex) {
+    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
+    _dirtyPersistPages.add(_pageBlockIds[pageIndex]);
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      unawaited(_flushPendingPersists());
+    });
+  }
+
+  Future<void> _flushPendingPersists() async {
+    if (_dirtyPersistPages.isEmpty) return;
+    if (_persisting) return;
+    _persisting = true;
+    final sw = Stopwatch()..start();
+    var pages = 0;
+    try {
+      while (_dirtyPersistPages.isNotEmpty) {
+        final blockIds = _dirtyPersistPages.toList();
+        for (final blockId in blockIds) {
+          final pageIndex = _pageBlockIds.indexOf(blockId);
+          if (pageIndex >= 0) {
+            await _persistPageNow(pageIndex);
+            pages++;
+          } else {
+            _dirtyPersistPages.remove(blockId);
+          }
+        }
+      }
+    } catch (e, st) {
+      CrashLogger.instance.record(
+        e,
+        st,
+        context: 'flushPendingPersists cuaderno',
+      );
+    } finally {
+      _persisting = false;
+    }
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF flush-cuaderno: $pages paginas, '
+      '${sw.elapsedMilliseconds}ms',
+    );
   }
 
   // ─── Width picker ──────────────────────────────────────────────────────
@@ -515,8 +1007,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         h: h,
       );
       final before = _snapshot();
-      setState(() => data.images.add(img));
-      _commit(before);
+      // Bump paintVersion so the background painter repaints with the new image.
+      setState(() {
+        data.images.add(img);
+        _paintVersion++;
+      });
+      _commitSnapshot(before);
       _persistPage(pageIdx);
       _imgCache?.get(filename);
       HapticFeedback.lightImpact();
@@ -676,6 +1172,106 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
   }
 
+  // ─── Pinned snapshots (PiN) ───────────────────────────────────────────────
+
+  /// Capture the current lasso selection as a frozen raster cut-out and pin it
+  /// over the canvas (paper, ink, images, blocks) — same boundary the eyedropper
+  /// samples. The window floats fixed in viewport space across page changes.
+  Future<void> _pinSelection() async {
+    final bb = _lassoCtrl.boundingBox;
+    if (bb == null) return;
+    final vp = Rect.fromLTWH(0, 0, _viewport.width, _viewport.height);
+    final screenRect = MatrixUtils.transformRect(
+      _viewCtrl.value,
+      bb,
+    ).intersect(vp);
+    if (screenRect.width < 8 || screenRect.height < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Acerca la selección para fijarla'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
+      return;
+    }
+
+    _lassoCtrl.deselect();
+    setState(() {});
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final boundary =
+        _canvasBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) return;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final full = await boundary.toImage(pixelRatio: dpr);
+
+    final outW = (screenRect.width * dpr).round();
+    final outH = (screenRect.height * dpr).round();
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawImageRect(
+      full,
+      Rect.fromLTWH(
+        screenRect.left * dpr,
+        screenRect.top * dpr,
+        screenRect.width * dpr,
+        screenRect.height * dpr,
+      ),
+      Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble()),
+      Paint()..filterQuality = FilterQuality.high,
+    );
+    final cropped = await recorder.endRecording().toImage(outW, outH);
+    full.dispose();
+    if (!mounted) {
+      cropped.dispose();
+      return;
+    }
+
+    setState(() {
+      _pins.add(
+        PinnedSnapshot(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          image: cropped,
+          pos: Offset(
+            screenRect.left.clamp(8.0, _viewport.width - 60),
+            screenRect.top.clamp(8.0, _viewport.height - 60),
+          ),
+          width: screenRect.width.clamp(120.0, _viewport.width * 0.6),
+        ),
+      );
+    });
+    HapticFeedback.mediumImpact();
+  }
+
+  void _movePin(String id, Offset delta) {
+    final p = _pins.where((e) => e.id == id).firstOrNull;
+    if (p == null) return;
+    setState(() {
+      p.pos = Offset(
+        (p.pos.dx + delta.dx).clamp(48 - p.width, _viewport.width - 48),
+        (p.pos.dy + delta.dy).clamp(8.0, _viewport.height - 48),
+      );
+    });
+  }
+
+  void _resizePin(String id, double dWidth) {
+    final p = _pins.where((e) => e.id == id).firstOrNull;
+    if (p == null) return;
+    setState(
+      () => p.width = (p.width + dWidth).clamp(100.0, _viewport.width * 0.95),
+    );
+  }
+
+  void _closePin(String id) {
+    final i = _pins.indexWhere((e) => e.id == id);
+    if (i < 0) return;
+    setState(() {
+      _pins[i].dispose();
+      _pins.removeAt(i);
+    });
+  }
+
   void _confirmLoupe() {
     final c = _loupeColor;
     final cb = _eyedropOnPick;
@@ -785,7 +1381,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _starredBlockIds.add(blockId);
       }
     });
-    await _persistPage(idx);
+    await _persistPageNow(idx);
     HapticFeedback.lightImpact();
   }
 
@@ -806,7 +1402,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _drawerSnapshotPage = _pageBlockIds.length - 1;
       }
     });
+    _pageTiles.remove(blockId)?.dispose();
+    _pageWorldStrokeCache.remove(blockId);
+    _persistedStrokeIdsByBlock.remove(blockId);
+    _dirtyStrokeIdsByBlock.remove(blockId);
+    _nextStrokePosByBlock.remove(blockId);
+    _dirtyPersistPages.remove(blockId);
+    _fullStrokePersistBlocks.remove(blockId);
 
+    await ref.read(drawingStrokeRepositoryProvider).deleteByBlock(blockId);
     await repo.delete(blockId);
     await repo.reorder(widget.note.id, List<int>.from(_pageBlockIds));
     HapticFeedback.lightImpact();
@@ -869,6 +1473,52 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_lassoAnimCtrl.isAnimating) _lassoAnimCtrl.stop();
     if (_lassoAnimCtrl.value != 0) _lassoAnimCtrl.value = 0;
   }
+
+  /// See whiteboard editor: the lasso overlay repaints every frame from
+  /// _lassoAnimCtrl during a continuous gesture, so skip the full-tree setState
+  /// per stylus point (~240Hz) — only rebuild on a phase change. This was the
+  /// jank on dense multi-page notebooks.
+  static const _kLassoGesturePhases = {
+    LassoPhase.moving,
+    LassoPhase.resizing,
+    LassoPhase.rotating,
+  };
+
+  void _onLassoChanged() {
+    _syncLassoTicker();
+    final phase = _lassoCtrl.phase;
+    final prev = _lastLassoPhase;
+    _lastLassoPhase = phase;
+
+    const continuous = {LassoPhase.tracing, ..._kLassoGesturePhases};
+    // Same-phase continuous update (per stylus point): never rebuild the tree.
+    // The lasso overlay and any selected block's Transform listen to
+    // _lassoGestureTick and repaint in place.
+    if (phase == prev && continuous.contains(phase)) {
+      _lassoGestureTick.value++;
+      return;
+    }
+
+    // Grab / release: selected ↔ a gesture phase. panEnabled is unchanged and
+    // the lasso layer stays visible, so skip the full-tree setState (which
+    // rebuilds every page/overlay/provider — the grab/drop jank). The ink layers
+    // + toolbar refresh via _lassoPhaseTick. EXCEPTION: block selections, whose
+    // overlays must (un)wrap their live-transform in build().
+    final grabOrRelease =
+        (prev == LassoPhase.selected && _kLassoGesturePhases.contains(phase)) ||
+        (_kLassoGesturePhases.contains(prev) && phase == LassoPhase.selected);
+    if (grabOrRelease && !_selectionHasBlocks) {
+      _lassoPhaseTick.value++;
+      _lassoGestureTick.value++;
+      return;
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  bool get _selectionHasBlocks =>
+      _lassoCtrl.selectedBlockIndices.isNotEmpty ||
+      _lassoCtrl.selectedTextBlockIndices.isNotEmpty;
 
   void _syncPullTicker(bool visible) {
     if (visible) {
@@ -1063,6 +1713,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _commitShapeAdjust() {
+    final sw = Stopwatch()..start();
     final shape = _active;
     final pageIdx = _activePageIndex;
     _clearSnap();
@@ -1072,13 +1723,33 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       setState(() => _active = null);
       return;
     }
+    final snapSw = Stopwatch()..start();
     final before = _snapshot();
+    snapSw.stop();
     setState(() {
       data.strokes.add(shape);
       _active = null;
     });
-    _commit(before);
+    final appendSw = Stopwatch()..start();
+    _appendToPage(_pageBlockIds[pageIdx], shape);
+    appendSw.stop();
+    final historySw = Stopwatch()..start();
+    _commitSnapshot(before);
+    historySw.stop();
+    final persistSw = Stopwatch()..start();
     _persistPage(pageIdx);
+    persistSw.stop();
+    sw.stop();
+    _logInkPerf(
+      'shape-snap',
+      shape,
+      pageIndex: pageIdx,
+      finishMs: sw.elapsedMilliseconds,
+      appendMs: appendSw.elapsedMilliseconds,
+      historyMs: historySw.elapsedMilliseconds,
+      persistMs: persistSw.elapsedMilliseconds,
+      snapshotMs: snapSw.elapsedMilliseconds,
+    );
   }
 
   void _clearSnap() {
@@ -1115,6 +1786,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _onDown(PointerDownEvent e) {
+    _pauseDeferredDecode();
     if (_eyedropperMode) {
       _activePointers.add(e.pointer);
       // 1 pointer drags the loupe; 2+ hands the gesture to pan/zoom.
@@ -1196,7 +1868,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             _lassoCtrl.hitTestCornerHandle(p) != null ||
             _lassoCtrl.hitTestSideHandle(p) != null ||
             _lassoCtrl.isTapInsideBoundingBox(p)) {
-          setState(() => _isDrawing = true);
+          _isDrawing =
+              true; // lasso: no rebuild needed (phase-gated panEnabled)
           _handleLassoDown(p);
           return;
         }
@@ -1207,7 +1880,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
 
     final willDraw = _shouldDraw(e.kind);
-    setState(() => _isDrawing = willDraw);
+    // Lasso never needs a rebuild just for _isDrawing (panEnabled is phase-gated)
+    // → skip the setState to avoid a full-tree rebuild at grab. Phase-driven
+    // rebuilds still fire via _onLassoChanged.
+    if (_tool == DrawTool.lasso) {
+      _isDrawing = willDraw;
+    } else {
+      setState(() => _isDrawing = willDraw);
+    }
     if (!willDraw) return;
 
     final world = _screenToWorld(e.localPosition);
@@ -1236,6 +1916,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
     _stab = _newStabilizer();
     final sp = _stabilize(local);
+    _beginInkPerf();
 
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
@@ -1376,6 +2057,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_active == null) return;
+    final moveSw = _inkPerfSw == null ? null : (Stopwatch()..start());
     final sp = _stabilize(local);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
@@ -1386,13 +2068,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         e.timeStamp.inMilliseconds.toDouble(),
       ]);
       _activeTick.value++;
+      moveSw?.stop();
+      if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
       return;
     }
     final pts = _active!.points;
     if (pts.isNotEmpty && !_stabilizer.isOn) {
       final dx = sp.dx - pts.last[0];
       final dy = sp.dy - pts.last[1];
-      if (dx * dx + dy * dy < _minDist2) return;
+      if (dx * dx + dy * dy < _minDist2) {
+        moveSw?.stop();
+        if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
+        return;
+      }
     }
     pts.add(
       _active!.isPencil
@@ -1400,6 +2088,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           : [sp.dx, sp.dy],
     );
     _activeTick.value++;
+    moveSw?.stop();
+    if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
     if (_holdAnchor != null) {
       final dx = world.dx - _holdAnchor!.dx;
       final dy = world.dy - _holdAnchor!.dy;
@@ -1424,7 +2114,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _transformBeforeStylus = null;
     }
     _stylusActive = false;
-    setState(() => _isDrawing = false);
+    // Lasso: no rebuild for _isDrawing (phase-gated). Releasing a stroke
+    // selection routes through _handleLassoUp → _onLassoChanged, which refreshes
+    // via _lassoPhaseTick instead of a full-tree setState.
+    if (_tool == DrawTool.lasso) {
+      _isDrawing = false;
+    } else {
+      setState(() => _isDrawing = false);
+    }
 
     if (_activePointers.isEmpty && _maxSimultaneous >= 2) {
       final elapsed =
@@ -1445,6 +2142,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    if (_activePointers.isEmpty) _scheduleDeferredDecode();
 
     if (_reachedPullThreshold && _activePointers.isEmpty) {
       _reachedPullThreshold = false;
@@ -1497,10 +2195,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _pendingLassoStart = null;
     setState(() => _isDrawing = false);
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
+    if (_activePointers.isEmpty) _scheduleDeferredDecode();
     if (_snapKind != null) {
       setState(() => _active = null);
       _clearSnap();
       _stab = null;
+      _resetInkPerf();
       return;
     }
     if (_tool == DrawTool.eraser) {
@@ -1511,6 +2211,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_tool == DrawTool.fountainPen) {
       _active = null;
       _stab = null;
+      _resetInkPerf();
       return;
     }
     _finishStroke();
@@ -1527,6 +2228,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _finishStroke() {
+    final sw = Stopwatch()..start();
     if (_snapKind != null) return;
     if (_active == null || _activePageIndex == null) return;
     _active!.points.removeWhere(
@@ -1534,99 +2236,195 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
+      _resetInkPerf();
       return;
     }
 
     final data = _activePageData();
     if (data == null) {
       setState(() => _active = null);
+      _resetInkPerf();
       return;
     }
 
     if (_tool == DrawTool.pen &&
         isScribble(_active!.points, viewScale: _viewScale)) {
       final bounds = scribbleBounds(_active!.points);
+      final snapSw = Stopwatch()..start();
       final before = _snapshot();
+      snapSw.stop();
       final lenBefore = data.strokes.length;
+      final activeStroke = _active!.clone();
+      Rect? dirty;
       data.strokes.removeWhere((s) {
         for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) return true;
+          if (bounds.contains(Offset(p[0], p[1]))) {
+            final b = strokeBounds(s);
+            dirty = dirty == null ? b : dirty!.expandToInclude(b);
+            return true;
+          }
         }
         return false;
       });
       setState(() => _active = null);
       if (data.strokes.length != lenBefore) {
-        _commit(before);
+        final index = _pageTileIndex(_pageBlockIds[_activePageIndex!]);
+        if (dirty != null) {
+          index.invalidateRegion(dirty!.inflate(4), data.strokes);
+        } else {
+          index.rebuild(data.strokes);
+        }
+        _rebuildWorldStrokeCache(_pageBlockIds[_activePageIndex!]);
+        _inkTick.value++;
+        _commitSnapshot(before);
         HapticFeedback.lightImpact();
         _persistPage(_activePageIndex!);
       }
+      sw.stop();
+      _logInkPerf(
+        'scribble-erase',
+        activeStroke,
+        pageIndex: _activePageIndex!,
+        finishMs: sw.elapsedMilliseconds,
+        snapshotMs: snapSw.elapsedMilliseconds,
+      );
       return;
     }
 
-    final before = _snapshot();
+    final addedStroke = _active!.clone();
     setState(() {
       data.strokes.add(_active!);
       _active = null;
     });
-    _commit(before);
+    final appendSw = Stopwatch()..start();
+    _appendToPage(_pageBlockIds[_activePageIndex!], data.strokes.last);
+    appendSw.stop();
+    final historySw = Stopwatch()..start();
+    _commitStrokeAdd(_pageBlockIds[_activePageIndex!], data.strokes.last);
+    historySw.stop();
+    final persistSw = Stopwatch()..start();
     _persistPage(_activePageIndex!);
+    persistSw.stop();
+    sw.stop();
+    _logInkPerf(
+      'stroke',
+      addedStroke,
+      pageIndex: _activePageIndex!,
+      finishMs: sw.elapsedMilliseconds,
+      appendMs: appendSw.elapsedMilliseconds,
+      historyMs: historySw.elapsedMilliseconds,
+      persistMs: persistSw.elapsedMilliseconds,
+    );
   }
 
   void _finishFountainStroke() {
+    final sw = Stopwatch()..start();
     if (_active == null || _activePageIndex == null) return;
     _active!.points.removeWhere(
       (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
     );
     if (_active!.points.length < 2) {
       setState(() => _active = null);
+      _resetInkPerf();
       return;
     }
 
     final data = _activePageData();
     if (data == null) {
       setState(() => _active = null);
+      _resetInkPerf();
       return;
     }
 
+    final bakeSw = Stopwatch()..start();
     final baked = FountainPenEngine.finishStroke(
       _active!,
       viewScale: _viewScale,
     );
-    final before = _snapshot();
+    bakeSw.stop();
     setState(() {
       data.strokes.add(baked);
       _active = null;
     });
-    _commit(before);
+    final appendSw = Stopwatch()..start();
+    _appendToPage(_pageBlockIds[_activePageIndex!], baked);
+    appendSw.stop();
+    final historySw = Stopwatch()..start();
+    _commitStrokeAdd(_pageBlockIds[_activePageIndex!], baked);
+    historySw.stop();
+    final persistSw = Stopwatch()..start();
     _persistPage(_activePageIndex!);
+    persistSw.stop();
+    sw.stop();
+    _logInkPerf(
+      'fountain',
+      baked,
+      pageIndex: _activePageIndex!,
+      finishMs: sw.elapsedMilliseconds,
+      appendMs: appendSw.elapsedMilliseconds,
+      historyMs: historySw.elapsedMilliseconds + bakeSw.elapsedMilliseconds,
+      persistMs: persistSw.elapsedMilliseconds,
+    );
   }
 
   static const _eraserScreenRadius = 7.0;
 
   void _eraseNear(Offset local, int pageIndex) {
     final radius = _eraserScreenRadius / _viewScale;
-    final data = _pageData[_pageBlockIds[pageIndex]];
+    final blockId = _pageBlockIds[pageIndex];
+    final data = _pageData[blockId];
     if (data == null) return;
     bool changed = false;
+    // Bounds of every touched stroke → only those tiles rebuild.
+    Rect? dirty;
+    void markDirty(DrawingStroke s) {
+      final b = strokeBounds(s);
+      dirty = dirty == null ? b : dirty!.expandToInclude(b);
+    }
+
+    final candidates = _strokesNearPage(blockId, local, radius + 64);
+    if (candidates.isEmpty) return;
+
     if (_eraserMode == EraserMode.partial) {
       final out = <DrawingStroke>[];
       for (final s in data.strokes) {
+        if (!candidates.contains(s)) {
+          out.add(s);
+          continue;
+        }
         final pieces = splitStrokeByEraser(s, local, radius);
         if (pieces.length == 1 && identical(pieces.first, s)) {
           out.add(s);
         } else {
+          markDirty(s);
           out.addAll(pieces);
           changed = true;
         }
       }
       if (changed) data.strokes = out;
     } else {
-      final before = data.strokes.length;
-      data.strokes.removeWhere((s) => strokeHitByEraser(s, local, radius));
-      changed = data.strokes.length != before;
+      final hits = <DrawingStroke>{};
+      for (final s in candidates) {
+        if (strokeHitByEraser(s, local, radius)) {
+          markDirty(s);
+          hits.add(s);
+        }
+      }
+      if (hits.isNotEmpty) {
+        data.strokes.removeWhere(hits.contains);
+        changed = true;
+      }
     }
     if (changed) {
       _gestureChanged = true;
+      final index = _pageTileIndex(blockId);
+      if (dirty != null) {
+        index.invalidateRegion(dirty!.inflate(4), data.strokes);
+      } else {
+        index.rebuild(data.strokes);
+      }
+      _rebuildWorldStrokeCache(blockId);
+      _inkTick.value++;
       setState(() {});
       _persistPage(pageIndex);
     }
@@ -1649,23 +2447,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   double _pageOffsetY(int i) => i * (kNotebookPageHeight + kNotebookPageGap);
 
   List<DrawingStroke> get _allVisibleStrokes {
+    final sw = Stopwatch()..start();
     final all = <DrawingStroke>[];
     for (int i = 0; i < _pageBlockIds.length; i++) {
-      final data = _pageData[_pageBlockIds[i]];
-      if (data == null) continue;
-      final offset = _pageOffsetY(i);
-      for (final s in data.strokes) {
-        final c = s.clone();
-        for (final pt in c.points) {
-          pt[1] += offset;
-        }
-        all.add(c);
-      }
+      if (_pageData[_pageBlockIds[i]] == null) continue;
+      all.addAll(_worldStrokeCacheForPage(i));
+    }
+    sw.stop();
+    if (sw.elapsedMilliseconds > 3) {
+      final pts = _pointCount(all);
+      CrashLogger.instance.note(
+        'PERF flatten-strokes-cuaderno: ${all.length} trazos, $pts puntos, '
+        '${_pageData.length} paginas, ${sw.elapsedMilliseconds}ms',
+      );
     }
     return all;
   }
 
   List<CanvasImage> get _allVisibleImages {
+    final sw = Stopwatch()..start();
     final all = <CanvasImage>[];
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final data = _pageData[_pageBlockIds[i]];
@@ -1675,10 +2475,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         all.add(im.clone()..y += offset);
       }
     }
+    sw.stop();
+    if (sw.elapsedMilliseconds > 3) {
+      CrashLogger.instance.note(
+        'PERF flatten-images-cuaderno: ${all.length} imagenes, '
+        '${_pageData.length} paginas, ${sw.elapsedMilliseconds}ms',
+      );
+    }
     return all;
   }
 
   List<CanvasTaskBlock> get _allVisibleTaskBlocks {
+    final sw = Stopwatch()..start();
     final all = <CanvasTaskBlock>[];
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final data = _pageData[_pageBlockIds[i]];
@@ -1688,10 +2496,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         all.add(b.clone()..y += offset);
       }
     }
+    sw.stop();
+    if (sw.elapsedMilliseconds > 3) {
+      CrashLogger.instance.note(
+        'PERF flatten-tasks-cuaderno: ${all.length} bloques, '
+        '${_pageData.length} paginas, ${sw.elapsedMilliseconds}ms',
+      );
+    }
     return all;
   }
 
   List<CanvasTextBlock> get _allVisibleTextBlocks {
+    final sw = Stopwatch()..start();
     final all = <CanvasTextBlock>[];
     for (int i = 0; i < _pageBlockIds.length; i++) {
       final data = _pageData[_pageBlockIds[i]];
@@ -1700,6 +2516,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       for (final b in data.textBlocks) {
         all.add(b.clone()..y += offset);
       }
+    }
+    sw.stop();
+    if (sw.elapsedMilliseconds > 3) {
+      CrashLogger.instance.note(
+        'PERF flatten-text-cuaderno: ${all.length} bloques, '
+        '${_pageData.length} paginas, ${sw.elapsedMilliseconds}ms',
+      );
     }
     return all;
   }
@@ -1734,6 +2557,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final images = _allVisibleImages;
     final blocks = _allVisibleTaskBlocks;
     if (_lassoCtrl.phase == LassoPhase.selected) {
+      // Pre-gesture selection box → affected-page set on drop.
+      _gestureBoxBefore = _lassoCtrl.boundingBox;
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startRotation(worldPos, strokes, images, blocks);
@@ -1754,6 +2579,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startMove(worldPos, strokes, images, blocks);
+        _captureLassoSelection();
         return;
       }
       // Outside the selection: defer (tap dismisses on up, drag starts a fresh
@@ -1871,12 +2697,355 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     List<CanvasTextBlock> textBlocks,
   ) {
     if (moved) {
-      _syncLassoToPages(strokes, images, blocks, textBlocks);
+      final affected = _affectedPages(
+        _gestureBoxBefore,
+        _lassoCtrl.boundingBox,
+      );
+      _gestureBoxBefore = null;
+      _markSelectedWorldStrokesDirty(strokes);
+      _syncLassoToPages(
+        strokes,
+        images,
+        blocks,
+        textBlocks,
+        affected,
+        lengthStable: true,
+      );
       _commitGesture();
     } else {
+      _gestureBoxBefore = null;
       _gestureBefore = null;
       setState(() => _toolbarVisible = !_toolbarVisible);
     }
+  }
+
+  /// All currently-decoded page indices — the safe full set when an edit's extent
+  /// isn't known.
+  Set<int> _allDecodedPages() => {
+    for (int i = 0; i < _pageBlockIds.length; i++)
+      if (_pageData[_pageBlockIds[i]] != null) i,
+  };
+
+  /// Page indices a selection edit can touch: the decoded pages whose vertical
+  /// band overlaps the selection box BEFORE the edit or AFTER it (plus the
+  /// nearest page to each box edge, covering a box that sits in a page gap).
+  /// Only these pages get re-bucketed, cache-invalidated and DB-persisted.
+  Set<int> _affectedPages(Rect? before, Rect? after) {
+    if (before == null && after == null) return _allDecodedPages();
+    final out = <int>{};
+    void addBox(Rect? r) {
+      if (r == null) return;
+      for (int i = 0; i < _pageBlockIds.length; i++) {
+        if (_pageData[_pageBlockIds[i]] == null) continue;
+        final top = _pageOffsetY(i);
+        final bottom = top + kNotebookPageHeight;
+        if (r.bottom >= top && r.top <= bottom) out.add(i);
+      }
+      for (final y in [r.top, r.center.dy, r.bottom]) {
+        final idx = _nearestPageIndex(y);
+        if (idx >= 0 && _pageData[_pageBlockIds[idx]] != null) out.add(idx);
+      }
+    }
+
+    addBox(before);
+    addBox(after);
+    return out;
+  }
+
+  Rect _strokeDirtyRect(DrawingStroke stroke) =>
+      strokeBounds(stroke).inflate(stroke.strokeWidth + 4);
+
+  Rect _joinRect(Rect? a, Rect b) => a == null ? b : a.expandToInclude(b);
+
+  (int, int) _syncLengthStableLassoStrokes(
+    List<DrawingStroke> worldStrokes,
+    Set<int> affected,
+  ) {
+    final dirtyByPage = <int, Rect>{};
+    final removalsByPage = <int, List<int>>{};
+    final appendsByPage = <int, List<DrawingStroke>>{};
+    var touched = 0;
+    var points = 0;
+
+    for (final worldIndex in _lassoCtrl.selectedIndices) {
+      if (worldIndex < 0 || worldIndex >= worldStrokes.length) continue;
+      final source = _worldStrokePageLocalIndex(worldIndex);
+      if (source == null) continue;
+      final sourcePage = source.$1;
+      final sourceLocal = source.$2;
+      if (sourcePage < 0 || sourcePage >= _pageBlockIds.length) continue;
+      final sourceBlockId = _pageBlockIds[sourcePage];
+      final sourceData = _pageData[sourceBlockId];
+      if (sourceData == null ||
+          sourceLocal < 0 ||
+          sourceLocal >= sourceData.strokes.length) {
+        continue;
+      }
+
+      final worldStroke = worldStrokes[worldIndex];
+      if (worldStroke.points.isEmpty) continue;
+      var sumY = 0.0;
+      for (final pt in worldStroke.points) {
+        sumY += pt[1];
+      }
+      final targetPage = _nearestPageIndex(sumY / worldStroke.points.length);
+      if (targetPage < 0 || targetPage >= _pageBlockIds.length) continue;
+      if (!affected.contains(sourcePage) && !affected.contains(targetPage)) {
+        continue;
+      }
+
+      final oldLocal = sourceData.strokes[sourceLocal];
+      final newLocal = _localStrokeFromWorld(targetPage, worldStroke);
+      dirtyByPage[sourcePage] = _joinRect(
+        dirtyByPage[sourcePage],
+        _strokeDirtyRect(oldLocal),
+      );
+      dirtyByPage[targetPage] = _joinRect(
+        dirtyByPage[targetPage],
+        _strokeDirtyRect(newLocal),
+      );
+
+      if (sourcePage == targetPage) {
+        sourceData.strokes[sourceLocal] = newLocal;
+        final cache = _pageWorldStrokeCache[sourceBlockId];
+        if (cache != null && sourceLocal < cache.length) {
+          cache[sourceLocal] = _worldStrokeForPage(sourcePage, newLocal);
+        } else {
+          _rebuildWorldStrokeCache(sourceBlockId);
+        }
+      } else {
+        (removalsByPage[sourcePage] ??= []).add(sourceLocal);
+        (appendsByPage[targetPage] ??= []).add(newLocal);
+      }
+      touched++;
+      points += worldStroke.points.length;
+    }
+
+    for (final entry in removalsByPage.entries) {
+      final pageIndex = entry.key;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      final cache = _pageWorldStrokeCache[blockId];
+      final locals = entry.value..sort((a, b) => b.compareTo(a));
+      for (final local in locals) {
+        if (local < 0 || local >= data.strokes.length) continue;
+        data.strokes.removeAt(local);
+        if (cache != null && local < cache.length) cache.removeAt(local);
+      }
+    }
+
+    for (final entry in appendsByPage.entries) {
+      final pageIndex = entry.key;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      if (!_pageWorldStrokeCache.containsKey(blockId)) {
+        _rebuildWorldStrokeCache(blockId);
+      }
+      final cache = _pageWorldStrokeCache[blockId] ??= [];
+      for (final stroke in entry.value) {
+        data.strokes.add(stroke);
+        cache.add(_worldStrokeForPage(pageIndex, stroke));
+      }
+    }
+
+    for (final entry in dirtyByPage.entries) {
+      final pageIndex = entry.key;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
+      _persistPage(pageIndex);
+    }
+
+    return (touched, points);
+  }
+
+  (int, int) _syncDeletedLassoStrokes(Set<int> selectedBefore) {
+    final dirtyByPage = <int, Rect>{};
+    final removalsByPage = <int, List<int>>{};
+    var touched = 0;
+    var points = 0;
+
+    for (final worldIndex in selectedBefore) {
+      final source = _worldStrokePageLocalIndex(worldIndex);
+      if (source == null) continue;
+      final pageIndex = source.$1;
+      final localIndex = source.$2;
+      if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) continue;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null || localIndex < 0 || localIndex >= data.strokes.length) {
+        continue;
+      }
+      final stroke = data.strokes[localIndex];
+      dirtyByPage[pageIndex] = _joinRect(
+        dirtyByPage[pageIndex],
+        _strokeDirtyRect(stroke),
+      );
+      (removalsByPage[pageIndex] ??= []).add(localIndex);
+      touched++;
+      points += stroke.points.length;
+    }
+
+    for (final entry in removalsByPage.entries) {
+      final pageIndex = entry.key;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      final cache = _pageWorldStrokeCache[blockId];
+      final locals = entry.value..sort((a, b) => b.compareTo(a));
+      for (final local in locals) {
+        if (local < 0 || local >= data.strokes.length) continue;
+        data.strokes.removeAt(local);
+        if (cache != null && local < cache.length) cache.removeAt(local);
+      }
+    }
+
+    for (final entry in dirtyByPage.entries) {
+      final pageIndex = entry.key;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
+      _persistPage(pageIndex);
+    }
+
+    return (touched, points);
+  }
+
+  (int, int) _syncAppendedLassoStrokes(
+    List<DrawingStroke> worldStrokes,
+    int minNewIndex,
+  ) {
+    final dirtyByPage = <int, Rect>{};
+    final appendedLocals = <(int, int)>[];
+    var touched = 0;
+    var points = 0;
+
+    for (final worldIndex in (_lassoCtrl.selectedIndices.toList()..sort())) {
+      if (worldIndex < minNewIndex || worldIndex >= worldStrokes.length) {
+        continue;
+      }
+      final worldStroke = worldStrokes[worldIndex];
+      if (worldStroke.points.isEmpty) continue;
+      var sumY = 0.0;
+      for (final pt in worldStroke.points) {
+        sumY += pt[1];
+      }
+      final pageIndex = _nearestPageIndex(sumY / worldStroke.points.length);
+      if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) continue;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      if (!_pageWorldStrokeCache.containsKey(blockId)) {
+        _rebuildWorldStrokeCache(blockId);
+      }
+      final localIndex = data.strokes.length;
+      final localStroke = _localStrokeFromWorld(pageIndex, worldStroke);
+      data.strokes.add(localStroke);
+      (_pageWorldStrokeCache[blockId] ??= []).add(
+        _worldStrokeForPage(pageIndex, localStroke),
+      );
+      appendedLocals.add((pageIndex, localIndex));
+      dirtyByPage[pageIndex] = _joinRect(
+        dirtyByPage[pageIndex],
+        _strokeDirtyRect(localStroke),
+      );
+      touched++;
+      points += worldStroke.points.length;
+    }
+
+    for (final entry in dirtyByPage.entries) {
+      final pageIndex = entry.key;
+      final blockId = _pageBlockIds[pageIndex];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
+      _persistPage(pageIndex);
+    }
+
+    if (appendedLocals.isNotEmpty) {
+      _lassoCtrl.selectedIndices = {
+        for (final entry in appendedLocals)
+          _worldStrokeIndexFromPageLocal(entry.$1, entry.$2),
+      };
+    }
+
+    return (touched, points);
+  }
+
+  bool _syncLengthStableLassoObjects(
+    List<CanvasImage> worldImages,
+    List<CanvasTaskBlock> worldBlocks,
+    List<CanvasTextBlock> worldTextBlocks,
+    Set<int> affected, {
+    bool force = false,
+  }) {
+    if (!force &&
+        _lassoCtrl.selectedImageIndices.isEmpty &&
+        _lassoCtrl.selectedBlockIndices.isEmpty &&
+        _lassoCtrl.selectedTextBlockIndices.isEmpty) {
+      return false;
+    }
+
+    final imagesByPage = <int, List<CanvasImage>>{};
+    final blocksByPage = <int, List<CanvasTaskBlock>>{};
+    final textBlocksByPage = <int, List<CanvasTextBlock>>{};
+    for (final i in affected) {
+      final bid = _pageBlockIds[i];
+      imagesByPage[bid] = [];
+      blocksByPage[bid] = [];
+      textBlocksByPage[bid] = [];
+    }
+    for (final im in worldImages) {
+      final idx = _nearestPageIndex(im.y + im.h / 2);
+      if (idx < 0 || !affected.contains(idx)) continue;
+      imagesByPage[_pageBlockIds[idx]]!.add(im.clone()..y -= _pageOffsetY(idx));
+    }
+    for (final b in worldBlocks) {
+      final idx = _nearestPageIndex(b.y + b.h / 2);
+      if (idx < 0 || !affected.contains(idx)) continue;
+      blocksByPage[_pageBlockIds[idx]]!.add(b.clone()..y -= _pageOffsetY(idx));
+    }
+    for (final b in worldTextBlocks) {
+      final idx = _nearestPageIndex(b.y + b.h / 2);
+      if (idx < 0 || !affected.contains(idx)) continue;
+      textBlocksByPage[_pageBlockIds[idx]]!.add(
+        b.clone()..y -= _pageOffsetY(idx),
+      );
+    }
+    for (final i in affected) {
+      final bid = _pageBlockIds[i];
+      final data = _pageData[bid];
+      if (data == null) continue;
+      data.images = imagesByPage[bid]!;
+      data.taskBlocks = blocksByPage[bid]!;
+      data.textBlocks = textBlocksByPage[bid]!;
+      _persistPage(i);
+    }
+    return true;
+  }
+
+  void _finishIncrementalLassoSync(
+    Set<int> affected,
+    int totalWorldStrokes,
+    (int, int) strokeStats,
+    bool objectsChanged,
+    Stopwatch sw,
+  ) {
+    final changed = strokeStats.$1 > 0 || objectsChanged;
+    if (changed) {
+      _inkTick.value++;
+      setState(() {});
+    }
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF lasso-sync-cuaderno: ${affected.length} paginas, '
+      '${strokeStats.$1}/$totalWorldStrokes world trazos, '
+      '${strokeStats.$2} puntos, ${sw.elapsedMilliseconds}ms',
+    );
   }
 
   void _syncLassoToPages(
@@ -1884,26 +3053,57 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     List<CanvasImage> worldImages,
     List<CanvasTaskBlock> worldBlocks,
     List<CanvasTextBlock> worldTextBlocks,
-  ) {
+    Set<int> affected, {
+    bool lengthStable = false,
+  }) {
+    final sw = Stopwatch()..start();
+    if (affected.isEmpty) {
+      setState(() {});
+      CrashLogger.instance.note('PERF lasso-sync-cuaderno: 0 paginas, 0ms');
+      return;
+    }
+    if (lengthStable) {
+      final strokeStats = _syncLengthStableLassoStrokes(worldStrokes, affected);
+      final objectsChanged = _syncLengthStableLassoObjects(
+        worldImages,
+        worldBlocks,
+        worldTextBlocks,
+        affected,
+      );
+      final changed = strokeStats.$1 > 0 || objectsChanged;
+      if (changed) {
+        _inkTick.value++;
+        setState(() {});
+      }
+      sw.stop();
+      CrashLogger.instance.note(
+        'PERF lasso-sync-cuaderno: ${affected.length} paginas, '
+        '${strokeStats.$1}/${worldStrokes.length} world trazos, '
+        '${strokeStats.$2} puntos, ${sw.elapsedMilliseconds}ms',
+      );
+      return;
+    }
     final pages = <int, List<DrawingStroke>>{};
     final imagesByPage = <int, List<CanvasImage>>{};
     final blocksByPage = <int, List<CanvasTaskBlock>>{};
     final textBlocksByPage = <int, List<CanvasTextBlock>>{};
-    for (int i = 0; i < _pageBlockIds.length; i++) {
+    for (final i in affected) {
       final bid = _pageBlockIds[i];
       pages[bid] = [];
       imagesByPage[bid] = [];
       blocksByPage[bid] = [];
       textBlocksByPage[bid] = [];
     }
-    for (final s in worldStrokes) {
+    final strokeSource = <DrawingStroke>[];
+    strokeSource.addAll(worldStrokes);
+    for (final s in strokeSource) {
       if (s.points.isEmpty) continue;
       double sumY = 0;
       for (final pt in s.points) {
         sumY += pt[1];
       }
       final idx = _nearestPageIndex(sumY / s.points.length);
-      if (idx < 0) continue;
+      if (idx < 0 || !affected.contains(idx)) continue;
       final c = s.clone();
       final pageTop = _pageOffsetY(idx);
       for (final pt in c.points) {
@@ -1913,22 +3113,22 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     for (final im in worldImages) {
       final idx = _nearestPageIndex(im.y + im.h / 2);
-      if (idx < 0) continue;
+      if (idx < 0 || !affected.contains(idx)) continue;
       imagesByPage[_pageBlockIds[idx]]!.add(im.clone()..y -= _pageOffsetY(idx));
     }
     for (final b in worldBlocks) {
       final idx = _nearestPageIndex(b.y + b.h / 2);
-      if (idx < 0) continue;
+      if (idx < 0 || !affected.contains(idx)) continue;
       blocksByPage[_pageBlockIds[idx]]!.add(b.clone()..y -= _pageOffsetY(idx));
     }
     for (final b in worldTextBlocks) {
       final idx = _nearestPageIndex(b.y + b.h / 2);
-      if (idx < 0) continue;
+      if (idx < 0 || !affected.contains(idx)) continue;
       textBlocksByPage[_pageBlockIds[idx]]!.add(
         b.clone()..y -= _pageOffsetY(idx),
       );
     }
-    for (int i = 0; i < _pageBlockIds.length; i++) {
+    for (final i in affected) {
       final bid = _pageBlockIds[i];
       final prev = _pageData[bid];
       _pageData[bid] = DrawingData(
@@ -1940,9 +3140,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         background: prev?.background ?? PageBackground.blank,
         bgColorValue: prev?.bgColorValue,
       );
+      _pageTileIndex(bid).rebuild(_pageData[bid]!.strokes);
+      _rebuildWorldStrokeCache(bid);
       _persistPage(i);
     }
+    _inkTick.value++;
     setState(() {});
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF lasso-sync-cuaderno: ${affected.length} paginas, '
+      '${strokeSource.length}/${worldStrokes.length} world trazos, '
+      '${_pointCount(strokeSource)} puntos, '
+      '${sw.elapsedMilliseconds}ms',
+    );
   }
 
   /// Run a lasso mutation over the flattened world strokes + images + blocks,
@@ -1954,25 +3164,95 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       List<CanvasTaskBlock>,
       List<CanvasTextBlock>,
     )
-    op,
-  ) {
+    op, {
+    _LassoSyncMode syncMode = _LassoSyncMode.full,
+  }) {
+    final sw = Stopwatch()..start();
     final before = _snapshot();
+    final snapMs = sw.elapsedMilliseconds;
     final strokes = _allVisibleStrokes;
+    final strokesMs = sw.elapsedMilliseconds - snapMs;
     final images = _allVisibleImages;
     final blocks = _allVisibleTaskBlocks;
     final textBlocks = _allVisibleTextBlocks;
+    final boxBefore = _lassoCtrl.boundingBox;
+    final selectedBefore = Set<int>.from(_lassoCtrl.selectedIndices);
+    final objectSelectionBefore =
+        _lassoCtrl.selectedImageIndices.isNotEmpty ||
+        _lassoCtrl.selectedBlockIndices.isNotEmpty ||
+        _lassoCtrl.selectedTextBlockIndices.isNotEmpty;
+    final strokeCountBefore = strokes.length;
     op(strokes, images, blocks, textBlocks);
-    _syncLassoToPages(strokes, images, blocks, textBlocks);
-    _commit(before);
+    final affected = _affectedPages(boxBefore, _lassoCtrl.boundingBox);
+    if (syncMode == _LassoSyncMode.lengthStable) {
+      _markSelectedWorldStrokesDirty(strokes);
+      _syncLassoToPages(
+        strokes,
+        images,
+        blocks,
+        textBlocks,
+        affected,
+        lengthStable: true,
+      );
+    } else if (syncMode == _LassoSyncMode.deleteSelected) {
+      final syncSw = Stopwatch()..start();
+      final strokeStats = _syncDeletedLassoStrokes(selectedBefore);
+      final objectsChanged = _syncLengthStableLassoObjects(
+        images,
+        blocks,
+        textBlocks,
+        affected,
+        force: objectSelectionBefore,
+      );
+      _finishIncrementalLassoSync(
+        affected,
+        strokes.length,
+        strokeStats,
+        objectsChanged,
+        syncSw,
+      );
+    } else if (syncMode == _LassoSyncMode.appendSelected) {
+      final syncSw = Stopwatch()..start();
+      final strokeStats = _syncAppendedLassoStrokes(strokes, strokeCountBefore);
+      final objectsChanged = _syncLengthStableLassoObjects(
+        images,
+        blocks,
+        textBlocks,
+        affected,
+        force:
+            objectSelectionBefore || _lassoCtrl.selectedImageIndices.isNotEmpty,
+      );
+      _finishIncrementalLassoSync(
+        affected,
+        strokes.length,
+        strokeStats,
+        objectsChanged,
+        syncSw,
+      );
+    } else {
+      _syncLassoToPages(strokes, images, blocks, textBlocks, affected);
+    }
+    _commitSnapshot(before);
+    sw.stop();
+    CrashLogger.instance.note(
+      'PERF lasso-mut-cuaderno: snapshot ${snapMs}ms, '
+      'flattenStrokes ${strokesMs}ms, total ${sw.elapsedMilliseconds}ms',
+    );
   }
 
   void _lassoDelete() {
-    _lassoMutate((s, im, b, tx) => _lassoCtrl.deleteSelected(s, im, b, tx));
+    _lassoMutate(
+      (s, im, b, tx) => _lassoCtrl.deleteSelected(s, im, b, tx),
+      syncMode: _LassoSyncMode.deleteSelected,
+    );
     HapticFeedback.lightImpact();
   }
 
   void _lassoDuplicate() {
-    _lassoMutate((s, im, b, tx) => _lassoCtrl.duplicateSelected(s, im));
+    _lassoMutate(
+      (s, im, b, tx) => _lassoCtrl.duplicateSelected(s, im),
+      syncMode: _LassoSyncMode.appendSelected,
+    );
     HapticFeedback.lightImpact();
   }
 
@@ -2004,7 +3284,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _pageData[_pageBlockIds[pageIdx]]?.taskBlocks.add(block);
       _tool = DrawTool.task;
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persistPage(pageIdx);
     HapticFeedback.lightImpact();
   }
@@ -2038,7 +3318,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _pageData[_pageBlockIds[pageIdx]]?.textBlocks.add(block);
       _tool = DrawTool.text;
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persistPage(pageIdx);
     HapticFeedback.lightImpact();
   }
@@ -2085,7 +3365,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       );
       _toolbarVisible = false;
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persistPage(pageIdx);
     HapticFeedback.lightImpact();
   }
@@ -2104,6 +3384,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     setState(() {
       _morePopupOpen = !_morePopupOpen;
       if (_morePopupOpen) {
+        _floatingToolbarsPopupOpen = false;
+        _imagePanelOpen = false;
+        _shapePopupOpen = false;
+        _colorPickerOpen = false;
+        _widthPickerOpen = false;
+        _bgPopupOpen = false;
+      }
+    });
+  }
+
+  void _toggleFloatingToolbarsPopup() {
+    setState(() {
+      _floatingToolbarsPopupOpen = !_floatingToolbarsPopupOpen;
+      if (_floatingToolbarsPopupOpen) {
+        _morePopupOpen = false;
         _imagePanelOpen = false;
         _shapePopupOpen = false;
         _colorPickerOpen = false;
@@ -2141,6 +3436,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _shapePopupOpen = false;
       _toolbarVisible = false;
     });
+    _appendWorldStrokeCache(_pageBlockIds[pageIdx], stroke);
     // Flat index in world-space _allVisibleStrokes (new stroke is last in its
     // page; pages concatenate in order).
     int flat = 0;
@@ -2150,7 +3446,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     flat += data.strokes.length - 1;
     _lassoCtrl.hitScale = _viewScale;
     _lassoCtrl.selectRange(_allVisibleStrokes, flat, flat + 1);
-    _commit(before);
+    _commitSnapshot(before);
     _persistPage(pageIdx);
     HapticFeedback.lightImpact();
   }
@@ -2187,7 +3483,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 !selected &&
                 !gesture &&
                 (_tool == DrawTool.lasso || _palmRejection),
-            onPersist: () => _persistPage(pageIndex),
+            onPersist: () async {
+              _persistPage(pageIndex);
+            },
             onTasksChanged: () {
               if (mounted) setState(() {});
             },
@@ -2212,17 +3510,31 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             (_lassoCtrl.phase == LassoPhase.resizing &&
                 !_lassoCtrl.isSideResize);
         if (isLiveTransform && selected) {
-          final off = Offset(b.x, offset + b.y);
-          final tm =
-              Matrix4.translationValues(-off.dx, -off.dy, 0) *
-              _lassoCtrl.liveGestureMatrix() *
-              Matrix4.translationValues(off.dx, off.dy, 0);
-          overlay = Transform(transform: tm, child: overlay);
+          overlay = _liveGestureTransform(overlay, b.x, offset + b.y);
         }
         out.add(Positioned(left: b.x, top: offset + b.y, child: overlay));
       }
     }
     return out;
+  }
+
+  /// Wraps a selected block overlay so it follows the live lasso gesture WITHOUT
+  /// a full-tree rebuild: only this Transform reacts to _lassoGestureTick (the
+  /// block content rides through as `child`, built once). Critical for many-page
+  /// notebooks — the old per-frame setState rebuilt every page's overlays.
+  Widget _liveGestureTransform(Widget child, double bx, double by) {
+    final off = Offset(bx, by);
+    return ValueListenableBuilder<int>(
+      valueListenable: _lassoGestureTick,
+      child: child,
+      builder: (_, _, child) {
+        final tm =
+            Matrix4.translationValues(-off.dx, -off.dy, 0) *
+            _lassoCtrl.liveGestureMatrix() *
+            Matrix4.translationValues(off.dx, off.dy, 0);
+        return Transform(transform: tm, child: child);
+      },
+    );
   }
 
   /// Text block overlays. Flat index matches [_allVisibleTextBlocks] so lasso
@@ -2253,7 +3565,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             // crash (finger on block + 2-finger zoom).
             interactive: !selected && !gesture && _tool == DrawTool.text,
             movable: !selected && !gesture && _tool == DrawTool.text,
-            onPersist: () => _persistPage(pageIndex),
+            onPersist: () async {
+              _persistPage(pageIndex);
+            },
             onChanged: () {
               if (mounted) setState(() {});
             },
@@ -2281,12 +3595,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             (_lassoCtrl.phase == LassoPhase.resizing &&
                 !_lassoCtrl.isSideResize);
         if (isLiveTransform && selected) {
-          final off = Offset(b.x, offset + b.y);
-          final tm =
-              Matrix4.translationValues(-off.dx, -off.dy, 0) *
-              _lassoCtrl.liveGestureMatrix() *
-              Matrix4.translationValues(off.dx, off.dy, 0);
-          overlay = Transform(transform: tm, child: overlay);
+          overlay = _liveGestureTransform(overlay, b.x, offset + b.y);
         }
         out.add(Positioned(left: b.x, top: offset + b.y, child: overlay));
       }
@@ -2409,23 +3718,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       );
       _lassoCtrl.deselect();
     });
-    _commit(before);
+    _commitSnapshot(before);
     _persistPage(pageIdx);
     _imgCache?.get(newName);
   }
 
   // ─── Undo / redo (snapshot history, all pages) ──────────────────────────
 
-  Map<
-    int,
-    (
-      List<DrawingStroke>,
-      List<CanvasImage>,
-      List<CanvasTaskBlock>,
-      List<CanvasTextBlock>,
-    )
-  >
-  _snapshot() {
+  _NotebookSnapshot _snapshot({Set<int>? blockIds}) {
+    final sw = Stopwatch()..start();
     final m =
         <
           int,
@@ -2436,97 +3737,256 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             List<CanvasTextBlock>,
           )
         >{};
-    for (final entry in _pageData.entries) {
+    final entries =
+        blockIds == null
+            ? _pageData.entries
+            : _pageData.entries.where((entry) => blockIds.contains(entry.key));
+    for (final entry in entries) {
       m[entry.key] = (
-        entry.value.strokes.map((s) => s.clone()).toList(),
+        List<DrawingStroke>.of(entry.value.strokes),
         entry.value.images.map((im) => im.clone()).toList(),
         entry.value.taskBlocks.map((b) => b.clone()).toList(),
         entry.value.textBlocks.map((b) => b.clone()).toList(),
       );
     }
+    sw.stop();
+    if (sw.elapsedMilliseconds > 3) {
+      final strokes = _pageData.values.fold<int>(
+        0,
+        (total, data) => total + data.strokes.length,
+      );
+      final pts = _pageData.values.fold<int>(
+        0,
+        (total, data) => total + _pointCount(data.strokes),
+      );
+      CrashLogger.instance.note(
+        'PERF snapshot-cuaderno: ${_pageData.length} paginas, '
+        '$strokes trazos, $pts puntos, ${sw.elapsedMilliseconds}ms',
+      );
+    }
     return m;
   }
 
-  void _commit(
-    Map<
-      int,
-      (
-        List<DrawingStroke>,
-        List<CanvasImage>,
-        List<CanvasTaskBlock>,
-        List<CanvasTextBlock>,
-      )
-    >
-    before,
-  ) {
-    _undoStack.add(before);
+  bool _sameStrokeRefs(List<DrawingStroke> a, List<DrawingStroke> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  bool _sameImages(List<CanvasImage> a, List<CanvasImage> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      final x = a[i], y = b[i];
+      if (x.filename != y.filename ||
+          x.x != y.x ||
+          x.y != y.y ||
+          x.w != y.w ||
+          x.h != y.h ||
+          x.rotation != y.rotation) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameTaskBlocks(List<CanvasTaskBlock> a, List<CanvasTaskBlock> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      final x = a[i], y = b[i];
+      if (x.id != y.id ||
+          x.x != y.x ||
+          x.y != y.y ||
+          x.w != y.w ||
+          x.h != y.h ||
+          x.rotation != y.rotation ||
+          x.scale != y.scale ||
+          x.taskIds.length != y.taskIds.length) {
+        return false;
+      }
+      for (int j = 0; j < x.taskIds.length; j++) {
+        if (x.taskIds[j] != y.taskIds[j]) return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameTextBlocks(List<CanvasTextBlock> a, List<CanvasTextBlock> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      final x = a[i], y = b[i];
+      if (x.id != y.id ||
+          x.x != y.x ||
+          x.y != y.y ||
+          x.w != y.w ||
+          x.h != y.h ||
+          x.rotation != y.rotation ||
+          x.scale != y.scale ||
+          x.markdown != y.markdown ||
+          x.isSquare != y.isSquare) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Set<int> _changedSnapshotBlocks(_NotebookSnapshot snap) {
+    final out = <int>{};
+    for (final entry in snap.entries) {
+      final data = _pageData[entry.key];
+      if (data == null ||
+          !_sameStrokeRefs(data.strokes, entry.value.$1) ||
+          !_sameImages(data.images, entry.value.$2) ||
+          !_sameTaskBlocks(data.taskBlocks, entry.value.$3) ||
+          !_sameTextBlocks(data.textBlocks, entry.value.$4)) {
+        out.add(entry.key);
+      }
+    }
+    return out;
+  }
+
+  void _markRestoreStrokeDirty(int blockId, List<DrawingStroke> target) {
+    final data = _pageData[blockId];
+    if (data == null) return;
+    final currentById = <int, DrawingStroke>{
+      for (final s in data.strokes)
+        if (s.dbId != null) s.dbId!: s,
+    };
+    final persisted = _persistedStrokeIds(blockId);
+    final dirty = _dirtyStrokeIds(blockId);
+    for (final stroke in target) {
+      final id = stroke.dbId;
+      if (id == null || !persisted.contains(id)) continue;
+      final current = currentById[id];
+      if (current != null && !identical(current, stroke)) dirty.add(id);
+    }
+  }
+
+  void _pushHistory(_NotebookHistoryEntry entry) {
+    _undoStack.add(entry);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
+  void _commitSnapshot(_NotebookSnapshot before) {
+    _pushHistory(_NotebookSnapshotEntry(before));
+  }
+
+  void _commitStrokeAdd(int blockId, DrawingStroke stroke) {
+    _pushHistory(_NotebookStrokeAddEntry(blockId, stroke.clone()));
+  }
+
   void _commitGesture() {
     if (_gestureBefore != null) {
-      _commit(_gestureBefore!);
+      _commitSnapshot(_gestureBefore!);
       _gestureBefore = null;
     }
   }
 
   void _commitEraseGesture() {
     if (_gestureBefore != null && _gestureChanged) {
-      _commit(_gestureBefore!);
+      _commitSnapshot(_gestureBefore!);
     }
     _gestureBefore = null;
     _gestureChanged = false;
   }
 
-  void _restore(
-    Map<
-      int,
-      (
-        List<DrawingStroke>,
-        List<CanvasImage>,
-        List<CanvasTaskBlock>,
-        List<CanvasTextBlock>,
-      )
-    >
-    snap,
-  ) {
+  void _restore(_NotebookSnapshot snap, {Set<int>? blockIds}) {
     for (final entry in snap.entries) {
+      if (blockIds != null && !blockIds.contains(entry.key)) continue;
       final data = _pageData[entry.key];
       if (data != null) {
+        _markRestoreStrokeDirty(entry.key, entry.value.$1);
         data.strokes = entry.value.$1;
         data.images = entry.value.$2;
         data.taskBlocks = entry.value.$3;
         data.textBlocks = entry.value.$4;
       }
+      _pageTileIndex(
+        entry.key,
+      ).rebuild(_pageData[entry.key]?.strokes ?? const []);
+      _rebuildWorldStrokeCache(entry.key);
     }
+    _inkTick.value++;
   }
 
   void _undo() {
     if (_undoStack.isEmpty) return;
-    _redoStack.add(_snapshot());
-    final snap = _undoStack.removeLast();
+    final entry = _undoStack.removeLast();
+    final changed =
+        entry is _NotebookSnapshotEntry
+            ? _changedSnapshotBlocks(entry.snapshot)
+            : <int>{};
     setState(() {
-      _restore(snap);
+      if (entry is _NotebookSnapshotEntry) {
+        if (changed.isNotEmpty) {
+          _redoStack.add(_NotebookSnapshotEntry(_snapshot(blockIds: changed)));
+          _restore(entry.snapshot, blockIds: changed);
+        }
+      } else if (entry is _NotebookStrokeAddEntry) {
+        final data = _pageData[entry.blockId];
+        if (data != null && data.strokes.isNotEmpty) {
+          final removed = data.strokes.removeLast();
+          _redoStack.add(
+            _NotebookStrokeAddEntry(entry.blockId, removed.clone()),
+          );
+          _pageTileIndex(entry.blockId).invalidateRegion(
+            strokeBounds(removed).inflate(removed.strokeWidth + 4),
+            data.strokes,
+          );
+          _rebuildWorldStrokeCache(entry.blockId);
+          _inkTick.value++;
+        }
+      }
       _lassoCtrl.deselect();
       _active = null;
     });
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      _persistPage(i);
+    if (entry is _NotebookSnapshotEntry) {
+      for (final blockId in changed) {
+        final pageIndex = _pageBlockIds.indexOf(blockId);
+        if (pageIndex >= 0) _persistPage(pageIndex);
+      }
+    } else if (entry is _NotebookStrokeAddEntry) {
+      final pageIndex = _pageBlockIds.indexOf(entry.blockId);
+      if (pageIndex >= 0) _persistPage(pageIndex);
     }
   }
 
   void _redo() {
     if (_redoStack.isEmpty) return;
-    _undoStack.add(_snapshot());
-    final snap = _redoStack.removeLast();
+    final entry = _redoStack.removeLast();
+    final changed =
+        entry is _NotebookSnapshotEntry
+            ? _changedSnapshotBlocks(entry.snapshot)
+            : <int>{};
     setState(() {
-      _restore(snap);
+      if (entry is _NotebookSnapshotEntry) {
+        if (changed.isNotEmpty) {
+          _undoStack.add(_NotebookSnapshotEntry(_snapshot(blockIds: changed)));
+          _restore(entry.snapshot, blockIds: changed);
+        }
+      } else if (entry is _NotebookStrokeAddEntry) {
+        final data = _pageData[entry.blockId];
+        if (data != null) {
+          data.strokes.add(entry.stroke.clone());
+          _undoStack.add(
+            _NotebookStrokeAddEntry(entry.blockId, entry.stroke.clone()),
+          );
+          _appendToPage(entry.blockId, data.strokes.last);
+        }
+      }
       _lassoCtrl.deselect();
       _active = null;
     });
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      _persistPage(i);
+    if (entry is _NotebookSnapshotEntry) {
+      for (final blockId in changed) {
+        final pageIndex = _pageBlockIds.indexOf(blockId);
+        if (pageIndex >= 0) _persistPage(pageIndex);
+      }
+    } else if (entry is _NotebookStrokeAddEntry) {
+      final pageIndex = _pageBlockIds.indexOf(entry.blockId);
+      if (pageIndex >= 0) _persistPage(pageIndex);
     }
   }
 
@@ -2536,7 +3996,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Widget _buildNotebookBackgroundLayer(Size viewport, Size canvasSize) {
     return AnimatedBuilder(
-      animation: _viewCtrl,
+      animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
       builder: (_, _) {
         final visibleRect = _renderRectFor(viewport);
         return RepaintBoundary(
@@ -2558,28 +4018,98 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
+  // Zoomed-out: too many tiles to be worth per-tile boundaries → one painter.
+  static const int _kMaxLiveTiles = 48;
+
   Widget _buildNotebookStrokeLayer(Size viewport, Size canvasSize) {
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _viewCtrl,
-        builder: (_, _) {
-          final visibleRect = _renderRectFor(viewport);
-          return RepaintBoundary(
-            child: CustomPaint(
-              painter: _NotebookCanvasPainter(
-                pageBlockIds: _pageBlockIds,
-                pageData: _pageData,
-                visibleRect: visibleRect,
-                paintVersion: _paintVersion,
-                accentColor: _accent,
-                hiddenStrokes: _hiddenStrokes(),
-                imageCache: _imgCache,
-                drawBackground: false,
-              ),
-              size: canvasSize,
-            ),
-          );
-        },
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          // Pan/zoom, lasso phase, and any page-ink change (_inkTick).
+          animation: Listenable.merge([_viewCtrl, _lassoPhaseTick, _inkTick]),
+          builder: (_, _) {
+            final visible = _visibleRectFor(viewport).inflate(kStrokeTileSize);
+            final hiddenByPage = _hiddenStrokes();
+
+            final tiles = <Widget>[];
+            for (int i = 0; i < _pageBlockIds.length; i++) {
+              final bid = _pageBlockIds[i];
+              final data = _pageData[bid];
+              final index = _pageTiles[bid];
+              if (data == null || index == null || index.isEmpty) continue;
+              final pageTop = _pageOffsetY(i);
+              final pageWorld = Rect.fromLTWH(
+                0,
+                pageTop,
+                kNotebookPageWidth,
+                kNotebookPageHeight,
+              );
+              if (!pageWorld.overlaps(visible)) continue;
+              final localRect = Rect.fromLTRB(
+                visible.left,
+                visible.top - pageTop,
+                visible.right,
+                visible.bottom - pageTop,
+              ).intersect(
+                const Rect.fromLTWH(
+                  0,
+                  0,
+                  kNotebookPageWidth,
+                  kNotebookPageHeight,
+                ),
+              );
+              if (localRect.isEmpty) continue;
+
+              Set<DrawingStroke>? hidden;
+              final hi = hiddenByPage[i];
+              if (hi != null && hi.isNotEmpty) {
+                hidden = Set<DrawingStroke>.identity();
+                for (final j in hi) {
+                  if (j < data.strokes.length) hidden.add(data.strokes[j]);
+                }
+              }
+
+              tiles.addAll(
+                strokeTileWidgets(
+                  index: index,
+                  localRect: localRect,
+                  worldOffset: Offset(0, pageTop),
+                  hiddenStrokes: hidden,
+                  keyPrefix: bid,
+                  // Clip ink to the page so strokes can't bleed into the lateral
+                  // margin or the inter-page gap (tiles span past page edges).
+                  clipBounds: const Rect.fromLTWH(
+                    0,
+                    0,
+                    kNotebookPageWidth,
+                    kNotebookPageHeight,
+                  ),
+                ),
+              );
+            }
+
+            if (tiles.length > _kMaxLiveTiles) {
+              // Zoomed-out fallback: one direct painter over all pages.
+              return RepaintBoundary(
+                child: CustomPaint(
+                  painter: _NotebookCanvasPainter(
+                    pageBlockIds: _pageBlockIds,
+                    pageData: _pageData,
+                    visibleRect: visible,
+                    paintVersion: _paintVersion + _inkTick.value,
+                    accentColor: _accent,
+                    hiddenStrokes: hiddenByPage,
+                    imageCache: _imgCache,
+                    drawBackground: false,
+                  ),
+                  size: canvasSize,
+                ),
+              );
+            }
+
+            return Stack(clipBehavior: Clip.none, children: tiles);
+          },
+        ),
       ),
     );
   }
@@ -2656,19 +4186,28 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   ) {
     if (_lassoCtrl.phase == LassoPhase.idle) return const SizedBox.shrink();
     return AnimatedBuilder(
-      animation: Listenable.merge([_viewCtrl, _lassoAnimCtrl]),
+      animation: Listenable.merge([
+        _viewCtrl,
+        _lassoAnimCtrl,
+        _lassoGestureTick,
+      ]),
       builder: (_, _) {
         final visibleRect = _visibleRectFor(viewport);
-        return CustomPaint(
-          painter: LassoPainter(
-            ctrl: _lassoCtrl,
-            animValue: _lassoAnimCtrl.value,
-            strokes: strokes,
-            images: images,
-            imageCache: _imgCache,
-            visibleRect: visibleRect,
+        // Own RepaintBoundary: the marching-ants + gesture ghost repaint every
+        // frame; without isolation that re-composites every page each tick.
+        return RepaintBoundary(
+          child: CustomPaint(
+            painter: LassoPainter(
+              ctrl: _lassoCtrl,
+              animValue: _lassoAnimCtrl.value,
+              strokes: strokes,
+              images: images,
+              imageCache: _imgCache,
+              visibleRect: visibleRect,
+              liftedInk: _lassoCtrl.liftedInk,
+            ),
+            size: canvasSize,
           ),
-          size: canvasSize,
         );
       },
     );
@@ -2795,6 +4334,63 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return hidden;
   }
 
+  Future<void> _captureLassoSelection() async {
+    final bb = _lassoCtrl.boundingBox;
+    if (bb == null || bb == Rect.zero) return;
+
+    final selectedIndices = Set<int>.from(_lassoCtrl.selectedIndices);
+    final selectedImageIndices = Set<int>.from(_lassoCtrl.selectedImageIndices);
+
+    if (selectedIndices.isEmpty && selectedImageIndices.isEmpty) return;
+
+    final strokes = _allVisibleStrokes;
+    final images = _allVisibleImages;
+    final imageCache = _imgCache;
+    final double pixelRatio = MediaQuery.of(context).devicePixelRatio;
+    final double captureScale = _viewScale * pixelRatio;
+
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+
+      canvas.scale(captureScale);
+      canvas.translate(-bb.left, -bb.top);
+
+      for (final i in selectedImageIndices) {
+        if (i < images.length) {
+          final im = images[i];
+          final img = imageCache?.get(im.filename);
+          drawCanvasImage(canvas, img, im);
+        }
+      }
+
+      for (final i in selectedIndices) {
+        if (i < strokes.length) {
+          drawStroke(canvas, strokes[i]);
+        }
+      }
+
+      final picture = recorder.endRecording();
+      final width = (bb.width * captureScale).ceil();
+      final height = (bb.height * captureScale).ceil();
+      final img = await picture.toImage(
+        width > 0 ? width : 1,
+        height > 0 ? height : 1,
+      );
+      picture.dispose();
+
+      if (mounted &&
+          _lassoCtrl.phase == LassoPhase.moving &&
+          _lassoCtrl.boundingBox == bb) {
+        _lassoCtrl.liftedInk = img;
+        _lassoCtrl.liftedRect = bb;
+        _lassoGestureTick.value++;
+      } else {
+        img.dispose();
+      }
+    } catch (_) {}
+  }
+
   // ─── Build ─────────────────────────────────────────────────────────────
 
   Widget _buildLassoMiniToolbar() {
@@ -2812,6 +4408,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       child: LassoMiniToolbar(
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
+        onPin: () {
+          _pinSelection();
+        },
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
         onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
@@ -2822,13 +4421,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         onColorChange:
             (c) => _lassoMutate(
               (s, im, b, _) => _lassoCtrl.changeColor(s, c.toARGB32()),
+              syncMode: _LassoSyncMode.lengthStable,
             ),
         onWidthChange:
-            (w) => _lassoMutate((s, im, b, _) => _lassoCtrl.changeWidth(s, w)),
+            (w) => _lassoMutate(
+              (s, im, b, _) => _lassoCtrl.changeWidth(s, w),
+              syncMode: _LassoSyncMode.lengthStable,
+            ),
         onFlipH:
-            () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipHorizontal(s)),
+            () => _lassoMutate(
+              (s, im, b, _) => _lassoCtrl.flipHorizontal(s),
+              syncMode: _LassoSyncMode.lengthStable,
+            ),
         onFlipV:
-            () => _lassoMutate((s, im, b, _) => _lassoCtrl.flipVertical(s)),
+            () => _lassoMutate(
+              (s, im, b, _) => _lassoCtrl.flipVertical(s),
+              syncMode: _LassoSyncMode.lengthStable,
+            ),
         onCopy: () {
           _lassoCtrl.copySelected(_allVisibleStrokes, _allVisibleImages);
           HapticFeedback.lightImpact();
@@ -2840,7 +4449,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           );
         },
         onCut: () {
-          _lassoMutate((s, im, b, _) => _lassoCtrl.cutSelected(s, im, b));
+          _lassoMutate(
+            (s, im, b, _) => _lassoCtrl.cutSelected(s, im, b),
+            syncMode: _LassoSyncMode.deleteSelected,
+          );
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2869,6 +4481,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           }
           _lassoMutate(
             (s, im, b, _) => _lassoCtrl.pasteAt(_showPasteAt!, s, im),
+            syncMode: _LassoSyncMode.appendSelected,
           );
           HapticFeedback.mediumImpact();
           setState(() => _showPasteAt = null);
@@ -3161,6 +4774,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                     resetPos: false,
                                                   );
                                                 }
+                                                _scheduleDeferredDecode();
                                               },
                                               boundaryMargin:
                                                   EdgeInsets.symmetric(
@@ -3313,6 +4927,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                               ),
                                         ),
                                       ),
+                                    // Pinned snapshots (PiN) — viewport-pinned,
+                                    // sibling of the canvas Listener so they don't
+                                    // leak pointers and stay fixed across pages.
+                                    if (_pins.isNotEmpty)
+                                      Positioned.fill(
+                                        child: PinnedSnapshotsLayer(
+                                          pins: _pins,
+                                          onMove: _movePin,
+                                          onResize: _resizePin,
+                                          onClose: _closePin,
+                                        ),
+                                      ),
                                     // Eyedropper loupe (viewport-space, pinned).
                                     if (_eyedropImg != null)
                                       ..._buildLoupeOverlay(viewport),
@@ -3322,7 +4948,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                     // the heavy canvas subtree into a rebuild.
                                     Positioned.fill(
                                       child: AnimatedBuilder(
-                                        animation: _viewCtrl,
+                                        animation: Listenable.merge([
+                                          _viewCtrl,
+                                          _lassoPhaseTick,
+                                        ]),
                                         builder:
                                             (_, _) => Stack(
                                               clipBehavior: Clip.none,
@@ -3412,6 +5041,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 open: _morePopupOpen,
                 onDismiss: () => setState(() => _morePopupOpen = false),
                 child: _buildMorePopup(),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-floating-toolbars'),
+                open: _floatingToolbarsPopupOpen,
+                onDismiss:
+                    () => setState(() => _floatingToolbarsPopupOpen = false),
+                child: _buildFloatingToolbarsPopup(),
               ),
               RevealPopup(
                 key: const ValueKey('rp-image'),
@@ -3574,7 +5210,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               ),
               const SizedBox(width: 10),
               _toolBtn(
-                icon: YuLiIcons.lasso,
+                icon: YuLiIcons.squareDashedMousePointer,
                 active: _tool == DrawTool.lasso,
                 tooltip: 'Lazo',
                 onTap: () => _selectTool(DrawTool.lasso),
@@ -3915,6 +5551,41 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             },
           ),
           _toolBtn(
+            icon: YuLiIcons.lineSquiggle,
+            active: _floatingToolbarsPopupOpen,
+            label: 'TOOLBARS FLOTANTES',
+            onTap: _toggleFloatingToolbarsPopup,
+          ),
+          _toolBtn(
+            icon: YuLiIcons.layoutGrid,
+            active: _bgPopupOpen,
+            label: 'FONDO',
+            onTap: () {
+              setState(() => _morePopupOpen = false);
+              _toggleBgPopup();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingToolbarsPopup() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _toolBtn(
             icon: YuLiIcons.palette,
             active: _palettes?.isOpen(FloatingPaletteKind.colors) ?? false,
             label: 'P · COLORES',
@@ -3937,15 +5608,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             active: _palettes?.isOpen(FloatingPaletteKind.undoRedo) ?? false,
             label: 'P · DESHACER',
             onTap: () => _togglePalette(FloatingPaletteKind.undoRedo),
-          ),
-          _toolBtn(
-            icon: YuLiIcons.layoutGrid,
-            active: _bgPopupOpen,
-            label: 'FONDO',
-            onTap: () {
-              setState(() => _morePopupOpen = false);
-              _toggleBgPopup();
-            },
           ),
         ],
       ),
@@ -4387,6 +6049,8 @@ class _NotebookCanvasPainter extends CustomPainter {
   /// Layer split so strokes render ABOVE the text-block overlays: the bottom
   /// layer paints page chrome + images ([drawStrokes] false), and a second
   /// layer above the text overlays paints only strokes ([drawBackground] false).
+  /// Strokes are drawn directly + culled — used for the background layer and the
+  /// zoomed-out fallback; the normal stroke layer is the tiled [strokeTileWidgets].
   final bool drawBackground;
   final bool drawStrokes;
 
@@ -4483,11 +6147,14 @@ class _NotebookCanvasPainter extends CustomPainter {
         }
         final skip = hiddenStrokes[i];
         if (drawStrokes) {
+          canvas.save();
+          canvas.clipRect(pageVisible);
           for (int si = 0; si < data.strokes.length; si++) {
             if (skip != null && skip.contains(si)) continue;
             if (!strokeOverlapsRect(data.strokes[si], pageVisible)) continue;
             drawStroke(canvas, data.strokes[si]);
           }
+          canvas.restore();
         }
       }
 

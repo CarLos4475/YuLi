@@ -18,6 +18,14 @@ class LassoPainter extends CustomPainter {
   final CanvasImageCache? imageCache;
   final Rect? visibleRect;
 
+  /// When set, the selected strokes+images are "lifted": a pixel-exact,
+  /// transparent texture (captured once) drawn at the live bounding box instead
+  /// of redrawing the vector strokes/image ghosts. Lets a move slide the real
+  /// pixels with no per-frame vector work and no re-raster on drop. Block
+  /// overlays ride along as widgets (separate). Null on the notebook editor →
+  /// falls back to vectors.
+  final ui.Image? liftedInk;
+
   LassoPainter({
     required this.ctrl,
     required this.animValue,
@@ -25,6 +33,7 @@ class LassoPainter extends CustomPainter {
     this.images = const [],
     this.imageCache,
     this.visibleRect,
+    this.liftedInk,
   });
 
   ui.Image? _img(CanvasImage im) => imageCache?.get(im.filename);
@@ -72,6 +81,29 @@ class LassoPainter extends CustomPainter {
   // ─── Selection ─────────────────────────────────────────────────────────
 
   void _paintSelection(Canvas canvas, Offset offset) {
+    if (ctrl.phase == LassoPhase.moving && liftedInk != null) {
+      final rect = ctrl.liftedRect ?? ctrl.boundingBox;
+      if (rect != null) {
+        final src = Rect.fromLTWH(
+          0,
+          0,
+          liftedInk!.width.toDouble(),
+          liftedInk!.height.toDouble(),
+        );
+        final dst = rect.shift(offset);
+        canvas.drawImageRect(
+          liftedInk!,
+          src,
+          dst,
+          Paint()..filterQuality = ui.FilterQuality.low,
+        );
+      }
+      if (ctrl.boundingBox != null) {
+        _drawBoundingBox(canvas, ctrl.boundingBox!.shift(offset));
+      }
+      return;
+    }
+
     for (final i in ctrl.selectedImageIndices) {
       if (i >= images.length) continue;
       final im = images[i];

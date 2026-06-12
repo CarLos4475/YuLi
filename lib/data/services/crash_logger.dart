@@ -15,17 +15,20 @@ class CrashLogger {
   static final CrashLogger instance = CrashLogger._();
 
   File? _file;
+  Future<void> _writeTail = Future.value();
   static const _maxBytes = 256 * 1024; // ~256 KB, then trimmed to half
 
   Future<void> init() async {
     try {
       final dir = Directory(
-          p.join((await getApplicationDocumentsDirectory()).path, 'diagnostics'));
+        p.join((await getApplicationDocumentsDirectory()).path, 'diagnostics'),
+      );
       await dir.create(recursive: true);
       _file = File(p.join(dir.path, 'crash.log'));
       await _appendRaw(
-          '\n===== Sesión iniciada ${DateTime.now().toIso8601String()} '
-          '(${Platform.operatingSystem}) =====\n');
+        '\n===== Sesión iniciada ${DateTime.now().toIso8601String()} '
+        '(${Platform.operatingSystem}) =====\n',
+      );
     } catch (_) {
       // Logging must never take down the app.
     }
@@ -34,16 +37,32 @@ class CrashLogger {
   /// Fire-and-forget. Safe to call from error handlers; never throws.
   void record(Object error, StackTrace? stack, {String context = ''}) {
     final ts = DateTime.now().toIso8601String();
-    final entry = StringBuffer()
-      ..writeln('──────────────────────────────────────')
-      ..writeln('[$ts]${context.isEmpty ? '' : ' · $context'}')
-      ..writeln(error.toString())
-      ..writeln(stack?.toString() ?? '(sin stack trace)')
-      ..writeln();
+    final entry =
+        StringBuffer()
+          ..writeln('──────────────────────────────────────')
+          ..writeln('[$ts]${context.isEmpty ? '' : ' · $context'}')
+          ..writeln(error.toString())
+          ..writeln(stack?.toString() ?? '(sin stack trace)')
+          ..writeln();
     _appendRaw(entry.toString());
   }
 
-  Future<void> _appendRaw(String text) async {
+  /// Lightweight timestamped note (diagnostics / perf instrumentation). Like
+  /// [record] but for plain messages, not errors. Fire-and-forget, never throws.
+  void note(String message) {
+    _appendRaw('[${DateTime.now().toIso8601String()}] $message\n');
+  }
+
+  Future<void> _appendRaw(String text) {
+    final write = _writeTail.then(
+      (_) => _appendRawNow(text),
+      onError: (_) => _appendRawNow(text),
+    );
+    _writeTail = write.catchError((_) {});
+    return write;
+  }
+
+  Future<void> _appendRawNow(String text) async {
     try {
       final f = _file;
       if (f == null) return;
@@ -51,13 +70,16 @@ class CrashLogger {
       if (await f.length() > _maxBytes) {
         final content = await f.readAsString();
         // Keep the most recent half so the file stays bounded.
-        await f.writeAsString(content.substring(content.length - _maxBytes ~/ 2));
+        await f.writeAsString(
+          content.substring(content.length - _maxBytes ~/ 2),
+        );
       }
     } catch (_) {}
   }
 
   Future<String> read() async {
     try {
+      await _writeTail;
       final f = _file;
       if (f != null && await f.exists()) return await f.readAsString();
     } catch (_) {}
@@ -66,6 +88,7 @@ class CrashLogger {
 
   Future<void> clear() async {
     try {
+      await _writeTail;
       await _file?.writeAsString('');
     } catch (_) {}
   }

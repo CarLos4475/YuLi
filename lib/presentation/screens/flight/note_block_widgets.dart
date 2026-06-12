@@ -22,6 +22,7 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
+import 'drawing_stroke_persistence.dart';
 import 'drawing_cell.dart';
 import 'note_block_actions.dart';
 import 'note_cell_model.dart';
@@ -257,7 +258,11 @@ class _TextBlockBody extends ConsumerStatefulWidget {
   final TextBlock block;
   final Color accent;
   final void Function(TextEditingController? ctrl)? onFocusChanged;
-  const _TextBlockBody({required this.block, required this.accent, this.onFocusChanged});
+  const _TextBlockBody({
+    required this.block,
+    required this.accent,
+    this.onFocusChanged,
+  });
 
   @override
   ConsumerState<_TextBlockBody> createState() => _TextBlockBodyState();
@@ -327,7 +332,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
             _focus.requestFocus();
           });
         },
-        child: IgnorePointer(child: NoteMarkdownPreview(data: _ctrl.text, accent: widget.accent)),
+        child: IgnorePointer(
+          child: NoteMarkdownPreview(data: _ctrl.text, accent: widget.accent),
+        ),
       );
     }
     return TextField(
@@ -992,7 +999,11 @@ class _NoteTaskRow extends ConsumerWidget {
               behavior: HitTestBehavior.opaque,
               onTapUp: (d) {
                 if (!done) {
-                  burstConfetti(context, d.globalPosition, accent: accentFlight);
+                  burstConfetti(
+                    context,
+                    d.globalPosition,
+                    accent: accentFlight,
+                  );
                 }
                 onCheck();
               },
@@ -1006,11 +1017,7 @@ class _NoteTaskRow extends ConsumerWidget {
                 ),
                 child:
                     done
-                        ? const Icon(
-                          YuLiIcons.check,
-                          size: 12,
-                          color: yCream,
-                        )
+                        ? const Icon(YuLiIcons.check, size: 12, color: yCream)
                         : null,
               ),
             ),
@@ -1210,11 +1217,38 @@ class _DrawingBlockBody extends ConsumerStatefulWidget {
 
 class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
   late DrawingData _data;
+  List<int?> _strokeIds = const [];
+  Future<void> _persistTail = Future.value();
 
   @override
   void initState() {
     super.initState();
+    _resetDataFromBlock();
+    unawaited(_loadStoredStrokes());
+  }
+
+  @override
+  void didUpdateWidget(covariant _DrawingBlockBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.block.id == widget.block.id) return;
+    _resetDataFromBlock();
+    unawaited(_loadStoredStrokes());
+  }
+
+  void _resetDataFromBlock() {
     _data = _toDrawingData(widget.block);
+    _strokeIds = _data.strokes.map((s) => s.dbId).toList();
+  }
+
+  Future<void> _loadStoredStrokes() async {
+    final rows = await ref
+        .read(drawingStrokeRepositoryProvider)
+        .getByBlock(widget.block.id);
+    if (!mounted || rows.isEmpty) return;
+    setState(() {
+      _data.strokes = rows.map(strokeFromRecord).toList();
+      _strokeIds = _data.strokes.map((s) => s.dbId).toList();
+    });
   }
 
   DrawingData _toDrawingData(DrawingBlock b) {
@@ -1229,9 +1263,56 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
 
   Future<void> _persist(DrawingData data) async {
     _data = data;
+    final snapshot = DrawingData(
+      height: data.height,
+      strokes: data.strokes.map((s) => s.clone()).toList(),
+      images: data.images.map((im) => im.clone()).toList(),
+      taskBlocks: data.taskBlocks.map((b) => b.clone()).toList(),
+      textBlocks: data.textBlocks.map((b) => b.clone()).toList(),
+      background: data.background,
+      bgColorValue: data.bgColorValue,
+    );
+    _persistTail = _persistTail
+        .catchError((_) {})
+        .then((_) => _persistNow(snapshot));
+    await _persistTail;
+  }
+
+  Future<void> _persistNow(DrawingData data) async {
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+    final appendOnly =
+        data.strokes.length > _strokeIds.length &&
+        _strokeIds.asMap().entries.every(
+          (e) => data.strokes[e.key].dbId == e.value,
+        ) &&
+        data.strokes.skip(_strokeIds.length).every((s) => s.dbId == null);
+    if (appendOnly) {
+      for (int i = _strokeIds.length; i < data.strokes.length; i++) {
+        final id = await strokeRepo.insert(
+          widget.block.id,
+          strokeWrite(i, data.strokes[i]),
+        );
+        data.strokes[i].dbId = id;
+        if (i < _data.strokes.length) {
+          _data.strokes[i].dbId = id;
+        }
+      }
+    } else {
+      final ids = await strokeRepo.replaceBlock(widget.block.id, [
+        for (int i = 0; i < data.strokes.length; i++)
+          strokeWrite(i, data.strokes[i]),
+      ]);
+      for (int i = 0; i < data.strokes.length && i < ids.length; i++) {
+        data.strokes[i].dbId = ids[i];
+        if (i < _data.strokes.length) {
+          _data.strokes[i].dbId = ids[i];
+        }
+      }
+    }
+    _strokeIds = data.strokes.map((s) => s.dbId).toList();
     await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
       'h': data.height,
-      's': data.strokes.map((s) => s.toJson()).toList(),
+      's': const [],
     });
   }
 
