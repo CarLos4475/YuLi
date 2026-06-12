@@ -104,6 +104,11 @@ class StrokeTileIndex extends ChangeNotifier {
 
   bool get isEmpty => _tiles.isEmpty;
 
+  int get debugTileCount => _tiles.length;
+
+  int get debugEntryCount =>
+      _tiles.values.fold(0, (total, strokes) => total + strokes.length);
+
   List<DrawingStroke>? strokesAt((int, int) key) => _tiles[key];
 
   int versionAt((int, int) key) => _versions[key] ?? 0;
@@ -134,11 +139,11 @@ class StrokeTileIndex extends ChangeNotifier {
   }
 
   Rect _gridAlign(Rect r) => Rect.fromLTRB(
-        (r.left / tileSize).floor() * tileSize,
-        (r.top / tileSize).floor() * tileSize,
-        ((r.right / tileSize).floor() + 1) * tileSize,
-        ((r.bottom / tileSize).floor() + 1) * tileSize,
-      );
+    (r.left / tileSize).floor() * tileSize,
+    (r.top / tileSize).floor() * tileSize,
+    ((r.right / tileSize).floor() + 1) * tileSize,
+    ((r.bottom / tileSize).floor() + 1) * tileSize,
+  );
 
   Iterable<(int, int)> _keysIn(Rect rect) sync* {
     final startX = (rect.left / tileSize).floor();

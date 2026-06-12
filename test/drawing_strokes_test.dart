@@ -62,6 +62,22 @@ void main() {
     expect(restored[1].points.first, [50.0, 50.0]);
   });
 
+  test('insertMany round-trips strokes in position order', () async {
+    final blockId = await makeDrawingBlock();
+    final strokes = [pen(0, 0), pen(50, 50), pen(100, 100)];
+    final ids = await strokeRepo.insertMany(blockId, [
+      for (final (i, stroke) in strokes.indexed) strokeWrite(i, stroke),
+    ]);
+    for (final (i, id) in ids.indexed) {
+      strokes[i].dbId = id;
+    }
+
+    final rows = await strokeRepo.getByBlock(blockId);
+    expect(rows.map((r) => r.id).toList(), ids);
+    expect(rows.map((r) => r.position).toList(), [0, 1, 2]);
+    expect(rows.map(strokeFromRecord).map((s) => s.dbId).toList(), ids);
+  });
+
   test('getByBlock returns rows ordered by position', () async {
     final blockId = await makeDrawingBlock();
     // Insert out of order: position 5 then 2.

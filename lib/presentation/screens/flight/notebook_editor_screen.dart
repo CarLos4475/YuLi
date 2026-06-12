@@ -22,6 +22,8 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
+import '../../../domain/repositories/drawing_stroke_repository.dart';
+import '../../../domain/repositories/note_block_repository.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../widgets/ai_link_badge.dart';
@@ -132,9 +134,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final Map<int, DrawingData> _pageData = {};
   final List<int> _pageBlockIds = [];
   final Map<int, DrawingBlock> _pageShells = {};
-  // Pages whose JSON hasn't been decoded yet. Decoding every page up front
-  // blocks the first frame (the open jank); these stream in after it. A page
-  // here is absent from _pageData → treated as empty (blank chrome) until ready.
+  // Temporarily kept empty: pages are decoded eagerly on open so pan/scroll does
+  // not pay hydration cost mid-gesture.
   final Map<int, DrawingBlock> _pendingDecode = {};
   final Set<int> _hydratingPages = {};
   static const int _livePageMargin = 2;
@@ -328,6 +329,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _viewportRasterBaking = false;
   bool _viewportRasterPending = false;
   int _viewportRasterVersion = 0;
+  DateTime _lastLayerDecisionLog = DateTime.fromMillisecondsSinceEpoch(0);
+  String _lastLayerDecisionKey = '';
 
   // Lasso action toolbar is summoned by tapping the selection, not shown on
   // select. Tap outside hides it (selection kept); tap outside again deselects.
@@ -549,24 +552,53 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
-    // Register page shells only; stroke rows hydrate after the first frame.
+    _pageBlockIds.clear();
+    _pageShells.clear();
+    _pendingDecode.clear();
+    _hydratingPages.clear();
+    _pageData.clear();
+    _pageTiles.clear();
+    _pageWorldStrokeCache.clear();
+    _persistedStrokeIdsByBlock.clear();
+    _dirtyStrokeIdsByBlock.clear();
+    _nextStrokePosByBlock.clear();
+
     for (final b in drawingBlocks) {
       _pageBlockIds.add(b.id);
       _pageShells[b.id] = b;
-      _pendingDecode[b.id] = b;
       if (b.starred) _starredBlockIds.add(b.id);
     }
 
-    // New pages inherit the last page background without decoding its strokes.
     _lastBg = PageBackground.fromString(drawingBlocks.last.background ?? '');
     _lastBgColor = drawingBlocks.last.bgColor;
 
+    var totalStrokes = 0;
+    var totalPoints = 0;
+    for (final b in drawingBlocks) {
+      if (!mounted) return;
+      _hydratingPages.add(b.id);
+      try {
+        final decoded = await _decodeData(b);
+        if (!mounted) return;
+        _pageData[b.id] = decoded;
+        _pageTileIndex(b.id).rebuild(decoded.strokes);
+        _rebuildWorldStrokeCache(b.id);
+        _scheduleOverviewBake(b.id);
+        totalStrokes += decoded.strokes.length;
+        totalPoints += _pointCount(decoded.strokes);
+      } finally {
+        _hydratingPages.remove(b.id);
+      }
+    }
+
+    _paintVersion++;
     setState(() {});
 
     sw.stop();
     CrashLogger.instance.note(
       'PERF abrir-cuaderno: ${drawingBlocks.length} paginas, '
       '${_pageData.length} decoded, ${_pendingDecode.length} pending, '
+      '$totalStrokes trazos, $totalPoints puntos, '
       '${sw.elapsedMilliseconds}ms',
     );
   }
@@ -704,6 +736,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   bool _hasEvictableColdPages() {
+    return false;
+  }
+
+  int _evictColdPages() {
+    return 0;
+  }
+
+  bool _hasEvictableColdPagesDisabled() {
     if (_pageData.isEmpty ||
         _undoStack.isNotEmpty ||
         _redoStack.isNotEmpty ||
@@ -725,7 +765,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return false;
   }
 
-  int _evictColdPages() {
+  int _evictColdPagesDisabled() {
     if (_pageData.isEmpty ||
         _undoStack.isNotEmpty ||
         _redoStack.isNotEmpty ||
@@ -1069,7 +1109,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _ensurePageAt(_pageBlockIds.length).then((_) => _pendingPageAdd = false);
   }
 
-  Future<void> _persistPageNow(int pageIndex) async {
+  Future<void> _persistPageNow(
+    int pageIndex, {
+    DrawingStrokeRepository? strokeRepo,
+    NoteBlockRepository? blockRepo,
+  }) async {
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
     final blockId = _pageBlockIds[pageIndex];
     final data = _pageData[blockId];
@@ -1077,109 +1121,157 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _dirtyPersistPages.remove(blockId);
       return;
     }
-    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-    final blockRepo = ref.read(noteBlockRepositoryProvider);
+    final DrawingStrokeRepository strokes =
+        strokeRepo ?? ref.read(drawingStrokeRepositoryProvider);
+    final NoteBlockRepository blocks =
+        blockRepo ?? ref.read(noteBlockRepositoryProvider);
+    _dirtyPersistPages.remove(blockId);
+    final fullPersist = _fullStrokePersistBlocks.remove(blockId);
+    final Set<int> dirtyBeforeFull =
+        fullPersist ? _dirtyStrokeIds(blockId).toSet() : <int>{};
+    if (fullPersist) _dirtyStrokeIds(blockId).clear();
+    final removedDirtyIds = <int>{};
+    final strokesSnapshot = List<DrawingStroke>.of(data.strokes);
+    final imagesPayload = data.images.map((im) => im.toJson()).toList();
+    final taskBlocksPayload = data.taskBlocks.map((b) => b.toJson()).toList();
+    final textBlocksPayload = data.textBlocks.map((b) => b.toJson()).toList();
+    final background = data.background;
+    final bgColorValue = data.bgColorValue;
+    final starred = _starredBlockIds.contains(blockId);
     final sw = Stopwatch()..start();
     int inserted = 0, updated = 0, deleted = 0;
-    if (_fullStrokePersistBlocks.remove(blockId)) {
-      final ids = await strokeRepo.replaceBlock(blockId, [
-        for (int i = 0; i < data.strokes.length; i++)
-          strokeWrite(i, data.strokes[i]),
-      ]);
-      for (int i = 0; i < data.strokes.length && i < ids.length; i++) {
-        data.strokes[i].dbId = ids[i];
-      }
-      _rebuildWorldStrokeCache(blockId);
-      _persistedStrokeIds(blockId)
-        ..clear()
-        ..addAll(ids);
-      _dirtyStrokeIds(blockId).clear();
-      _nextStrokePosByBlock[blockId] = data.strokes.length;
-      inserted = ids.length;
-    } else {
-      final persisted = _persistedStrokeIds(blockId);
-      var nextPos = _nextStrokePos(blockId);
-      final strokesSnapshot = List<DrawingStroke>.of(data.strokes);
-      for (final stroke in strokesSnapshot) {
-        if (stroke.dbId != null && persisted.contains(stroke.dbId)) {
-          continue;
+    try {
+      if (fullPersist) {
+        final ids = await strokes.replaceBlock(blockId, [
+          for (int i = 0; i < strokesSnapshot.length; i++)
+            strokeWrite(i, strokesSnapshot[i]),
+        ]);
+        for (int i = 0; i < strokesSnapshot.length && i < ids.length; i++) {
+          strokesSnapshot[i].dbId = ids[i];
+          final liveIndex = data.strokes.indexOf(strokesSnapshot[i]);
+          if (liveIndex >= 0 && liveIndex < data.strokes.length) {
+            data.strokes[liveIndex].dbId = ids[i];
+          }
+          final cache = _pageWorldStrokeCache[blockId];
+          if (cache != null && liveIndex >= 0 && liveIndex < cache.length) {
+            cache[liveIndex].dbId = ids[i];
+          }
         }
-        stroke.dbId = null;
-        final id = await strokeRepo.insert(
-          blockId,
-          strokeWrite(nextPos++, stroke),
+        _rebuildWorldStrokeCache(blockId);
+        _persistedStrokeIds(blockId)
+          ..clear()
+          ..addAll(ids);
+        _nextStrokePosByBlock[blockId] = strokesSnapshot.length;
+        inserted = ids.length;
+      } else {
+        final persisted = _persistedStrokeIds(blockId);
+        var nextPos = _nextStrokePos(blockId);
+        final insertStrokes = <DrawingStroke>[];
+        final insertWrites = <DrawingStrokeWrite>[];
+        for (final stroke in strokesSnapshot) {
+          if (stroke.dbId != null && persisted.contains(stroke.dbId)) {
+            continue;
+          }
+          stroke.dbId = null;
+          insertStrokes.add(stroke);
+          insertWrites.add(strokeWrite(nextPos++, stroke));
+        }
+        final ids = await strokes.insertMany(blockId, insertWrites);
+        for (int i = 0; i < ids.length && i < insertStrokes.length; i++) {
+          final stroke = insertStrokes[i];
+          final id = ids[i];
+          stroke.dbId = id;
+          final cacheIndex = data.strokes.indexOf(stroke);
+          final cache = _pageWorldStrokeCache[blockId];
+          if (cache != null && cacheIndex >= 0 && cacheIndex < cache.length) {
+            cache[cacheIndex].dbId = id;
+          }
+          persisted.add(id);
+        }
+        inserted = ids.length;
+        _nextStrokePosByBlock[blockId] = nextPos;
+
+        final byId = <int, DrawingStroke>{
+          for (final s in strokesSnapshot)
+            if (s.dbId != null && persisted.contains(s.dbId)) s.dbId!: s,
+        };
+        final dirty = _dirtyStrokeIds(blockId);
+        if (dirty.isNotEmpty) {
+          final dirtyIds = dirty.toSet();
+          final updates = <int, DrawingStrokeWrite>{};
+          for (final id in dirtyIds) {
+            final stroke = byId[id];
+            if (stroke == null) continue;
+            updates[id] = strokeWrite(0, stroke);
+          }
+          removedDirtyIds.addAll(updates.keys);
+          dirty.removeAll(removedDirtyIds);
+          await strokes.updateMany(updates);
+          updated = updates.length;
+        }
+
+        final currentIds = byId.keys.toSet();
+        final toDelete = persisted.difference(currentIds);
+        if (toDelete.isNotEmpty) {
+          await strokes.deleteByIds(toDelete.toList());
+          persisted.removeAll(toDelete);
+          deleted = toDelete.length;
+        }
+      }
+      final strokeMs = sw.elapsedMilliseconds;
+      await blocks.updatePayload(blockId, {
+        'h': kNotebookPageHeight,
+        's': const [],
+        'i': imagesPayload,
+        't': taskBlocksPayload,
+        'tx': textBlocksPayload,
+        'bg': background.toDbString(),
+        if (bgColorValue != null) 'bgc': bgColorValue,
+        'starred': starred,
+      });
+      final dbStats = await strokes.debugStatsByBlock(blockId);
+      final memPoints = _pointCount(strokesSnapshot);
+      final livePoints = _pointCount(data.strokes);
+      final shell = _pageShells[blockId];
+      if (shell != null) {
+        _pageShells[blockId] = shell.copyWith(
+          strokesJson: '[]',
+          imagesJson: jsonEncode(imagesPayload),
+          taskBlocksJson: jsonEncode(taskBlocksPayload),
+          textBlocksJson: jsonEncode(textBlocksPayload),
+          background: background.toDbString(),
+          bgColor: bgColorValue,
+          starred: starred,
         );
-        stroke.dbId = id;
-        final cacheIndex = data.strokes.indexOf(stroke);
-        final cache = _pageWorldStrokeCache[blockId];
-        if (cache != null && cacheIndex >= 0 && cacheIndex < cache.length) {
-          cache[cacheIndex].dbId = id;
-        }
-        persisted.add(id);
-        inserted++;
       }
-      _nextStrokePosByBlock[blockId] = nextPos;
-
-      final byId = <int, DrawingStroke>{
-        for (final s in data.strokes)
-          if (s.dbId != null && persisted.contains(s.dbId)) s.dbId!: s,
-      };
-      final dirty = _dirtyStrokeIds(blockId);
-      if (dirty.isNotEmpty) {
-        final updates = <int, DrawingStrokeWrite>{};
-        for (final id in dirty.toList()) {
-          final stroke = byId[id];
-          if (stroke == null) continue;
-          updates[id] = strokeWrite(0, stroke);
-        }
-        await strokeRepo.updateMany(updates);
-        updated = updates.length;
-        dirty.clear();
-      }
-
-      final currentIds = byId.keys.toSet();
-      final toDelete = persisted.difference(currentIds);
-      if (toDelete.isNotEmpty) {
-        await strokeRepo.deleteByIds(toDelete.toList());
-        persisted.removeAll(toDelete);
-        deleted = toDelete.length;
-      }
-    }
-    final strokeMs = sw.elapsedMilliseconds;
-    await blockRepo.updatePayload(blockId, {
-      'h': kNotebookPageHeight,
-      's': const [],
-      'i': data.images.map((im) => im.toJson()).toList(),
-      't': data.taskBlocks.map((b) => b.toJson()).toList(),
-      'tx': data.textBlocks.map((b) => b.toJson()).toList(),
-      'bg': data.background.toDbString(),
-      if (data.bgColorValue != null) 'bgc': data.bgColorValue,
-      'starred': _starredBlockIds.contains(blockId),
-    });
-    final shell = _pageShells[blockId];
-    if (shell != null) {
-      _pageShells[blockId] = shell.copyWith(
-        strokesJson: '[]',
-        imagesJson: jsonEncode(data.images.map((im) => im.toJson()).toList()),
-        taskBlocksJson: jsonEncode(
-          data.taskBlocks.map((b) => b.toJson()).toList(),
-        ),
-        textBlocksJson: jsonEncode(
-          data.textBlocks.map((b) => b.toJson()).toList(),
-        ),
-        background: data.background.toDbString(),
-        bgColor: data.bgColorValue,
-        starred: _starredBlockIds.contains(blockId),
+      sw.stop();
+      CrashLogger.instance.note(
+        'PERF guardar-cuaderno: page $pageIndex, ${strokesSnapshot.length} trazos, '
+        '$memPoints puntos, live ${data.strokes.length}/$livePoints, '
+        '+$inserted ~$updated -$deleted, '
+        'db ${dbStats.count} trazos/${dbStats.points} puntos/maxPos ${dbStats.maxPosition ?? -1}, '
+        'strokesDB ${strokeMs}ms, '
+        'total(+DB) ${sw.elapsedMilliseconds}ms',
       );
+      if (dbStats.count != strokesSnapshot.length ||
+          dbStats.points != memPoints) {
+        CrashLogger.instance.note(
+          'WARN persist-cuaderno-mismatch: page $pageIndex block $blockId, '
+          'mem ${strokesSnapshot.length}/$memPoints vs '
+          'db ${dbStats.count}/${dbStats.points}, '
+          'live ${data.strokes.length}/$livePoints, '
+          '+$inserted ~$updated -$deleted',
+        );
+      }
+    } catch (_) {
+      _dirtyPersistPages.add(blockId);
+      if (fullPersist) {
+        _fullStrokePersistBlocks.add(blockId);
+        _dirtyStrokeIds(blockId).addAll(dirtyBeforeFull);
+      }
+      _dirtyStrokeIds(blockId).addAll(removedDirtyIds);
+      rethrow;
     }
-    sw.stop();
-    CrashLogger.instance.note(
-      'PERF guardar-cuaderno: page $pageIndex, ${data.strokes.length} trazos, '
-      '${_pointCount(data.strokes)} puntos, +$inserted ~$updated -$deleted, '
-      'strokesDB ${strokeMs}ms, '
-      'total(+DB) ${sw.elapsedMilliseconds}ms',
-    );
-    _dirtyPersistPages.remove(blockId);
   }
 
   void _persistPage(int pageIndex) {
@@ -1246,8 +1338,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final count = strokes.length;
       final oldImage = _overviewByPage[blockId];
       final oldBaked = _overviewBakedCountByPage[blockId] ?? 0;
+      final staleAtStart = _overviewStalePages.contains(blockId);
       // Page bounds are fixed, so any new stroke fits → appends are incremental.
-      final incremental = oldImage != null && count > oldBaked;
+      final incremental = !staleAtStart && oldImage != null && count > oldBaked;
 
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -1285,6 +1378,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _overviewBakedCountByPage[blockId] = count;
       _overviewStalePages.remove(blockId); // fresh image matches _data again
       _overviewThreshold = (imgScale / dpr).clamp(0.0, 0.65);
+      final pageIndex = _pageBlockIds.indexOf(blockId);
+      CrashLogger.instance.note(
+        'PERF bake-overview-cuaderno: page $pageIndex, '
+        '${incremental ? 'incremental' : 'full'}, '
+        'staleAtStart ${staleAtStart ? 'SI' : 'no'}, count $count, '
+        'old $oldBaked, img ${w}x$h',
+      );
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakePageOverview cuaderno');
@@ -1428,6 +1528,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         haveScale != null &&
         (haveScale - imgScale).abs() / imgScale < 0.12 &&
         haveCount == count) {
+      final pageIndex = _pageBlockIds.indexOf(blockId);
+      CrashLogger.instance.note(
+        'PERF bake-focus-cuaderno: page $pageIndex reuse, count $count, '
+        'scale ${imgScale.toStringAsFixed(2)}, have ${haveScale.toStringAsFixed(2)}',
+      );
       return; // resident focus is already good enough for this zoom
     }
     _overviewFocusBakingPages.add(blockId);
@@ -1454,6 +1559,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _overviewFocusByPage[blockId] = image;
       _overviewFocusScaleByPage[blockId] = imgScale;
       _overviewFocusBakedCountByPage[blockId] = count;
+      final pageIndex = _pageBlockIds.indexOf(blockId);
+      CrashLogger.instance.note(
+        'PERF bake-focus-cuaderno: page $pageIndex done, count $count, '
+        'img ${w}x$h, scale ${imgScale.toStringAsFixed(2)}, '
+        'stale ${_overviewStalePages.contains(blockId) ? 'SI' : 'no'}',
+      );
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakePageFocus cuaderno');
@@ -1727,6 +1838,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_dirtyPersistPages.isEmpty) return;
     if (_persisting) return;
     _persisting = true;
+    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
+    final blockRepo = ref.read(noteBlockRepositoryProvider);
     final sw = Stopwatch()..start();
     var pages = 0;
     try {
@@ -1735,7 +1848,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         for (final blockId in blockIds) {
           final pageIndex = _pageBlockIds.indexOf(blockId);
           if (pageIndex >= 0) {
-            await _persistPageNow(pageIndex);
+            await _persistPageNow(
+              pageIndex,
+              strokeRepo: strokeRepo,
+              blockRepo: blockRepo,
+            );
             pages++;
           } else {
             _dirtyPersistPages.remove(blockId);
@@ -3546,6 +3663,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         lengthStable: true,
       );
       _commitGesture();
+      CrashLogger.instance.note(
+        'PERF lasso-transform-cuaderno: affected ${affected.toList()..sort()}, '
+        'selected ${_lassoCtrl.selectedIndices.length}, world ${strokes.length}, '
+        'decoded ${_pageData.length}/${_pageBlockIds.length}, pending ${_pendingDecode.length}',
+      );
     } else {
       _gestureBoxBefore = null;
       _gestureBefore = null;
@@ -3591,6 +3713,35 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Rect _joinRect(Rect? a, Rect b) => a == null ? b : a.expandToInclude(b);
 
+  void _refreshLassoPageVisuals(
+    int pageIndex,
+    Rect? region, {
+    required int touched,
+    required bool structural,
+    required String reason,
+  }) {
+    final blockId = _pageBlockIds[pageIndex];
+    final data = _pageData[blockId];
+    if (data == null) return;
+    final index = _pageTileIndex(blockId);
+    final forceRebuild = structural || region == null || touched > 128;
+    _overviewStalePages.add(blockId);
+    _disposeFocus(blockId);
+    if (forceRebuild) {
+      index.rebuild(data.strokes);
+    } else {
+      index.invalidateRegion(region, data.strokes);
+    }
+    CrashLogger.instance.note(
+      'PERF lasso-tiles-cuaderno: $reason page $pageIndex, '
+      '${forceRebuild ? 'rebuild' : 'region'}, touched $touched, '
+      'strokes ${data.strokes.length}, tiles ${index.debugTileCount}/${index.debugEntryCount}, '
+      'stale ${_overviewStalePages.contains(blockId)}, '
+      'baked ${_overviewBakedCountByPage[blockId] ?? 0}, '
+      'focus ${_overviewFocusBakedCountByPage[blockId] ?? 0}',
+    );
+  }
+
   (int, int) _syncLengthStableLassoStrokes(
     List<DrawingStroke> worldStrokes,
     Set<int> affected,
@@ -3598,6 +3749,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final dirtyByPage = <int, Rect>{};
     final removalsByPage = <int, List<int>>{};
     final appendsByPage = <int, List<DrawingStroke>>{};
+    final structuralPages = <int>{};
     // Each selected stroke's final (page, object) so we can re-derive the flat
     // selection indices AFTER all list mutations settle. A cross-page move
     // removes from the source + appends to the target → every later flat index
@@ -3606,9 +3758,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final placed = <(int, DrawingStroke)>[];
     var touched = 0;
     var points = 0;
+    var skippedSourceCold = 0;
+    var skippedTargetCold = 0;
+    var selectedSeen = 0;
 
     for (final worldIndex in _lassoCtrl.selectedIndices) {
       if (worldIndex < 0 || worldIndex >= worldStrokes.length) continue;
+      selectedSeen++;
       final source = _worldStrokePageLocalIndex(worldIndex);
       if (source == null) continue;
       final sourcePage = source.$1;
@@ -3619,6 +3775,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (sourceData == null ||
           sourceLocal < 0 ||
           sourceLocal >= sourceData.strokes.length) {
+        if (sourceData == null) skippedSourceCold++;
         continue;
       }
 
@@ -3630,6 +3787,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       }
       final targetPage = _nearestPageIndex(sumY / worldStroke.points.length);
       if (targetPage < 0 || targetPage >= _pageBlockIds.length) continue;
+      final targetBlockId = _pageBlockIds[targetPage];
+      final targetData = _pageData[targetBlockId];
+      if (targetData == null) skippedTargetCold++;
       if (!affected.contains(sourcePage) && !affected.contains(targetPage)) {
         continue;
       }
@@ -3657,6 +3817,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       } else {
         (removalsByPage[sourcePage] ??= []).add(sourceLocal);
         (appendsByPage[targetPage] ??= []).add(newLocal);
+        structuralPages.add(sourcePage);
+        structuralPages.add(targetPage);
         placed.add((targetPage, newLocal));
       }
       touched++;
@@ -3695,10 +3857,28 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final entry in dirtyByPage.entries) {
       final pageIndex = entry.key;
       final blockId = _pageBlockIds[pageIndex];
-      final data = _pageData[blockId];
-      if (data == null) continue;
-      _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
+      if (_pageData[blockId] == null) continue;
+      _refreshLassoPageVisuals(
+        pageIndex,
+        entry.value,
+        touched: touched,
+        structural: structuralPages.contains(pageIndex),
+        reason: 'length',
+      );
       _persistPage(pageIndex);
+    }
+
+    if (skippedSourceCold > 0 ||
+        skippedTargetCold > 0 ||
+        touched != selectedSeen) {
+      CrashLogger.instance.note(
+        'WARN lasso-length-cuaderno: selected ${_lassoCtrl.selectedIndices.length}, '
+        'seen $selectedSeen, touched $touched, '
+        'sourceCold $skippedSourceCold, targetCold $skippedTargetCold, '
+        'affected ${affected.toList()..sort()}, '
+        'decoded ${_pageData.length}/${_pageBlockIds.length}, '
+        'pending ${_pendingDecode.length}',
+      );
     }
 
     // Re-derive the flat selection from where each stroke actually ended up (by
@@ -3725,6 +3905,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final removalsByPage = <int, List<int>>{};
     var touched = 0;
     var points = 0;
+    var skippedCold = 0;
 
     for (final worldIndex in selectedBefore) {
       final source = _worldStrokePageLocalIndex(worldIndex);
@@ -3735,6 +3916,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final blockId = _pageBlockIds[pageIndex];
       final data = _pageData[blockId];
       if (data == null || localIndex < 0 || localIndex >= data.strokes.length) {
+        if (data == null) skippedCold++;
         continue;
       }
       final stroke = data.strokes[localIndex];
@@ -3764,10 +3946,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final entry in dirtyByPage.entries) {
       final pageIndex = entry.key;
       final blockId = _pageBlockIds[pageIndex];
-      final data = _pageData[blockId];
-      if (data == null) continue;
-      _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
+      if (_pageData[blockId] == null) continue;
+      _refreshLassoPageVisuals(
+        pageIndex,
+        entry.value,
+        touched: touched,
+        structural: true,
+        reason: 'delete',
+      );
       _persistPage(pageIndex);
+    }
+
+    if (skippedCold > 0 || touched != selectedBefore.length) {
+      CrashLogger.instance.note(
+        'WARN lasso-delete-cuaderno: selected ${selectedBefore.length}, '
+        'touched $touched, cold $skippedCold, '
+        'dirtyPages ${dirtyByPage.keys.toList()..sort()}, '
+        'decoded ${_pageData.length}/${_pageBlockIds.length}, '
+        'pending ${_pendingDecode.length}',
+      );
     }
 
     return (touched, points);
@@ -3781,22 +3978,35 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final appendedLocals = <(int, int)>[];
     var touched = 0;
     var points = 0;
+    var candidates = 0;
+    var skippedCold = 0;
+    var skippedInvalid = 0;
 
     for (final worldIndex in (_lassoCtrl.selectedIndices.toList()..sort())) {
       if (worldIndex < minNewIndex || worldIndex >= worldStrokes.length) {
         continue;
       }
+      candidates++;
       final worldStroke = worldStrokes[worldIndex];
-      if (worldStroke.points.isEmpty) continue;
+      if (worldStroke.points.isEmpty) {
+        skippedInvalid++;
+        continue;
+      }
       var sumY = 0.0;
       for (final pt in worldStroke.points) {
         sumY += pt[1];
       }
       final pageIndex = _nearestPageIndex(sumY / worldStroke.points.length);
-      if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) continue;
+      if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) {
+        skippedInvalid++;
+        continue;
+      }
       final blockId = _pageBlockIds[pageIndex];
       final data = _pageData[blockId];
-      if (data == null) continue;
+      if (data == null) {
+        skippedCold++;
+        continue;
+      }
       if (!_pageWorldStrokeCache.containsKey(blockId)) {
         _rebuildWorldStrokeCache(blockId);
       }
@@ -3818,10 +4028,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final entry in dirtyByPage.entries) {
       final pageIndex = entry.key;
       final blockId = _pageBlockIds[pageIndex];
-      final data = _pageData[blockId];
-      if (data == null) continue;
-      _pageTileIndex(blockId).invalidateRegion(entry.value, data.strokes);
+      if (_pageData[blockId] == null) continue;
+      _refreshLassoPageVisuals(
+        pageIndex,
+        entry.value,
+        touched: touched,
+        structural: true,
+        reason: 'append',
+      );
       _persistPage(pageIndex);
+    }
+
+    if (skippedCold > 0 || skippedInvalid > 0 || touched != candidates) {
+      CrashLogger.instance.note(
+        'WARN lasso-append-cuaderno: candidates $candidates, '
+        'touched $touched, cold $skippedCold, invalid $skippedInvalid, '
+        'dirtyPages ${dirtyByPage.keys.toList()..sort()}, '
+        'selected ${_lassoCtrl.selectedIndices.length}, minNew $minNewIndex, '
+        'world ${worldStrokes.length}, decoded ${_pageData.length}/${_pageBlockIds.length}, '
+        'pending ${_pendingDecode.length}',
+      );
     }
 
     if (appendedLocals.isNotEmpty) {
@@ -3999,6 +4225,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         bgColorValue: prev?.bgColorValue,
       );
       _pageTileIndex(bid).rebuild(_pageData[bid]!.strokes);
+      _overviewStalePages.add(bid);
+      _disposeFocus(bid);
+      final index = _pageTileIndex(bid);
+      CrashLogger.instance.note(
+        'PERF lasso-tiles-cuaderno: full page $i, rebuild, '
+        'strokes ${_pageData[bid]!.strokes.length}, '
+        'tiles ${index.debugTileCount}/${index.debugEntryCount}, '
+        'stale ${_overviewStalePages.contains(bid)}, '
+        'baked ${_overviewBakedCountByPage[bid] ?? 0}, '
+        'focus ${_overviewFocusBakedCountByPage[bid] ?? 0}',
+      );
       _rebuildWorldStrokeCache(bid);
       _persistPage(i);
     }
@@ -4042,6 +4279,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final strokeCountBefore = strokes.length;
     op(strokes, images, blocks, textBlocks);
     final affected = _affectedPages(boxBefore, _lassoCtrl.boundingBox);
+    final affectedList = affected.toList()..sort();
+    final pendingAffected = [
+      for (final page in affectedList)
+        if (page >= 0 &&
+            page < _pageBlockIds.length &&
+            _pendingDecode.containsKey(_pageBlockIds[page]))
+          page,
+    ];
     if (syncMode == _LassoSyncMode.lengthStable) {
       _markSelectedWorldStrokesDirty(strokes);
       _syncLassoToPages(
@@ -4093,8 +4338,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _commitSnapshot(before);
     sw.stop();
     CrashLogger.instance.note(
-      'PERF lasso-mut-cuaderno: snapshot ${snapMs}ms, '
-      'flattenStrokes ${strokesMs}ms, total ${sw.elapsedMilliseconds}ms',
+      'PERF lasso-mut-cuaderno: mode $syncMode, '
+      'selected ${selectedBefore.length}->${_lassoCtrl.selectedIndices.length}, '
+      'strokes $strokeCountBefore->${strokes.length}, '
+      'affected $affectedList, pendingAffected $pendingAffected, '
+      'decoded ${_pageData.length}/${_pageBlockIds.length}, pending ${_pendingDecode.length}, '
+      'snapshot ${snapMs}ms, flattenStrokes ${strokesMs}ms, '
+      'total ${sw.elapsedMilliseconds}ms',
     );
   }
 
@@ -4750,6 +5000,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _gestureChanged = false;
   }
 
+  void _invalidateUndoRedoPageVisuals(int blockId, String reason) {
+    final data = _pageData[blockId];
+    _pageTileIndex(blockId).rebuild(data?.strokes ?? const []);
+    _overviewStalePages.add(blockId);
+    _disposeFocus(blockId);
+    _scheduleOverviewBake(blockId);
+    _rebuildWorldStrokeCache(blockId);
+    CrashLogger.instance.note(
+      'PERF undo-redo-cuaderno: $reason block $blockId page ${_pageBlockIds.indexOf(blockId)}, '
+      'strokes ${data?.strokes.length ?? 0}, '
+      'tiles ${_pageTileIndex(blockId).debugTileCount}/${_pageTileIndex(blockId).debugEntryCount}, '
+      'stale ${_overviewStalePages.contains(blockId)}, '
+      'baked ${_overviewBakedCountByPage[blockId] ?? 0}, '
+      'focus ${_overviewFocusBakedCountByPage[blockId] ?? 0}',
+    );
+  }
+
   void _restore(_NotebookSnapshot snap, {Set<int>? blockIds}) {
     for (final entry in snap.entries) {
       if (blockIds != null && !blockIds.contains(entry.key)) continue;
@@ -4760,11 +5027,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         data.images = entry.value.$2;
         data.taskBlocks = entry.value.$3;
         data.textBlocks = entry.value.$4;
+        _fullStrokePersistBlocks.add(entry.key);
       }
-      _pageTileIndex(
-        entry.key,
-      ).rebuild(_pageData[entry.key]?.strokes ?? const []);
-      _rebuildWorldStrokeCache(entry.key);
+      _invalidateUndoRedoPageVisuals(entry.key, 'restore');
     }
     _inkTick.value++;
   }
@@ -4793,7 +5058,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             strokeBounds(removed).inflate(removed.strokeWidth + 4),
             data.strokes,
           );
+          _overviewStalePages.add(entry.blockId);
+          _disposeFocus(entry.blockId);
+          _scheduleOverviewBake(entry.blockId);
           _rebuildWorldStrokeCache(entry.blockId);
+          CrashLogger.instance.note(
+            'PERF undo-redo-cuaderno: stroke-add undo block ${entry.blockId} '
+            'page ${_pageBlockIds.indexOf(entry.blockId)}, '
+            'strokes ${data.strokes.length}, stale ${_overviewStalePages.contains(entry.blockId)}, '
+            'baked ${_overviewBakedCountByPage[entry.blockId] ?? 0}',
+          );
           _inkTick.value++;
         }
       }
@@ -4832,6 +5106,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             _NotebookStrokeAddEntry(entry.blockId, entry.stroke.clone()),
           );
           _appendToPage(entry.blockId, data.strokes.last);
+          _overviewStalePages.add(entry.blockId);
+          _disposeFocus(entry.blockId);
+          _scheduleOverviewBake(entry.blockId);
+          CrashLogger.instance.note(
+            'PERF undo-redo-cuaderno: stroke-add redo block ${entry.blockId} '
+            'page ${_pageBlockIds.indexOf(entry.blockId)}, '
+            'strokes ${data.strokes.length}, stale ${_overviewStalePages.contains(entry.blockId)}, '
+            'baked ${_overviewBakedCountByPage[entry.blockId] ?? 0}',
+          );
         }
       }
       _lassoCtrl.deselect();
@@ -4883,6 +5166,60 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // Zoomed-out: too many tiles to be worth per-tile boundaries → one painter.
   static const int _kMaxLiveTiles = 48;
 
+  void _logNotebookLayerDecision(
+    String source, {
+    required Rect visible,
+    required int visiblePages,
+    required int coldPages,
+    required int emptyPages,
+    required int tilePages,
+    required int basePages,
+    required int focusPages,
+    required int stalePages,
+    required int deltaStrokes,
+    required int liveStrokes,
+    required int bakedStrokes,
+    required int widgetCount,
+    required int lod,
+    required String details,
+  }) {
+    final now = DateTime.now();
+    final moving =
+        _viewGestureActive ||
+        _viewTransformActive ||
+        _overviewLinger ||
+        _activePointers.isNotEmpty;
+    final key =
+        '$source|${_viewScale.toStringAsFixed(2)}|$_overviewActive|'
+        '$visiblePages|$coldPages|$emptyPages|$tilePages|$basePages|'
+        '$focusPages|$stalePages|$deltaStrokes|$liveStrokes|$bakedStrokes|'
+        '$widgetCount|$lod|$details|${_pendingDecode.length}|${_pageData.length}';
+    final minGap = moving ? 700 : 2000;
+    if (key == _lastLayerDecisionKey &&
+        now.difference(_lastLayerDecisionLog).inMilliseconds < minGap) {
+      return;
+    }
+    _lastLayerDecisionKey = key;
+    _lastLayerDecisionLog = now;
+    CrashLogger.instance.note(
+      'PERF layer-cuaderno: $source, '
+      'zoom ${_viewScale.toStringAsFixed(2)}, '
+      'threshold ${_overviewThreshold.toStringAsFixed(2)}, '
+      'overview ${_overviewActive ? 'SI' : 'no'}, '
+      'gesture ${_viewGestureActive ? 'SI' : 'no'}, '
+      'transform ${_viewTransformActive ? 'SI' : 'no'}, '
+      'linger ${_overviewLinger ? 'SI' : 'no'}, '
+      'pages visible $visiblePages cold $coldPages empty $emptyPages '
+      'tiles $tilePages base $basePages focus $focusPages stale $stalePages, '
+      'strokes live $liveStrokes baked $bakedStrokes delta $deltaStrokes, '
+      'decoded ${_pageData.length}/${_pageBlockIds.length}, '
+      'pending ${_pendingDecode.length}, widgets $widgetCount, lod $lod, '
+      'rect ${visible.left.toStringAsFixed(1)},${visible.top.toStringAsFixed(1)},'
+      '${visible.width.toStringAsFixed(1)}x${visible.height.toStringAsFixed(1)}, '
+      'detail $details',
+    );
+  }
+
   Widget _buildNotebookStrokeLayer(Size viewport, Size canvasSize) {
     return Positioned.fill(
       child: IgnorePointer(
@@ -4893,6 +5230,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             if (_viewportRasterActive ||
                 (_zoomGestureActive && _zoomSnapshotImage != null)) {
               _overviewActive = false;
+              final visible = _visibleRectFor(
+                viewport,
+              ).inflate(kStrokeTileSize);
+              _logNotebookLayerDecision(
+                _viewportRasterActive ? 'viewport-raster' : 'zoom-snapshot',
+                visible: visible,
+                visiblePages: 0,
+                coldPages: 0,
+                emptyPages: 0,
+                tilePages: 0,
+                basePages: 0,
+                focusPages: 0,
+                stalePages: 0,
+                deltaStrokes: 0,
+                liveStrokes: 0,
+                bakedStrokes: 0,
+                widgetCount: 0,
+                lod: lodForScale(_viewScale),
+                details:
+                    'viewportRaster $_viewportRasterVersion zoomSnap ${_zoomSnapshotImage != null ? 'Y' : 'N'}',
+              );
               return const SizedBox.shrink();
             }
             final visible = _visibleRectFor(viewport).inflate(kStrokeTileSize);
@@ -4915,11 +5273,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     (_viewGestureActive && _overviewStickyThisGesture));
 
             final tiles = <Widget>[];
+            final pageDetails = <String>[];
+            var visiblePages = 0;
+            var coldPages = 0;
+            var emptyPages = 0;
+            var tilePages = 0;
+            var basePages = 0;
+            var focusPages = 0;
+            var stalePages = 0;
+            var deltaStrokes = 0;
+            var liveStrokes = 0;
+            var bakedStrokes = 0;
             for (int i = 0; i < _pageBlockIds.length; i++) {
               final bid = _pageBlockIds[i];
-              final data = _pageData[bid];
-              final index = _pageTiles[bid];
-              if (data == null || index == null || index.isEmpty) continue;
               final pageTop = _pageOffsetY(i);
               final pageWorld = Rect.fromLTWH(
                 0,
@@ -4928,6 +5294,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 kNotebookPageHeight,
               );
               if (!pageWorld.overlaps(visible)) continue;
+              visiblePages++;
               final localRect = Rect.fromLTRB(
                 visible.left,
                 visible.top - pageTop,
@@ -4942,6 +5309,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 ),
               );
               if (localRect.isEmpty) continue;
+              final data = _pageData[bid];
+              final index = _pageTiles[bid];
+              if (data == null) {
+                coldPages++;
+                if (pageDetails.length < 8) pageDetails.add('$i:cold');
+                continue;
+              }
+              liveStrokes += data.strokes.length;
+              if (index == null || index.isEmpty) {
+                emptyPages++;
+                if (pageDetails.length < 8) {
+                  pageDetails.add('$i:empty live${data.strokes.length}');
+                }
+                continue;
+              }
 
               Set<DrawingStroke>? hidden;
               final hi = hiddenByPage[i];
@@ -4962,7 +5344,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   pageOverviewOk ? _overviewFocusByPage[bid] : null;
               final pageImg =
                   focusImg ?? (pageOverviewOk ? _overviewByPage[bid] : null);
+              final pageStale = _overviewStalePages.contains(bid);
+              if (pageStale) stalePages++;
               if (pageImg != null) {
+                if (focusImg != null) {
+                  focusPages++;
+                } else {
+                  basePages++;
+                }
                 // Cached ink image for this page (blit instead of re-drawing).
                 tiles.add(
                   Positioned.fromRect(
@@ -4981,7 +5370,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     focusImg != null
                         ? (_overviewFocusBakedCountByPage[bid] ?? 0)
                         : (_overviewBakedCountByPage[bid] ?? 0);
-                final baked = bakedCount.clamp(0, data.strokes.length);
+                final baked = bakedCount.clamp(0, data.strokes.length).toInt();
+                bakedStrokes += baked;
+                final delta = data.strokes.length - baked;
+                deltaStrokes += delta;
+                if (pageDetails.length < 8) {
+                  pageDetails.add(
+                    '$i:${focusImg != null ? 'focus' : 'base'} '
+                    'live${data.strokes.length}/b$baked/d$delta '
+                    'stale${pageStale ? 'Y' : 'N'}',
+                  );
+                }
                 if (baked < data.strokes.length) {
                   tiles.add(
                     Positioned.fromRect(
@@ -5010,6 +5409,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   );
                 }
               } else {
+                tilePages++;
+                if (pageDetails.length < 8) {
+                  pageDetails.add(
+                    '$i:tiles live${data.strokes.length} '
+                    'stale${pageStale ? 'Y' : 'N'}',
+                  );
+                }
                 tiles.addAll(
                   strokeTileWidgets(
                     index: index,
@@ -5032,6 +5438,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             }
 
             if (!_overviewActive && tiles.length > _kMaxLiveTiles) {
+              _logNotebookLayerDecision(
+                'fallback-painter',
+                visible: visible,
+                visiblePages: visiblePages,
+                coldPages: coldPages,
+                emptyPages: emptyPages,
+                tilePages: tilePages,
+                basePages: basePages,
+                focusPages: focusPages,
+                stalePages: stalePages,
+                deltaStrokes: deltaStrokes,
+                liveStrokes: liveStrokes,
+                bakedStrokes: bakedStrokes,
+                widgetCount: tiles.length,
+                lod: lod,
+                details: pageDetails.join(';'),
+              );
               // Zoomed-out fallback: one direct painter over all pages.
               return RepaintBoundary(
                 child: CustomPaint(
@@ -5051,6 +5474,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               );
             }
 
+            _logNotebookLayerDecision(
+              _overviewActive ? 'mixed-overview' : 'tiles',
+              visible: visible,
+              visiblePages: visiblePages,
+              coldPages: coldPages,
+              emptyPages: emptyPages,
+              tilePages: tilePages,
+              basePages: basePages,
+              focusPages: focusPages,
+              stalePages: stalePages,
+              deltaStrokes: deltaStrokes,
+              liveStrokes: liveStrokes,
+              bakedStrokes: bakedStrokes,
+              widgetCount: tiles.length,
+              lod: lod,
+              details: pageDetails.join(';'),
+            );
             return Stack(clipBehavior: Clip.none, children: tiles);
           },
         ),

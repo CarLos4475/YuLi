@@ -90,8 +90,60 @@ class DrawingStrokesDao extends DatabaseAccessor<AppDatabase>
     return row.readNullable<int>('max_position');
   }
 
+  Future<({int count, int points, int? maxPosition})> debugStatsByBlock(
+    int blockId,
+  ) async {
+    final row =
+        await customSelect(
+          '''
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(point_count), 0) AS point_count,
+            MAX(position) AS max_position
+          FROM drawing_strokes
+          WHERE block_id = ?
+          ''',
+          variables: [Variable.withInt(blockId)],
+          readsFrom: {drawingStrokes},
+        ).getSingle();
+    return (
+      count: row.read<int>('row_count'),
+      points: row.read<int>('point_count'),
+      maxPosition: row.readNullable<int>('max_position'),
+    );
+  }
+
   Future<int> insertStroke(DrawingStrokesCompanion row) =>
       into(drawingStrokes).insert(row);
+
+  Future<List<DrawingStrokeRow>> insertStrokes(
+    int blockId,
+    List<DrawingStrokesCompanion> rows,
+  ) async {
+    if (rows.isEmpty) return const [];
+    return transaction(() async {
+      final maxRow =
+          await customSelect(
+            '''
+            SELECT MAX(id) AS max_id
+            FROM drawing_strokes
+            WHERE block_id = ?
+            ''',
+            variables: [Variable.withInt(blockId)],
+            readsFrom: {drawingStrokes},
+          ).getSingle();
+      final previousMaxId = maxRow.readNullable<int>('max_id') ?? 0;
+      await batch((b) => b.insertAll(drawingStrokes, rows));
+      return (select(drawingStrokes)
+            ..where(
+              (s) =>
+                  s.blockId.equals(blockId) &
+                  s.id.isBiggerThanValue(previousMaxId),
+            )
+            ..orderBy([(s) => OrderingTerm.asc(s.position)]))
+          .get();
+    });
+  }
 
   /// Update a single stroke row by its id (in-place geometry edit: payload +
   /// bounds change, the row keeps its id and position).

@@ -60,6 +60,11 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
   Future<int?> getMaxPositionByBlock(int blockId) =>
       _db.drawingStrokesDao.getMaxPositionByBlock(blockId);
 
+  @override
+  Future<({int count, int points, int? maxPosition})> debugStatsByBlock(
+    int blockId,
+  ) => _db.drawingStrokesDao.debugStatsByBlock(blockId);
+
   List<DrawingStrokeRecord> _recordsFromRows(List<DrawingStrokeRow> rows) {
     return [
       for (final r in rows)
@@ -70,6 +75,20 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
   @override
   Future<int> insert(int blockId, DrawingStrokeWrite stroke) =>
       _db.drawingStrokesDao.insertStroke(_toCompanion(blockId, stroke));
+
+  @override
+  Future<List<int>> insertMany(
+    int blockId,
+    List<DrawingStrokeWrite> strokes,
+  ) async {
+    if (strokes.isEmpty) return const [];
+    final now = DateTime.now();
+    final rows = [
+      for (final stroke in strokes) _toCompanion(blockId, stroke, now: now),
+    ];
+    final inserted = await _db.drawingStrokesDao.insertStrokes(blockId, rows);
+    return inserted.map((r) => r.id).toList();
+  }
 
   @override
   Future<void> update(int strokeId, DrawingStrokeWrite stroke) => _db
@@ -120,8 +139,12 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     updatedAt: Value(updatedAt),
   );
 
-  DrawingStrokesCompanion _toCompanion(int blockId, DrawingStrokeWrite stroke) {
-    final now = DateTime.now();
+  DrawingStrokesCompanion _toCompanion(
+    int blockId,
+    DrawingStrokeWrite stroke, {
+    DateTime? now,
+  }) {
+    final timestamp = now ?? DateTime.now();
     return DrawingStrokesCompanion.insert(
       blockId: blockId,
       position: stroke.position,
@@ -131,8 +154,8 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
       maxX: stroke.maxX,
       maxY: stroke.maxY,
       pointCount: stroke.pointCount,
-      createdAt: Value(now),
-      updatedAt: Value(now),
+      createdAt: Value(timestamp),
+      updatedAt: Value(timestamp),
     );
   }
 }

@@ -231,6 +231,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   int _slowFrames = 0;
   double _worstFrameMs = 0, _worstBuildMs = 0, _worstRasterMs = 0;
   DateTime _lastFrameLog = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastLayerDecisionLog = DateTime.fromMillisecondsSinceEpoch(0);
+  String _lastLayerDecisionKey = '';
 
   void _onFrameTimings(List<FrameTiming> timings) {
     for (final t in timings) {
@@ -254,6 +256,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         'zoom ${_viewScale.toStringAsFixed(2)}, '
         'fallback ${_strokeFallbackActive ? 'SI' : 'no'}, '
         'overview ${_overviewActive ? 'SI' : 'no'}, '
+        'dirty ${_overviewDirty ? 'SI' : 'no'}, '
+        'hydrate ${_hydratingStrokes || _visibleHydrateRunning || _visibleHydrateQueued ? 'SI' : 'no'}, '
         'trazos ${_data.strokes.length}',
       );
       _slowFrames = 0;
@@ -261,6 +265,53 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _worstBuildMs = 0;
       _worstRasterMs = 0;
     }
+  }
+
+  void _logWhiteboardLayerDecision(
+    String source, {
+    required Rect renderRect,
+    required int tileCount,
+    required bool inGesture,
+    required bool hydrationActive,
+    required bool canOverview,
+    required int lod,
+    int delta = 0,
+  }) {
+    final now = DateTime.now();
+    final moving =
+        _viewGestureActive ||
+        _viewTransformActive ||
+        _overviewLinger ||
+        _activePointers.isNotEmpty;
+    final focusReady = _focusImage != null && _focusBounds != null;
+    final key =
+        '$source|${_data.strokes.length}|$_overviewBakedCount|$_overviewDirty|'
+        '$hydrationActive|$tileCount|${_viewScale.toStringAsFixed(2)}|'
+        '$_strokeFallbackActive|$_overviewActive|$delta|$focusReady|'
+        '$_focusBakedCount|$inGesture|$canOverview|$lod';
+    final minGap = moving ? 700 : 2000;
+    if (key == _lastLayerDecisionKey &&
+        now.difference(_lastLayerDecisionLog).inMilliseconds < minGap) {
+      return;
+    }
+    _lastLayerDecisionKey = key;
+    _lastLayerDecisionLog = now;
+    CrashLogger.instance.note(
+      'PERF layer-pizarra: $source, '
+      'live ${_data.strokes.length}, baked $_overviewBakedCount, '
+      'delta $delta, dirty ${_overviewDirty ? 'SI' : 'no'}, '
+      'hydrate ${hydrationActive ? 'SI' : 'no'}, '
+      'canOverview ${canOverview ? 'SI' : 'no'}, '
+      'overview ${_overviewActive ? 'SI' : 'no'}, '
+      'fallback ${_strokeFallbackActive ? 'SI' : 'no'}, '
+      'tiles $tileCount/${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
+      'zoom ${_viewScale.toStringAsFixed(2)}, '
+      'threshold ${_overviewThreshold.toStringAsFixed(2)}, '
+      'focus ${focusReady ? 'SI' : 'no'}/$_focusBakedCount, '
+      'lasso ${_lassoCtrl.phase.name}, lod $lod, '
+      'rect ${renderRect.left.toStringAsFixed(1)},${renderRect.top.toStringAsFixed(1)},'
+      '${renderRect.width.toStringAsFixed(1)}x${renderRect.height.toStringAsFixed(1)}',
+    );
   }
 
   Rect? _renderRect;
@@ -1186,19 +1237,26 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _metadataHydrated = true;
       }
       _mergeLoadedStrokeRows(rows, region.inflate(overscan));
+      if (rows.isNotEmpty) {
+        _overviewDirty = true;
+        _disposeFocus();
+      }
       setState(() => _paintVersion++);
       _strokeTiles.rebuild(_data.strokes);
       sw.stop();
       final pts = _pointCount(_data.strokes);
       CrashLogger.instance.note(
         'PERF hydrate-visible-pizarra: ${_data.strokes.length} live, '
-        '${rows.length} query, $pts puntos, ${sw.elapsedMilliseconds}ms',
+        '${rows.length} query, $pts puntos, ${sw.elapsedMilliseconds}ms, '
+        'overviewDirty ${_overviewDirty ? 'SI' : 'no'}',
       );
     } finally {
       _visibleHydrateRunning = false;
       if (_visibleHydrateQueued && mounted && _blockId == canvas.id) {
         _visibleHydrateQueued = false;
         unawaited(_hydrateVisibleCanvasStrokes(canvas, bounds, strokeRepo));
+      } else if (mounted && _blockId == canvas.id && _overviewDirty) {
+        _scheduleOverviewBake();
       }
     }
   }
@@ -1259,6 +1317,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     );
     if (!mounted || _blockId != blockId) return;
     _mergeLoadedStrokeRows(rows, region, evict: false);
+    if (rows.isNotEmpty) {
+      _overviewDirty = true;
+      _disposeFocus();
+      _scheduleOverviewBake();
+    }
     _strokeTiles.rebuild(_data.strokes);
     setState(() => _paintVersion++);
     sw.stop();
@@ -1295,6 +1358,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       await SchedulerBinding.instance.endOfFrame;
     }
     if (!mounted || _blockId != blockId) return;
+    if (rowsRead > 0) {
+      _overviewDirty = true;
+      _disposeFocus();
+      _scheduleOverviewBake();
+    }
     _strokeTiles.rebuild(_data.strokes);
     setState(() => _paintVersion++);
     sw.stop();
@@ -1404,58 +1472,85 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final blockRepo = ref.read(noteBlockRepositoryProvider);
     final sw = Stopwatch()..start();
     int inserted = 0, updated = 0, deleted = 0;
+    final fullPersist = _strokesNeedFullPersist;
+    if (fullPersist) _strokesNeedFullPersist = false;
+    final Set<int> dirtyBeforeFull =
+        fullPersist ? _dirtyStrokeIds.toSet() : <int>{};
+    if (fullPersist) _dirtyStrokeIds.clear();
+    final removedDirtyIds = <int>{};
+    final strokesSnapshot = List<DrawingStroke>.of(_data.strokes);
+    final imagesPayload = _data.images.map((im) => im.toJson()).toList();
+    final taskBlocksPayload = _data.taskBlocks.map((b) => b.toJson()).toList();
+    final textBlocksPayload = _data.textBlocks.map((b) => b.toJson()).toList();
+    final background = _data.background;
+    final bgColorValue = _data.bgColorValue;
+    var failed = false;
     try {
-      if (_strokesNeedFullPersist) {
+      if (fullPersist) {
         // Order changed wholesale (undo/redo/clear) — cheapest to rewrite and
         // reseat ids/positions. Rare path.
         final ids = await strokeRepo.replaceBlock(blockId, [
-          for (int i = 0; i < _data.strokes.length; i++)
-            strokeWrite(i, _data.strokes[i]),
+          for (int i = 0; i < strokesSnapshot.length; i++)
+            strokeWrite(i, strokesSnapshot[i]),
         ]);
-        for (int i = 0; i < _data.strokes.length && i < ids.length; i++) {
-          _data.strokes[i].dbId = ids[i];
+        for (int i = 0; i < strokesSnapshot.length && i < ids.length; i++) {
+          strokesSnapshot[i].dbId = ids[i];
+          final liveIndex = _data.strokes.indexOf(strokesSnapshot[i]);
+          if (liveIndex >= 0 && liveIndex < _data.strokes.length) {
+            _data.strokes[liveIndex].dbId = ids[i];
+          }
           _loadedStrokePositions[ids[i]] = i;
         }
         _persistedStrokeIds
           ..clear()
           ..addAll(ids);
-        _dirtyStrokeIds.clear();
-        _nextStrokePos = _data.strokes.length;
-        _strokesNeedFullPersist = false;
+        _nextStrokePos = strokesSnapshot.length;
       } else {
         // 1) Inserts: strokes with no dbId yet (pen-up, duplicate, paste, split).
-        for (final stroke in _data.strokes) {
+        final insertStrokes = <DrawingStroke>[];
+        final insertWrites = <DrawingStrokeWrite>[];
+        final insertPositions = <int>[];
+        for (final stroke in strokesSnapshot) {
           if (stroke.dbId != null &&
               _persistedStrokeIds.contains(stroke.dbId)) {
             continue;
           }
           stroke.dbId = null;
           final pos = _nextStrokePos++;
-          final id = await strokeRepo.insert(blockId, strokeWrite(pos, stroke));
+          insertStrokes.add(stroke);
+          insertWrites.add(strokeWrite(pos, stroke));
+          insertPositions.add(pos);
+        }
+        final ids = await strokeRepo.insertMany(blockId, insertWrites);
+        for (int i = 0; i < ids.length && i < insertStrokes.length; i++) {
+          final stroke = insertStrokes[i];
+          final id = ids[i];
           stroke.dbId = id;
           _persistedStrokeIds.add(id);
-          _loadedStrokePositions[id] = pos;
-          inserted++;
+          _loadedStrokePositions[id] = insertPositions[i];
         }
+        inserted = ids.length;
         // 2) Updates: in-place geometry edits flagged dirty.
         if (_dirtyStrokeIds.isNotEmpty) {
           final byId = <int, DrawingStroke>{
-            for (final s in _data.strokes)
+            for (final s in strokesSnapshot)
               if (s.dbId != null) s.dbId!: s,
           };
+          final dirtyIds = _dirtyStrokeIds.toSet();
           final updates = <int, DrawingStrokeWrite>{};
-          for (final id in _dirtyStrokeIds.toList()) {
+          for (final id in dirtyIds) {
             final s = byId[id];
             if (s == null) continue;
             updates[id] = strokeWrite(0, s);
           }
+          removedDirtyIds.addAll(dirtyIds);
+          _dirtyStrokeIds.removeAll(dirtyIds);
           await strokeRepo.updateMany(updates);
           updated = updates.length;
-          _dirtyStrokeIds.clear();
         }
         // 3) Deletes: rows whose stroke is gone (erase, lasso-delete).
         final currentIds = <int>{
-          for (final s in _data.strokes)
+          for (final s in strokesSnapshot)
             if (s.dbId != null) s.dbId!,
         };
         final toDelete = _persistedStrokeIds.difference(currentIds);
@@ -1472,27 +1567,49 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       await blockRepo.updatePayload(blockId, {
         'h': _kCanvasH,
         's': const [],
-        'i': _data.images.map((im) => im.toJson()).toList(),
-        't': _data.taskBlocks.map((b) => b.toJson()).toList(),
-        'tx': _data.textBlocks.map((b) => b.toJson()).toList(),
-        'bg': _data.background.toDbString(),
-        if (_data.bgColorValue != null) 'bgc': _data.bgColorValue,
+        'i': imagesPayload,
+        't': taskBlocksPayload,
+        'tx': textBlocksPayload,
+        'bg': background.toDbString(),
+        if (bgColorValue != null) 'bgc': bgColorValue,
         'whiteboard': true,
       });
+      final dbStats = await strokeRepo.debugStatsByBlock(blockId);
+      final memPoints = _pointCount(strokesSnapshot);
+      final livePoints = _pointCount(_data.strokes);
       sw.stop();
       CrashLogger.instance.note(
-        'PERF guardar-pizarra: ${_data.strokes.length} trazos, '
+        'PERF guardar-pizarra: ${strokesSnapshot.length} trazos, '
+        '$memPoints puntos, live ${_data.strokes.length}/$livePoints, '
         '+$inserted ~$updated -$deleted, '
+        'db ${dbStats.count} trazos/${dbStats.points} puntos/maxPos ${dbStats.maxPosition ?? -1}, '
         'strokesDB ${strokeMs}ms, total(+DB) ${sw.elapsedMilliseconds}ms',
       );
+      if (dbStats.count != strokesSnapshot.length ||
+          dbStats.points != memPoints) {
+        CrashLogger.instance.note(
+          'WARN persist-pizarra-mismatch: block $blockId, '
+          'mem ${strokesSnapshot.length}/$memPoints vs '
+          'db ${dbStats.count}/${dbStats.points}, '
+          'live ${_data.strokes.length}/$livePoints, '
+          '+$inserted ~$updated -$deleted',
+        );
+      }
     } catch (e, st) {
+      failed = true;
+      _persistDirty = true;
+      if (fullPersist) {
+        _strokesNeedFullPersist = true;
+        _dirtyStrokeIds.addAll(dirtyBeforeFull);
+      }
+      _dirtyStrokeIds.addAll(removedDirtyIds);
       // unawaited() callers swallow errors → a failed save was invisible. Log it.
       CrashLogger.instance.record(e, st, context: 'persistNow pizarra');
     } finally {
       _persisting = false;
     }
     // Edits that arrived mid-persist (or a guarded straggler) → flush once more.
-    if (_persistDirty && mounted) unawaited(_persistNow());
+    if (_persistDirty && mounted && !failed) unawaited(_persistNow());
   }
 
   void _persist() {
@@ -3413,49 +3530,23 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _restore(_WhiteboardSnapshot snap) {
-    final dirty = _restoreDirtyRect(snap);
+    final before = _data.strokes.length;
     _markRestoreStrokeDirty(snap.$1);
     _data.strokes = snap.$1;
     _data.images = snap.$2;
     _data.taskBlocks = snap.$3;
     _data.textBlocks = snap.$4;
     _markCanvasDirty();
-    if (dirty != null) {
-      _strokeTiles.invalidateRegion(dirty, _data.strokes);
-    } else {
-      _strokeTiles.rebuild(_data.strokes);
-    }
-  }
-
-  Rect? _restoreDirtyRect(_WhiteboardSnapshot snap) {
-    Rect? dirty;
-    final currentById = <int, DrawingStroke>{
-      for (final s in _data.strokes)
-        if (s.dbId != null) s.dbId!: s,
-    };
-    final targetIds = <int>{};
-    for (final stroke in snap.$1) {
-      final id = stroke.dbId;
-      if (id != null) targetIds.add(id);
-      final current = id == null ? null : currentById[id];
-      if (current == null) {
-        dirty = _expandDirty(dirty, stroke);
-      } else if (!identical(current, stroke)) {
-        dirty = _expandDirty(_expandDirty(dirty, current), stroke);
-      }
-    }
-    for (final stroke in _data.strokes) {
-      final id = stroke.dbId;
-      if (id != null && !targetIds.contains(id)) {
-        dirty = _expandDirty(dirty, stroke);
-      }
-    }
-    return dirty;
-  }
-
-  Rect? _expandDirty(Rect? dirty, DrawingStroke stroke) {
-    final rect = strokeBounds(stroke).inflate(stroke.strokeWidth + 4);
-    return dirty == null ? rect : dirty.expandToInclude(rect);
+    _strokesNeedFullPersist = true;
+    _overviewDirty = true;
+    _disposeFocus();
+    _strokeTiles.rebuild(_data.strokes);
+    _scheduleOverviewBake();
+    CrashLogger.instance.note(
+      'PERF restore-pizarra: full, strokes $before->${_data.strokes.length}, '
+      'tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
+      'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
+    );
   }
 
   void _markRestoreStrokeDirty(List<DrawingStroke> target) {
@@ -3497,8 +3588,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (after != null) {
       region = region == null ? after : region.expandToInclude(after);
     }
-    if (region == null) {
+    final selected = _lassoCtrl.selectedIndices.length;
+    final forceRebuild = region == null || selected > 128;
+    _overviewDirty = true;
+    _disposeFocus();
+    if (forceRebuild) {
       _strokeTiles.rebuild(_data.strokes);
+      CrashLogger.instance.note(
+        'PERF lasso-tiles-pizarra: rebuild, selected $selected, '
+        'strokes ${_data.strokes.length}, tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
+        'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
+      );
       return;
     }
     double maxW = 24;
@@ -3508,23 +3608,50 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         if (w > maxW) maxW = w;
       }
     }
-    _strokeTiles.invalidateRegion(region.inflate(maxW + 48), _data.strokes);
+    final inflated = region.inflate(maxW + 48);
+    _strokeTiles.invalidateRegion(inflated, _data.strokes);
+    CrashLogger.instance.note(
+      'PERF lasso-tiles-pizarra: region, selected $selected, '
+      'strokes ${_data.strokes.length}, rect ${inflated.left.toStringAsFixed(1)},'
+      '${inflated.top.toStringAsFixed(1)},${inflated.width.toStringAsFixed(1)}x'
+      '${inflated.height.toStringAsFixed(1)}, '
+      'tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
+      'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
+    );
   }
 
   void _lassoMutate(VoidCallback op) {
+    final sw = Stopwatch()..start();
     final before = _snapshot();
+    final snapshotMs = sw.elapsedMilliseconds;
     // Protect the snapshot's references from any in-place edit inside op (flip
     // mutates points directly). Color/width/delete/duplicate don't mutate
     // existing objects, so this is a cheap no-harm clone of the selection.
+    final selectedBefore = Set<int>.from(_lassoCtrl.selectedIndices);
+    final countBefore = _data.strokes.length;
+    final dirtyBefore = _dirtyStrokeIds.length;
+    final nullIdsBefore = _data.strokes.where((s) => s.dbId == null).length;
     _cloneSelectedStrokesInPlace();
     final regionBefore = _lassoCtrl.boundingBox;
     op();
+    final countAfterOp = _data.strokes.length;
     _invalidateEditedTiles(regionBefore, _lassoCtrl.boundingBox);
     _commitSnapshot(before);
     // Post-op selection: edited rows (color/width/flip) → UPDATE; new copies
     // (duplicate/paste, dbId == null) → insert pass; deleted → diff pass.
     _markSelectionDirty();
     _persist();
+    sw.stop();
+    final nullIdsAfter = _data.strokes.where((s) => s.dbId == null).length;
+    CrashLogger.instance.note(
+      'PERF lasso-mut-pizarra: selected ${selectedBefore.length}->${_lassoCtrl.selectedIndices.length}, '
+      'strokes $countBefore->$countAfterOp, '
+      'nullIds $nullIdsBefore->$nullIdsAfter, '
+      'dirtyIds $dirtyBefore->${_dirtyStrokeIds.length}, persisted ${_persistedStrokeIds.length}, '
+      'tileRev ${_strokeTiles.revision}, tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
+      'overviewDirty $_overviewDirty, snapshot ${snapshotMs}ms, '
+      'total ${sw.elapsedMilliseconds}ms',
+    );
   }
 
   void _undo() {
@@ -3542,6 +3669,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _strokeTiles.invalidateRegion(
           strokeBounds(removed).inflate(removed.strokeWidth + 4),
           _data.strokes,
+        );
+        _overviewDirty = true;
+        _disposeFocus();
+        _scheduleOverviewBake();
+        CrashLogger.instance.note(
+          'PERF undo-pizarra: stroke-add undo, strokes ${_data.strokes.length}, '
+          'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
         );
       }
       _lassoCtrl.deselect();
@@ -3565,6 +3699,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _markCanvasDirty();
         _undoStack.add(_WhiteboardStrokeAddEntry(entry.stroke.clone()));
         _strokeTiles.append(restored);
+        _overviewDirty = true;
+        _disposeFocus();
+        _scheduleOverviewBake();
+        CrashLogger.instance.note(
+          'PERF redo-pizarra: stroke-add redo, strokes ${_data.strokes.length}, '
+          'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
+        );
       }
       _lassoCtrl.deselect();
       _active = null;
@@ -3704,6 +3845,20 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _overviewBakePending = true;
       return;
     }
+    if (_hydratingStrokes || _visibleHydrateRunning || _visibleHydrateQueued) {
+      _overviewBakePending = true;
+      CrashLogger.instance.note(
+        'PERF bake-overview-pizarra: skip hydration, '
+        'hydrating $_hydratingStrokes, visible $_visibleHydrateRunning, '
+        'queued $_visibleHydrateQueued, dirty $_overviewDirty, '
+        'strokes ${_data.strokes.length}, baked $_overviewBakedCount',
+      );
+      _overviewTimer?.cancel();
+      _overviewTimer = Timer(const Duration(milliseconds: 120), () {
+        if (mounted) unawaited(_bakeOverview());
+      });
+      return;
+    }
     _overviewBakePending = false;
     final fullBounds = _contentBounds();
     if (fullBounds == null || fullBounds.width <= 0 || fullBounds.height <= 0) {
@@ -3727,11 +3882,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final oldImage = _overviewImage;
       final oldBounds = _overviewBounds;
       final oldBaked = _overviewBakedCount;
+      final dirtyAtStart = _overviewDirty;
 
       // Incremental bake: only new strokes appended, all inside the existing
       // bounds → blit the old image + draw just the new ones. Avoids the raster
       // spike of re-rendering every stroke on each pen-up while zoomed out.
       final incremental =
+          !dirtyAtStart &&
           oldImage != null &&
           oldBounds != null &&
           count > oldBaked &&
@@ -3793,6 +3950,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // not exceed the image density. Capped so it never replaces the detailed
       // zoomed-in view.
       _overviewThreshold = (imgScale / dpr).clamp(0.0, 0.65);
+      CrashLogger.instance.note(
+        'PERF bake-overview-pizarra: ${incremental ? 'incremental' : 'full'}, '
+        'dirtyAtStart ${dirtyAtStart ? 'SI' : 'no'}, count $count, '
+        'old $oldBaked, img ${w}x$h, '
+        'threshold ${_overviewThreshold.toStringAsFixed(2)}',
+      );
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakeOverview pizarra');
@@ -3918,6 +4081,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _focusBounds!.contains(visible.bottomRight) &&
         (_focusScale - imgScale).abs() / imgScale < 0.12 &&
         _focusBakedCount == count) {
+      CrashLogger.instance.note(
+        'PERF bake-focus-pizarra: reuse, count $count, '
+        'scale ${imgScale.toStringAsFixed(2)}, '
+        'region ${region.left.toStringAsFixed(1)},${region.top.toStringAsFixed(1)},'
+        '${region.width.toStringAsFixed(1)}x${region.height.toStringAsFixed(1)}',
+      );
       return;
     }
     _focusBaking = true;
@@ -3949,6 +4118,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _focusBounds = region;
       _focusScale = imgScale;
       _focusBakedCount = count;
+      CrashLogger.instance.note(
+        'PERF bake-focus-pizarra: done, count $count, img ${w}x$h, '
+        'scale ${imgScale.toStringAsFixed(2)}, '
+        'region ${region.left.toStringAsFixed(1)},${region.top.toStringAsFixed(1)},'
+        '${region.width.toStringAsFixed(1)}x${region.height.toStringAsFixed(1)}',
+      );
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakeFocus pizarra');
@@ -4293,6 +4468,18 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         if (_zoomGestureActive && _zoomSnapshotImage != null) {
           _overviewActive = false;
           _strokeFallbackActive = false;
+          _logWhiteboardLayerDecision(
+            'zoom-snapshot',
+            renderRect: _visibleRectFor(viewport),
+            tileCount: 0,
+            inGesture: false,
+            hydrationActive:
+                _hydratingStrokes ||
+                _visibleHydrateRunning ||
+                _visibleHydrateQueued,
+            canOverview: false,
+            lod: lodForScale(_viewScale),
+          );
           return const SizedBox.shrink();
         }
         final inGesture =
@@ -4315,11 +4502,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         // every stroke per frame. Skipped during a lasso gesture (the image
         // can't hide the live selection) → tiles take over there.
         final overview = _overviewImage;
+        final hydrationActive =
+            _hydratingStrokes ||
+            _visibleHydrateRunning ||
+            _visibleHydrateQueued;
         final canOverview =
             overview != null &&
             _overviewBounds != null &&
             !inGesture &&
-            !_overviewDirty;
+            !_overviewDirty &&
+            !hydrationActive;
         // Show the overview whenever it's crisp (zoomed out), under tile
         // pressure, OR through ANY moving view gesture + the post-fling linger
         // (the focus tile keeps it crisp when zoomed in). Mirrors the notebook.
@@ -4330,10 +4522,30 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 _viewTransformActive ||
                 _overviewLinger);
         if (_overviewActive) {
+          final delta = math.max(0, _data.strokes.length - _overviewBakedCount);
+          _logWhiteboardLayerDecision(
+            'overview',
+            renderRect: renderRect,
+            tileCount: tileKeys.length,
+            inGesture: inGesture,
+            hydrationActive: hydrationActive,
+            canOverview: canOverview,
+            lod: lod,
+            delta: delta,
+          );
           return _overviewStrokeLayer(overview!, renderRect);
         }
 
         if (_strokeFallbackActive) {
+          _logWhiteboardLayerDecision(
+            'fallback-painter',
+            renderRect: renderRect,
+            tileCount: tileKeys.length,
+            inGesture: inGesture,
+            hydrationActive: hydrationActive,
+            canOverview: canOverview,
+            lod: lod,
+          );
           // Zoomed-out fallback: one painter, strokes drawn directly + culled.
           return Positioned.fromRect(
             rect: renderRect,
@@ -4371,6 +4583,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           }
         }
 
+        _logWhiteboardLayerDecision(
+          'tiles',
+          renderRect: renderRect,
+          tileCount: tileKeys.length,
+          inGesture: inGesture,
+          hydrationActive: hydrationActive,
+          canOverview: canOverview,
+          lod: lod,
+        );
         return Positioned.fill(
           child: IgnorePointer(
             child: Stack(
