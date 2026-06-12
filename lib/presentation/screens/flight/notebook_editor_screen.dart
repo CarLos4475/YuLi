@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -74,6 +76,22 @@ typedef _NotebookSnapshot =
         List<CanvasTextBlock>,
       )
     >;
+
+class _ViewportRasterTile {
+  final String key;
+  final Rect worldRect;
+  final int bucket;
+  final int version;
+  final ui.Image image;
+
+  const _ViewportRasterTile({
+    required this.key,
+    required this.worldRect,
+    required this.bucket,
+    required this.version,
+    required this.image,
+  });
+}
 
 abstract class _NotebookHistoryEntry {
   const _NotebookHistoryEntry();
@@ -235,11 +253,71 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final Set<int> _overviewDirtyPages = {};
   double _overviewThreshold = 0;
   Timer? _overviewTimer;
+  // ─── Pyramid Level 0: per-page FOCUS overview ─────────────────────────────
+  // The base overview above is one fixed-density image per page (crisp only when
+  // zoomed out). When you settle zoomed IN and then PAN, that base looks blurry —
+  // and because the zoom is fixed during a pan, the blur is constant and very
+  // noticeable. The focus level fixes exactly that: a higher-res image baked at
+  // the SETTLED zoom for the page(s) in view + one neighbour each side (the
+  // "active neighbourhood" prefetch), so panning at that zoom stays crisp. Pages
+  // are bounded rectangles, so one image per page = no tile seams; the only
+  // "pan out of the tile → hole" moment is a page boundary, covered by the
+  // pre-baked neighbour. Falls back to the base image while a focus bakes / on
+  // fast pan, and is dropped entirely when zoomed back out. RAM only.
+  final Map<int, ui.Image> _overviewFocusByPage = {};
+  final Map<int, double> _overviewFocusScaleByPage = {};
+  final Map<int, int> _overviewFocusBakedCountByPage = {};
+  final Set<int> _overviewFocusBakingPages = {};
+  // Fires the focus bake only once the view has truly STOPPED — including the
+  // InteractiveViewer's fling/inertia AFTER the finger lifts. Baking mid-fling
+  // would land the (main-isolate) recording micro-stutter while things are still
+  // moving, where it's visible; in full stillness it's imperceptible. We poll
+  // the transform matrix every frame with a Ticker (NOT the controller's change
+  // notifications — those proved unreliable through the fling) and only settle
+  // once the matrix is byte-identical for several consecutive frames.
+  Ticker? _settleTicker;
+  Matrix4? _lastSettleMatrix;
+  int _settleStillFrames = 0;
+  // Generous: the fling's sub-pixel tail can repeat the matrix for a few frames
+  // before fully stopping; requiring a longer identical streak guarantees the
+  // bake lands in true stillness (cost is only a slightly later crisp swap).
+  static const int _settleStillFramesNeeded = 12; // ~200ms at 60fps
+  // Cap a focus image's longest side (px). 3072 ≈ crisp to ~1.8x at dpr 2, ~26MB
+  // per page; only the visible neighbourhood is kept resident.
+  static const double _focusMaxDim = 3072.0;
+  static const double _baseOverviewDensity = 2.0;
   // Pin the overview through a 2-finger zoom gesture; hand back to crisp tiles
   // only when it ends (avoids re-rastering tiles mid-pinch → jank).
   bool _viewGestureActive = false;
+  // True once a view-transform gesture has actually translated/scaled the
+  // canvas (vs a finger that just touched down). Distinguishes a real pan from
+  // a tap so we don't swap to the overview raster on every touch.
+  bool _viewMoved = false;
   bool _overviewStickyThisGesture = false;
   bool _overviewActive = false;
+  // Keep the overview raster mounted from gesture-end through the WHOLE fling,
+  // handing back to crisp vector only when the view truly stops (the settle
+  // Ticker flips this off). A fixed timer was wrong: the fling outlasts it, so
+  // the linger expired mid-fling → vector tiles re-rastered WHILE STILL MOVING =
+  // the stutter "before it stops". Tied to settle, the swap lands in stillness.
+  bool _overviewLinger = false;
+  ui.Image? _zoomSnapshotImage;
+  Size? _zoomSnapshotSize;
+  Timer? _zoomSnapshotTimer;
+  bool _zoomSnapshotBaking = false;
+  bool _zoomSnapshotPending = false;
+  bool _zoomGestureActive = false;
+  bool _zoomGestureSeen = false;
+  double _zoomGestureScale = 1;
+  Offset _zoomGestureStartFocal = Offset.zero;
+  Offset _zoomGestureCurrentFocal = Offset.zero;
+  Color _zoomSnapshotBgColor = const Color(0xFFFFFDF8);
+  final ValueNotifier<int> _zoomGestureTick = ValueNotifier(0);
+  final Map<String, _ViewportRasterTile> _viewportRasterTiles = {};
+  Timer? _viewportRasterTimer;
+  bool _viewportRasterBaking = false;
+  bool _viewportRasterPending = false;
+  int _viewportRasterVersion = 0;
 
   // Lasso action toolbar is summoned by tapping the selection, not shown on
   // select. Tap outside hides it (selection kept); tap outside again deselects.
@@ -364,6 +442,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _applyInitialScroll();
         _scheduleDeferredDecode(const Duration(milliseconds: 220));
+        // Retired non-overview rasters (see _persistPage). Page overviews are
+        // baked from the decode sites, so the first pan already has images.
+        // _scheduleZoomSnapshotBake();
+        // _scheduleViewportRasterBake();
       });
     });
   }
@@ -376,6 +458,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _deferredDecodeTimer?.cancel();
     _persistTimer?.cancel();
     _overviewTimer?.cancel();
+    _settleTicker?.dispose();
+    for (final img in _overviewFocusByPage.values) {
+      img.dispose();
+    }
+    _overviewFocusByPage.clear();
+    _zoomSnapshotTimer?.cancel();
+    _zoomSnapshotImage?.dispose();
+    _viewportRasterTimer?.cancel();
+    for (final tile in _viewportRasterTiles.values) {
+      tile.image.dispose();
+    }
+    _viewportRasterTiles.clear();
     for (final img in _overviewByPage.values) {
       img.dispose();
     }
@@ -394,6 +488,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _imgCache?.dispose();
     _viewCtrl.dispose();
     _activeTick.dispose();
+    _zoomGestureTick.dispose();
     _lassoGestureTick.dispose();
     _lassoPhaseTick.dispose();
     super.dispose();
@@ -942,6 +1037,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
     // Page ink changed → its zoomed-out overview image is stale.
     _scheduleOverviewBake(_pageBlockIds[pageIndex]);
+    // Drop the high-res focus too: it has the OLD strokes baked in, so an erase
+    // or lasso-move would leave a ghost. Falls back to base+delta; the focus
+    // re-bakes on the next settle. (At rest zoomed-in you're on vector anyway.)
+    _disposeFocus(_pageBlockIds[pageIndex]);
+    // Retired (Phase A is overview-based): the viewport-raster / zoom-snapshot
+    // bakes ran on every edit but their layers are now inert, so they were pure
+    // waste. Kept callable for a possible Phase B LOD pyramid.
+    // _scheduleZoomSnapshotBake();
+    // _invalidateViewportRasterTiles();
+    // _scheduleViewportRasterBake();
   }
 
   /// Debounced re-bake of one page's zoomed-out overview after its ink settles.
@@ -1019,6 +1124,436 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       CrashLogger.instance.record(e, st, context: 'bakePageOverview cuaderno');
     } finally {
       _overviewBakingPages.remove(blockId);
+    }
+  }
+
+  /// The zoom below which the BASE per-page image is already crisp → no focus
+  /// level needed. Derived from the base density and the device pixel ratio.
+  double get _baseCrispCeiling {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    return _baseOverviewDensity / dpr;
+  }
+
+  /// Start watching for the view to come to a full stop (finger lifted + fling
+  /// finished). A Ticker samples the transform each frame; once it's been
+  /// identical for [_settleStillFramesNeeded] frames we fire the focus bake — in
+  /// guaranteed stillness, so its recording micro-stutter is invisible.
+  void _beginSettleWatch() {
+    _settleStillFrames = 0;
+    _lastSettleMatrix = null;
+    _settleTicker ??= createTicker(_onSettleTick);
+    if (!_settleTicker!.isActive) _settleTicker!.start();
+  }
+
+  void _stopSettleWatch() {
+    if (_settleTicker?.isActive ?? false) _settleTicker!.stop();
+    _settleStillFrames = 0;
+    _lastSettleMatrix = null;
+  }
+
+  void _onSettleTick(Duration _) {
+    if (!mounted) {
+      _stopSettleWatch();
+      return;
+    }
+    // A finger is down or we're drawing → not settled; keep watching, reset.
+    if (_viewGestureActive || _activePointers.isNotEmpty || _isDrawing) {
+      _settleStillFrames = 0;
+      _lastSettleMatrix = null;
+      return;
+    }
+    final m = _viewCtrl.value;
+    if (_lastSettleMatrix != null && m == _lastSettleMatrix) {
+      _settleStillFrames++;
+    } else {
+      _settleStillFrames = 0;
+      _lastSettleMatrix = m.clone();
+    }
+    if (_settleStillFrames >= _settleStillFramesNeeded) {
+      _stopSettleWatch();
+      // The view has truly stopped → NOW hand the overview back to crisp vector
+      // (the swap + tile re-raster lands in stillness, invisible) and bake the
+      // high-res focus for the next pan.
+      if (_overviewLinger && mounted) {
+        setState(() => _overviewLinger = false);
+      }
+      unawaited(_runFocusBakePass());
+    }
+  }
+
+  Future<void> _runFocusBakePass() async {
+    if (!mounted || _viewport == Size.zero || _pageBlockIds.isEmpty) return;
+    // Recording strokes into a picture runs on the MAIN isolate (Flutter can't
+    // rasterise ink on a worker), so never bake mid-gesture/draw — it would jank
+    // the very pan we're trying to keep smooth. Defer until the view is idle.
+    if (_viewGestureActive || _activePointers.isNotEmpty || _isDrawing) {
+      _beginSettleWatch();
+      return;
+    }
+    // Zoomed out enough that the base image is crisp → drop focus, reclaim RAM.
+    if (_viewScale <= _baseCrispCeiling * 0.97) {
+      _disposeAllFocus();
+      return;
+    }
+    final visible = _visibleRectFor(_viewport);
+    final wantedIdx = <int>{};
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final top = _pageOffsetY(i);
+      final pageRect = Rect.fromLTWH(
+        0,
+        top,
+        kNotebookPageWidth,
+        kNotebookPageHeight,
+      );
+      if (pageRect.overlaps(visible)) {
+        wantedIdx.add(i);
+        if (i > 0) wantedIdx.add(i - 1);
+        if (i + 1 < _pageBlockIds.length) wantedIdx.add(i + 1);
+      }
+    }
+    final wantedBids = wantedIdx.map((i) => _pageBlockIds[i]).toSet();
+    for (final bid in _overviewFocusByPage.keys.toList()) {
+      if (!wantedBids.contains(bid)) _disposeFocus(bid);
+    }
+    // Bake the closest page first so the swap-to-crisp feels immediate.
+    final order =
+        wantedIdx.toList()..sort((a, b) {
+          final ca =
+              (_pageOffsetY(a) + kNotebookPageHeight / 2 - visible.center.dy)
+                  .abs();
+          final cb =
+              (_pageOffsetY(b) + kNotebookPageHeight / 2 - visible.center.dy)
+                  .abs();
+          return ca.compareTo(cb);
+        });
+    for (final i in order) {
+      if (!mounted) break;
+      // Re-check between pages: a focus bake awaits (toImage), and during that
+      // yield the user may start ANOTHER fling. The next page's recording would
+      // then run mid-motion and stutter visibly. An armed settle timer means the
+      // view started moving again → bail and let the next settle finish the rest.
+      if (_viewGestureActive ||
+          _activePointers.isNotEmpty ||
+          _isDrawing ||
+          (_settleTicker?.isActive ?? false)) {
+        _beginSettleWatch();
+        break;
+      }
+      await _bakePageFocus(_pageBlockIds[i], _viewScale);
+    }
+  }
+
+  /// Render one page's strokes at a density matched to [targetScale] (capped by
+  /// [_focusMaxDim]). Full re-bake; skipped when the resident focus already
+  /// matches this zoom and stroke count closely enough.
+  Future<void> _bakePageFocus(int blockId, double targetScale) async {
+    if (_overviewFocusBakingPages.contains(blockId) || !mounted) return;
+    final data = _pageData[blockId];
+    if (data == null) return;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final imgScale = (targetScale * dpr).clamp(
+      _baseOverviewDensity,
+      _focusMaxDim / kNotebookPageHeight,
+    );
+    final count = data.strokes.length;
+    final haveScale = _overviewFocusScaleByPage[blockId];
+    final haveCount = _overviewFocusBakedCountByPage[blockId];
+    if (_overviewFocusByPage[blockId] != null &&
+        haveScale != null &&
+        (haveScale - imgScale).abs() / imgScale < 0.12 &&
+        haveCount == count) {
+      return; // resident focus is already good enough for this zoom
+    }
+    _overviewFocusBakingPages.add(blockId);
+    try {
+      final w = (kNotebookPageWidth * imgScale).ceil();
+      final h = (kNotebookPageHeight * imgScale).ceil();
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale); // strokes are page-local — no translate
+      for (int i = 0; i < count; i++) {
+        drawStroke(canvas, data.strokes[i]);
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(w, h);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _overviewFocusByPage[blockId];
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _overviewFocusByPage[blockId] = image;
+      _overviewFocusScaleByPage[blockId] = imgScale;
+      _overviewFocusBakedCountByPage[blockId] = count;
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakePageFocus cuaderno');
+    } finally {
+      _overviewFocusBakingPages.remove(blockId);
+    }
+  }
+
+  void _disposeFocus(int blockId) {
+    final img = _overviewFocusByPage.remove(blockId);
+    if (img != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+    _overviewFocusScaleByPage.remove(blockId);
+    _overviewFocusBakedCountByPage.remove(blockId);
+  }
+
+  void _disposeAllFocus() {
+    if (_overviewFocusByPage.isEmpty) return;
+    for (final img in _overviewFocusByPage.values) {
+      final captured = img;
+      WidgetsBinding.instance.addPostFrameCallback((_) => captured.dispose());
+    }
+    _overviewFocusByPage.clear();
+    _overviewFocusScaleByPage.clear();
+    _overviewFocusBakedCountByPage.clear();
+    if (mounted) setState(() {});
+  }
+
+  void _scheduleZoomSnapshotBake({
+    Duration delay = const Duration(milliseconds: 180),
+  }) {
+    _zoomSnapshotPending = true;
+    _zoomSnapshotTimer?.cancel();
+    _zoomSnapshotTimer = Timer(delay, () {
+      if (mounted) unawaited(_bakeZoomSnapshot());
+    });
+  }
+
+  Future<void> _bakeZoomSnapshot() async {
+    if (!mounted || _viewGestureActive || _viewport == Size.zero) return;
+    if (_zoomSnapshotBaking) {
+      _zoomSnapshotPending = true;
+      return;
+    }
+    final boundary =
+        _canvasBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null || boundary.debugNeedsPaint) {
+      _scheduleZoomSnapshotBake(delay: const Duration(milliseconds: 80));
+      return;
+    }
+    _zoomSnapshotPending = false;
+    _zoomSnapshotBaking = true;
+    try {
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final image = await boundary.toImage(pixelRatio: dpr);
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _zoomSnapshotImage;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _zoomSnapshotImage = image;
+      _zoomSnapshotSize = _viewport;
+      _zoomSnapshotBgColor = _currentBgColor;
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeZoomSnapshot cuaderno');
+    } finally {
+      _zoomSnapshotBaking = false;
+      if (_zoomSnapshotPending && mounted) {
+        _scheduleZoomSnapshotBake(delay: const Duration(milliseconds: 80));
+      }
+    }
+  }
+
+  static const double _viewportRasterTileScreen = 384;
+  static const int _viewportRasterMaxTiles = 32;
+
+  // Phase A is overview-based: during any view-transform gesture the cached
+  // per-page overview images are shown (the InteractiveViewer transforms them
+  // for free — no per-frame widget rebuild, no re-raster) instead of the live
+  // vector tiles. The older screen-space viewport-raster path is retired: it
+  // still rebuilt its widget tree every frame and only engaged on 2 fingers, so
+  // 1-finger pans (the common stylus-mode navigation) re-rastered vectors and
+  // lagged. Kept inert (not deleted) in case Phase B revives a true LOD pyramid.
+  bool get _viewportRasterActive => false;
+
+  // A view-transform gesture (pan or zoom) is actively moving the canvas, and
+  // it is NOT a draw or a lasso transform → show overview rasters, not vectors.
+  // Engages on 2 fingers immediately, or on 1 finger once it has actually moved.
+  bool get _viewTransformActive =>
+      _viewGestureActive &&
+      !_isDrawing &&
+      _lassoCtrl.phase != LassoPhase.moving &&
+      _lassoCtrl.phase != LassoPhase.resizing &&
+      _lassoCtrl.phase != LassoPhase.rotating &&
+      (_activePointers.length >= 2 || _viewMoved);
+
+  int _viewportRasterBucket(double scale) {
+    if (scale < 0.45) return 0;
+    if (scale < 0.7) return 1;
+    if (scale < 1.05) return 2;
+    if (scale < 1.55) return 3;
+    if (scale < 2.3) return 4;
+    return 5;
+  }
+
+  double _viewportRasterBucketScale(int bucket) {
+    switch (bucket) {
+      case 0:
+        return 0.35;
+      case 1:
+        return 0.55;
+      case 2:
+        return 0.85;
+      case 3:
+        return 1.25;
+      case 4:
+        return 1.8;
+      default:
+        return 2.6;
+    }
+  }
+
+  // ignore: unused_element  // retired with the viewport-raster path; kept for Phase B
+  void _invalidateViewportRasterTiles() {
+    _viewportRasterVersion++;
+    for (final tile in _viewportRasterTiles.values) {
+      tile.image.dispose();
+    }
+    _viewportRasterTiles.clear();
+  }
+
+  void _scheduleViewportRasterBake({
+    Duration delay = const Duration(milliseconds: 220),
+  }) {
+    _viewportRasterPending = true;
+    _viewportRasterTimer?.cancel();
+    _viewportRasterTimer = Timer(delay, () {
+      if (mounted) unawaited(_bakeViewportRasterTiles());
+    });
+  }
+
+  Future<void> _bakeViewportRasterTiles() async {
+    if (!mounted || _viewport == Size.zero) return;
+    if (_viewGestureActive || _activePointers.isNotEmpty || _isDrawing) {
+      _scheduleViewportRasterBake(delay: const Duration(milliseconds: 160));
+      return;
+    }
+    if (_viewportRasterBaking) {
+      _viewportRasterPending = true;
+      return;
+    }
+    _viewportRasterPending = false;
+    _viewportRasterBaking = true;
+    try {
+      final version = _viewportRasterVersion;
+      final bucket = _viewportRasterBucket(_viewScale);
+      final bucketScale = _viewportRasterBucketScale(bucket);
+      final visible = _visibleRectFor(_viewport);
+      final overscan = math.max(visible.width, visible.height) * 0.55;
+      final wanted = visible.inflate(overscan);
+      final tileWorld = _viewportRasterTileScreen / bucketScale;
+      final minTx = (wanted.left / tileWorld).floor();
+      final maxTx = (wanted.right / tileWorld).floor();
+      final minTy = (wanted.top / tileWorld).floor();
+      final maxTy = (wanted.bottom / tileWorld).floor();
+      final candidates = <({String key, Rect rect, double dist})>[];
+      final center = visible.center;
+      for (int ty = minTy; ty <= maxTy; ty++) {
+        for (int tx = minTx; tx <= maxTx; tx++) {
+          final rect = Rect.fromLTWH(
+            tx * tileWorld,
+            ty * tileWorld,
+            tileWorld,
+            tileWorld,
+          );
+          final key = '$version:$bucket:$tx:$ty';
+          final d = (rect.center - center).distanceSquared;
+          candidates.add((key: key, rect: rect, dist: d));
+        }
+      }
+      candidates.sort((a, b) => a.dist.compareTo(b.dist));
+      final keep = candidates.take(_viewportRasterMaxTiles).toList();
+      final keepKeys = keep.map((c) => c.key).toSet();
+      final stale =
+          _viewportRasterTiles.entries
+              .where((e) => !keepKeys.contains(e.key))
+              .map((e) => e.key)
+              .toList();
+      for (final key in stale) {
+        _viewportRasterTiles.remove(key)?.image.dispose();
+      }
+      for (final c in keep) {
+        if (!mounted || version != _viewportRasterVersion) break;
+        if (_viewportRasterTiles.containsKey(c.key)) continue;
+        final tile = await _renderViewportRasterTile(
+          key: c.key,
+          worldRect: c.rect,
+          bucket: bucket,
+          bucketScale: bucketScale,
+          version: version,
+        );
+        if (tile == null) continue;
+        if (!mounted || version != _viewportRasterVersion) {
+          tile.image.dispose();
+          break;
+        }
+        final old = _viewportRasterTiles[tile.key];
+        old?.image.dispose();
+        _viewportRasterTiles[tile.key] = tile;
+        if (mounted) setState(() {});
+      }
+    } catch (e, st) {
+      CrashLogger.instance.record(
+        e,
+        st,
+        context: 'bakeViewportRaster cuaderno',
+      );
+    } finally {
+      _viewportRasterBaking = false;
+      if (_viewportRasterPending && mounted) {
+        _scheduleViewportRasterBake(delay: const Duration(milliseconds: 120));
+      }
+    }
+  }
+
+  Future<_ViewportRasterTile?> _renderViewportRasterTile({
+    required String key,
+    required Rect worldRect,
+    required int bucket,
+    required double bucketScale,
+    required int version,
+  }) async {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final imageScale = (bucketScale * dpr).clamp(0.45, 2.0);
+    final w = math.max(1, (worldRect.width * imageScale).ceil());
+    final h = math.max(1, (worldRect.height * imageScale).ceil());
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.scale(imageScale);
+    canvas.translate(-worldRect.left, -worldRect.top);
+    _NotebookCanvasPainter(
+      pageBlockIds: _pageBlockIds,
+      pageData: _pageData,
+      visibleRect: worldRect,
+      paintVersion: _paintVersion + _inkTick.value,
+      accentColor: _accent,
+      imageCache: _imgCache,
+      lod: lodForScale(bucketScale),
+    ).paint(canvas, Size(kNotebookPageWidth, _totalCanvasHeight));
+    final picture = recorder.endRecording();
+    try {
+      final image = await picture.toImage(w, h);
+      return _ViewportRasterTile(
+        key: key,
+        worldRect: worldRect,
+        bucket: bucket,
+        version: version,
+        image: image,
+      );
+    } finally {
+      picture.dispose();
     }
   }
 
@@ -4103,6 +4638,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return AnimatedBuilder(
       animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
       builder: (_, _) {
+        if (_viewportRasterActive ||
+            (_zoomGestureActive && _zoomSnapshotImage != null)) {
+          return const SizedBox.shrink();
+        }
         final visibleRect = _renderRectFor(viewport);
         return RepaintBoundary(
           child: CustomPaint(
@@ -4133,6 +4672,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           // Pan/zoom, lasso phase, and any page-ink change (_inkTick).
           animation: Listenable.merge([_viewCtrl, _lassoPhaseTick, _inkTick]),
           builder: (_, _) {
+            if (_viewportRasterActive ||
+                (_zoomGestureActive && _zoomSnapshotImage != null)) {
+              _overviewActive = false;
+              return const SizedBox.shrink();
+            }
             final visible = _visibleRectFor(viewport).inflate(kStrokeTileSize);
             final hiddenByPage = _hiddenStrokes();
             // Decimate stroke detail when zoomed out (dense tiles cheap to raster).
@@ -4140,12 +4684,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             // Show the cached per-page overview images instead of tiles when
             // zoomed out (or pinned through a zoom gesture); never during a lasso
             // gesture (the image can't hide the live selection).
-            final inLasso = _lassoCtrl.phase == LassoPhase.moving ||
+            final inLasso =
+                _lassoCtrl.phase == LassoPhase.moving ||
                 _lassoCtrl.phase == LassoPhase.resizing ||
                 _lassoCtrl.phase == LassoPhase.rotating;
-            _overviewActive = !inLasso &&
+            _overviewActive =
+                !inLasso &&
                 _overviewByPage.isNotEmpty &&
                 (_viewScale < _overviewThreshold ||
+                    _viewTransformActive ||
+                    _overviewLinger ||
                     (_viewGestureActive && _overviewStickyThisGesture));
 
             final tiles = <Widget>[];
@@ -4186,7 +4734,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 }
               }
 
-              final pageImg = _overviewActive ? _overviewByPage[bid] : null;
+              // Prefer the high-res focus image (crisp at the settled zoom);
+              // fall back to the base image while a focus bakes / on fast pan.
+              final focusImg = _overviewActive ? _overviewFocusByPage[bid] : null;
+              final pageImg =
+                  focusImg ?? (_overviewActive ? _overviewByPage[bid] : null);
               if (pageImg != null) {
                 // Cached ink image for this page (blit instead of re-drawing).
                 tiles.add(
@@ -4200,9 +4752,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     ),
                   ),
                 );
-                // Strokes drawn since the last bake → live on top, full detail.
-                final baked = (_overviewBakedCountByPage[bid] ?? 0)
-                    .clamp(0, data.strokes.length);
+                // Strokes drawn since the chosen image was baked → live on top,
+                // full detail (the delta count must match the image shown).
+                final bakedCount =
+                    focusImg != null
+                        ? (_overviewFocusBakedCountByPage[bid] ?? 0)
+                        : (_overviewBakedCountByPage[bid] ?? 0);
+                final baked = bakedCount.clamp(0, data.strokes.length);
                 if (baked < data.strokes.length) {
                   tiles.add(
                     Positioned.fromRect(
@@ -4349,6 +4905,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     List<DrawingStroke> strokes,
     List<CanvasImage> images,
   ) {
+    if (_viewportRasterActive ||
+        (_zoomGestureActive && _zoomSnapshotImage != null)) {
+      return const SizedBox.shrink();
+    }
     if (_lassoCtrl.phase == LassoPhase.idle) return const SizedBox.shrink();
     return AnimatedBuilder(
       animation: Listenable.merge([
@@ -4375,6 +4935,74 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildZoomSnapshotLayer(Size viewport) {
+    final image = _zoomSnapshotImage;
+    final snapshotSize = _zoomSnapshotSize;
+    if (!_zoomGestureActive || image == null || snapshotSize == null) {
+      return const SizedBox.shrink();
+    }
+    final scale = _zoomGestureScale;
+    final dx = _zoomGestureCurrentFocal.dx - _zoomGestureStartFocal.dx * scale;
+    final dy = _zoomGestureCurrentFocal.dy - _zoomGestureStartFocal.dy * scale;
+    final transform =
+        Matrix4.identity()
+          ..setEntry(0, 0, scale)
+          ..setEntry(1, 1, scale)
+          ..setEntry(0, 3, dx)
+          ..setEntry(1, 3, dy);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ColoredBox(
+          color: _zoomSnapshotBgColor,
+          child: ClipRect(
+            child: Transform(
+              transform: transform,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: snapshotSize.width,
+                  height: snapshotSize.height,
+                  child: RawImage(
+                    image: image,
+                    fit: BoxFit.fill,
+                    filterQuality: FilterQuality.medium,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildViewportRasterLayer() {
+    if (!_viewportRasterActive) return const SizedBox.shrink();
+    final tiles =
+        _viewportRasterTiles.values.toList()..sort((a, b) {
+          final by = a.worldRect.top.compareTo(b.worldRect.top);
+          return by != 0 ? by : a.worldRect.left.compareTo(b.worldRect.left);
+        });
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (final tile in tiles)
+              Positioned.fromRect(
+                rect: tile.worldRect,
+                child: RawImage(
+                  image: tile.image,
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.medium,
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -4852,11 +5480,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                               builder: (ctx, c) {
                                 final viewport = Size(c.maxWidth, c.maxHeight);
                                 _viewport = viewport;
+                                final showingZoomSnapshot =
+                                    _zoomGestureActive &&
+                                    _zoomSnapshotImage != null;
                                 final textBlockOverlays =
-                                    _buildTextBlockOverlays();
+                                    showingZoomSnapshot
+                                        ? const <Widget>[]
+                                        : _buildTextBlockOverlays();
                                 final taskBlockOverlays =
-                                    _buildTaskBlockOverlays();
+                                    showingZoomSnapshot
+                                        ? const <Widget>[]
+                                        : _buildTaskBlockOverlays();
                                 final lassoActive =
+                                    !showingZoomSnapshot &&
                                     _lassoCtrl.phase != LassoPhase.idle;
                                 final lassoStrokes =
                                     lassoActive
@@ -4929,17 +5565,100 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                   _viewCtrl,
                                               minScale: 0.3,
                                               maxScale: 4.0,
-                                              onInteractionStart: (_) {
+                                              onInteractionStart: (details) {
                                                 // Pin the overview for the whole
                                                 // gesture if it's showing, so
                                                 // zooming in doesn't swap to tiles
                                                 // mid-pinch.
+                                                _zoomSnapshotTimer?.cancel();
+                                                // A new gesture interrupts the prior
+                                                // fling's settle watch (re-armed on this
+                                                // gesture's end). The overview stays up
+                                                // (_overviewLinger untouched) across the
+                                                // chain so flick-pans never flash vector.
+                                                _stopSettleWatch();
                                                 _viewGestureActive = true;
+                                                _viewMoved = false;
+                                                _zoomGestureActive = false;
+                                                _zoomGestureSeen = false;
+                                                _zoomGestureScale = 1;
+                                                _zoomGestureStartFocal =
+                                                    details.localFocalPoint;
+                                                _zoomGestureCurrentFocal =
+                                                    details.localFocalPoint;
                                                 _overviewStickyThisGesture =
                                                     _overviewActive;
+                                                if (_activePointers.length >=
+                                                        2 &&
+                                                    _viewportRasterTiles
+                                                        .isNotEmpty) {
+                                                  if (mounted) setState(() {});
+                                                } else if (_activePointers
+                                                            .length >=
+                                                        2 &&
+                                                    _zoomSnapshotImage !=
+                                                        null &&
+                                                    _overviewByPage.isEmpty) {
+                                                  _zoomGestureActive = true;
+                                                  _zoomGestureSeen = true;
+                                                  _zoomGestureTick.value++;
+                                                  if (mounted) setState(() {});
+                                                }
+                                              },
+                                              onInteractionUpdate: (details) {
+                                                final zooming =
+                                                    (details.scale - 1.0)
+                                                        .abs() >
+                                                    0.01;
+                                                if (!_viewMoved &&
+                                                    (zooming ||
+                                                        details
+                                                                .focalPointDelta
+                                                                .distance >
+                                                            0.5)) {
+                                                  // First real pan/zoom frame:
+                                                  // swap vectors for the overview
+                                                  // raster (not a mere tap).
+                                                  _viewMoved = true;
+                                                  if (mounted) setState(() {});
+                                                }
+                                                final useSnapshot =
+                                                    _zoomSnapshotImage !=
+                                                        null &&
+                                                    _viewportRasterTiles
+                                                        .isEmpty &&
+                                                    _overviewByPage.isEmpty &&
+                                                    (_activePointers.length >=
+                                                            2 ||
+                                                        zooming);
+                                                _zoomGestureScale =
+                                                    details.scale;
+                                                _zoomGestureCurrentFocal =
+                                                    details.localFocalPoint;
+                                                if (useSnapshot &&
+                                                    !_zoomGestureSeen) {
+                                                  _zoomGestureSeen = true;
+                                                  _zoomGestureActive = true;
+                                                  _zoomGestureTick.value++;
+                                                  if (mounted) setState(() {});
+                                                } else if (_zoomGestureActive) {
+                                                  _zoomGestureTick.value++;
+                                                }
                                               },
                                               onInteractionEnd: (_) {
                                                 _viewGestureActive = false;
+                                                _viewMoved = false;
+                                                _zoomGestureActive = false;
+                                                _zoomGestureSeen = false;
+                                                _zoomGestureScale = 1;
+                                                // Keep the overview up through the
+                                                // ENTIRE fling — the settle Ticker drops
+                                                // it back to crisp vector only when the
+                                                // view truly stops (so the tile re-raster
+                                                // never lands mid-motion) and bakes the
+                                                // focus then too. Pyramid L0.
+                                                _overviewLinger = true;
+                                                _beginSettleWatch();
                                                 if (mounted) setState(() {});
                                                 if (_eyedropperMode &&
                                                     _eyedropCaptureMatrix !=
@@ -5006,7 +5725,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                       ),
                                                     ),
                                                     // Text blocks BELOW the ink.
-                                                    ...textBlockOverlays,
+                                                    if (!showingZoomSnapshot)
+                                                      ...textBlockOverlays,
                                                     _buildNotebookStrokeLayer(
                                                       viewport,
                                                       Size(
@@ -5014,55 +5734,60 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                         _totalCanvasHeight,
                                                       ),
                                                     ),
-                                                    IgnorePointer(
-                                                      child: RepaintBoundary(
-                                                        child: AnimatedBuilder(
-                                                          animation:
-                                                              _activeTick,
-                                                          builder:
-                                                              (
-                                                                _,
-                                                                _,
-                                                              ) => CustomPaint(
-                                                                painter: _ActiveStrokePainter(
-                                                                  active:
-                                                                      _active,
-                                                                  tick:
-                                                                      _activeTick
-                                                                          .value,
-                                                                  pageTop:
-                                                                      _activePageIndex !=
-                                                                              null
-                                                                          ? _activePageIndex! *
-                                                                              (kNotebookPageHeight +
-                                                                                  kNotebookPageGap)
-                                                                          : 0.0,
-                                                                  viewScale:
-                                                                      _viewScale,
+                                                    _buildViewportRasterLayer(),
+                                                    if (!showingZoomSnapshot)
+                                                      IgnorePointer(
+                                                        child: RepaintBoundary(
+                                                          child: AnimatedBuilder(
+                                                            animation:
+                                                                _activeTick,
+                                                            builder:
+                                                                (
+                                                                  _,
+                                                                  _,
+                                                                ) => CustomPaint(
+                                                                  painter: _ActiveStrokePainter(
+                                                                    active:
+                                                                        _active,
+                                                                    tick:
+                                                                        _activeTick
+                                                                            .value,
+                                                                    pageTop:
+                                                                        _activePageIndex !=
+                                                                                null
+                                                                            ? _activePageIndex! *
+                                                                                (kNotebookPageHeight +
+                                                                                    kNotebookPageGap)
+                                                                            : 0.0,
+                                                                    viewScale:
+                                                                        _viewScale,
+                                                                  ),
+                                                                  size: Size(
+                                                                    kNotebookPageWidth,
+                                                                    _totalCanvasHeight,
+                                                                  ),
                                                                 ),
-                                                                size: Size(
-                                                                  kNotebookPageWidth,
-                                                                  _totalCanvasHeight,
-                                                                ),
-                                                              ),
+                                                          ),
                                                         ),
                                                       ),
-                                                    ),
                                                     // Task blocks above the ink.
-                                                    ...taskBlockOverlays,
-                                                    _buildNotebookLassoLayer(
-                                                      viewport,
-                                                      Size(
-                                                        kNotebookPageWidth,
-                                                        _totalCanvasHeight,
+                                                    if (!showingZoomSnapshot)
+                                                      ...taskBlockOverlays,
+                                                    if (!showingZoomSnapshot)
+                                                      _buildNotebookLassoLayer(
+                                                        viewport,
+                                                        Size(
+                                                          kNotebookPageWidth,
+                                                          _totalCanvasHeight,
+                                                        ),
+                                                        lassoStrokes,
+                                                        lassoImages,
                                                       ),
-                                                      lassoStrokes,
-                                                      lassoImages,
-                                                    ),
-                                                    _buildPullIndicator(
-                                                      viewport,
-                                                      lastPageBottom,
-                                                    ),
+                                                    if (!showingZoomSnapshot)
+                                                      _buildPullIndicator(
+                                                        viewport,
+                                                        lastPageBottom,
+                                                      ),
                                                   ],
                                                 ),
                                               ),
@@ -5076,6 +5801,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                     // _viewCtrl AnimatedBuilder so they stay pinned
                                     // to the screen. They slide off toward their edge
                                     // during the eyedropper.
+                                    AnimatedBuilder(
+                                      animation: _zoomGestureTick,
+                                      builder:
+                                          (_, _) =>
+                                              _buildZoomSnapshotLayer(viewport),
+                                    ),
                                     if (_palettes != null)
                                       Positioned.fill(
                                         child: AnimatedBuilder(

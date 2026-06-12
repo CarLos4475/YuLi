@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind, instantiateImageCodec;
 import 'dart:ui' as ui;
 
@@ -156,7 +157,18 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   double _overviewThreshold = 0; // show overview when _viewScale < this
   int _overviewBakedCount = 0; // strokes already in the image
   bool _overviewBaking = false;
+  bool _overviewBakePending = false;
   Timer? _overviewTimer;
+  ui.Image? _zoomSnapshotImage;
+  Size? _zoomSnapshotSize;
+  Timer? _zoomSnapshotTimer;
+  bool _zoomSnapshotBaking = false;
+  bool _zoomSnapshotPending = false;
+  bool _zoomGestureActive = false;
+  bool _zoomGestureSeen = false;
+  double _zoomGestureScale = 1;
+  Offset _zoomGestureStartFocal = Offset.zero;
+  Offset _zoomGestureCurrentFocal = Offset.zero;
   // True while a 2-finger pan/zoom is in flight. The overview stays up for the
   // WHOLE gesture (even past its crisp threshold) and only hands back to the
   // crisp tiles when the gesture ENDS — otherwise crossing the threshold while
@@ -204,6 +216,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _worstRasterMs = 0;
     }
   }
+
   Rect? _renderRect;
   Offset? _lastVisibleCenter;
   Color _color = yInk;
@@ -774,6 +787,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     _overviewTimer?.cancel();
     _overviewImage?.dispose();
+    _zoomSnapshotTimer?.cancel();
+    _zoomSnapshotImage?.dispose();
     _eyedropImg?.dispose();
     // Pins live in the process-level store — do NOT dispose them here, or they'd
     // vanish on navigation. They're freed on close (X) or app kill.
@@ -984,6 +999,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _strokeTiles.rebuild(_data.strokes);
       // Bake the zoomed-out overview now so it's ready before the user zooms out.
       _scheduleOverviewBake();
+      _scheduleZoomSnapshotBake();
     } catch (e, st) {
       // A silent throw here leaves _blockId null → empty board, default bg,
       // corner view, and NO persistence. Surface it instead of losing data.
@@ -1151,6 +1167,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     });
     // Ink changed → the zoomed-out overview image is stale; re-bake once settled.
     _scheduleOverviewBake();
+    _scheduleZoomSnapshotBake();
   }
 
   int _pointCount(Iterable<DrawingStroke> strokes) =>
@@ -1465,7 +1482,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   double get _viewScale => _viewCtrl.value.getMaxScaleOnAxis();
 
   void _syncLassoTicker() {
-    final shouldRun = _lassoCtrl.phase != LassoPhase.idle;
+    final shouldRun =
+        _lassoCtrl.phase == LassoPhase.tracing ||
+        _kLassoGesturePhases.contains(_lassoCtrl.phase);
     if (shouldRun) {
       if (!_lassoAnimCtrl.isAnimating) _lassoAnimCtrl.repeat();
       return;
@@ -3289,6 +3308,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   /// Debounced re-bake of the zoomed-out overview after the ink settles.
   void _scheduleOverviewBake() {
+    _overviewBakePending = true;
     _overviewTimer?.cancel();
     _overviewTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted) unawaited(_bakeOverview());
@@ -3315,13 +3335,19 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Future<void> _bakeOverview() async {
-    if (_overviewBaking || !mounted) return;
+    if (!mounted) return;
+    if (_overviewBaking) {
+      _overviewBakePending = true;
+      return;
+    }
+    _overviewBakePending = false;
     final fullBounds = _contentBounds();
     if (fullBounds == null || fullBounds.width <= 0 || fullBounds.height <= 0) {
       final old0 = _overviewImage;
       _overviewImage = null;
       _overviewBounds = null;
       _overviewThreshold = 0;
+      _overviewBakedCount = 0;
       old0?.dispose();
       if (mounted) setState(() {});
       return;
@@ -3329,7 +3355,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _overviewBaking = true;
     try {
       final dpr = MediaQuery.of(context).devicePixelRatio;
-      const maxDim = 4096.0;
+      const maxDim = 6144.0;
+      const maxPixels = 36000000.0;
       final strokes = _data.strokes;
       final count = strokes.length;
       final oldImage = _overviewImage;
@@ -3339,14 +3366,21 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // Incremental bake: only new strokes appended, all inside the existing
       // bounds → blit the old image + draw just the new ones. Avoids the raster
       // spike of re-rendering every stroke on each pen-up while zoomed out.
-      final incremental = oldImage != null &&
+      final incremental =
+          oldImage != null &&
           oldBounds != null &&
           count > oldBaked &&
           _strokesWithin(oldBounds, strokes, oldBaked);
 
       final bounds = incremental ? oldBounds : fullBounds;
-      // As crisp as possible (up to 2× world px) but capped so the texture fits.
-      final imgScale = (maxDim / bounds.longestSide).clamp(0.05, 2.0);
+      final area = math.max(1.0, bounds.width * bounds.height);
+      final dimScale = maxDim / bounds.longestSide;
+      final areaScale = math.sqrt(maxPixels / area);
+      final imgScale =
+          math
+              .min(2.0, math.min(dimScale, areaScale))
+              .clamp(0.05, 2.0)
+              .toDouble();
       final w = (bounds.width * imgScale).ceil();
       final h = (bounds.height * imgScale).ceil();
       if (w <= 0 || h <= 0) return;
@@ -3398,6 +3432,62 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       CrashLogger.instance.record(e, st, context: 'bakeOverview pizarra');
     } finally {
       _overviewBaking = false;
+      if (_overviewBakePending && mounted) {
+        _overviewTimer?.cancel();
+        _overviewTimer = Timer(const Duration(milliseconds: 80), () {
+          if (mounted) unawaited(_bakeOverview());
+        });
+      }
+    }
+  }
+
+  void _scheduleZoomSnapshotBake({
+    Duration delay = const Duration(milliseconds: 180),
+  }) {
+    _zoomSnapshotPending = true;
+    _zoomSnapshotTimer?.cancel();
+    _zoomSnapshotTimer = Timer(delay, () {
+      if (mounted) unawaited(_bakeZoomSnapshot());
+    });
+  }
+
+  Future<void> _bakeZoomSnapshot() async {
+    if (!mounted || _viewGestureActive || _viewport == Size.zero) {
+      return;
+    }
+    if (_zoomSnapshotBaking) {
+      _zoomSnapshotPending = true;
+      return;
+    }
+    final boundary =
+        _canvasBoundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null || boundary.debugNeedsPaint) {
+      _scheduleZoomSnapshotBake(delay: const Duration(milliseconds: 80));
+      return;
+    }
+    _zoomSnapshotPending = false;
+    _zoomSnapshotBaking = true;
+    try {
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final image = await boundary.toImage(pixelRatio: dpr);
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _zoomSnapshotImage;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _zoomSnapshotImage = image;
+      _zoomSnapshotSize = _viewport;
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeZoomSnapshot pizarra');
+    } finally {
+      _zoomSnapshotBaking = false;
+      if (_zoomSnapshotPending && mounted) {
+        _scheduleZoomSnapshotBake(delay: const Duration(milliseconds: 80));
+      }
     }
   }
 
@@ -3574,6 +3664,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return AnimatedBuilder(
       animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
       builder: (_, _) {
+        if (_zoomGestureActive && _zoomSnapshotImage != null) {
+          return const SizedBox.shrink();
+        }
         final visibleRect = _renderRectFor(viewport);
         return Positioned.fromRect(
           rect: visibleRect,
@@ -3608,6 +3701,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // overhead isn't worth it — ink is tiny on screen anyway — so fall back to a
   // single direct painter.
   static const int _kMaxLiveTiles = 48;
+  static const int _kOverviewPressureTiles = 18;
+  static const double _kOverviewInteractionScale = 0.98;
 
   /// The zoomed-out overview: the cached ink image positioned in world space
   /// (the InteractiveViewer scales it), plus any strokes added since the last
@@ -3667,6 +3762,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // tiles whose version changed actually re-rasterize.
       animation: Listenable.merge([_viewCtrl, _lassoPhaseTick, _strokeTiles]),
       builder: (_, _) {
+        if (_zoomGestureActive && _zoomSnapshotImage != null) {
+          _overviewActive = false;
+          _strokeFallbackActive = false;
+          return const SizedBox.shrink();
+        }
         final inGesture =
             _lassoCtrl.phase == LassoPhase.moving ||
             _lassoCtrl.phase == LassoPhase.resizing ||
@@ -3679,6 +3779,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           viewport,
         ).inflate(_strokeTiles.tileSize);
         final tileKeys = _strokeTiles.tilesInRect(renderRect).toList();
+        final tilePressure = tileKeys.length > _kOverviewPressureTiles;
         _strokeFallbackActive = tileKeys.length > _kMaxLiveTiles;
         // Decimate stroke detail when zoomed out so dense tiles rasterize fast.
         final lod = lodForScale(_viewScale);
@@ -3689,10 +3790,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         final overview = _overviewImage;
         final canOverview =
             overview != null && _overviewBounds != null && !inGesture;
-        // Below the crisp threshold OR sticky through an in-flight zoom gesture.
-        _overviewActive = canOverview &&
+        final softZoomOut = _viewScale < _kOverviewInteractionScale;
+        _overviewActive =
+            canOverview &&
             (_viewScale < _overviewThreshold ||
-                (_viewGestureActive && _overviewStickyThisGesture));
+                _strokeFallbackActive ||
+                (tilePressure && softZoomOut) ||
+                (_viewGestureActive &&
+                    (softZoomOut || _overviewStickyThisGesture)));
         if (_overviewActive) {
           return _overviewStrokeLayer(overview!, renderRect);
         }
@@ -3749,6 +3854,47 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildZoomSnapshotLayer(Size viewport) {
+    final image = _zoomSnapshotImage;
+    final snapshotSize = _zoomSnapshotSize;
+    if (!_zoomGestureActive || image == null || snapshotSize == null) {
+      return const SizedBox.shrink();
+    }
+    final scale = _zoomGestureScale;
+    final dx = _zoomGestureCurrentFocal.dx - _zoomGestureStartFocal.dx * scale;
+    final dy = _zoomGestureCurrentFocal.dy - _zoomGestureStartFocal.dy * scale;
+    final transform =
+        Matrix4.identity()
+          ..setEntry(0, 0, scale)
+          ..setEntry(1, 1, scale)
+          ..setEntry(0, 3, dx)
+          ..setEntry(1, 3, dy);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ColoredBox(
+          color: bgPaper(_data.bgColorValue, yCream),
+          child: ClipRect(
+            child: Transform(
+              transform: transform,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: snapshotSize.width,
+                  height: snapshotSize.height,
+                  child: RawImage(
+                    image: image,
+                    fit: BoxFit.fill,
+                    filterQuality: FilterQuality.medium,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -4047,19 +4193,45 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       transformationController: _viewCtrl,
                                       minScale: 0.3,
                                       maxScale: 4.0,
-                                      onInteractionStart: (_) {
+                                      onInteractionStart: (details) {
                                         // Pin the overview for the whole gesture if
                                         // it's currently showing (so zooming IN
                                         // doesn't swap to tiles mid-pinch).
+                                        _zoomSnapshotTimer?.cancel();
                                         _viewGestureActive = true;
+                                        _zoomGestureActive = false;
+                                        _zoomGestureSeen = false;
+                                        _zoomGestureScale = 1;
+                                        _zoomGestureStartFocal =
+                                            details.localFocalPoint;
+                                        _zoomGestureCurrentFocal =
+                                            details.localFocalPoint;
                                         _overviewStickyThisGesture =
                                             _overviewActive;
+                                      },
+                                      onInteractionUpdate: (details) {
+                                        final zooming =
+                                            (details.scale - 1.0).abs() > 0.01;
+                                        _zoomGestureScale = details.scale;
+                                        _zoomGestureCurrentFocal =
+                                            details.localFocalPoint;
+                                        if (zooming && !_zoomGestureSeen) {
+                                          _zoomGestureSeen = true;
+                                          _zoomGestureActive = true;
+                                          if (mounted) setState(() {});
+                                        } else if (_zoomGestureActive) {
+                                          if (mounted) setState(() {});
+                                        }
                                       },
                                       onInteractionEnd: (_) {
                                         // Gesture settled → re-evaluate; hand back to
                                         // the crisp tiles now if we zoomed in past the
                                         // overview threshold.
                                         _viewGestureActive = false;
+                                        _zoomGestureActive = false;
+                                        _zoomGestureSeen = false;
+                                        _zoomGestureScale = 1;
+                                        _scheduleZoomSnapshotBake();
                                         if (mounted) setState(() {});
                                         // After a 2-finger pan/zoom the snapshot is
                                         // stale → recapture so the loupe keeps sampling
@@ -4167,6 +4339,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 ),
                               ),
                             ),
+                            _buildZoomSnapshotLayer(viewport),
                             // Floating palettes — sibling of the canvas Listener so
                             // touching a palette never leaks a pointer into a stroke.
                             // They slide off toward their edge during the eyedropper.
