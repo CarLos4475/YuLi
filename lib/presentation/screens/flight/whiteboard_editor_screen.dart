@@ -448,7 +448,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Offset? _eraserCursor; // screen pos for the eraser indicator
   // Raw (un-stabilized) pen points — used for scribble-erase detection so the
   // stabilizer's smoothing doesn't hide the zigzags.
-  List<List<double>> _rawPen = [];
+  StrokePoints _rawPen = StrokePoints();
   // Post-snap live adjust state.
   ShapeKind? _snapKind;
   List<List<double>>? _snapBasePoints;
@@ -1047,7 +1047,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (isScribble(snapPts, viewScale: _viewScale)) {
       return false;
     }
-    final shape = ShapeRecognizer.detect(_active!.points);
+    final shape = ShapeRecognizer.detect(_active!.points.toNested());
     if (shape == null) return false;
     if (!_canSnapHeldShape(shape.kind, snapPts)) return false;
     // Highlighter only snaps to straight lines (a marker arrow/box reads odd).
@@ -1059,14 +1059,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return true;
   }
 
-  bool _canSnapHeldShape(ShapeKind kind, List<List<double>> points) {
+  bool _canSnapHeldShape(ShapeKind kind, StrokePoints points) {
     if (kind == ShapeKind.line || kind == ShapeKind.arrow) return true;
     if (!shapeKindIsClosed(kind) && kind != ShapeKind.pentagram) return true;
     final bounds = scribbleBounds(points);
     final diag2 = bounds.width * bounds.width + bounds.height * bounds.height;
     if (diag2 <= 0) return false;
-    final start = Offset(points.first[0], points.first[1]);
-    final end = Offset(points.last[0], points.last[1]);
+    final start = Offset(points.firstX, points.firstY);
+    final end = Offset(points.lastX, points.lastY);
     final dist2 = (start - end).distanceSquared;
     return dist2 / diag2 <= 0.09;
   }
@@ -1087,11 +1087,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
-      final end = src.points.last;
-      _snapRefDist = (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(
-        1.0,
-        1e9,
-      );
+      _snapRefDist =
+          (Offset(src.points.lastX, src.points.lastY) - _snapCenter!).distance
+              .clamp(1.0, 1e9);
     }
     setState(() {
       _active = DrawingStroke(
@@ -1100,7 +1098,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         filled: _fillShapes && shapeKindIsClosed(shape.kind),
         isShape: true,
         isHighlighter: src.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -1131,7 +1129,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         filled: _active!.filled,
         isShape: true,
         isHighlighter: _active!.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -1846,7 +1844,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       strokeWidth: _strokeW,
       isShape: true,
       filled: closed && _fillShapes,
-      points: buildShape(kind, center.dx, center.dy, size, size),
+      points: StrokePoints.fromNested(
+        buildShape(kind, center.dx, center.dy, size, size),
+      ),
     );
     final before = _snapshot();
     setState(() {
@@ -2200,27 +2200,27 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           colorValue: _color.toARGB32(),
           strokeWidth: _strokeW,
           isFountainPen: true,
-          points: [
-            [sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()],
-          ],
+          points: StrokePoints(comps: 4)
+            ..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
         );
       });
       return;
     }
-    _rawPen = [
-      [p.dx, p.dy],
-    ];
+    _rawPen = StrokePoints(comps: 2)..add(p.dx, p.dy);
     setState(() {
+      final pencil = _tool == DrawTool.pencil;
+      final pts = StrokePoints(comps: pencil ? 3 : 2);
+      if (pencil) {
+        pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+      } else {
+        pts.add(sp.dx, sp.dy);
+      }
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
-        isPencil: _tool == DrawTool.pencil,
-        points: [
-          _tool == DrawTool.pencil
-              ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-              : [sp.dx, sp.dy],
-        ],
+        isPencil: pencil,
+        points: pts,
       );
     });
     if (_tool == DrawTool.pen || _tool == DrawTool.highlighter) {
@@ -2360,33 +2360,33 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final sp = _stabilize(p);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      _active!.points.add([
+      _active!.points.add(
         sp.dx,
         sp.dy,
         pressure,
         e.timeStamp.inMilliseconds.toDouble(),
-      ]);
+      );
       _activeTick.value++;
       moveSw?.stop();
       if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
       return;
     }
     final pts = _active!.points;
-    _rawPen.add([p.dx, p.dy]);
+    _rawPen.add(p.dx, p.dy);
     if (pts.isNotEmpty && !_stabilizer.isOn) {
-      final dx = sp.dx - pts.last[0];
-      final dy = sp.dy - pts.last[1];
+      final dx = sp.dx - pts.lastX;
+      final dy = sp.dy - pts.lastY;
       if (dx * dx + dy * dy < _minDist2) {
         moveSw?.stop();
         if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
         return;
       }
     }
-    pts.add(
-      _active!.isPencil
-          ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-          : [sp.dx, sp.dy],
-    );
+    if (_active!.isPencil) {
+      pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+    } else {
+      pts.add(sp.dx, sp.dy);
+    }
     _activeTick.value++;
     moveSw?.stop();
     if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
@@ -2509,7 +2509,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final a = _active;
     if (a == null || a.isShape) return;
     final tip = predictedTipPoint(a.points);
-    if (tip != null) a.points.add(tip);
+    if (tip != null) a.points.addLikeLast(tip.dx, tip.dy);
   }
 
   void _onCancel(PointerCancelEvent e) {
@@ -2565,8 +2565,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final activeStroke = _active?.clone();
     Rect? dirty;
     _data.strokes.removeWhere((s) {
-      for (final p in s.points) {
-        if (bounds.contains(Offset(p[0], p[1]))) {
+      final sp = s.points;
+      for (int i = 0; i < sp.length; i++) {
+        if (bounds.contains(sp.offset(i))) {
           final b = strokeBounds(s);
           dirty = dirty == null ? b : dirty!.expandToInclude(b);
           return true;
@@ -2597,16 +2598,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     } else {
       _resetInkPerf();
     }
-    _rawPen = [];
+    _rawPen = StrokePoints(comps: 2);
   }
 
   void _finishStroke() {
     final sw = Stopwatch()..start();
     if (_snapKind != null) return;
     if (_active == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -2625,8 +2625,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final activeStroke = _active!.clone();
       Rect? dirty;
       _data.strokes.removeWhere((s) {
-        for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) {
+        final sp = s.points;
+        for (int i = 0; i < sp.length; i++) {
+          if (bounds.contains(sp.offset(i))) {
             final b = strokeBounds(s);
             dirty = dirty == null ? b : dirty!.expandToInclude(b);
             return true;
@@ -2653,7 +2654,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         finishMs: sw.elapsedMilliseconds,
         snapshotMs: snapSw.elapsedMilliseconds,
       );
-      _rawPen = [];
+      _rawPen = StrokePoints(comps: 2);
       return;
     }
 
@@ -2688,9 +2689,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   void _finishFountainStroke() {
     final sw = Stopwatch()..start();
     if (_active == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -3064,7 +3064,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final s = _data.strokes[i];
       if (s.isHighlighter) continue;
       if (s.isShape && !includeShapes) continue;
-      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+      strokes.add(s.points.toOffsets());
     }
     return strokes;
   }
@@ -3696,11 +3696,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     double minX = double.infinity, minY = double.infinity;
     double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
     for (final s in _data.strokes) {
-      for (final p in s.points) {
-        if (p[0] < minX) minX = p[0];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] < minY) minY = p[1];
-        if (p[1] > maxY) maxY = p[1];
+      final sp = s.points;
+      for (int i = 0; i < sp.length; i++) {
+        final x = sp.x(i);
+        final y = sp.y(i);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
     for (final im in _data.images) {

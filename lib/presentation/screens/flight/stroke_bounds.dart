@@ -22,14 +22,13 @@ class StrokeBoundsCacheEntry {
   });
 
   bool matches(DrawingStroke stroke) {
-    if (stroke.points.isEmpty) return pointCount == 0;
-    final first = stroke.points.first;
-    final last = stroke.points.last;
-    return pointCount == stroke.points.length &&
-        firstX == first[0] &&
-        firstY == first[1] &&
-        lastX == last[0] &&
-        lastY == last[1] &&
+    final p = stroke.points;
+    if (p.isEmpty) return pointCount == 0;
+    return pointCount == p.length &&
+        firstX == p.firstX &&
+        firstY == p.firstY &&
+        lastX == p.lastX &&
+        lastY == p.lastY &&
         strokeWidth == stroke.strokeWidth;
   }
 }
@@ -41,14 +40,13 @@ Rect strokeBounds(DrawingStroke stroke) {
   if (cached != null && cached.matches(stroke)) return cached.bounds;
   final points = stroke.points;
   if (points.isEmpty) return Rect.zero;
-  var left = points.first[0];
-  var top = points.first[1];
+  var left = points.firstX;
+  var top = points.firstY;
   var right = left;
   var bottom = top;
   for (int i = 1; i < points.length; i++) {
-    final p = points[i];
-    final x = p[0];
-    final y = p[1];
+    final x = points.x(i);
+    final y = points.y(i);
     if (x < left) left = x;
     if (x > right) right = x;
     if (y < top) top = y;
@@ -63,10 +61,10 @@ Rect strokeBounds(DrawingStroke stroke) {
   );
   _strokeBoundsCache[stroke] = StrokeBoundsCacheEntry(
     pointCount: points.length,
-    firstX: points.first[0],
-    firstY: points.first[1],
-    lastX: points.last[0],
-    lastY: points.last[1],
+    firstX: points.firstX,
+    firstY: points.firstY,
+    lastX: points.lastX,
+    lastY: points.lastY,
     strokeWidth: stroke.strokeWidth,
     bounds: bounds,
   );
@@ -96,14 +94,13 @@ class _StrokePathCacheEntry {
   });
 
   bool matches(DrawingStroke stroke) {
-    if (stroke.points.isEmpty) return pointCount == 0;
-    final first = stroke.points.first;
-    final last = stroke.points.last;
-    return pointCount == stroke.points.length &&
-        firstX == first[0] &&
-        firstY == first[1] &&
-        lastX == last[0] &&
-        lastY == last[1] &&
+    final p = stroke.points;
+    if (p.isEmpty) return pointCount == 0;
+    return pointCount == p.length &&
+        firstX == p.firstX &&
+        firstY == p.firstY &&
+        lastX == p.lastX &&
+        lastY == p.lastY &&
         strokeWidth == stroke.strokeWidth;
   }
 }
@@ -123,10 +120,10 @@ Path cachedStrokePath(DrawingStroke stroke, Path Function() build) {
   if (points.isNotEmpty) {
     _strokePathCache[stroke] = _StrokePathCacheEntry(
       pointCount: points.length,
-      firstX: points.first[0],
-      firstY: points.first[1],
-      lastX: points.last[0],
-      lastY: points.last[1],
+      firstX: points.firstX,
+      firstY: points.firstY,
+      lastX: points.lastX,
+      lastY: points.lastY,
       strokeWidth: stroke.strokeWidth,
       path: path,
     );

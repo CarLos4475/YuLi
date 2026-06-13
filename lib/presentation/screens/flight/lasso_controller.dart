@@ -188,9 +188,10 @@ class LassoController {
 
     for (final i in selectedIndices) {
       if (i < strokes.length) {
-        for (final p in strokes[i].points) {
-          p[0] += dragOffset.dx;
-          p[1] += dragOffset.dy;
+        final pts = strokes[i].points;
+        for (int j = 0; j < pts.length; j++) {
+          pts.setX(j, pts.x(j) + dragOffset.dx);
+          pts.setY(j, pts.y(j) + dragOffset.dy);
         }
       }
     }
@@ -213,8 +214,7 @@ class LassoController {
     _snapshotBeforeMove = {};
     for (final i in selectedIndices) {
       if (i < strokes.length) {
-        _snapshotBeforeMove![i] =
-            strokes[i].points.map((p) => List<double>.from(p)).toList();
+        _snapshotBeforeMove![i] = strokes[i].points.toNested();
       }
     }
   }
@@ -357,10 +357,11 @@ class LassoController {
     for (final i in selectedIndices) {
       if (i < strokes.length) {
         final fountain = strokes[i].isFountainPen;
-        for (final p in strokes[i].points) {
-          p[0] = pivot.dx + (p[0] - pivot.dx) * s;
-          p[1] = pivot.dy + (p[1] - pivot.dy) * s;
-          if (fountain && p.length >= 3) p[2] *= s;
+        final pts = strokes[i].points;
+        for (int j = 0; j < pts.length; j++) {
+          pts.setX(j, pivot.dx + (pts.x(j) - pivot.dx) * s);
+          pts.setY(j, pivot.dy + (pts.y(j) - pivot.dy) * s);
+          if (fountain && pts.comps >= 3) pts.setZ(j, pts.z(j) * s);
         }
       }
     }
@@ -473,10 +474,11 @@ class LassoController {
     for (final i in selectedIndices) {
       if (i < strokes.length) {
         final fountain = strokes[i].isFountainPen;
-        for (final p in strokes[i].points) {
-          p[0] = pivot.dx + (p[0] - pivot.dx) * sx;
-          p[1] = pivot.dy + (p[1] - pivot.dy) * sy;
-          if (fountain && p.length >= 3) p[2] *= avg;
+        final pts = strokes[i].points;
+        for (int j = 0; j < pts.length; j++) {
+          pts.setX(j, pivot.dx + (pts.x(j) - pivot.dx) * sx);
+          pts.setY(j, pivot.dy + (pts.y(j) - pivot.dy) * sy);
+          if (fountain && pts.comps >= 3) pts.setZ(j, pts.z(j) * avg);
         }
       }
     }
@@ -547,11 +549,12 @@ class LassoController {
 
     for (final i in selectedIndices) {
       if (i < strokes.length) {
-        for (final p in strokes[i].points) {
-          final dx = p[0] - cx;
-          final dy = p[1] - cy;
-          p[0] = cx + dx * cos - dy * sin;
-          p[1] = cy + dx * sin + dy * cos;
+        final pts = strokes[i].points;
+        for (int j = 0; j < pts.length; j++) {
+          final dx = pts.x(j) - cx;
+          final dy = pts.y(j) - cy;
+          pts.setX(j, cx + dx * cos - dy * sin);
+          pts.setY(j, cy + dx * sin + dy * cos);
         }
       }
     }
@@ -579,8 +582,9 @@ class LassoController {
     final cx = boundingBox!.center.dx;
     for (final i in selectedIndices) {
       if (i < strokes.length) {
-        for (final p in strokes[i].points) {
-          p[0] = cx + (cx - p[0]);
+        final pts = strokes[i].points;
+        for (int j = 0; j < pts.length; j++) {
+          pts.setX(j, cx + (cx - pts.x(j)));
         }
       }
     }
@@ -592,8 +596,9 @@ class LassoController {
     final cy = boundingBox!.center.dy;
     for (final i in selectedIndices) {
       if (i < strokes.length) {
-        for (final p in strokes[i].points) {
-          p[1] = cy + (cy - p[1]);
+        final pts = strokes[i].points;
+        for (int j = 0; j < pts.length; j++) {
+          pts.setY(j, cy + (cy - pts.y(j)));
         }
       }
     }
@@ -639,12 +644,7 @@ class LassoController {
         filled: s.filled,
         isShape: s.isShape,
         isHighlighter: s.isHighlighter,
-        points: s.points.map((p) {
-          final q = List<double>.from(p);
-          q[0] -= cx;
-          q[1] -= cy;
-          return q;
-        }).toList(),
+        points: s.points.mapXY((x, y) => Offset(x - cx, y - cy)),
       ));
     }
     return out;
@@ -685,12 +685,9 @@ class LassoController {
         filled: s.filled,
         isShape: s.isShape,
         isHighlighter: s.isHighlighter,
-        points: s.points.map((p) {
-          final q = List<double>.from(p);
-          q[0] += worldPos.dx;
-          q[1] += worldPos.dy;
-          return q;
-        }).toList(),
+        points: s.points.mapXY(
+          (x, y) => Offset(x + worldPos.dx, y + worldPos.dy),
+        ),
       ));
     }
     final imgStart = images.length;
@@ -745,11 +742,12 @@ class LassoController {
         // whole stroke thickens/thins proportionally instead of becoming a
         // flat pen line.
         final ratio = s.strokeWidth > 0 ? width / s.strokeWidth : 1.0;
-        final pts = s.points.map((p) {
-          final q = List<double>.from(p);
-          if (q.length >= 3) q[2] = p[2] * ratio;
-          return q;
-        }).toList();
+        final pts = s.points.clone();
+        if (pts.comps >= 3) {
+          for (int j = 0; j < pts.length; j++) {
+            pts.setZ(j, pts.z(j) * ratio);
+          }
+        }
         strokes[i] = DrawingStroke(
           colorValue: s.colorValue,
           strokeWidth: width,
@@ -810,12 +808,7 @@ class LassoController {
           filled: s.filled,
           isShape: s.isShape,
           isHighlighter: s.isHighlighter,
-          points: s.points.map((p) {
-            final q = List<double>.from(p);
-            q[0] += 15;
-            q[1] += 15;
-            return q;
-          }).toList(),
+          points: s.points.mapXY((x, y) => Offset(x + 15, y + 15)),
         ));
       }
     }
@@ -883,9 +876,10 @@ class LassoController {
     double closestDist = double.infinity;
 
     for (int i = 0; i < strokes.length; i++) {
-      for (final p in strokes[i].points) {
-        final dx = p[0] - worldPos.dx;
-        final dy = p[1] - worldPos.dy;
+      final pts = strokes[i].points;
+      for (int j = 0; j < pts.length; j++) {
+        final dx = pts.x(j) - worldPos.dx;
+        final dy = pts.y(j) - worldPos.dy;
         final d2 = dx * dx + dy * dy;
         if (d2 < hitRadius2 && d2 < closestDist) {
           closestDist = d2;
@@ -1012,10 +1006,11 @@ class LassoController {
   bool _isStrokeInside(DrawingStroke stroke) {
     if (stroke.points.isEmpty) return false;
     int inside = 0;
-    for (final p in stroke.points) {
-      if (_pointInPolygon(Offset(p[0], p[1]), lassoPath)) inside++;
+    final pts = stroke.points;
+    for (int j = 0; j < pts.length; j++) {
+      if (_pointInPolygon(pts.offset(j), lassoPath)) inside++;
     }
-    return inside / stroke.points.length >= 0.5;
+    return inside / pts.length >= 0.5;
   }
 
   static bool _pointInPolygon(Offset test, List<Offset> polygon) {
@@ -1040,11 +1035,14 @@ class LassoController {
     double minY = double.infinity, maxY = double.negativeInfinity;
     for (final i in selectedIndices) {
       if (i >= strokes.length) continue;
-      for (final p in strokes[i].points) {
-        if (p[0] < minX) minX = p[0];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] < minY) minY = p[1];
-        if (p[1] > maxY) maxY = p[1];
+      final pts = strokes[i].points;
+      for (int j = 0; j < pts.length; j++) {
+        final x = pts.x(j);
+        final y = pts.y(j);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
     void includeBox(CanvasGeo o) {

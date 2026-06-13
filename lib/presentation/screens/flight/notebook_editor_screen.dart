@@ -966,8 +966,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final id = stroke.dbId;
     if (id == null || stroke.points.isEmpty) return;
     var sumY = 0.0;
-    for (final p in stroke.points) {
-      sumY += p[1];
+    final sp = stroke.points;
+    for (int i = 0; i < sp.length; i++) {
+      sumY += sp.y(i);
     }
     final pageIndex = _nearestPageIndex(sumY / stroke.points.length);
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
@@ -1065,9 +1066,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   DrawingStroke _worldStrokeForPage(int pageIndex, DrawingStroke stroke) {
     final c = stroke.clone();
     final offset = _pageOffsetY(pageIndex);
-    for (final pt in c.points) {
-      pt[1] += offset;
-    }
+    c.points.translate(0, offset);
     return c;
   }
 
@@ -1122,9 +1121,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   DrawingStroke _localStrokeFromWorld(int pageIndex, DrawingStroke stroke) {
     final c = stroke.clone();
     final offset = _pageOffsetY(pageIndex);
-    for (final pt in c.points) {
-      pt[1] -= offset;
-    }
+    c.points.translate(0, -offset);
     return c;
   }
 
@@ -2817,7 +2814,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // leave it for the scribble-erase on pen-up.
     final snapPts = _active!.points;
     if (isScribble(snapPts, viewScale: _viewScale)) return false;
-    final shape = ShapeRecognizer.detect(_active!.points);
+    final shape = ShapeRecognizer.detect(snapPts.toNested());
     if (shape == null) return false;
     if (!_canSnapHeldShape(shape.kind, snapPts)) return false;
     // Highlighter only snaps to straight lines (a marker arrow/box reads odd).
@@ -2829,14 +2826,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return true;
   }
 
-  bool _canSnapHeldShape(ShapeKind kind, List<List<double>> points) {
+  bool _canSnapHeldShape(ShapeKind kind, StrokePoints points) {
     if (kind == ShapeKind.line || kind == ShapeKind.arrow) return true;
     if (!shapeKindIsClosed(kind) && kind != ShapeKind.pentagram) return true;
     final bounds = scribbleBounds(points);
     final diag2 = bounds.width * bounds.width + bounds.height * bounds.height;
     if (diag2 <= 0) return false;
-    final start = Offset(points.first[0], points.first[1]);
-    final end = Offset(points.last[0], points.last[1]);
+    final start = Offset(points.firstX, points.firstY);
+    final end = Offset(points.lastX, points.lastY);
     final dist2 = (start - end).distanceSquared;
     return dist2 / diag2 <= 0.09;
   }
@@ -2856,11 +2853,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
-      final end = src.points.last;
-      _snapRefDist = (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(
-        1.0,
-        1e9,
-      );
+      _snapRefDist =
+          (Offset(src.points.lastX, src.points.lastY) - _snapCenter!).distance
+              .clamp(1.0, 1e9);
     }
     setState(() {
       _active = DrawingStroke(
@@ -2869,7 +2864,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         filled: _fillShapes && shapeKindIsClosed(shape.kind),
         isShape: true,
         isHighlighter: src.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -2900,7 +2895,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         filled: _active!.filled,
         isShape: true,
         isHighlighter: _active!.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -3116,25 +3111,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           colorValue: _color.toARGB32(),
           strokeWidth: _strokeW,
           isFountainPen: true,
-          points: [
-            [sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()],
-          ],
+          points: StrokePoints(comps: 4)
+            ..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
         );
       });
       return;
     }
 
     setState(() {
+      final pencil = _tool == DrawTool.pencil;
+      final pts = StrokePoints(comps: pencil ? 3 : 2);
+      if (pencil) {
+        pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+      } else {
+        pts.add(sp.dx, sp.dy);
+      }
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
-        isPencil: _tool == DrawTool.pencil,
-        points: [
-          _tool == DrawTool.pencil
-              ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-              : [sp.dx, sp.dy],
-        ],
+        isPencil: pencil,
+        points: pts,
       );
     });
     if (_tool == DrawTool.pen || _tool == DrawTool.highlighter) {
@@ -3252,12 +3249,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final sp = _stabilize(local);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      _active!.points.add([
+      _active!.points.add(
         sp.dx,
         sp.dy,
         pressure,
         e.timeStamp.inMilliseconds.toDouble(),
-      ]);
+      );
       _activeTick.value++;
       moveSw?.stop();
       if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
@@ -3265,19 +3262,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     final pts = _active!.points;
     if (pts.isNotEmpty && !_stabilizer.isOn) {
-      final dx = sp.dx - pts.last[0];
-      final dy = sp.dy - pts.last[1];
+      final dx = sp.dx - pts.lastX;
+      final dy = sp.dy - pts.lastY;
       if (dx * dx + dy * dy < _minDist2) {
         moveSw?.stop();
         if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
         return;
       }
     }
-    pts.add(
-      _active!.isPencil
-          ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-          : [sp.dx, sp.dy],
-    );
+    if (_active!.isPencil) {
+      pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+    } else {
+      pts.add(sp.dx, sp.dy);
+    }
     _activeTick.value++;
     moveSw?.stop();
     if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
@@ -3414,16 +3411,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final a = _active;
     if (a == null || a.isShape) return;
     final tip = predictedTipPoint(a.points);
-    if (tip != null) a.points.add(tip);
+    if (tip != null) a.points.addLikeLast(tip.dx, tip.dy);
   }
 
   void _finishStroke() {
     final sw = Stopwatch()..start();
     if (_snapKind != null) return;
     if (_active == null || _activePageIndex == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -3447,8 +3443,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final activeStroke = _active!.clone();
       Rect? dirty;
       data.strokes.removeWhere((s) {
-        for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) {
+        final sp = s.points;
+        for (int i = 0; i < sp.length; i++) {
+          if (bounds.contains(sp.offset(i))) {
             final b = strokeBounds(s);
             dirty = dirty == null ? b : dirty!.expandToInclude(b);
             return true;
@@ -3510,9 +3507,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _finishFountainStroke() {
     final sw = Stopwatch()..start();
     if (_active == null || _activePageIndex == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -4021,8 +4017,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final worldStroke = worldStrokes[worldIndex];
       if (worldStroke.points.isEmpty) continue;
       var sumY = 0.0;
-      for (final pt in worldStroke.points) {
-        sumY += pt[1];
+      final wp = worldStroke.points;
+      for (int i = 0; i < wp.length; i++) {
+        sumY += wp.y(i);
       }
       final targetPage = _nearestPageIndex(sumY / worldStroke.points.length);
       if (targetPage < 0 || targetPage >= _pageBlockIds.length) continue;
@@ -4232,8 +4229,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         continue;
       }
       var sumY = 0.0;
-      for (final pt in worldStroke.points) {
-        sumY += pt[1];
+      final wp = worldStroke.points;
+      for (int i = 0; i < wp.length; i++) {
+        sumY += wp.y(i);
       }
       final pageIndex = _nearestPageIndex(sumY / worldStroke.points.length);
       if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) {
@@ -4422,16 +4420,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final s in strokeSource) {
       if (s.points.isEmpty) continue;
       double sumY = 0;
-      for (final pt in s.points) {
-        sumY += pt[1];
+      final sp = s.points;
+      for (int i = 0; i < sp.length; i++) {
+        sumY += sp.y(i);
       }
       final idx = _nearestPageIndex(sumY / s.points.length);
       if (idx < 0 || !affected.contains(idx)) continue;
       final c = s.clone();
-      final pageTop = _pageOffsetY(idx);
-      for (final pt in c.points) {
-        pt[1] -= pageTop;
-      }
+      c.points.translate(0, -_pageOffsetY(idx));
       pages[_pageBlockIds[idx]]!.add(c);
     }
     for (final im in worldImages) {
@@ -4774,7 +4770,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       strokeWidth: _strokeW,
       isShape: true,
       filled: closed && _fillShapes,
-      points: buildShape(kind, local.dx, local.dy, size, size),
+      points: StrokePoints.fromNested(
+        buildShape(kind, local.dx, local.dy, size, size),
+      ),
     );
     final before = _snapshot();
     setState(() {
@@ -4980,7 +4978,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final s = all[i];
       if (s.isHighlighter) continue;
       if (s.isShape && !includeShapes) continue;
-      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+      strokes.add(s.points.toOffsets());
     }
     return strokes;
   }

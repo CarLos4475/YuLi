@@ -13,18 +13,18 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
     {double viewScale = 1.0}) {
   if (stroke.points.isEmpty) return;
 
-  final isRaw = stroke.points.first.length >= 4;
+  final isRaw = stroke.points.comps >= 4;
 
   // In-progress stroke: render with the SAME geometry the finished stroke will
   // have, so there's no jump/shrink when the pen lifts.
   if (isRaw) {
     if (stroke.points.length == 1) {
-      final p = stroke.points.first;
-      final pressure = p.length > 2 ? p[2] : 0.5;
+      final p = stroke.points;
+      final pressure = p.comps > 2 ? p.z(0) : 0.5;
       final r = stroke.strokeWidth * pressureWidthFactor(pressure) / 2;
       if (r > 0) {
         canvas.drawCircle(
-          Offset(p[0], p[1]),
+          Offset(p.x(0), p.y(0)),
           r,
           Paint()
             ..color = Color(stroke.colorValue)
@@ -50,11 +50,10 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
 
   final pts = stroke.points;
   if (pts.length < 2) {
-    final first = pts.first;
-    final r = (first.length > 2 ? first[2] : stroke.strokeWidth) / 2;
+    final r = (pts.comps > 2 ? pts.z(0) : stroke.strokeWidth) / 2;
     if (r > 0) {
       canvas.drawCircle(
-        Offset(first[0], first[1]),
+        Offset(pts.x(0), pts.y(0)),
         r,
         Paint()
           ..color = Color(stroke.colorValue)
@@ -67,9 +66,11 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
   // Centerline/widths are only needed on a cache miss → build them lazily so
   // repaints (pan/zoom) of an unchanged baked stroke skip the allocations.
   final path = cachedStrokePath(stroke, () {
-    final centerline = pts.map((p) => Offset(p[0], p[1])).toList();
-    final widths =
-        pts.map((p) => p.length > 2 ? p[2] : stroke.strokeWidth).toList();
+    final centerline = pts.toOffsets();
+    final widths = [
+      for (int i = 0; i < pts.length; i++)
+        pts.comps > 2 ? pts.z(i) : stroke.strokeWidth,
+    ];
     return FountainPenEngine.tessellate(centerline, widths,
         tangentWindow: 3, noiseAmp: 0);
   });
