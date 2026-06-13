@@ -682,9 +682,22 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _lastBg = PageBackground.fromString(drawingBlocks.last.background ?? '');
     _lastBgColor = drawingBlocks.last.bgColor;
 
+    // Lazy open: decode ONLY the page the initial scroll lands on (the last one,
+    // see _applyInitialScroll); queue the rest for a background sweep. The editor
+    // shows in ~one page's decode time instead of blocking on all N. There is NO
+    // eviction — once swept, every page stays resident (today's steady state),
+    // just reached after open rather than before it. That's the safe half of the
+    // old dynamic-hydration idea; the part that misbehaved (evict + re-decode
+    // while panning) is deliberately left out.
+    final eagerIdx = drawingBlocks.length - 1;
     var totalStrokes = 0;
     var totalPoints = 0;
-    for (final b in drawingBlocks) {
+    for (int i = 0; i < drawingBlocks.length; i++) {
+      final b = drawingBlocks[i];
+      if (i != eagerIdx) {
+        _pendingDecode[b.id] = b;
+        continue;
+      }
       if (!mounted) return;
       _hydratingPages.add(b.id);
       try {
@@ -718,7 +731,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// background stops; far pages remain cold on disk.
   Future<void> _decodeMorePages() async {
     if (!mounted) return;
-    if (_isDrawing) {
+    // Back off while the user is actively drawing or moving the view: a page
+    // decode is heavy enough that running it mid-gesture would stutter the pen /
+    // pan. The sweep resumes the moment things go idle. (This — never evicting,
+    // never re-decoding what's already in — is what keeps the feel intact.)
+    if (_isDrawing || _viewGestureActive) {
       _scheduleDeferredDecode();
       return;
     }
@@ -767,7 +784,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _paintVersion++;
       setState(() {});
     }
-    if (_hasPendingDecodeInLiveWindow()) {
+    if (_hasAnyPendingDecode()) {
       _scheduleDeferredDecode();
     }
     sw.stop();
@@ -791,6 +808,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           return da.compareTo(db);
         });
     for (final pageIndex in order) {
+      final blockId = _pageBlockIds[pageIndex];
+      if (_pendingDecode.containsKey(blockId) &&
+          !_hydratingPages.contains(blockId)) {
+        return blockId;
+      }
+    }
+    // Fallback: sweep ALL remaining pages (not just the live window) nearest the
+    // current page first, so a lazy-opened notebook fully decodes in the
+    // background — not only what happens to be on screen.
+    final current = _currentVisiblePage;
+    final all =
+        [for (int i = 0; i < _pageBlockIds.length; i++) i]
+          ..sort((a, b) => (a - current).abs().compareTo((b - current).abs()));
+    for (final pageIndex in all) {
       final blockId = _pageBlockIds[pageIndex];
       if (_pendingDecode.containsKey(blockId) &&
           !_hydratingPages.contains(blockId)) {
@@ -833,19 +864,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return wanted;
   }
 
-  bool _hasPendingDecodeInLiveWindow() {
+  /// Any page still queued for the background decode sweep (and not already in
+  /// flight). Drives the sweep's keep-going condition.
+  bool _hasAnyPendingDecode() {
     if (_pendingDecode.isEmpty) return false;
-    for (final pageIndex in _livePageIndices()) {
-      final blockId = _pageBlockIds[pageIndex];
-      if (_pendingDecode.containsKey(blockId) &&
-          !_hydratingPages.contains(blockId)) {
-        return true;
-      }
+    for (final id in _pendingDecode.keys) {
+      if (!_hydratingPages.contains(id)) return true;
     }
-    return false;
-  }
-
-  bool _hasEvictableColdPages() {
     return false;
   }
 
@@ -856,8 +881,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _scheduleDeferredDecode([
     Duration delay = const Duration(milliseconds: 16),
   ]) {
-    if (!mounted ||
-        (!_hasPendingDecodeInLiveWindow() && !_hasEvictableColdPages())) {
+    if (!mounted || !_hasAnyPendingDecode()) {
       return;
     }
     _deferredDecodeTimer?.cancel();
@@ -3086,6 +3110,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (pageIdx >= _pageBlockIds.length) return;
     }
     _activePageIndex = pageIdx;
+    // Lazy open: if the background sweep hasn't decoded this page yet, don't
+    // draw into a non-existent DrawingData (the ink would be lost). Jump it to
+    // the front of the sweep and skip this gesture — by the next tap it's ready.
+    // The page you open to is decoded eagerly, so this only bites a fast scroll
+    // into a far cold page before the sweep catches up.
+    if (_pageData[_pageBlockIds[pageIdx]] == null) {
+      _scheduleDeferredDecode(Duration.zero);
+      _isDrawing = false;
+      return;
+    }
     final local = _worldToPageLocal(world, pageIdx);
 
     if (_tool == DrawTool.lasso) {
