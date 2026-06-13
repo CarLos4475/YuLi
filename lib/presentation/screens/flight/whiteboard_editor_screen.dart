@@ -122,6 +122,97 @@ DrawingData _decodeWhiteboardData(Map<String, dynamic> args) {
   });
 }
 
+/// One world-anchored chunk tile baked at the exact current zoom (1:1 with the
+/// screen → zero blur). [version] is bumped on every ink edit so a stale tile
+/// (baked before the edit) is recognised and stops being shown.
+class _WbChunkTile {
+  final Rect worldRect;
+  final int version;
+  final ui.Image image;
+  const _WbChunkTile(this.worldRect, this.version, this.image);
+}
+
+/// Composites the high-zoom overview when the chunk ring is engaged: per-cell,
+/// the base overview (+ focus tile + post-bake delta strokes) fills only the
+/// holes where no tile is ready (even-odd clip), then the full-res tiles draw on
+/// top. The clip is what prevents the base and a tile drawing the same ink twice
+/// (the "tint"/halo of a naive overlay). All in world coords (size = canvas).
+class _WhiteboardChunkOverlayPainter extends CustomPainter {
+  final ui.Image baseImage;
+  final Rect baseBounds;
+  final ui.Image? focusImage;
+  final Rect? focusBounds;
+  final List<DrawingStroke>? delta;
+  final List<(Rect, ui.Image)> tiles; // current-version tiles (worldRect, image)
+  final Rect visibleWorld;
+
+  const _WhiteboardChunkOverlayPainter({
+    required this.baseImage,
+    required this.baseBounds,
+    required this.focusImage,
+    required this.focusBounds,
+    required this.delta,
+    required this.tiles,
+    required this.visibleWorld,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..isAntiAlias = true
+          ..filterQuality = FilterQuality.medium;
+    // 1. Base + focus + delta, clipped to the holes (everything NOT under a tile).
+    final hole = Path()..addRect(visibleWorld);
+    for (final (r, _) in tiles) {
+      hole.addRect(r);
+    }
+    hole.fillType = PathFillType.evenOdd;
+    canvas.save();
+    canvas.clipPath(hole);
+    canvas.drawImageRect(
+      baseImage,
+      Rect.fromLTWH(
+        0,
+        0,
+        baseImage.width.toDouble(),
+        baseImage.height.toDouble(),
+      ),
+      baseBounds,
+      paint,
+    );
+    final fImg = focusImage;
+    final fBounds = focusBounds;
+    if (fImg != null && fBounds != null) {
+      canvas.drawImageRect(
+        fImg,
+        Rect.fromLTWH(0, 0, fImg.width.toDouble(), fImg.height.toDouble()),
+        fBounds,
+        paint,
+      );
+    }
+    final d = delta;
+    if (d != null) {
+      for (final s in d) {
+        drawStroke(canvas, s);
+      }
+    }
+    canvas.restore();
+    // 2. Full-res tiles on top (where they exist they own the cell).
+    for (final (r, image) in tiles) {
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        r,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WhiteboardChunkOverlayPainter old) => true;
+}
+
 class WhiteboardEditorScreen extends ConsumerStatefulWidget {
   final Note note;
   final Folder folder;
@@ -215,6 +306,28 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   int _focusBakedCount = 0;
   bool _focusBaking = false;
   static const double _focusMaxDim = 4096.0;
+  // ── Chunk tile ring (pyramid L0, dynamic) ──────────────────────────────────
+  // The single focus tile above tops out: on a viewport wider than ~2048/dpr its
+  // overscan region can't be baked at full screen density, so panning zoomed-in
+  // softens. This is a Minecraft-style ring of WORLD-anchored raster tiles baked
+  // at the EXACT current zoom (1:1 with the screen → zero blur), generated at the
+  // leading edge and freed behind as you pan, with the base overview (+ focus) as
+  // fallback (never a white hole). Tiles are ink-only and bake with the very same
+  // drawStroke path as base/focus, so tile↔base edges match chromatically. Purely
+  // additive; _tilesEnabled=false reverts to exactly today's behaviour. Mirrors
+  // the validated notebook implementation; the page loop becomes a strokeBounds
+  // cull (infinite canvas, no pages).
+  final Map<String, _WbChunkTile> _chunkTiles = {};
+  final Set<String> _chunkBaking = {};
+  double _chunkGridScale = 0; // zoom the current grid is anchored to
+  double _chunkTileWorld = 0; // cell side in world units (viewport fraction)
+  int _chunkVersion = 0; // bumped on ink edit → stale tiles discarded
+  bool _chunkPumpScheduled = false;
+  final bool _tilesEnabled = true; // master switch (A/B revert: flip + rebuild)
+  static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
+  static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
+  static const int _kChunkMaxTiles = 36;
+  static const int _kChunkPerFrame = 1; // bakes/frame (budgeted, runs during pan)
 
   // ─── Heat / pan-zoom frame timing (temporary diagnostics) ─────────────────
   // True when the last stroke-layer build fell back to the single uncached
@@ -878,6 +991,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _overviewImage?.dispose();
     _settleTicker?.dispose();
     _focusImage?.dispose();
+    for (final t in _chunkTiles.values) {
+      t.image.dispose();
+    }
+    _chunkTiles.clear();
     _zoomSnapshotTimer?.cancel();
     _zoomSnapshotImage?.dispose();
     _eyedropImg?.dispose();
@@ -1433,6 +1550,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     // The focus tile has the OLD strokes baked in → drop it (erase/lasso would
     // ghost). Falls back to base+delta; re-bakes on the next settle.
     _disposeFocus();
+    // Same for the chunk ring: bump the version so the now-stale tiles stop being
+    // shown (curTiles filters by version → the overlay yields to base+delta) and
+    // re-bake at the new state on the next pump.
+    _chunkVersion++;
+    _scheduleChunkPump();
   }
 
   int _pointCount(Iterable<DrawingStroke> strokes) =>
@@ -3801,6 +3923,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         setState(() => _overviewLinger = false);
       }
       unawaited(_bakeFocus());
+      // Pre-load / refresh the chunk ring for the settled zoom (or free it if we
+      // dropped below the engage threshold). Budgeted; runs in stillness here.
+      _scheduleChunkPump();
     }
   }
 
@@ -3907,6 +4032,172 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       CrashLogger.instance.record(e, st, context: 'bakeFocus pizarra');
     } finally {
       _focusBaking = false;
+    }
+  }
+
+  // ── Chunk tile ring ────────────────────────────────────────────────────────
+
+  /// Engaged only past where the focus tile can still be baked at full screen
+  /// density (its overscan region tops out for large viewports / high zoom),
+  /// where panning softens. Below it (zoomed out, base overview crisp, or small
+  /// viewport where focus is pixel-perfect) chunks stay dormant.
+  bool get _chunkEngaged {
+    if (!_tilesEnabled || _viewport == Size.zero) return false;
+    if (_viewScale <= _overviewThreshold) return false; // base overview is crisp
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final regionLongest = _visibleRectFor(_viewport).longestSide * 2; // focus overscan
+    final cap = _focusMaxDim / regionLongest; // focus density ceiling
+    return _viewScale * dpr > cap * 1.03; // focus can't reach screen density
+  }
+
+  String _chunkKey(int gx, int gy) => '$gx:$gy';
+
+  /// Cells whose world rect overlaps viewport + ring, nearest-first, capped.
+  List<(int, int, Rect)> _wantedChunks(double tileWorld) {
+    final visible = _visibleRectFor(_viewport);
+    final ring = visible.inflate(visible.longestSide * _kChunkRingFactor);
+    final gx0 = (ring.left / tileWorld).floor();
+    final gy0 = (ring.top / tileWorld).floor();
+    final gx1 = (ring.right / tileWorld).ceil();
+    final gy1 = (ring.bottom / tileWorld).ceil();
+    final center = visible.center;
+    final out = <(int, int, Rect)>[];
+    for (int gy = gy0; gy < gy1; gy++) {
+      for (int gx = gx0; gx < gx1; gx++) {
+        final rect = Rect.fromLTWH(
+          gx * tileWorld,
+          gy * tileWorld,
+          tileWorld,
+          tileWorld,
+        );
+        if (rect.overlaps(ring)) out.add((gx, gy, rect));
+      }
+    }
+    out.sort(
+      (a, b) => (a.$3.center - center).distanceSquared.compareTo(
+        (b.$3.center - center).distanceSquared,
+      ),
+    );
+    if (out.length > _kChunkMaxTiles) out.removeRange(_kChunkMaxTiles, out.length);
+    return out;
+  }
+
+  void _disposeAllChunks() {
+    if (_chunkTiles.isEmpty) return;
+    for (final t in _chunkTiles.values) {
+      final img = t.image;
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+    _chunkTiles.clear();
+    _chunkTileWorld = 0;
+  }
+
+  void _scheduleChunkPump() {
+    if (_chunkPumpScheduled || !mounted) return;
+    _chunkPumpScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chunkPumpScheduled = false;
+      unawaited(_chunkPump());
+    });
+  }
+
+  /// Budgeted baker: keeps the ring filled around the viewport, baking a few
+  /// tiles per frame nearest-first (runs DURING pan, not only at rest). Drawing
+  /// / lasso own the main isolate → it backs off for them. Re-anchors the grid
+  /// to a new zoom only when settled (mid zoom-gesture the pyramid covers it).
+  Future<void> _chunkPump() async {
+    if (!mounted) return;
+    if (_isDrawing ||
+        _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating) {
+      return;
+    }
+    if (!_chunkEngaged || _viewport == Size.zero || _data.strokes.isEmpty) {
+      _disposeAllChunks();
+      return;
+    }
+    final visible = _visibleRectFor(_viewport);
+    final scaleChanged =
+        _chunkTileWorld <= 0 ||
+        (_viewScale - _chunkGridScale).abs() / _viewScale > 0.02;
+    if (scaleChanged) {
+      // During an active zoom gesture the scale changes every frame; re-anchoring
+      // per frame would thrash. Defer to settle — the pyramid covers the gap.
+      if (_viewGestureActive) return;
+      _chunkGridScale = _viewScale;
+      _chunkTileWorld = visible.longestSide / _kChunkTilesAcross;
+      _chunkVersion++;
+    }
+    final tileWorld = _chunkTileWorld;
+    final wanted = _wantedChunks(tileWorld);
+    final wantedKeys = wanted.map((c) => _chunkKey(c.$1, c.$2)).toSet();
+    for (final key in _chunkTiles.keys.toList()) {
+      if (!wantedKeys.contains(key)) {
+        final img = _chunkTiles.remove(key)!.image;
+        WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+      }
+    }
+    var baked = 0;
+    for (final (gx, gy, rect) in wanted) {
+      if (baked >= _kChunkPerFrame) break;
+      final key = _chunkKey(gx, gy);
+      final existing = _chunkTiles[key];
+      if (existing != null && existing.version == _chunkVersion) continue;
+      if (_chunkBaking.contains(key)) continue;
+      baked++;
+      await _bakeChunk(gx, gy, rect, tileWorld);
+      if (_isDrawing) break; // a draw started during the await → yield
+    }
+    final hasPending = wanted.any((c) {
+      final t = _chunkTiles[_chunkKey(c.$1, c.$2)];
+      return t == null || t.version != _chunkVersion;
+    });
+    if (hasPending && _chunkEngaged) _scheduleChunkPump();
+  }
+
+  /// Bake one cell at the EXACT anchored zoom (1:1 with the screen → zero blur),
+  /// ink-only, world-anchored, culled to the strokes overlapping the cell (the
+  /// infinite-canvas analog of the notebook's per-page loop). Same `drawStroke`
+  /// path as base/focus so tile↔base edges match chromatically.
+  Future<void> _bakeChunk(int gx, int gy, Rect cell, double tileWorld) async {
+    final key = _chunkKey(gx, gy);
+    if (_chunkBaking.contains(key) || !mounted) return;
+    final version = _chunkVersion;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final imgScale = _chunkGridScale * dpr;
+    final px = (tileWorld * imgScale).round();
+    if (px <= 0 || px > 4096) return; // texture-limit guard (shouldn't hit by design)
+    _chunkBaking.add(key);
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-cell.left, -cell.top); // world → cell-local
+      canvas.clipRect(cell);
+      final strokes = _data.strokes;
+      for (int i = 0; i < strokes.length; i++) {
+        final s = strokes[i];
+        if (strokeBounds(s).overlaps(cell)) drawStroke(canvas, s);
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(px, px);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _chunkTiles[key];
+      if (old != null) {
+        final oldImg = old.image;
+        WidgetsBinding.instance.addPostFrameCallback((_) => oldImg.dispose());
+      }
+      _chunkTiles[key] = _WbChunkTile(cell, version, image);
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeChunk pizarra');
+    } finally {
+      _chunkBaking.remove(key);
     }
   }
 
@@ -4293,6 +4584,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 _strokeFallbackActive ||
                 _viewTransformActive ||
                 _overviewLinger);
+        // High-zoom chunk ring (pyramid L0): full-res world tiles composited OVER
+        // the base+focus, per-cell. Schedule the baker whenever engaged (also
+        // pre-loads at rest) or when tiles still need freeing after dropping below
+        // the threshold.
+        if (_chunkEngaged || _chunkTiles.isNotEmpty) _scheduleChunkPump();
+
         if (_overviewActive) {
           final delta = math.max(0, _data.strokes.length - _overviewBakedCount);
           _logWhiteboardLayerDecision(
@@ -4305,6 +4602,43 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             lod: lod,
             delta: delta,
           );
+          // Base/focus + delta only in the holes (even-odd clip), tiles on top →
+          // zero doubling/seam. On any ink edit _chunkVersion bumps → curTiles
+          // empties → yields to the overview layer below until the ring re-bakes.
+          if (_chunkEngaged && _overviewBounds != null) {
+            final curTiles = <(Rect, ui.Image)>[];
+            for (final t in _chunkTiles.values) {
+              if (t.version == _chunkVersion &&
+                  t.worldRect.overlaps(renderRect)) {
+                curTiles.add((t.worldRect, t.image));
+              }
+            }
+            if (curTiles.isNotEmpty) {
+              final baked = _overviewBakedCount.clamp(0, _data.strokes.length);
+              final deltaStrokes =
+                  baked < _data.strokes.length
+                      ? _data.strokes.sublist(baked)
+                      : null;
+              return Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _WhiteboardChunkOverlayPainter(
+                        baseImage: overview!,
+                        baseBounds: _overviewBounds!,
+                        focusImage: _focusImage,
+                        focusBounds: _focusBounds,
+                        delta: deltaStrokes,
+                        tiles: curTiles,
+                        visibleWorld: renderRect,
+                      ),
+                      size: const Size(_kCanvasW, _kCanvasH),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
           return _overviewStrokeLayer(overview!, renderRect);
         }
 
