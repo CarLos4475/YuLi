@@ -743,62 +743,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return 0;
   }
 
-  bool _hasEvictableColdPagesDisabled() {
-    if (_pageData.isEmpty ||
-        _undoStack.isNotEmpty ||
-        _redoStack.isNotEmpty ||
-        _isDrawing ||
-        _activePageIndex != null ||
-        _lassoCtrl.phase != LassoPhase.idle) {
-      return false;
-    }
-    final keep = _livePageIndices(margin: _evictPageMargin);
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      if (keep.contains(i)) continue;
-      final blockId = _pageBlockIds[i];
-      if (_pageData.containsKey(blockId) &&
-          !_dirtyPersistPages.contains(blockId) &&
-          !_hydratingPages.contains(blockId)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  int _evictColdPagesDisabled() {
-    if (_pageData.isEmpty ||
-        _undoStack.isNotEmpty ||
-        _redoStack.isNotEmpty ||
-        _isDrawing ||
-        _activePageIndex != null ||
-        _lassoCtrl.phase != LassoPhase.idle) {
-      return 0;
-    }
-    final keep = _livePageIndices(margin: _evictPageMargin);
-    var evicted = 0;
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      if (keep.contains(i)) continue;
-      final blockId = _pageBlockIds[i];
-      if (!_pageData.containsKey(blockId) ||
-          _dirtyPersistPages.contains(blockId) ||
-          _hydratingPages.contains(blockId)) {
-        continue;
-      }
-      final shell = _pageShells[blockId];
-      if (shell == null) continue;
-      _pageData.remove(blockId);
-      _pendingDecode[blockId] = shell;
-      _pageWorldStrokeCache.remove(blockId);
-      _pageTiles.remove(blockId)?.dispose();
-      _persistedStrokeIdsByBlock.remove(blockId);
-      _dirtyStrokeIdsByBlock.remove(blockId);
-      _nextStrokePosByBlock.remove(blockId);
-      _disposeFocus(blockId);
-      evicted++;
-    }
-    return evicted;
-  }
-
   void _scheduleDeferredDecode([
     Duration delay = const Duration(milliseconds: 16),
   ]) {
@@ -2844,12 +2788,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _ensurePageAt(pageIdx);
       if (pageIdx >= _pageBlockIds.length) return;
     }
-    final blockId = _pageBlockIds[pageIdx];
-    if (!_pageData.containsKey(blockId)) {
-      _scheduleDeferredDecode(Duration.zero);
-      return;
-    }
-
     _activePageIndex = pageIdx;
     final local = _worldToPageLocal(world, pageIdx);
 
@@ -3093,7 +3031,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
-    if (_activePointers.isEmpty) _scheduleDeferredDecode();
 
     if (_reachedPullThreshold && _activePointers.isEmpty) {
       _reachedPullThreshold = false;

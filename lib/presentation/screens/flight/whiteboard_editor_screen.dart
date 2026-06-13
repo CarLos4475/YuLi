@@ -141,14 +141,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     with TickerProviderStateMixin {
   int? _blockId;
   DrawingData _data = DrawingData();
-  bool _hydratingStrokes = false;
-  bool _viewChangedDuringHydration = false;
-  DrawingBlock? _hydratingCanvas;
-  Rect? _dbStrokeBounds;
   final Map<int, int> _loadedStrokePositions = {};
-  bool _visibleHydrateRunning = false;
-  bool _visibleHydrateQueued = false;
-  bool _metadataHydrated = false;
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
 
@@ -257,7 +250,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         'fallback ${_strokeFallbackActive ? 'SI' : 'no'}, '
         'overview ${_overviewActive ? 'SI' : 'no'}, '
         'dirty ${_overviewDirty ? 'SI' : 'no'}, '
-        'hydrate ${_hydratingStrokes || _visibleHydrateRunning || _visibleHydrateQueued ? 'SI' : 'no'}, '
         'trazos ${_data.strokes.length}',
       );
       _slowFrames = 0;
@@ -911,7 +903,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// are tracked only in the block payload, so that's the source of truth.
   /// Safe here because the undo history is discarded on exit.
   void _reconcileImageFiles() {
-    if (_hydratingStrokes) return;
     final dirPath = _imageDirPath;
     if (dirPath == null) return;
     final referenced = _data.images.map((im) => im.filename).toSet();
@@ -1088,176 +1079,21 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         '(${existing == null ? 'CREADO nuevo' : 'encontrado'}), '
         '${blocks.length} bloques en la nota',
       );
-      final data = _decodeShellMetadata(canvas);
+      final data = await _decodeData(canvas);
+      if (!mounted) return;
       setState(() {
         _blockId = id;
         _data = data;
-        _hydratingStrokes = true;
-        _viewChangedDuringHydration = false;
-        _hydratingCanvas = canvas;
-        _metadataHydrated = false;
         _persistedStrokeIds.clear();
         _dirtyStrokeIds.clear();
         _loadedStrokePositions.clear();
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_hydrateCanvasStrokes(canvas));
-      });
+      _strokeTiles.rebuild(_data.strokes);
+      _scheduleOverviewBake();
     } catch (e, st) {
       // A silent throw here leaves _blockId null → empty board, default bg,
       // corner view, and NO persistence. Surface it instead of losing data.
       CrashLogger.instance.record(e, st, context: 'ensureCanvasBlock pizarra');
-    }
-  }
-
-  DrawingData _decodeMetadata(DrawingBlock b) {
-    final payload = b.payloadJson();
-    return _decodeWhiteboardData({
-      's': b.strokesJson,
-      'i': b.imagesJson,
-      't': b.taskBlocksJson,
-      if (payload['tx'] != null) 'tx': payload['tx'],
-      'bg': payload['bg'],
-      'bgc': payload['bgc'],
-    });
-  }
-
-  DrawingData _decodeShellMetadata(DrawingBlock b) {
-    final payload = b.payloadJson();
-    return DrawingData(
-      height: _kCanvasH,
-      background: PageBackground.fromString((payload['bg'] as String?) ?? ''),
-      bgColorValue: (payload['bgc'] as num?)?.toInt(),
-    );
-  }
-
-  Rect? _metadataBounds(DrawingBlock b) {
-    final data = _decodeMetadata(b);
-    Rect? out;
-    for (final im in data.images) {
-      out = _unionRects(out, Rect.fromLTWH(im.x, im.y, im.w, im.h));
-    }
-    for (final block in data.taskBlocks) {
-      out = _unionRects(out, Rect.fromLTWH(block.x, block.y, block.w, block.h));
-    }
-    for (final block in data.textBlocks) {
-      out = _unionRects(out, Rect.fromLTWH(block.x, block.y, block.w, block.h));
-    }
-    return out;
-  }
-
-  Rect? _unionRects(Rect? a, Rect? b) {
-    if (a == null) return b;
-    if (b == null) return a;
-    return Rect.fromLTRB(
-      math.min(a.left, b.left),
-      math.min(a.top, b.top),
-      math.max(a.right, b.right),
-      math.max(a.bottom, b.bottom),
-    );
-  }
-
-  Future<void> _hydrateCanvasStrokes(DrawingBlock canvas) async {
-    try {
-      final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-      final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
-      final boundsRect = bounds == null ? null : _rectFromBounds(bounds);
-      _nextStrokePos =
-          (await strokeRepo.getMaxPositionByBlock(canvas.id) ?? -1) + 1;
-      final contentBounds = _unionRects(boundsRect, _metadataBounds(canvas));
-      if (mounted && _blockId == canvas.id && contentBounds != null) {
-        _dbStrokeBounds = contentBounds;
-        if (!_metadataHydrated) {
-          final metadata = _decodeMetadata(canvas);
-          metadata.strokes = _data.strokes;
-          _data = metadata;
-          _metadataHydrated = true;
-        }
-        if (!_viewChangedDuringHydration) {
-          _viewInitialized = false;
-          _maybeInitView();
-          await SchedulerBinding.instance.endOfFrame;
-        }
-        if (boundsRect != null) {
-          await _hydrateVisibleCanvasStrokes(canvas, boundsRect, strokeRepo);
-        }
-      }
-      if (!mounted || _blockId != canvas.id) return;
-      setState(() {
-        _hydratingStrokes = false;
-        _paintVersion++;
-      });
-      if (!_viewChangedDuringHydration) {
-        _viewInitialized = false;
-        _maybeInitView();
-      }
-      _scheduleOverviewBake();
-    } catch (e, st) {
-      if (mounted) {
-        setState(() {
-          _hydratingStrokes = false;
-          _hydratingCanvas = null;
-        });
-      }
-      CrashLogger.instance.record(
-        e,
-        st,
-        context: 'hydrateCanvasStrokes pizarra',
-      );
-    }
-  }
-
-  Future<void> _hydrateVisibleCanvasStrokes(
-    DrawingBlock canvas,
-    Rect bounds,
-    DrawingStrokeRepository strokeRepo,
-  ) async {
-    if (!mounted || _viewport == Size.zero) return;
-    if (_visibleHydrateRunning) {
-      _visibleHydrateQueued = true;
-      return;
-    }
-    _visibleHydrateRunning = true;
-    final visible = _visibleRectFor(_viewport);
-    final overscan = math.max(visible.width, visible.height);
-    final region = visible.inflate(overscan).intersect(bounds);
-    try {
-      if (region.width <= 0 || region.height <= 0) return;
-      final sw = Stopwatch()..start();
-      final rows = await strokeRepo.getByBlockBounds(
-        canvas.id,
-        _boundsFromRect(region),
-      );
-      if (!mounted || _blockId != canvas.id) return;
-      if (!_metadataHydrated) {
-        final metadata = _decodeMetadata(canvas);
-        metadata.strokes = _data.strokes;
-        _data = metadata;
-        _metadataHydrated = true;
-      }
-      _mergeLoadedStrokeRows(rows, region.inflate(overscan));
-      if (rows.isNotEmpty) {
-        _overviewDirty = true;
-        _disposeFocus();
-      }
-      setState(() => _paintVersion++);
-      _strokeTiles.rebuild(_data.strokes);
-      sw.stop();
-      final pts = _pointCount(_data.strokes);
-      CrashLogger.instance.note(
-        'PERF hydrate-visible-pizarra: ${_data.strokes.length} live, '
-        '${rows.length} query, $pts puntos, ${sw.elapsedMilliseconds}ms, '
-        'overviewDirty ${_overviewDirty ? 'SI' : 'no'}',
-      );
-    } finally {
-      _visibleHydrateRunning = false;
-      if (_visibleHydrateQueued && mounted && _blockId == canvas.id) {
-        _visibleHydrateQueued = false;
-        unawaited(_hydrateVisibleCanvasStrokes(canvas, bounds, strokeRepo));
-      } else if (mounted && _blockId == canvas.id && _overviewDirty) {
-        _scheduleOverviewBake();
-      }
     }
   }
 
@@ -1373,36 +1209,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     );
   }
 
-  void _refreshVisibleHydration() {
-    final canvas = _hydratingCanvas;
-    if (canvas == null || _blockId != canvas.id || _viewport == Size.zero) {
-      return;
-    }
-    unawaited(() async {
-      try {
-        final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-        final boundsRect = _dbStrokeBounds;
-        if (boundsRect != null) {
-          await _hydrateVisibleCanvasStrokes(canvas, boundsRect, strokeRepo);
-          return;
-        }
-        final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
-        if (bounds == null) return;
-        await _hydrateVisibleCanvasStrokes(
-          canvas,
-          _rectFromBounds(bounds),
-          strokeRepo,
-        );
-      } catch (e, st) {
-        CrashLogger.instance.record(
-          e,
-          st,
-          context: 'refreshVisibleHydration pizarra',
-        );
-      }
-    }());
-  }
-
   // ignore: unused_element
   Future<DrawingData> _decodeData(
     DrawingBlock b, [
@@ -1455,7 +1261,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   Future<void> _persistNow() async {
     if (_blockId == null) return;
-    if (_hydratingStrokes) return;
     // Guard against overlapping runs: a debounce can fire while a previous
     // persist is still awaiting. The straggler re-runs once this pass finishes.
     if (_persisting) {
@@ -1614,7 +1419,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   void _persist() {
     _persistDirty = true;
-    _dbStrokeBounds = null;
     _persistTimer?.cancel();
     _persistTimer = Timer(const Duration(milliseconds: 180), () {
       if (!mounted) return;
@@ -2013,9 +1817,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return Rect.fromPoints(tl, br);
   }
 
-  Rect _rectFromBounds(DrawingStrokeBounds b) =>
-      Rect.fromLTRB(b.minX, b.minY, b.maxX, b.maxY);
-
   DrawingStrokeBounds _boundsFromRect(Rect r) => DrawingStrokeBounds(
     minX: r.left,
     minY: r.top,
@@ -2189,8 +1990,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
       }
     }
-    if (_hydratingStrokes) return;
-
     if (_showPasteAt != null) {
       setState(() => _showPasteAt = null);
       return;
@@ -3714,7 +3513,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Future<void> _confirmClear() async {
-    if (_data.strokes.isEmpty && _dbStrokeBounds == null) return;
+    if (_data.strokes.isEmpty) return;
     final ok = await showDialog<bool>(
       context: context,
       builder:
@@ -3774,13 +3573,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Rect? _contentBounds() {
     double minX = double.infinity, minY = double.infinity;
     double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-    final dbBounds = _dbStrokeBounds;
-    if (dbBounds != null) {
-      minX = dbBounds.left;
-      minY = dbBounds.top;
-      maxX = dbBounds.right;
-      maxY = dbBounds.bottom;
-    }
     for (final s in _data.strokes) {
       for (final p in s.points) {
         if (p[0] < minX) minX = p[0];
@@ -3843,20 +3635,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (!mounted) return;
     if (_overviewBaking) {
       _overviewBakePending = true;
-      return;
-    }
-    if (_hydratingStrokes || _visibleHydrateRunning || _visibleHydrateQueued) {
-      _overviewBakePending = true;
-      CrashLogger.instance.note(
-        'PERF bake-overview-pizarra: skip hydration, '
-        'hydrating $_hydratingStrokes, visible $_visibleHydrateRunning, '
-        'queued $_visibleHydrateQueued, dirty $_overviewDirty, '
-        'strokes ${_data.strokes.length}, baked $_overviewBakedCount',
-      );
-      _overviewTimer?.cancel();
-      _overviewTimer = Timer(const Duration(milliseconds: 120), () {
-        if (mounted) unawaited(_bakeOverview());
-      });
       return;
     }
     _overviewBakePending = false;
@@ -4473,10 +4251,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             renderRect: _visibleRectFor(viewport),
             tileCount: 0,
             inGesture: false,
-            hydrationActive:
-                _hydratingStrokes ||
-                _visibleHydrateRunning ||
-                _visibleHydrateQueued,
+            hydrationActive: false,
             canOverview: false,
             lod: lodForScale(_viewScale),
           );
@@ -4502,10 +4277,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         // every stroke per frame. Skipped during a lasso gesture (the image
         // can't hide the live selection) → tiles take over there.
         final overview = _overviewImage;
-        final hydrationActive =
-            _hydratingStrokes ||
-            _visibleHydrateRunning ||
-            _visibleHydrateQueued;
+        final hydrationActive = false;
         final canOverview =
             overview != null &&
             _overviewBounds != null &&
@@ -4946,9 +4718,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       minScale: 0.3,
                                       maxScale: 4.0,
                                       onInteractionStart: (details) {
-                                        if (_hydratingStrokes) {
-                                          _viewChangedDuringHydration = true;
-                                        }
                                         _viewGestureActive = true;
                                         _viewMoved = false;
                                         _zoomGestureActive = false;
@@ -5008,7 +4777,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                             resetPos: false,
                                           );
                                         }
-                                        _refreshVisibleHydration();
                                       },
                                       boundaryMargin: EdgeInsets.symmetric(
                                         horizontal: c.maxWidth,
