@@ -583,6 +583,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dpr = MediaQuery.of(context).devicePixelRatio;
+  }
+
+  @override
   void initState() {
     super.initState();
     _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
@@ -771,7 +777,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _canvasBoundaryKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;
     if (boundary == null) return;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final img = await boundary.toImage(pixelRatio: dpr);
     final bytes = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
     if (!mounted || !_eyedropperMode || bytes == null) {
@@ -839,7 +845,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _canvasBoundaryKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;
     if (boundary == null) return;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final full = await boundary.toImage(pixelRatio: dpr);
 
     final outW = (screenRect.width * dpr).round();
@@ -3691,6 +3697,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Size _viewport = Size.zero;
+  // Cached so the async bake/chunk paths never call MediaQuery.of(context):
+  // a post-frame _chunkPump firing during teardown looked up a deactivated
+  // widget's context → crash on close (whiteboard:4050). Refreshed below.
+  double _dpr = 1.0;
 
   Rect? _contentBounds() {
     double minX = double.infinity, minY = double.infinity;
@@ -3777,7 +3787,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
     _overviewBaking = true;
     try {
-      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final dpr = _dpr;
       const maxDim = 6144.0;
       const maxPixels = 36000000.0;
       final strokes = _data.strokes;
@@ -3969,7 +3979,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _disposeFocus();
       return;
     }
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final cap = _focusMaxDim / region.longestSide;
     // Region too large for a denser-than-base image (low zoom, near the
     // threshold) → the base already covers this view. Skip focus: avoids an
@@ -4047,7 +4057,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   bool get _chunkEngaged {
     if (!_tilesEnabled || _viewport == Size.zero) return false;
     if (_viewScale <= _overviewThreshold) return false; // base overview is crisp
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final regionLongest = _visibleRectFor(_viewport).longestSide * 2; // focus overscan
     final cap = _focusMaxDim / regionLongest; // focus density ceiling
     return _viewScale * dpr > cap * 1.03; // focus can't reach screen density
@@ -4167,7 +4177,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final key = _chunkKey(gx, gy);
     if (_chunkBaking.contains(key) || !mounted) return;
     final version = _chunkVersion;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final imgScale = _chunkGridScale * dpr;
     final px = (tileWorld * imgScale).round();
     if (px <= 0 || px > 4096) return; // texture-limit guard (shouldn't hit by design)
@@ -4232,7 +4242,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _zoomSnapshotPending = false;
     _zoomSnapshotBaking = true;
     try {
-      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final dpr = _dpr;
       final image = await boundary.toImage(pixelRatio: dpr);
       if (!mounted) {
         image.dispose();
