@@ -10,45 +10,51 @@ class DrawingStrokesDao extends DatabaseAccessor<AppDatabase>
     with _$DrawingStrokesDaoMixin {
   DrawingStrokesDao(super.db);
 
-  Future<List<DrawingStrokeRow>> getByBlock(int blockId) =>
-      (select(drawingStrokes)
-            ..where((s) => s.blockId.equals(blockId))
-            ..orderBy([(s) => OrderingTerm.asc(s.position)]))
-          .get();
+  // Read paths select ONLY id/position/data (what the load actually uses), not
+  // the full row. Skipping min/max/pointCount and especially the two DateTime
+  // columns (created_at/updated_at — each parsed into a DateTime per row) is a
+  // big slice of the open-time cost on dense notes (e.g. ~569k rows × 2 parses).
+  Future<List<QueryRow>> getByBlock(int blockId) => customSelect(
+    'SELECT id, position, data FROM drawing_strokes '
+    'WHERE block_id = ? ORDER BY position ASC',
+    variables: [Variable.withInt(blockId)],
+    readsFrom: {drawingStrokes},
+  ).get();
 
-  Future<List<DrawingStrokeRow>> getByBlockBounds(
+  Future<List<QueryRow>> getByBlockBounds(
     int blockId, {
     required double minX,
     required double minY,
     required double maxX,
     required double maxY,
-  }) =>
-      (select(drawingStrokes)
-            ..where(
-              (s) =>
-                  s.blockId.equals(blockId) &
-                  s.maxX.isBiggerOrEqualValue(minX) &
-                  s.minX.isSmallerOrEqualValue(maxX) &
-                  s.maxY.isBiggerOrEqualValue(minY) &
-                  s.minY.isSmallerOrEqualValue(maxY),
-            )
-            ..orderBy([(s) => OrderingTerm.asc(s.position)]))
-          .get();
+  }) => customSelect(
+    'SELECT id, position, data FROM drawing_strokes '
+    'WHERE block_id = ? AND max_x >= ? AND min_x <= ? '
+    'AND max_y >= ? AND min_y <= ? ORDER BY position ASC',
+    variables: [
+      Variable.withInt(blockId),
+      Variable.withReal(minX),
+      Variable.withReal(maxX),
+      Variable.withReal(minY),
+      Variable.withReal(maxY),
+    ],
+    readsFrom: {drawingStrokes},
+  ).get();
 
-  Future<List<DrawingStrokeRow>> getByBlockAfterPosition(
+  Future<List<QueryRow>> getByBlockAfterPosition(
     int blockId, {
     required int afterPosition,
     required int limit,
-  }) =>
-      (select(drawingStrokes)
-            ..where(
-              (s) =>
-                  s.blockId.equals(blockId) &
-                  s.position.isBiggerThanValue(afterPosition),
-            )
-            ..orderBy([(s) => OrderingTerm.asc(s.position)])
-            ..limit(limit))
-          .get();
+  }) => customSelect(
+    'SELECT id, position, data FROM drawing_strokes '
+    'WHERE block_id = ? AND position > ? ORDER BY position ASC LIMIT ?',
+    variables: [
+      Variable.withInt(blockId),
+      Variable.withInt(afterPosition),
+      Variable.withInt(limit),
+    ],
+    readsFrom: {drawingStrokes},
+  ).get();
 
   Future<({double minX, double minY, double maxX, double maxY})?>
   getBoundsByBlock(int blockId) async {
