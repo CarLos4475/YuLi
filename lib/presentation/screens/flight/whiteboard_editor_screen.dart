@@ -4981,9 +4981,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final canvas = Canvas(recorder);
       canvas.scale(imgScale);
       canvas.translate(-cell.left, -cell.top); // world → cell-local
-      _drawRegionCulled(canvas, cell);
+      final drawn = _drawRegionCulled(canvas, cell);
       final picture = recorder.endRecording();
-      final image = await picture.toImage(px, px);
+      // Empty cell → a 1×1 transparent placeholder (4 bytes, not px²·4 ≈ MBs): the
+      // overview base already covers blank areas, so it's invisible either way, and
+      // storing SOMETHING (vs nothing) stops the pump re-queuing this cell every
+      // frame. Also replaces any stale tile whose ink was just erased out of it.
+      final outPx = drawn == 0 ? 1 : px;
+      final image = await picture.toImage(outPx, outPx);
       picture.dispose();
       if (!mounted) {
         image.dispose();

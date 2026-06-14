@@ -1941,6 +1941,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       canvas.scale(imgScale);
       canvas.translate(-cell.left, -cell.top); // world → cell-local
       canvas.clipRect(cell);
+      var hadInk = false;
       for (int i = 0; i < _pageBlockIds.length; i++) {
         final top = _pageOffsetY(i);
         final pageRect = Rect.fromLTWH(
@@ -1952,6 +1953,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         if (!pageRect.overlaps(cell)) continue;
         final data = _pageData[_pageBlockIds[i]];
         if (data == null || data.strokes.isEmpty) continue;
+        hadInk = true;
         canvas.save();
         canvas.translate(0, top); // page-local → world
         canvas.clipRect(
@@ -1963,7 +1965,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         canvas.restore();
       }
       final picture = recorder.endRecording();
-      final image = await picture.toImage(px, px);
+      // No page-with-ink overlapped this cell (inter-page gap, margin, blank page)
+      // → a 1×1 transparent placeholder (4 bytes, not px²·4): invisible (the base
+      // covers it) and it stops the pump re-queuing the cell every frame.
+      final outPx = hadInk ? px : 1;
+      final image = await picture.toImage(outPx, outPx);
       picture.dispose();
       if (!mounted) {
         image.dispose();
