@@ -45,15 +45,19 @@ Color? sampleStrokeColorAt(
     final hitR2 = hitR * hitR;
     final pts = s.points;
     for (int j = 0; j < pts.length; j++) {
-      final p = pts[j];
-      if (p.length < 2) continue;
-      final dx = p[0] - pos.dx;
-      final dy = p[1] - pos.dy;
+      final dx = pts.x(j) - pos.dx;
+      final dy = pts.y(j) - pos.dy;
       if (dx * dx + dy * dy < hitR2) return Color(s.colorValue);
       if (j == 0) continue;
-      final q = pts[j - 1];
-      if (q.length < 2) continue;
-      if (_distanceToSegment2(pos.dx, pos.dy, q[0], q[1], p[0], p[1]) < hitR2) {
+      if (_distanceToSegment2(
+            pos.dx,
+            pos.dy,
+            pts.x(j - 1),
+            pts.y(j - 1),
+            pts.x(j),
+            pts.y(j),
+          ) <
+          hitR2) {
         return Color(s.colorValue);
       }
     }

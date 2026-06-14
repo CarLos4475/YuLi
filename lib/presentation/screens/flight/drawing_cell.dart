@@ -316,14 +316,19 @@ class _DrawingCellState extends State<DrawingCell>
     _stab = _newStabilizer();
     final p = _stabilize(pos);
     setState(() {
+      final pencil = _tool == DrawTool.pencil;
+      final pts = StrokePoints(comps: pencil ? 3 : 2);
+      if (pencil) {
+        pts.add(p.dx, p.dy, pressure);
+      } else {
+        pts.add(p.dx, p.dy);
+      }
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
-        isPencil: _tool == DrawTool.pencil,
-        points: [
-          _tool == DrawTool.pencil ? [p.dx, p.dy, pressure] : [p.dx, p.dy],
-        ],
+        isPencil: pencil,
+        points: pts,
       );
     });
   }
@@ -339,8 +344,11 @@ class _DrawingCellState extends State<DrawingCell>
     }
     if (_active == null) return;
     final p = _stabilize(pos);
-    _active!.points.add(
-        _active!.isPencil ? [p.dx, p.dy, pressure] : [p.dx, p.dy]);
+    if (_active!.isPencil) {
+      _active!.points.add(p.dx, p.dy, pressure);
+    } else {
+      _active!.points.add(p.dx, p.dy);
+    }
     _activeTick.value++;
   }
 
@@ -350,15 +358,14 @@ class _DrawingCellState extends State<DrawingCell>
     final a = _active;
     if (a == null || a.isShape) return;
     final tip = predictedTipPoint(a.points);
-    if (tip != null) a.points.add(tip);
+    if (tip != null) a.points.addLikeLast(tip.dx, tip.dy);
   }
 
   void _end() {
     widget.onDrawEnd();
     if (_active == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       return;
@@ -369,8 +376,9 @@ class _DrawingCellState extends State<DrawingCell>
       final before = _snapshot();
       final lenBefore = _data.strokes.length;
       _data.strokes.removeWhere((s) {
-        for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) return true;
+        final sp = s.points;
+        for (int i = 0; i < sp.length; i++) {
+          if (bounds.contains(sp.offset(i))) return true;
         }
         return false;
       });
@@ -394,9 +402,8 @@ class _DrawingCellState extends State<DrawingCell>
   void _finishFountainStroke() {
     widget.onDrawEnd();
     if (_active == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       return;
@@ -549,7 +556,7 @@ class _DrawingCellState extends State<DrawingCell>
       if (i >= _data.strokes.length) continue;
       final s = _data.strokes[i];
       if (s.isHighlighter || s.isShape) continue;
-      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+      strokes.add(s.points.toOffsets());
     }
     return strokes;
   }
@@ -1038,14 +1045,13 @@ class _DrawingCellState extends State<DrawingCell>
                   colorValue: _color.toARGB32(),
                   strokeWidth: _strokeW,
                   isFountainPen: true,
-                  points: [
-                    [
+                  points: StrokePoints(comps: 4)
+                    ..add(
                       p.dx,
                       p.dy,
                       pressure,
                       e.timeStamp.inMilliseconds.toDouble(),
-                    ],
-                  ],
+                    ),
                 );
               });
               widget.onDrawStart();
@@ -1076,12 +1082,12 @@ class _DrawingCellState extends State<DrawingCell>
               if (_active == null) return;
               final p = _stabilize(e.localPosition);
               final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-              _active!.points.add([
+              _active!.points.add(
                 p.dx,
                 p.dy,
                 pressure,
                 e.timeStamp.inMilliseconds.toDouble(),
-              ]);
+              );
               _activeTick.value++;
               return;
             }
@@ -1334,52 +1340,45 @@ class _DrawingCellState extends State<DrawingCell>
 
   void _cropStrokes() {
     final h = _data.height;
-    final toRemove = <DrawingStroke>[];
+    final out = <DrawingStroke>[];
     for (final s in _data.strokes) {
-      _cropPointsInPlace(s.points, h);
-      if (s.points.isEmpty) toRemove.add(s);
+      final cropped = _cropPoints(s.points, h);
+      if (cropped.isNotEmpty) out.add(s.copyWith(points: cropped));
     }
-    for (final s in toRemove) {
-      _data.strokes.remove(s);
-    }
+    _data.strokes = out;
     if (_active != null) {
-      _cropPointsInPlace(_active!.points, h);
-      if (_active!.points.isEmpty) _active = null;
+      final cropped = _cropPoints(_active!.points, h);
+      _active = cropped.isEmpty ? null : _active!.copyWith(points: cropped);
     }
   }
 
-  void _cropPointsInPlace(List<List<double>> points, double h) {
-    if (points.isEmpty) return;
+  /// Clip [pts] to y ≤ [h], inserting interpolated points where the stroke
+  /// crosses the boundary. Returns a fresh [StrokePoints] (the source is final).
+  StrokePoints _cropPoints(StrokePoints pts, double h) {
+    if (pts.isEmpty) return pts;
+    final comps = pts.comps;
+    List<double> at(int i) => [for (int c = 0; c < comps; c++) pts.comp(i, c)];
+    List<double> crossing(int a, int b, double t) => [
+      for (int c = 0; c < comps; c++)
+        c == 1 ? h : pts.comp(a, c) + t * (pts.comp(b, c) - pts.comp(a, c)),
+    ];
     final result = <List<double>>[];
-    bool prevInside = points[0][1] <= h;
-    if (prevInside) result.add(points[0]);
-    for (int i = 1; i < points.length; i++) {
-      final currInside = points[i][1] <= h;
+    bool prevInside = pts.y(0) <= h;
+    if (prevInside) result.add(at(0));
+    for (int i = 1; i < pts.length; i++) {
+      final currInside = pts.y(i) <= h;
+      final dy = pts.y(i) - pts.y(i - 1);
       if (prevInside && !currInside) {
-        final prev = points[i - 1];
-        final curr = points[i];
-        final dy = curr[1] - prev[1];
-        if (dy.abs() > 0.001) {
-          final t = (h - prev[1]) / dy;
-          result.add([prev[0] + t * (curr[0] - prev[0]), h]);
-        }
+        if (dy.abs() > 0.001) result.add(crossing(i - 1, i, (h - pts.y(i - 1)) / dy));
       } else if (!prevInside && currInside) {
-        final prev = points[i - 1];
-        final curr = points[i];
-        final dy = curr[1] - prev[1];
-        if (dy.abs() > 0.001) {
-          final t = (h - prev[1]) / dy;
-          result.add([prev[0] + t * (curr[0] - prev[0]), h]);
-        }
-        result.add(points[i]);
+        if (dy.abs() > 0.001) result.add(crossing(i - 1, i, (h - pts.y(i - 1)) / dy));
+        result.add(at(i));
       } else if (currInside) {
-        result.add(points[i]);
+        result.add(at(i));
       }
       prevInside = currInside;
     }
-    points
-      ..clear()
-      ..addAll(result);
+    return StrokePoints.fromNested(result);
   }
 
   Widget _divider() {

@@ -47,9 +47,9 @@ void fillStrokeShape(Canvas canvas, DrawingStroke stroke) {
     return;
   }
   final pts = stroke.points;
-  final path = Path()..moveTo(pts[0][0], pts[0][1]);
+  final path = Path()..moveTo(pts.x(0), pts.y(0));
   for (int i = 1; i < pts.length; i++) {
-    path.lineTo(pts[i][0], pts[i][1]);
+    path.lineTo(pts.x(i), pts.y(i));
   }
   path.close();
   canvas.drawPath(
@@ -85,10 +85,10 @@ class _SimpPathEntry {
     final p = s.points;
     return this.step == step &&
         pointCount == p.length &&
-        firstX == p.first[0] &&
-        firstY == p.first[1] &&
-        lastX == p.last[0] &&
-        lastY == p.last[1];
+        firstX == p.firstX &&
+        firstY == p.firstY &&
+        lastX == p.lastX &&
+        lastY == p.lastY;
   }
 }
 
@@ -97,22 +97,32 @@ class _SimpPathEntry {
 // visible stroke's polyline on the UI thread → a 100ms+ build spike on zoom.
 final _simpPathCache = Expando<_SimpPathEntry>();
 
+Path _buildSimplifiedPath(DrawingStroke stroke, int step) {
+  final pts = stroke.points;
+  final path = Path()..moveTo(pts.x(0), pts.y(0));
+  for (int i = step; i < pts.length; i += step) {
+    path.lineTo(pts.x(i), pts.y(i));
+  }
+  path.lineTo(pts.lastX, pts.lastY); // always close on the true endpoint
+  return path;
+}
+
 Path _cachedSimplifiedPath(DrawingStroke stroke, int step) {
   final cached = _simpPathCache[stroke];
   if (cached != null && cached.matches(stroke, step)) return cached.path;
   final pts = stroke.points;
-  final path = Path()..moveTo(pts[0][0], pts[0][1]);
-  for (int i = step; i < pts.length; i += step) {
-    path.lineTo(pts[i][0], pts[i][1]);
-  }
-  final last = pts[pts.length - 1];
-  path.lineTo(last[0], last[1]); // always close on the true endpoint
-  _simpPathCache[stroke] = _SimpPathEntry(step, pts.length, pts.first[0],
-      pts.first[1], pts.last[0], pts.last[1], path);
+  final path = _buildSimplifiedPath(stroke, step);
+  _simpPathCache[stroke] = _SimpPathEntry(step, pts.length, pts.firstX,
+      pts.firstY, pts.lastX, pts.lastY, path);
   return path;
 }
 
-void _drawStrokeSimplified(Canvas canvas, DrawingStroke stroke, int step) {
+void _drawStrokeSimplified(
+  Canvas canvas,
+  DrawingStroke stroke,
+  int step, {
+  bool cache = true,
+}) {
   final pts = stroke.points;
   final paint = Paint()
     ..color = stroke.isHighlighter
@@ -124,13 +134,16 @@ void _drawStrokeSimplified(Canvas canvas, DrawingStroke stroke, int step) {
     ..style = PaintingStyle.stroke;
   if (pts.length == 1) {
     canvas.drawCircle(
-      Offset(pts[0][0], pts[0][1]),
+      Offset(pts.x(0), pts.y(0)),
       stroke.strokeWidth / 2,
       paint..style = PaintingStyle.fill,
     );
     return;
   }
-  canvas.drawPath(_cachedSimplifiedPath(stroke, step), paint);
+  canvas.drawPath(
+    cache ? _cachedSimplifiedPath(stroke, step) : _buildSimplifiedPath(stroke, step),
+    paint,
+  );
 }
 
 void drawStroke(
@@ -138,10 +151,15 @@ void drawStroke(
   DrawingStroke stroke, {
   double viewScale = 1.0,
   int lod = 0,
+  // When false, paths are built transiently (not stored in the per-stroke
+  // Expando cache). Used by one-shot full-board renders (the overview bake of a
+  // very dense board) so they don't permanently retain a Path per stroke —
+  // caching all of, say, 1.1M strokes' paths is what OOMs the open.
+  bool cache = true,
 }) {
   if (stroke.points.isEmpty) return;
   if (lod > 0) {
-    _drawStrokeSimplified(canvas, stroke, _decimationStep(lod));
+    _drawStrokeSimplified(canvas, stroke, _decimationStep(lod), cache: cache);
     return;
   }
   if (stroke.isFountainPen) {
@@ -168,13 +186,18 @@ void drawStroke(
   }
   if (stroke.points.length == 1) {
     canvas.drawCircle(
-      Offset(stroke.points[0][0], stroke.points[0][1]),
+      Offset(stroke.points.x(0), stroke.points.y(0)),
       stroke.strokeWidth / 2,
       paint..style = PaintingStyle.fill,
     );
     return;
   }
-  canvas.drawPath(cachedStrokePath(stroke, () => buildStrokePath(stroke)), paint);
+  canvas.drawPath(
+    cache
+        ? cachedStrokePath(stroke, () => buildStrokePath(stroke))
+        : buildStrokePath(stroke),
+    paint,
+  );
 }
 
 /// Prediction strength: how many averaged input-segments past the last point to
@@ -198,6 +221,7 @@ void drawActiveStroke(Canvas canvas, DrawingStroke stroke,
     drawStroke(canvas, stroke, viewScale: viewScale);
     return;
   }
+  final extended = stroke.points.clone()..addLikeLast(tip.dx, tip.dy);
   drawStroke(
     canvas,
     DrawingStroke(
@@ -208,7 +232,7 @@ void drawActiveStroke(Canvas canvas, DrawingStroke stroke,
       isPencil: stroke.isPencil,
       isShape: stroke.isShape,
       filled: stroke.filled,
-      points: [...stroke.points, tip],
+      points: extended,
     ),
     viewScale: viewScale,
   );
@@ -218,22 +242,18 @@ void drawActiveStroke(Canvas canvas, DrawingStroke stroke,
 /// velocity). Also appended to a stroke on lift so the committed geometry ends
 /// where the preview ended — no backward retraction. Returns null if there
 /// aren't enough points or the pen isn't moving.
-List<double>? predictedTipPoint(List<List<double>> pts) {
+Offset? predictedTipPoint(StrokePoints pts) {
   final n = pts.length;
   if (n < 2) return null;
   final m = (n - 1) < 3 ? (n - 1) : 3;
   double vx = 0, vy = 0;
   for (int i = n - m; i < n; i++) {
-    vx += pts[i][0] - pts[i - 1][0];
-    vy += pts[i][1] - pts[i - 1][1];
+    vx += pts.x(i) - pts.x(i - 1);
+    vy += pts.y(i) - pts.y(i - 1);
   }
   vx /= m;
   vy /= m;
-  final last = pts[n - 1];
-  final tip = List<double>.from(last);
-  tip[0] = last[0] + vx * _kPredict;
-  tip[1] = last[1] + vy * _kPredict;
-  return tip;
+  return Offset(pts.lastX + vx * _kPredict, pts.lastY + vy * _kPredict);
 }
 
 /// Build the pencil's filled outline from its raw `[x, y, pressure]` points.
@@ -243,8 +263,10 @@ List<double>? predictedTipPoint(List<List<double>> pts) {
 /// with clean edges (the grain fill supplies the texture, not edge wobble).
 Path buildPencilPath(DrawingStroke stroke) {
   final raw = stroke.points;
-  final pts = raw.map((p) => Offset(p[0], p[1])).toList();
-  final pressures = raw.map((p) => p.length > 2 ? p[2] : 0.5).toList();
+  final pts = raw.toOffsets();
+  final pressures = [
+    for (int i = 0; i < raw.length; i++) raw.comps > 2 ? raw.z(i) : 0.5,
+  ];
   final ts = List<int>.filled(raw.length, 0);
   final (dsPts, dsPre, _) =
       FountainPenEngine.downsample(pts, pressures, ts, minDist: 2.0);
@@ -335,7 +357,7 @@ void drawPencilStroke(Canvas canvas, DrawingStroke stroke) {
   final pts = stroke.points;
   if (pts.length < 2) {
     canvas.drawCircle(
-      Offset(pts[0][0], pts[0][1]),
+      Offset(pts.x(0), pts.y(0)),
       stroke.strokeWidth / 2,
       Paint()
         ..color = base.withValues(alpha: 0.8)
@@ -345,8 +367,8 @@ void drawPencilStroke(Canvas canvas, DrawingStroke stroke) {
   }
 
   double sum = 0;
-  for (final p in pts) {
-    sum += p.length > 2 ? p[2] : 0.5;
+  for (int i = 0; i < pts.length; i++) {
+    sum += pts.comps > 2 ? pts.z(i) : 0.5;
   }
   final meanP = sum / pts.length;
   final alpha = (0.5 + 0.42 * meanP).clamp(0.45, 0.92);
@@ -370,21 +392,21 @@ void drawPencilStroke(Canvas canvas, DrawingStroke stroke) {
 /// quadratic midpoint smoothing.
 Path buildStrokePath(DrawingStroke stroke) {
   final pts = stroke.points;
-  final path = Path()..moveTo(pts[0][0], pts[0][1]);
+  final path = Path()..moveTo(pts.x(0), pts.y(0));
   if (stroke.isShape) {
     for (int i = 1; i < pts.length; i++) {
-      path.lineTo(pts[i][0], pts[i][1]);
+      path.lineTo(pts.x(i), pts.y(i));
     }
     return path;
   }
   for (int i = 1; i < pts.length - 1; i++) {
-    final x0 = pts[i][0];
-    final y0 = pts[i][1];
-    final x1 = pts[i + 1][0];
-    final y1 = pts[i + 1][1];
+    final x0 = pts.x(i);
+    final y0 = pts.y(i);
+    final x1 = pts.x(i + 1);
+    final y1 = pts.y(i + 1);
     path.quadraticBezierTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
   }
-  path.lineTo(pts.last[0], pts.last[1]);
+  path.lineTo(pts.lastX, pts.lastY);
   return path;
 }
 

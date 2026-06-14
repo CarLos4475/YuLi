@@ -4,6 +4,9 @@ import 'dart:ui' show Offset, Rect;
 import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/page_background.dart';
+import 'stroke_points.dart';
+
+export 'stroke_points.dart';
 
 enum DrawTool {
   pen,
@@ -313,7 +316,7 @@ class DrawingStroke {
   int? dbId;
   final int colorValue;
   final double strokeWidth;
-  final List<List<double>> points;
+  final StrokePoints points;
   final bool isFountainPen;
 
   /// Closed snapped shape rendered with a translucent fill of [colorValue]
@@ -336,13 +339,13 @@ class DrawingStroke {
     this.dbId,
     required this.colorValue,
     required this.strokeWidth,
-    List<List<double>>? points,
+    StrokePoints? points,
     this.isFountainPen = false,
     this.filled = false,
     this.isShape = false,
     this.isHighlighter = false,
     this.isPencil = false,
-  }) : points = points ?? [];
+  }) : points = points ?? StrokePoints();
 
   /// Deep copy. Preserves flags and every point component (fountain-pen points
   /// carry a 3rd baked-width value).
@@ -355,13 +358,13 @@ class DrawingStroke {
     isShape: isShape,
     isHighlighter: isHighlighter,
     isPencil: isPencil,
-    points: points.map((p) => List<double>.from(p)).toList(),
+    points: points.clone(),
   );
 
   DrawingStroke copyWith({
     int? colorValue,
     double? strokeWidth,
-    List<List<double>>? points,
+    StrokePoints? points,
   }) => DrawingStroke(
     dbId: dbId,
     colorValue: colorValue ?? this.colorValue,
@@ -378,7 +381,7 @@ class DrawingStroke {
     if (dbId != null) 'dbid': dbId,
     'c': colorValue,
     'w': strokeWidth,
-    'p': points,
+    'p': points.toNested(),
     if (isFountainPen) 'f': 1,
     if (filled) 'fl': 1,
     if (isShape) 'sh': 1,
@@ -390,10 +393,11 @@ class DrawingStroke {
     dbId: (json['dbid'] as num?)?.toInt(),
     colorValue: json['c'] as int,
     strokeWidth: (json['w'] as num).toDouble(),
-    points:
-        (json['p'] as List)
-            .map((p) => (p as List).map((v) => (v as num).toDouble()).toList())
-            .toList(),
+    points: StrokePoints.fromNested(
+      (json['p'] as List)
+          .map((p) => (p as List).map((v) => (v as num).toDouble()).toList())
+          .toList(),
+    ),
     isFountainPen: (json['f'] as int?) == 1,
     filled: (json['fl'] as int?) == 1,
     isShape: (json['sh'] as int?) == 1,
@@ -413,7 +417,7 @@ class DrawingStroke {
   /// real bottleneck when opening dense notes). [dbId] is NOT encoded — it's the
   /// row id, owned by the persistence layer. Little-endian, host-portable.
   Uint8List toBytes() {
-    final comps = points.isEmpty ? 2 : points.first.length;
+    final comps = points.comps;
     final n = points.length;
     final bd = ByteData(16 + n * comps * 4);
     bd.setUint8(0, 1); // format version
@@ -429,16 +433,18 @@ class DrawingStroke {
     bd.setUint32(4, colorValue, Endian.little);
     bd.setFloat32(8, strokeWidth, Endian.little);
     bd.setUint32(12, n, Endian.little);
-    var off = 16;
-    for (final p in points) {
-      for (var c = 0; c < comps; c++) {
-        bd.setFloat32(off, c < p.length ? p[c] : 0.0, Endian.little);
-        off += 4;
-      }
+    // Bulk-copy the contiguous float region (host LE == our format on all
+    // targets). The 16-byte header keeps the points 4-byte aligned.
+    if (n > 0) {
+      Float32List.view(bd.buffer, 16, n * comps).setAll(0, points.packed());
     }
     return bd.buffer.asUint8List();
   }
 
+  /// Decode a stroke BLOB. The points are a contiguous little-endian float32
+  /// region after the 16-byte header → a single bulk copy into a [Float32List],
+  /// not ~N sub-list allocations. This is the open-time / RAM win the whole
+  /// [StrokePoints] refactor exists for.
   factory DrawingStroke.fromBytes(Uint8List bytes) {
     final bd = ByteData.sublistView(bytes);
     final flags = bd.getUint8(1);
@@ -446,20 +452,19 @@ class DrawingStroke {
     final color = bd.getUint32(4, Endian.little);
     final width = bd.getFloat32(8, Endian.little);
     final n = bd.getUint32(12, Endian.little);
-    final pts = <List<double>>[];
-    var off = 16;
-    for (var i = 0; i < n; i++) {
-      final p = <double>[];
-      for (var c = 0; c < comps; c++) {
-        p.add(bd.getFloat32(off, Endian.little));
-        off += 4;
+    final data = Float32List(n * comps);
+    final byteOff = bytes.offsetInBytes + 16;
+    if (byteOff % 4 == 0) {
+      data.setAll(0, Float32List.view(bytes.buffer, byteOff, n * comps));
+    } else {
+      for (var i = 0; i < n * comps; i++) {
+        data[i] = bd.getFloat32(16 + i * 4, Endian.little);
       }
-      pts.add(p);
     }
     return DrawingStroke(
       colorValue: color,
       strokeWidth: width,
-      points: pts,
+      points: StrokePoints.fromFloat32(data, comps),
       isFountainPen: flags & _binFountainPen != 0,
       filled: flags & _binFilled != 0,
       isShape: flags & _binShape != 0,
@@ -475,43 +480,43 @@ class DrawingStroke {
 /// while normalising point density so that angular-variance and
 /// crossing-density analysis see the same "resolution" regardless of how
 /// many raw pointer events were delivered.
-List<List<double>> _resampleTo(List<List<double>> pts, int n) {
+StrokePoints _resampleTo(StrokePoints pts, int n) {
   if (pts.length < 3 || pts.length <= n) return pts;
   double total = 0;
   for (int i = 1; i < pts.length; i++) {
-    final dx = pts[i][0] - pts[i - 1][0];
-    final dy = pts[i][1] - pts[i - 1][1];
+    final dx = pts.x(i) - pts.x(i - 1);
+    final dy = pts.y(i) - pts.y(i - 1);
     total += math.sqrt(dx * dx + dy * dy);
   }
   if (total < 1e-6) return pts;
   final interval = total / (n - 1);
-  final out = <List<double>>[
-    [pts.first[0], pts.first[1]],
-  ];
+  final out = StrokePoints(comps: 2)..add(pts.x(0), pts.y(0));
   double accum = 0;
-  var prev = pts.first;
+  double prevX = pts.x(0), prevY = pts.y(0);
   int i = 1;
   while (i < pts.length && out.length < n) {
-    final curr = pts[i];
-    final dx = curr[0] - prev[0];
-    final dy = curr[1] - prev[1];
+    final cx = pts.x(i);
+    final cy = pts.y(i);
+    final dx = cx - prevX;
+    final dy = cy - prevY;
     final d = math.sqrt(dx * dx + dy * dy);
     if (d > 0 && accum + d >= interval) {
       final t = (interval - accum) / d;
-      out.add([
-        prev[0] + t * (curr[0] - prev[0]),
-        prev[1] + t * (curr[1] - prev[1]),
-      ]);
-      prev = out.last;
+      final nx = prevX + t * (cx - prevX);
+      final ny = prevY + t * (cy - prevY);
+      out.add(nx, ny);
+      prevX = nx;
+      prevY = ny;
       accum = 0;
     } else {
       accum += d;
-      prev = curr;
+      prevX = cx;
+      prevY = cy;
       i++;
     }
   }
   while (out.length < n) {
-    out.add([pts.last[0], pts.last[1]]);
+    out.add(pts.lastX, pts.lastY);
   }
   return out;
 }
@@ -524,7 +529,7 @@ List<List<double>> _resampleTo(List<List<double>> pts, int n) {
 /// stroke's world footprint, letting normal small cursive slip past the size
 /// gate while inflating the crossing density — and legitimate handwriting gets
 /// erased. Defaults to 1.0 for callers drawing in unscaled coordinates.
-bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
+bool isScribble(StrokePoints points, {double viewScale = 1.0}) {
   if (points.length < 15) return false;
 
   final scale = viewScale.isFinite && viewScale > 0 ? viewScale : 1.0;
@@ -537,8 +542,8 @@ bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
   // it).
   double pathLength = 0;
   for (int i = 1; i < points.length; i++) {
-    final dx = points[i][0] - points[i - 1][0];
-    final dy = points[i][1] - points[i - 1][1];
+    final dx = points.x(i) - points.x(i - 1);
+    final dy = points.y(i) - points.y(i - 1);
     pathLength += math.sqrt(dx * dx + dy * dy);
   }
   pathLength *= scale;
@@ -556,10 +561,10 @@ bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
   double totalAngle = 0;
   int angleSegments = 0;
   for (int i = 1; i < analysisPts.length - 1; i++) {
-    final ax = analysisPts[i][0] - analysisPts[i - 1][0];
-    final ay = analysisPts[i][1] - analysisPts[i - 1][1];
-    final bx = analysisPts[i + 1][0] - analysisPts[i][0];
-    final by = analysisPts[i + 1][1] - analysisPts[i][1];
+    final ax = analysisPts.x(i) - analysisPts.x(i - 1);
+    final ay = analysisPts.y(i) - analysisPts.y(i - 1);
+    final bx = analysisPts.x(i + 1) - analysisPts.x(i);
+    final by = analysisPts.y(i + 1) - analysisPts.y(i);
     final magSqA = ax * ax + ay * ay;
     final magSqB = bx * bx + by * by;
     if (magSqA < 1 || magSqB < 1) continue;
@@ -575,14 +580,14 @@ bool isScribble(List<List<double>> points, {double viewScale = 1.0}) {
   for (int i = 0; i < len - 3 && crossings < 50; i++) {
     for (int j = i + 2; j < len - 1; j++) {
       if (_segmentsIntersect(
-        analysisPts[i][0],
-        analysisPts[i][1],
-        analysisPts[i + 1][0],
-        analysisPts[i + 1][1],
-        analysisPts[j][0],
-        analysisPts[j][1],
-        analysisPts[j + 1][0],
-        analysisPts[j + 1][1],
+        analysisPts.x(i),
+        analysisPts.y(i),
+        analysisPts.x(i + 1),
+        analysisPts.y(i + 1),
+        analysisPts.x(j),
+        analysisPts.y(j),
+        analysisPts.x(j + 1),
+        analysisPts.y(j + 1),
       )) {
         crossings++;
       }
@@ -650,32 +655,41 @@ List<DrawingStroke> splitStrokeByEraser(
   double radius,
 ) {
   final pts = s.points;
+  final comps = pts.comps;
   final r = radius + s.strokeWidth / 2;
   final r2 = r * r;
   if (pts.isEmpty) return const [];
   if (pts.length == 1) {
-    final dx = pts[0][0] - pos.dx;
-    final dy = pts[0][1] - pos.dy;
+    final dx = pts.x(0) - pos.dx;
+    final dy = pts.y(0) - pos.dy;
     return dx * dx + dy * dy < r2 ? const [] : [s];
   }
   // Subdivide segments that the eraser crosses so sparse strokes
   // (shape-snap rectangles / triangles with only 4-5 vertices) and
-  // wide strokes (highlighter) are cut correctly at the hit point.
+  // wide strokes (highlighter) are cut correctly at the hit point. The
+  // interpolated cut point carries every component (preserving fountain/pencil
+  // width) so the stroke stays uniform-stride. Cold path (eraser) → the small
+  // nested temp buffer here is fine.
   final sub = <List<double>>[];
   for (int i = 0; i < pts.length; i++) {
-    sub.add(List<double>.from(pts[i]));
+    sub.add([for (int c = 0; c < comps; c++) pts.comp(i, c)]);
     if (i < pts.length - 1) {
-      final a = pts[i];
-      final b = pts[i + 1];
-      final d2 = _distToSegment2(pos.dx, pos.dy, a[0], a[1], b[0], b[1]);
+      final ax = pts.x(i);
+      final ay = pts.y(i);
+      final bx = pts.x(i + 1);
+      final by = pts.y(i + 1);
+      final d2 = _distToSegment2(pos.dx, pos.dy, ax, ay, bx, by);
       if (d2 < r2) {
-        final dxSeg = b[0] - a[0];
-        final dySeg = b[1] - a[1];
+        final dxSeg = bx - ax;
+        final dySeg = by - ay;
         final len2 = dxSeg * dxSeg + dySeg * dySeg;
         if (len2 >= 1e-9) {
-          var t = ((pos.dx - a[0]) * dxSeg + (pos.dy - a[1]) * dySeg) / len2;
+          var t = ((pos.dx - ax) * dxSeg + (pos.dy - ay) * dySeg) / len2;
           t = t.clamp(0.0, 1.0);
-          sub.add([a[0] + t * dxSeg, a[1] + t * dySeg]);
+          sub.add([
+            for (int c = 0; c < comps; c++)
+              pts.comp(i, c) + t * (pts.comp(i + 1, c) - pts.comp(i, c)),
+          ]);
         }
       }
     }
@@ -691,7 +705,7 @@ List<DrawingStroke> splitStrokeByEraser(
       if (cur.length >= 2) runs.add(cur);
       cur = [];
     } else {
-      cur.add(List<double>.from(p));
+      cur.add(p);
     }
   }
   if (cur.length >= 2) runs.add(cur);
@@ -704,7 +718,7 @@ List<DrawingStroke> splitStrokeByEraser(
           isFountainPen: s.isFountainPen,
           isHighlighter: s.isHighlighter,
           isPencil: s.isPencil,
-          points: pl,
+          points: StrokePoints.fromNested(pl),
         ),
       )
       .toList();
@@ -719,18 +733,18 @@ bool strokeHitByEraser(DrawingStroke s, Offset pos, double radius) {
   final r = radius + s.strokeWidth / 2;
   final r2 = r * r;
   if (pts.length == 1) {
-    final dx = pts[0][0] - pos.dx;
-    final dy = pts[0][1] - pos.dy;
+    final dx = pts.x(0) - pos.dx;
+    final dy = pts.y(0) - pos.dy;
     return dx * dx + dy * dy < r2;
   }
   for (int i = 0; i < pts.length - 1; i++) {
     if (_distToSegment2(
           pos.dx,
           pos.dy,
-          pts[i][0],
-          pts[i][1],
-          pts[i + 1][0],
-          pts[i + 1][1],
+          pts.x(i),
+          pts.y(i),
+          pts.x(i + 1),
+          pts.y(i + 1),
         ) <
         r2) {
       return true;
@@ -739,14 +753,16 @@ bool strokeHitByEraser(DrawingStroke s, Offset pos, double radius) {
   return false;
 }
 
-Rect scribbleBounds(List<List<double>> points) {
+Rect scribbleBounds(StrokePoints points) {
   double minX = double.infinity, maxX = double.negativeInfinity;
   double minY = double.infinity, maxY = double.negativeInfinity;
-  for (final p in points) {
-    if (p[0] < minX) minX = p[0];
-    if (p[0] > maxX) maxX = p[0];
-    if (p[1] < minY) minY = p[1];
-    if (p[1] > maxY) maxY = p[1];
+  for (int i = 0; i < points.length; i++) {
+    final x = points.x(i);
+    final y = points.y(i);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
   }
   return Rect.fromLTRB(minX, minY, maxX, maxY);
 }

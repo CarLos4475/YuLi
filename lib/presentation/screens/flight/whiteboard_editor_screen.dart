@@ -86,7 +86,11 @@ abstract class _WhiteboardHistoryEntry {
 class _WhiteboardSnapshotEntry extends _WhiteboardHistoryEntry {
   final _WhiteboardSnapshot snapshot;
 
-  const _WhiteboardSnapshotEntry(this.snapshot);
+  /// World region the operation touched, for surgical cache invalidation on
+  /// undo/redo. Null = no usable region → full reset (clear, region-less ops).
+  final Rect? region;
+
+  const _WhiteboardSnapshotEntry(this.snapshot, [this.region]);
 }
 
 class _WhiteboardStrokeAddEntry extends _WhiteboardHistoryEntry {
@@ -122,6 +126,139 @@ DrawingData _decodeWhiteboardData(Map<String, dynamic> args) {
   });
 }
 
+/// One world-anchored chunk tile baked at the exact current zoom (1:1 with the
+/// screen → zero blur). [version] invalidates stale tiles on global ring resets;
+/// append-only edits can refresh a tile in place without hiding the old raster.
+class _WbChunkTile {
+  final Rect worldRect;
+  final int version;
+  final ui.Image image;
+  final int bornMs;
+  const _WbChunkTile(this.worldRect, this.version, this.image, this.bornMs);
+}
+
+const int _kChunkFadeMs = 90;
+
+/// Composites the high-zoom overview when the chunk ring is engaged: per-cell,
+/// the base overview (+ focus tile + post-bake delta strokes) fills only the
+/// holes where no tile is ready (even-odd clip), then the full-res tiles draw on
+/// top. The clip is what prevents the base and a tile drawing the same ink twice
+/// (the "tint"/halo of a naive overlay). All in world coords (size = canvas).
+class _WhiteboardChunkOverlayPainter extends CustomPainter {
+  final ui.Image baseImage;
+  final Rect baseBounds;
+  final ui.Image? focusImage;
+  final Rect? focusBounds;
+  final List<DrawingStroke>? delta;
+  final List<_WbChunkTile> tiles;
+  final Rect visibleWorld;
+  final Rect? dirtyWorld;
+  final List<DrawingStroke>? handoff;
+  final bool handoffOverTiles;
+
+  const _WhiteboardChunkOverlayPainter({
+    required this.baseImage,
+    required this.baseBounds,
+    required this.focusImage,
+    required this.focusBounds,
+    required this.delta,
+    required this.tiles,
+    required this.visibleWorld,
+    required this.dirtyWorld,
+    required this.handoff,
+    required this.handoffOverTiles,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..isAntiAlias = true
+          ..filterQuality = FilterQuality.medium;
+    // 1. Base + focus + delta, clipped to the holes (everything NOT under a tile).
+    final hole = Path()..addRect(visibleWorld);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final dirty = dirtyWorld?.intersect(visibleWorld);
+    if (dirty != null && dirty.width > 0 && dirty.height > 0) {
+      hole.addRect(dirty);
+    }
+    for (final t in tiles) {
+      final age = nowMs - t.bornMs;
+      if (age >= _kChunkFadeMs) hole.addRect(t.worldRect);
+    }
+    hole.fillType = PathFillType.evenOdd;
+    canvas.save();
+    canvas.clipPath(hole);
+    canvas.drawImageRect(
+      baseImage,
+      Rect.fromLTWH(
+        0,
+        0,
+        baseImage.width.toDouble(),
+        baseImage.height.toDouble(),
+      ),
+      baseBounds,
+      paint,
+    );
+    final fImg = focusImage;
+    final fBounds = focusBounds;
+    if (fImg != null && fBounds != null) {
+      canvas.drawImageRect(
+        fImg,
+        Rect.fromLTWH(0, 0, fImg.width.toDouble(), fImg.height.toDouble()),
+        fBounds,
+        paint,
+      );
+    }
+    final d = delta;
+    if (d != null) {
+      for (final s in d) {
+        drawStroke(canvas, s);
+      }
+    }
+    canvas.restore();
+    final h = handoff;
+    if (h != null && !handoffOverTiles) {
+      for (final s in h) {
+        drawStroke(canvas, s);
+      }
+    }
+    // 2. Full-res tiles on top (where they exist they own the cell).
+    for (final t in tiles) {
+      final opacity = ((nowMs - t.bornMs) / _kChunkFadeMs).clamp(0.0, 1.0);
+      final tilePaint =
+          Paint()
+            ..isAntiAlias = true
+            ..filterQuality = FilterQuality.medium;
+      if (opacity < 1) {
+        tilePaint.colorFilter = ColorFilter.mode(
+          const Color(0xFFFFFFFF).withValues(alpha: opacity),
+          BlendMode.modulate,
+        );
+      }
+      canvas.drawImageRect(
+        t.image,
+        Rect.fromLTWH(
+          0,
+          0,
+          t.image.width.toDouble(),
+          t.image.height.toDouble(),
+        ),
+        t.worldRect,
+        tilePaint,
+      );
+    }
+    if (h != null && handoffOverTiles) {
+      for (final s in h) {
+        drawStroke(canvas, s);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WhiteboardChunkOverlayPainter old) => true;
+}
+
 class WhiteboardEditorScreen extends ConsumerStatefulWidget {
   final Note note;
   final Folder folder;
@@ -141,14 +278,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     with TickerProviderStateMixin {
   int? _blockId;
   DrawingData _data = DrawingData();
-  bool _hydratingStrokes = false;
-  bool _viewChangedDuringHydration = false;
-  DrawingBlock? _hydratingCanvas;
-  Rect? _dbStrokeBounds;
   final Map<int, int> _loadedStrokePositions = {};
-  bool _visibleHydrateRunning = false;
-  bool _visibleHydrateQueued = false;
-  bool _metadataHydrated = false;
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
 
@@ -168,6 +298,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   int _overviewBakedCount = 0; // strokes already in the image
   bool _overviewBaking = false;
   bool _overviewBakePending = false;
+  // A regional patch requested while another bake/patch was in flight: coalesced
+  // here and retried when it finishes, so concurrent edits never fall back to a
+  // full O(N) re-bake (the idle hitch on dense boards).
+  Rect? _pendingPatchRegion;
   // The baked image is valid only for an append-only history (the delta draws
   // the un-baked tail live). A move/resize/rotate (count unchanged) or
   // erase/delete (count shrank) mutates already-baked strokes → the image is
@@ -207,6 +341,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Matrix4? _lastSettleMatrix;
   int _settleStillFrames = 0;
   static const int _settleStillFramesNeeded = 12; // ~200ms at 60fps
+  // After the view stops, hold the overview this much longer before dropping to
+  // the crisp vector tiles — so a burst of quick taps/pans (gaps under this) never
+  // re-mounts the tiles between them (the micro-hitch). Any new gesture cancels it;
+  // the focus tile keeps the held overview crisp meanwhile, so the wait isn't blurry.
+  static const int _kOverviewLingerGraceMs = 350;
+  Timer? _overviewLingerTimer;
+  // Small zoom-% readout, shown briefly while pinch-zooming (top of the toolbar).
+  bool _zoomLabelVisible = false;
+  Timer? _zoomLabelTimer;
   // ─── Pyramid Level 0: viewport-region FOCUS tile ──────────────────────────
   // The base overview above is ONE whole-board image at low density (crisp only
   // zoomed out). Panning zoomed-in over it looks blurry — and since the zoom is
@@ -222,6 +365,43 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   int _focusBakedCount = 0;
   bool _focusBaking = false;
   static const double _focusMaxDim = 4096.0;
+  // ── Chunk tile ring (pyramid L0, dynamic) ──────────────────────────────────
+  // The single focus tile above tops out: on a viewport wider than ~2048/dpr its
+  // overscan region can't be baked at full screen density, so panning zoomed-in
+  // softens. This is a Minecraft-style ring of WORLD-anchored raster tiles baked
+  // at the EXACT current zoom (1:1 with the screen → zero blur), generated at the
+  // leading edge and freed behind as you pan, with the base overview (+ focus) as
+  // fallback (never a white hole). Tiles are ink-only and bake with the very same
+  // drawStroke path as base/focus, so tile↔base edges match chromatically. Purely
+  // additive; _tilesEnabled=false reverts to exactly today's behaviour. Mirrors
+  // the validated notebook implementation; the page loop becomes a strokeBounds
+  // cull (infinite canvas, no pages).
+  final Map<String, _WbChunkTile> _chunkTiles = {};
+  final Set<String> _chunkBaking = {};
+  final Set<String> _chunkRefreshKeys = {};
+  double _chunkGridScale = 0; // zoom the current grid is anchored to
+  double _chunkTileWorld = 0; // cell side in world units (viewport fraction)
+  int _chunkVersion = 0; // bumped on ink edit → stale tiles discarded
+  bool _chunkPumpScheduled = false;
+  Rect? _chunkHandoffRegion;
+  List<DrawingStroke> _chunkHandoffStrokes = const [];
+  bool _chunkHandoffOverTiles = false;
+  final bool _tilesEnabled = true; // master switch (A/B revert: flip + rebuild)
+  static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
+  static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
+  static const int _kChunkMaxTiles = 36;
+  static const int _kChunkPerFrame = 1; // bakes/frame (budgeted, runs during pan)
+  // Hard ceilings so the ring can't OOM the process (Android's LMK kills with
+  // signal 9 — confirmed on a 110k-stroke board). At high zoom a 1:1 screen-
+  // density cell is ~3500px → ~48MB EACH; a full 36-tile ring is >1GB of GPU
+  // texture. The focus tile already covers the exact viewport at full res, so the
+  // ring only needs enough density/extent for pan headroom: cap each cell's pixel
+  // side AND cap the total ring bytes (count derived from the per-cell size).
+  static const int _kChunkMaxTilePx = 1536; // per-cell density ceiling (~9MB/tile)
+  static const int _kChunkMemBudgetBytes = 180 * 1024 * 1024; // total ring ceiling
+  // Above this many strokes in one overview bake, render decimated + uncached
+  // (the path-cache balloon is what OOMs the open of an ultra-dense board).
+  static const int _kOverviewFrugalThreshold = 60000;
 
   // ─── Heat / pan-zoom frame timing (temporary diagnostics) ─────────────────
   // True when the last stroke-layer build fell back to the single uncached
@@ -257,7 +437,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         'fallback ${_strokeFallbackActive ? 'SI' : 'no'}, '
         'overview ${_overviewActive ? 'SI' : 'no'}, '
         'dirty ${_overviewDirty ? 'SI' : 'no'}, '
-        'hydrate ${_hydratingStrokes || _visibleHydrateRunning || _visibleHydrateQueued ? 'SI' : 'no'}, '
         'trazos ${_data.strokes.length}',
       );
       _slowFrames = 0;
@@ -266,6 +445,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _worstRasterMs = 0;
     }
   }
+
+  // Debug switch for the per-frame layer-decision log (see below).
+  static const bool _kLayerPerfLog = false;
 
   void _logWhiteboardLayerDecision(
     String source, {
@@ -276,7 +458,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     required bool canOverview,
     required int lod,
     int delta = 0,
+    int chunkAll = -1,
+    int chunkCur = -1,
   }) {
+    // Off by default: this runs per build (≈ per pan frame) and builds a ~17-field
+    // key string each time — pure churn on the hot path. Flip on to debug the layer
+    // decision (pair with CrashLogger._mirrorToLogcat to see it in `adb logcat`).
+    if (!_kLayerPerfLog) return;
     final now = DateTime.now();
     final moving =
         _viewGestureActive ||
@@ -288,7 +476,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         '$source|${_data.strokes.length}|$_overviewBakedCount|$_overviewDirty|'
         '$hydrationActive|$tileCount|${_viewScale.toStringAsFixed(2)}|'
         '$_strokeFallbackActive|$_overviewActive|$delta|$focusReady|'
-        '$_focusBakedCount|$inGesture|$canOverview|$lod';
+        '$_focusBakedCount|$inGesture|$canOverview|$lod|$chunkAll|$chunkCur';
     final minGap = moving ? 700 : 2000;
     if (key == _lastLayerDecisionKey &&
         now.difference(_lastLayerDecisionLog).inMilliseconds < minGap) {
@@ -308,6 +496,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       'zoom ${_viewScale.toStringAsFixed(2)}, '
       'threshold ${_overviewThreshold.toStringAsFixed(2)}, '
       'focus ${focusReady ? 'SI' : 'no'}/$_focusBakedCount, '
+      'ring ${chunkCur < 0 ? '-' : '$chunkCur'}/${chunkAll < 0 ? _chunkTiles.length : chunkAll}, '
+      'handoff ${_chunkHandoffStrokes.length}/${_chunkHandoffOverTiles ? 'T' : 'F'}, '
       'lasso ${_lassoCtrl.phase.name}, lod $lod, '
       'rect ${renderRect.left.toStringAsFixed(1)},${renderRect.top.toStringAsFixed(1)},'
       '${renderRect.width.toStringAsFixed(1)}x${renderRect.height.toStringAsFixed(1)}',
@@ -343,7 +533,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Offset? _eraserCursor; // screen pos for the eraser indicator
   // Raw (un-stabilized) pen points — used for scribble-erase detection so the
   // stabilizer's smoothing doesn't hide the zigzags.
-  List<List<double>> _rawPen = [];
+  StrokePoints _rawPen = StrokePoints();
   // Post-snap live adjust state.
   ShapeKind? _snapKind;
   List<List<double>>? _snapBasePoints;
@@ -357,7 +547,18 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // grab started — unioned with the post-gesture box to invalidate only the
   // tiles the edit actually touched (vs. nuking the whole tile cache).
   Rect? _gestureRegionBefore;
+  // The selected stroke OBJECTS captured right before _cloneSelectedStrokesInPlace
+  // swaps them for clones. They keep the pre-edit geometry, so an incremental
+  // commit can pull them out of their OLD tiles (and the overview's old region)
+  // by identity, then re-file the moved clones — O(selection), not O(all).
+  List<DrawingStroke> _preEditStrokes = const [];
   bool _gestureChanged = false;
+  // Erase-drag accumulator: the union of all regions touched across one eraser
+  // gesture, so the ring/overview are invalidated ONCE on pen-up (not per move,
+  // which would re-bake the overview every frame). _eraseNeedsGlobal trips when a
+  // move couldn't produce a region (rare full-rebuild path).
+  Rect? _eraseDirty;
+  bool _eraseNeedsGlobal = false;
   DrawingStroke? _active;
   Stopwatch? _inkPerfSw;
   int _inkMoveSamples = 0;
@@ -376,6 +577,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // rebuilds every page/overlay/provider and is the jank (and crash risk on
   // big notes) felt at the moment you grab or drop a selection.
   final ValueNotifier<int> _lassoPhaseTick = ValueNotifier(0);
+  bool _deferLassoReleaseTick = false;
+  ui.Image? _lassoBgImage;
+  Rect? _lassoBgRect;
+  bool _lassoBgBaking = false;
   Timer? _holdTimer;
   Timer? _persistTimer;
   bool _persistDirty = false;
@@ -403,6 +608,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   late final List<Color> _palette;
   final LassoController _lassoCtrl = LassoController();
   late final AnimationController _lassoAnimCtrl;
+  late final AnimationController _chunkFadeCtrl;
   LassoPhase _lastLassoPhase = LassoPhase.idle;
   Matrix4? _transformBeforeStylus;
   Timer? _pasteTimer;
@@ -478,12 +684,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dpr = MediaQuery.of(context).devicePixelRatio;
+  }
+
+  @override
   void initState() {
     super.initState();
     _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
+    );
+    _chunkFadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: _kChunkFadeMs),
     );
     _lassoCtrl.onChanged = _onLassoChanged;
     StrokeWidthPrefs.load().then((widths) {
@@ -666,7 +882,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _canvasBoundaryKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;
     if (boundary == null) return;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final img = await boundary.toImage(pixelRatio: dpr);
     final bytes = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
     if (!mounted || !_eyedropperMode || bytes == null) {
@@ -734,7 +950,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _canvasBoundaryKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;
     if (boundary == null) return;
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final full = await boundary.toImage(pixelRatio: dpr);
 
     final outW = (screenRect.width * dpr).round();
@@ -883,11 +1099,26 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   void dispose() {
     SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     _overviewTimer?.cancel();
-    _overviewImage?.dispose();
+    // Persist the overview so the next open blits it instead of re-baking every
+    // stroke; free it only after the encode finishes (toByteData needs it alive).
+    final ov = _overviewImage;
+    if (ov != null) {
+      unawaited(_saveDiskOverview().whenComplete(ov.dispose));
+    }
+    // Camera: clone before _viewCtrl is disposed below; saved unconditionally so
+    // a reopen lands where the user left off (#2a).
+    if (_blockId != null) unawaited(_saveCamera(_viewCtrl.value.clone()));
     _settleTicker?.dispose();
+    _overviewLingerTimer?.cancel();
+    _zoomLabelTimer?.cancel();
     _focusImage?.dispose();
+    for (final t in _chunkTiles.values) {
+      t.image.dispose();
+    }
+    _chunkTiles.clear();
     _zoomSnapshotTimer?.cancel();
     _zoomSnapshotImage?.dispose();
+    _lassoBgImage?.dispose();
     _eyedropImg?.dispose();
     // Pins live in the process-level store — do NOT dispose them here, or they'd
     // vanish on navigation. They're freed on close (X) or app kill.
@@ -898,6 +1129,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _strokeTiles.dispose();
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
+    _chunkFadeCtrl.dispose();
     _imgCache?.dispose();
     _viewCtrl.dispose();
     _activeTick.dispose();
@@ -911,17 +1143,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// are tracked only in the block payload, so that's the source of truth.
   /// Safe here because the undo history is discarded on exit.
   void _reconcileImageFiles() {
-    if (_hydratingStrokes) return;
     final dirPath = _imageDirPath;
     if (dirPath == null) return;
     final referenced = _data.images.map((im) => im.filename).toSet();
+    // The disk-cached overview lives in the same dir but isn't a canvas image —
+    // never treat it as an orphan.
+    const keep = {'overview.png', 'overview.json', 'camera.json'};
     // Fire-and-forget; widget is disposing.
     () async {
       try {
         final dir = Directory(dirPath);
         if (!await dir.exists()) return;
         await for (final entity in dir.list()) {
-          if (entity is File && !referenced.contains(p.basename(entity.path))) {
+          final name = p.basename(entity.path);
+          if (entity is File &&
+              !keep.contains(name) &&
+              !referenced.contains(name)) {
             try {
               await entity.delete();
             } catch (_) {}
@@ -939,7 +1176,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (isScribble(snapPts, viewScale: _viewScale)) {
       return false;
     }
-    final shape = ShapeRecognizer.detect(_active!.points);
+    final shape = ShapeRecognizer.detect(_active!.points.toNested());
     if (shape == null) return false;
     if (!_canSnapHeldShape(shape.kind, snapPts)) return false;
     // Highlighter only snaps to straight lines (a marker arrow/box reads odd).
@@ -951,14 +1188,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return true;
   }
 
-  bool _canSnapHeldShape(ShapeKind kind, List<List<double>> points) {
+  bool _canSnapHeldShape(ShapeKind kind, StrokePoints points) {
     if (kind == ShapeKind.line || kind == ShapeKind.arrow) return true;
     if (!shapeKindIsClosed(kind) && kind != ShapeKind.pentagram) return true;
     final bounds = scribbleBounds(points);
     final diag2 = bounds.width * bounds.width + bounds.height * bounds.height;
     if (diag2 <= 0) return false;
-    final start = Offset(points.first[0], points.first[1]);
-    final end = Offset(points.last[0], points.last[1]);
+    final start = Offset(points.firstX, points.firstY);
+    final end = Offset(points.lastX, points.lastY);
     final dist2 = (start - end).distanceSquared;
     return dist2 / diag2 <= 0.09;
   }
@@ -979,11 +1216,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
-      final end = src.points.last;
-      _snapRefDist = (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(
-        1.0,
-        1e9,
-      );
+      _snapRefDist =
+          (Offset(src.points.lastX, src.points.lastY) - _snapCenter!).distance
+              .clamp(1.0, 1e9);
     }
     setState(() {
       _active = DrawingStroke(
@@ -992,7 +1227,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         filled: _fillShapes && shapeKindIsClosed(shape.kind),
         isShape: true,
         isHighlighter: src.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -1023,7 +1258,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         filled: _active!.filled,
         isShape: true,
         isHighlighter: _active!.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -1043,10 +1278,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final appendSw = Stopwatch()..start();
     _strokeTiles.append(shape);
     appendSw.stop();
+    final region = strokeBounds(shape).inflate(shape.strokeWidth + 4);
     final historySw = Stopwatch()..start();
-    _commitSnapshot(before);
+    _commitSnapshot(before, region: region);
     historySw.stop();
     final persistSw = Stopwatch()..start();
+    _invalidateStrokeCaches(region);
     _persist();
     persistSw.stop();
     sw.stop();
@@ -1088,176 +1325,31 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         '(${existing == null ? 'CREADO nuevo' : 'encontrado'}), '
         '${blocks.length} bloques en la nota',
       );
-      final data = _decodeShellMetadata(canvas);
+      final data = await _decodeData(canvas);
+      if (!mounted) return;
+      // Load the saved camera BEFORE the setState so _maybeInitView (fired by the
+      // next build) lands on it instead of re-centring.
+      _savedCamera = await _loadCamera();
+      if (!mounted) return;
       setState(() {
         _blockId = id;
         _data = data;
-        _hydratingStrokes = true;
-        _viewChangedDuringHydration = false;
-        _hydratingCanvas = canvas;
-        _metadataHydrated = false;
-        _persistedStrokeIds.clear();
-        _dirtyStrokeIds.clear();
-        _loadedStrokePositions.clear();
+        // NOTE: do NOT clear _persistedStrokeIds / _loadedStrokePositions here.
+        // _decodeData already populated them from the loaded rows. Clearing them
+        // made the next persist treat every already-saved stroke as new (dbId set
+        // but not in _persistedStrokeIds → re-inserted) → the DB DOUBLED on every
+        // open/close cycle until the board OOM'd. _dirtyStrokeIds is cleared by
+        // _decodeData too, so nothing to reset here.
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        unawaited(_hydrateCanvasStrokes(canvas));
-      });
+      _strokeTiles.rebuild(_data.strokes);
+      // Reopen fast path: blit the saved overview instead of re-baking every
+      // stroke. Only a full match skips the bake; otherwise bake as before.
+      final seeded = await _loadDiskOverview();
+      if (!seeded) _scheduleOverviewBake();
     } catch (e, st) {
       // A silent throw here leaves _blockId null → empty board, default bg,
       // corner view, and NO persistence. Surface it instead of losing data.
       CrashLogger.instance.record(e, st, context: 'ensureCanvasBlock pizarra');
-    }
-  }
-
-  DrawingData _decodeMetadata(DrawingBlock b) {
-    final payload = b.payloadJson();
-    return _decodeWhiteboardData({
-      's': b.strokesJson,
-      'i': b.imagesJson,
-      't': b.taskBlocksJson,
-      if (payload['tx'] != null) 'tx': payload['tx'],
-      'bg': payload['bg'],
-      'bgc': payload['bgc'],
-    });
-  }
-
-  DrawingData _decodeShellMetadata(DrawingBlock b) {
-    final payload = b.payloadJson();
-    return DrawingData(
-      height: _kCanvasH,
-      background: PageBackground.fromString((payload['bg'] as String?) ?? ''),
-      bgColorValue: (payload['bgc'] as num?)?.toInt(),
-    );
-  }
-
-  Rect? _metadataBounds(DrawingBlock b) {
-    final data = _decodeMetadata(b);
-    Rect? out;
-    for (final im in data.images) {
-      out = _unionRects(out, Rect.fromLTWH(im.x, im.y, im.w, im.h));
-    }
-    for (final block in data.taskBlocks) {
-      out = _unionRects(out, Rect.fromLTWH(block.x, block.y, block.w, block.h));
-    }
-    for (final block in data.textBlocks) {
-      out = _unionRects(out, Rect.fromLTWH(block.x, block.y, block.w, block.h));
-    }
-    return out;
-  }
-
-  Rect? _unionRects(Rect? a, Rect? b) {
-    if (a == null) return b;
-    if (b == null) return a;
-    return Rect.fromLTRB(
-      math.min(a.left, b.left),
-      math.min(a.top, b.top),
-      math.max(a.right, b.right),
-      math.max(a.bottom, b.bottom),
-    );
-  }
-
-  Future<void> _hydrateCanvasStrokes(DrawingBlock canvas) async {
-    try {
-      final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-      final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
-      final boundsRect = bounds == null ? null : _rectFromBounds(bounds);
-      _nextStrokePos =
-          (await strokeRepo.getMaxPositionByBlock(canvas.id) ?? -1) + 1;
-      final contentBounds = _unionRects(boundsRect, _metadataBounds(canvas));
-      if (mounted && _blockId == canvas.id && contentBounds != null) {
-        _dbStrokeBounds = contentBounds;
-        if (!_metadataHydrated) {
-          final metadata = _decodeMetadata(canvas);
-          metadata.strokes = _data.strokes;
-          _data = metadata;
-          _metadataHydrated = true;
-        }
-        if (!_viewChangedDuringHydration) {
-          _viewInitialized = false;
-          _maybeInitView();
-          await SchedulerBinding.instance.endOfFrame;
-        }
-        if (boundsRect != null) {
-          await _hydrateVisibleCanvasStrokes(canvas, boundsRect, strokeRepo);
-        }
-      }
-      if (!mounted || _blockId != canvas.id) return;
-      setState(() {
-        _hydratingStrokes = false;
-        _paintVersion++;
-      });
-      if (!_viewChangedDuringHydration) {
-        _viewInitialized = false;
-        _maybeInitView();
-      }
-      _scheduleOverviewBake();
-    } catch (e, st) {
-      if (mounted) {
-        setState(() {
-          _hydratingStrokes = false;
-          _hydratingCanvas = null;
-        });
-      }
-      CrashLogger.instance.record(
-        e,
-        st,
-        context: 'hydrateCanvasStrokes pizarra',
-      );
-    }
-  }
-
-  Future<void> _hydrateVisibleCanvasStrokes(
-    DrawingBlock canvas,
-    Rect bounds,
-    DrawingStrokeRepository strokeRepo,
-  ) async {
-    if (!mounted || _viewport == Size.zero) return;
-    if (_visibleHydrateRunning) {
-      _visibleHydrateQueued = true;
-      return;
-    }
-    _visibleHydrateRunning = true;
-    final visible = _visibleRectFor(_viewport);
-    final overscan = math.max(visible.width, visible.height);
-    final region = visible.inflate(overscan).intersect(bounds);
-    try {
-      if (region.width <= 0 || region.height <= 0) return;
-      final sw = Stopwatch()..start();
-      final rows = await strokeRepo.getByBlockBounds(
-        canvas.id,
-        _boundsFromRect(region),
-      );
-      if (!mounted || _blockId != canvas.id) return;
-      if (!_metadataHydrated) {
-        final metadata = _decodeMetadata(canvas);
-        metadata.strokes = _data.strokes;
-        _data = metadata;
-        _metadataHydrated = true;
-      }
-      _mergeLoadedStrokeRows(rows, region.inflate(overscan));
-      if (rows.isNotEmpty) {
-        _overviewDirty = true;
-        _disposeFocus();
-      }
-      setState(() => _paintVersion++);
-      _strokeTiles.rebuild(_data.strokes);
-      sw.stop();
-      final pts = _pointCount(_data.strokes);
-      CrashLogger.instance.note(
-        'PERF hydrate-visible-pizarra: ${_data.strokes.length} live, '
-        '${rows.length} query, $pts puntos, ${sw.elapsedMilliseconds}ms, '
-        'overviewDirty ${_overviewDirty ? 'SI' : 'no'}',
-      );
-    } finally {
-      _visibleHydrateRunning = false;
-      if (_visibleHydrateQueued && mounted && _blockId == canvas.id) {
-        _visibleHydrateQueued = false;
-        unawaited(_hydrateVisibleCanvasStrokes(canvas, bounds, strokeRepo));
-      } else if (mounted && _blockId == canvas.id && _overviewDirty) {
-        _scheduleOverviewBake();
-      }
     }
   }
 
@@ -1317,12 +1409,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     );
     if (!mounted || _blockId != blockId) return;
     _mergeLoadedStrokeRows(rows, region, evict: false);
-    if (rows.isNotEmpty) {
-      _overviewDirty = true;
-      _disposeFocus();
-      _scheduleOverviewBake();
-    }
     _strokeTiles.rebuild(_data.strokes);
+    if (rows.isNotEmpty) _invalidateStrokeCaches(region);
     setState(() => _paintVersion++);
     sw.stop();
     CrashLogger.instance.note(
@@ -1358,12 +1446,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       await SchedulerBinding.instance.endOfFrame;
     }
     if (!mounted || _blockId != blockId) return;
-    if (rowsRead > 0) {
-      _overviewDirty = true;
-      _disposeFocus();
-      _scheduleOverviewBake();
-    }
     _strokeTiles.rebuild(_data.strokes);
+    if (rowsRead > 0) _invalidateStrokesGlobal();
     setState(() => _paintVersion++);
     sw.stop();
     CrashLogger.instance.note(
@@ -1371,36 +1455,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       '${_data.strokes.length} live, $batches batches, '
       '${sw.elapsedMilliseconds}ms',
     );
-  }
-
-  void _refreshVisibleHydration() {
-    final canvas = _hydratingCanvas;
-    if (canvas == null || _blockId != canvas.id || _viewport == Size.zero) {
-      return;
-    }
-    unawaited(() async {
-      try {
-        final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-        final boundsRect = _dbStrokeBounds;
-        if (boundsRect != null) {
-          await _hydrateVisibleCanvasStrokes(canvas, boundsRect, strokeRepo);
-          return;
-        }
-        final bounds = await strokeRepo.getBoundsByBlock(canvas.id);
-        if (bounds == null) return;
-        await _hydrateVisibleCanvasStrokes(
-          canvas,
-          _rectFromBounds(bounds),
-          strokeRepo,
-        );
-      } catch (e, st) {
-        CrashLogger.instance.record(
-          e,
-          st,
-          context: 'refreshVisibleHydration pizarra',
-        );
-      }
-    }());
   }
 
   // ignore: unused_element
@@ -1431,11 +1485,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             : await strokeRepo.getByBlock(b.id);
     _persistedStrokeIds.clear();
     _dirtyStrokeIds.clear();
+    _loadedStrokePositions.clear();
     if (rows.isNotEmpty) {
       data.strokes = rows.map(strokeFromRecord).toList();
       var maxPos = -1;
       for (final r in rows) {
         _persistedStrokeIds.add(r.id);
+        _loadedStrokePositions[r.id] = r.position;
         if (r.position > maxPos) maxPos = r.position;
       }
       _nextStrokePos = maxPos + 1;
@@ -1455,7 +1511,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   Future<void> _persistNow() async {
     if (_blockId == null) return;
-    if (_hydratingStrokes) return;
     // Guard against overlapping runs: a debounce can fire while a previous
     // persist is still awaiting. The straggler re-runs once this pass finishes.
     if (_persisting) {
@@ -1511,8 +1566,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         final insertWrites = <DrawingStrokeWrite>[];
         final insertPositions = <int>[];
         for (final stroke in strokesSnapshot) {
-          if (stroke.dbId != null &&
-              _persistedStrokeIds.contains(stroke.dbId)) {
+          // Skip strokes already materialized as a row. A dbId that is NOT in
+          // _persistedStrokeIds means the stroke was RESURRECTED by undo/redo (its
+          // row was deleted when the op was first applied) → it must be re-inserted
+          // with a fresh id. (The board-doubling bug was a different cause — open
+          // wiping _persistedStrokeIds — and is fixed at the source; persisted is
+          // now accurate, so this branch only fires for genuine resurrection.)
+          if (stroke.dbId != null && _persistedStrokeIds.contains(stroke.dbId)) {
             continue;
           }
           stroke.dbId = null;
@@ -1612,23 +1672,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_persistDirty && mounted && !failed) unawaited(_persistNow());
   }
 
+  /// Schedule the DB write ONLY. Cache invalidation (ring/overview/focus) is now
+  /// decoupled: stroke edits call [_invalidateStrokeCaches] with their region;
+  /// non-stroke edits (background/image/block) call this and nothing else, so
+  /// they no longer nuke the ring. See NUKES.md for the per-call-site map.
   void _persist() {
     _persistDirty = true;
-    _dbStrokeBounds = null;
     _persistTimer?.cancel();
     _persistTimer = Timer(const Duration(milliseconds: 180), () {
       if (!mounted) return;
       unawaited(_persistNow());
     });
-    // Ink changed → the zoomed-out overview image is stale; re-bake once settled.
-    _scheduleOverviewBake();
-    // In-place edit (move/resize/rotate = same count, erase/delete = fewer) →
-    // the baked image's prefix changed and the append-only delta can't fix it.
-    // Mark dirty so the overview steps aside for tiles until the re-bake lands.
-    if (_data.strokes.length <= _overviewBakedCount) _overviewDirty = true;
-    // The focus tile has the OLD strokes baked in → drop it (erase/lasso would
-    // ghost). Falls back to base+delta; re-bakes on the next settle.
-    _disposeFocus();
   }
 
   int _pointCount(Iterable<DrawingStroke> strokes) =>
@@ -1920,7 +1974,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       strokeWidth: _strokeW,
       isShape: true,
       filled: closed && _fillShapes,
-      points: buildShape(kind, center.dx, center.dy, size, size),
+      points: StrokePoints.fromNested(
+        buildShape(kind, center.dx, center.dy, size, size),
+      ),
     );
     final before = _snapshot();
     setState(() {
@@ -1935,7 +1991,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final idx = _data.strokes.length - 1;
     _lassoCtrl.hitScale = _viewScale;
     _lassoCtrl.selectRange(_data.strokes, idx, idx + 1);
-    _commitSnapshot(before);
+    final region = strokeBounds(stroke).inflate(stroke.strokeWidth + 4);
+    _commitSnapshot(before, region: region);
+    _invalidateStrokeCaches(region);
     _persist();
     HapticFeedback.lightImpact();
   }
@@ -1986,15 +2044,38 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     // rebuilds every page/overlay/provider — the grab/drop jank). The ink
     // layers + toolbar refresh via _lassoPhaseTick. EXCEPTION: block selections,
     // whose overlays must (un)wrap their live-transform in build().
-    final grabOrRelease =
-        (prev == LassoPhase.selected && _kLassoGesturePhases.contains(phase)) ||
-        (_kLassoGesturePhases.contains(prev) && phase == LassoPhase.selected);
-    if (grabOrRelease && !_selectionHasBlocks) {
+    final grab =
+        prev == LassoPhase.selected && _kLassoGesturePhases.contains(phase);
+    final release =
+        _kLassoGesturePhases.contains(prev) && phase == LassoPhase.selected;
+    if ((grab || release) && !_selectionHasBlocks) {
+      if (grab) {
+        _captureLassoSelection();
+        if (_lassoBgImage == null) unawaited(_bakeLassoBackground());
+      } else if (_deferLassoReleaseTick) {
+        return;
+      } else {
+        _disposeLassoBg();
+      }
       _lassoPhaseTick.value++;
       _lassoGestureTick.value++;
       return;
     }
 
+    if (phase == LassoPhase.selected &&
+        !_selectionHasBlocks &&
+        (_lassoCtrl.selectedIndices.isNotEmpty ||
+            _lassoCtrl.selectedImageIndices.isNotEmpty)) {
+      _disposeLassoBg();
+      _captureLassoSelection();
+      unawaited(_bakeLassoBackground());
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // Any other transition (deselect, fresh selection, block selection): the
+    // gesture raster no longer applies.
+    _disposeLassoBg();
     if (mounted) setState(() {});
   }
 
@@ -2012,9 +2093,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _lassoCtrl.hitScale = _viewScale;
     return Rect.fromPoints(tl, br);
   }
-
-  Rect _rectFromBounds(DrawingStrokeBounds b) =>
-      Rect.fromLTRB(b.minX, b.minY, b.maxX, b.maxY);
 
   DrawingStrokeBounds _boundsFromRect(Rect r) => DrawingStrokeBounds(
     minX: r.left,
@@ -2189,8 +2267,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _transformBeforeStylus = Matrix4.copy(_viewCtrl.value);
       }
     }
-    if (_hydratingStrokes) return;
-
     if (_showPasteAt != null) {
       setState(() => _showPasteAt = null);
       return;
@@ -2265,6 +2341,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_tool == DrawTool.eraser) {
       _gestureBefore = _snapshot();
       _gestureChanged = false;
+      _eraseDirty = null;
+      _eraseNeedsGlobal = false;
       setState(() => _eraserCursor = e.localPosition);
       _eraseNear(p);
       return;
@@ -2279,27 +2357,27 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           colorValue: _color.toARGB32(),
           strokeWidth: _strokeW,
           isFountainPen: true,
-          points: [
-            [sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()],
-          ],
+          points: StrokePoints(comps: 4)
+            ..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
         );
       });
       return;
     }
-    _rawPen = [
-      [p.dx, p.dy],
-    ];
+    _rawPen = StrokePoints(comps: 2)..add(p.dx, p.dy);
     setState(() {
+      final pencil = _tool == DrawTool.pencil;
+      final pts = StrokePoints(comps: pencil ? 3 : 2);
+      if (pencil) {
+        pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+      } else {
+        pts.add(sp.dx, sp.dy);
+      }
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
-        isPencil: _tool == DrawTool.pencil,
-        points: [
-          _tool == DrawTool.pencil
-              ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-              : [sp.dx, sp.dy],
-        ],
+        isPencil: pencil,
+        points: pts,
       );
     });
     if (_tool == DrawTool.pen || _tool == DrawTool.highlighter) {
@@ -2439,33 +2517,33 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final sp = _stabilize(p);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      _active!.points.add([
+      _active!.points.add(
         sp.dx,
         sp.dy,
         pressure,
         e.timeStamp.inMilliseconds.toDouble(),
-      ]);
+      );
       _activeTick.value++;
       moveSw?.stop();
       if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
       return;
     }
     final pts = _active!.points;
-    _rawPen.add([p.dx, p.dy]);
+    _rawPen.add(p.dx, p.dy);
     if (pts.isNotEmpty && !_stabilizer.isOn) {
-      final dx = sp.dx - pts.last[0];
-      final dy = sp.dy - pts.last[1];
+      final dx = sp.dx - pts.lastX;
+      final dy = sp.dy - pts.lastY;
       if (dx * dx + dy * dy < _minDist2) {
         moveSw?.stop();
         if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
         return;
       }
     }
-    pts.add(
-      _active!.isPencil
-          ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-          : [sp.dx, sp.dy],
-    );
+    if (_active!.isPencil) {
+      pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+    } else {
+      pts.add(sp.dx, sp.dy);
+    }
     _activeTick.value++;
     moveSw?.stop();
     if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
@@ -2588,7 +2666,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final a = _active;
     if (a == null || a.isShape) return;
     final tip = predictedTipPoint(a.points);
-    if (tip != null) a.points.add(tip);
+    if (tip != null) a.points.addLikeLast(tip.dx, tip.dy);
   }
 
   void _onCancel(PointerCancelEvent e) {
@@ -2644,8 +2722,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final activeStroke = _active?.clone();
     Rect? dirty;
     _data.strokes.removeWhere((s) {
-      for (final p in s.points) {
-        if (bounds.contains(Offset(p[0], p[1]))) {
+      final sp = s.points;
+      for (int i = 0; i < sp.length; i++) {
+        if (bounds.contains(sp.offset(i))) {
           final b = strokeBounds(s);
           dirty = dirty == null ? b : dirty!.expandToInclude(b);
           return true;
@@ -2657,10 +2736,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_data.strokes.length != lenBefore) {
       if (dirty != null) {
         _strokeTiles.invalidateRegion(dirty!.inflate(4), _data.strokes);
+        _invalidateStrokeCaches(dirty!.inflate(4));
       } else {
         _strokeTiles.rebuild(_data.strokes);
+        _invalidateStrokesGlobal();
       }
-      _commitSnapshot(before);
+      _commitSnapshot(before, region: dirty?.inflate(4));
       HapticFeedback.lightImpact();
       // Removed strokes → handled by the delete-diff pass in _persistNow.
       _persist();
@@ -2676,16 +2757,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     } else {
       _resetInkPerf();
     }
-    _rawPen = [];
+    _rawPen = StrokePoints(comps: 2);
   }
 
   void _finishStroke() {
     final sw = Stopwatch()..start();
     if (_snapKind != null) return;
     if (_active == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -2704,8 +2784,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final activeStroke = _active!.clone();
       Rect? dirty;
       _data.strokes.removeWhere((s) {
-        for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) {
+        final sp = s.points;
+        for (int i = 0; i < sp.length; i++) {
+          if (bounds.contains(sp.offset(i))) {
             final b = strokeBounds(s);
             dirty = dirty == null ? b : dirty!.expandToInclude(b);
             return true;
@@ -2717,10 +2798,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       if (_data.strokes.length != lenBefore) {
         if (dirty != null) {
           _strokeTiles.invalidateRegion(dirty!.inflate(4), _data.strokes);
+          _invalidateStrokeCaches(dirty!.inflate(4));
         } else {
           _strokeTiles.rebuild(_data.strokes);
+          _invalidateStrokesGlobal();
         }
-        _commitSnapshot(before);
+        _commitSnapshot(before, region: dirty?.inflate(4));
         HapticFeedback.lightImpact();
         // Removed strokes → handled by the delete-diff pass in _persistNow.
         _persist();
@@ -2732,7 +2815,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         finishMs: sw.elapsedMilliseconds,
         snapshotMs: snapSw.elapsedMilliseconds,
       );
-      _rawPen = [];
+      _rawPen = StrokePoints(comps: 2);
       return;
     }
 
@@ -2751,6 +2834,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _commitStrokeAdd(addedStroke);
     historySw.stop();
     final persistSw = Stopwatch()..start();
+    final region = strokeBounds(addedStroke).inflate(addedStroke.strokeWidth + 4);
+    _appendStrokeCaches(addedStroke, region);
     _persist();
     persistSw.stop();
     sw.stop();
@@ -2767,9 +2852,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   void _finishFountainStroke() {
     final sw = Stopwatch()..start();
     if (_active == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -2793,6 +2877,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _commitStrokeAdd(baked);
     historySw.stop();
     final persistSw = Stopwatch()..start();
+    final region = strokeBounds(baked).inflate(baked.strokeWidth + 4);
+    _appendStrokeCaches(baked, region);
     _persist();
     persistSw.stop();
     sw.stop();
@@ -2842,6 +2928,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
     if (_eraserMode == EraserMode.partial) {
       final out = <DrawingStroke>[];
+      final removedOriginals = <DrawingStroke>[];
+      final addedPieces = <DrawingStroke>[];
       for (final s in _data.strokes) {
         if (!candidates.contains(s)) {
           out.add(s);
@@ -2852,11 +2940,20 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           out.add(s);
         } else {
           markDirty(s);
+          removedOriginals.add(s);
+          addedPieces.addAll(pieces);
           out.addAll(pieces);
           changed = true;
         }
       }
-      if (changed) _data.strokes = out;
+      if (changed) {
+        _data.strokes = out;
+        // Incremental index update, O(touched) not O(all): re-filing the WHOLE
+        // index (invalidateRegion(all) / rebuild) on every pointer move was the
+        // eraser lag on dense boards (strokeBounds for all 100k+ per event).
+        _strokeTiles.removeStrokes(removedOriginals);
+        _strokeTiles.appendAll(addedPieces);
+      }
     } else {
       final hits = <DrawingStroke>{};
       for (final s in candidates) {
@@ -2867,18 +2964,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       }
       if (hits.isNotEmpty) {
         _data.strokes.removeWhere(hits.contains);
+        _strokeTiles.removeStrokes(hits);
         changed = true;
       }
     }
     if (changed) {
       _gestureChanged = true;
       if (dirty != null) {
-        _strokeTiles.invalidateRegion(dirty!.inflate(4), _data.strokes);
+        final d = dirty!.inflate(4);
+        _eraseDirty = _eraseDirty == null ? d : _eraseDirty!.expandToInclude(d);
       } else {
-        _strokeTiles.rebuild(_data.strokes);
+        _eraseNeedsGlobal = true;
       }
       setState(() {});
       // Removed strokes → handled by the delete-diff pass in _persistNow.
+      // Ring/overview invalidation is deferred to _commitEraseGesture (pen-up)
+      // so we don't re-bake the overview on every drag move.
       _persist();
     }
   }
@@ -2938,7 +3039,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           _data.images,
           _data.taskBlocks,
         );
-        _captureLassoSelection();
         return;
       }
       // Outside the selection: defer. A tap (no drag) dismisses the toolbar /
@@ -3017,6 +3117,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // a tap (which toggles the action toolbar) must not swap object identity,
       // or the tiles desync from _data.strokes and the ghost returns next move.
       if (moved) _cloneSelectedStrokesInPlace();
+      _deferLassoReleaseTick = true;
       _lassoCtrl.finishMove(
         _data.strokes,
         _data.images,
@@ -3035,6 +3136,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
               : (cornerScale - 1).abs() > 0.02;
       if (moved) _cloneSelectedStrokesInPlace(); // only a real edit clones
+      _deferLassoReleaseTick = true;
       side
           ? _lassoCtrl.finishSideResize(
             _data.strokes,
@@ -3067,6 +3169,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
       if (moved) _cloneSelectedStrokesInPlace(); // only a real edit clones
+      _deferLassoReleaseTick = true;
       _lassoCtrl.finishRotation(
         _data.strokes,
         _data.images,
@@ -3083,10 +3186,26 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (moved) {
       // Geometry mutated in place → the tile cache for the touched region is now
       // stale. Without this the moved ink ghosts at its old spot and is invisible
-      // at the new one until the board is re-entered.
-      _invalidateEditedTiles(_gestureRegionBefore, _lassoCtrl.boundingBox);
+      // at the new one until the board is re-entered. Incremental: re-file only
+      // the moved strokes + patch only the edited overview region (not the whole
+      // board) — the pen-up hitch/crash fix on dense boards.
+      final hadStrokes = _preEditStrokes.isNotEmpty ||
+          _lassoCtrl.selectedIndices.isNotEmpty;
+      final after = _lassoCtrl.boundingBox;
+      // Image/block-only moves don't change ink → leave the ring/overview alone
+      // (the moved item lives in its own live layer). Snapshot still carries the
+      // region so an undo patches that slice cheaply instead of a global nuke.
+      if (hadStrokes) {
+        _invalidateEditedTilesIncremental(_gestureRegionBefore, after);
+      } else {
+        _preEditStrokes = const [];
+      }
+      Rect? region = _gestureRegionBefore;
+      if (after != null) {
+        region = region == null ? after : region.expandToInclude(after);
+      }
       _gestureRegionBefore = null;
-      _commitGesture();
+      _commitGesture(region: region?.inflate(48));
       // The moved/resized/rotated rows keep their dbId → UPDATE in place.
       _markSelectionDirty();
       _persist();
@@ -3095,6 +3214,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _gestureBefore = null;
       setState(() => _toolbarVisible = !_toolbarVisible);
     }
+    _completeDeferredLassoRelease();
+  }
+
+  void _completeDeferredLassoRelease() {
+    if (!_deferLassoReleaseTick) return;
+    _deferLassoReleaseTick = false;
+    _disposeLassoBg();
+    _lassoPhaseTick.value++;
+    _lassoGestureTick.value++;
   }
 
   void _lassoDelete() {
@@ -3143,7 +3271,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final s = _data.strokes[i];
       if (s.isHighlighter) continue;
       if (s.isShape && !includeShapes) continue;
-      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+      strokes.add(s.points.toOffsets());
     }
     return strokes;
   }
@@ -3493,11 +3621,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// leaves the original — still referenced by snapshots on the undo stack —
   /// untouched. clone() preserves dbId, so the row is UPDATEd, not re-inserted.
   void _cloneSelectedStrokesInPlace() {
+    final old = <DrawingStroke>[];
     for (final i in _lassoCtrl.selectedIndices) {
       if (i < _data.strokes.length) {
+        old.add(_data.strokes[i]); // pre-edit object: bounds still at OLD pos
         _data.strokes[i] = _data.strokes[i].clone();
       }
     }
+    _preEditStrokes = old;
   }
 
   /// Flag the current selection's rows for an in-place UPDATE on the next
@@ -3519,9 +3650,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _redoStack.clear();
   }
 
-  void _commitSnapshot(_WhiteboardSnapshot before) {
+  void _commitSnapshot(_WhiteboardSnapshot before, {Rect? region}) {
     _markCanvasDirty();
-    _pushHistory(_WhiteboardSnapshotEntry(before));
+    _pushHistory(_WhiteboardSnapshotEntry(before, region));
   }
 
   void _commitStrokeAdd(DrawingStroke stroke) {
@@ -3529,7 +3660,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _pushHistory(_WhiteboardStrokeAddEntry(stroke.clone()));
   }
 
-  void _restore(_WhiteboardSnapshot snap) {
+  void _restore(_WhiteboardSnapshot snap, {Rect? region}) {
     final before = _data.strokes.length;
     _markRestoreStrokeDirty(snap.$1);
     _data.strokes = snap.$1;
@@ -3537,13 +3668,30 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _data.taskBlocks = snap.$3;
     _data.textBlocks = snap.$4;
     _markCanvasDirty();
-    _strokesNeedFullPersist = true;
-    _overviewDirty = true;
+    // NO full persist here. A full replaceBlock rewrites EVERY stroke row — on a
+    // 60k board that's a ~16s main-thread freeze + memory spike → the OS kills the
+    // app (signal 9) on undo/redo. The incremental diff is enough: changed rows are
+    // flagged dirty (_markRestoreStrokeDirty → UPDATE), strokes that came back are
+    // resurrected by the insert pass (dbId not in _persistedStrokeIds → re-insert),
+    // and strokes the restore dropped are removed by the delete diff.
     _disposeFocus();
+    // The whole stroke list was swapped → the vector index must rebuild fully
+    // (its entries point at the old list). But only [region] changed visually, so
+    // the ring/overview only need patching there (not a full re-bake).
     _strokeTiles.rebuild(_data.strokes);
-    _scheduleOverviewBake();
+    if (region != null) {
+      // Index is rebuilt → the region holds the current ink: same crisp-handoff
+      // path as pen/eraser/lasso so undo/redo lands without the blurry hole.
+      _invalidateStrokeCaches(region);
+    } else {
+      _overviewDirty = true;
+      _chunkVersion++;
+      _scheduleOverviewBake(delay: const Duration(milliseconds: 16));
+      _scheduleChunkPump();
+    }
     CrashLogger.instance.note(
-      'PERF restore-pizarra: full, strokes $before->${_data.strokes.length}, '
+      'PERF restore-pizarra: region ${region == null ? 'FULL' : 'patch'}, '
+      'strokes $before->${_data.strokes.length}, '
       'tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
       'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
     );
@@ -3564,42 +3712,271 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
   }
 
-  void _commitGesture() {
+  void _commitGesture({Rect? region}) {
     if (_gestureBefore != null) {
-      _commitSnapshot(_gestureBefore!);
+      _commitSnapshot(_gestureBefore!, region: region);
       _gestureBefore = null;
     }
   }
 
   void _commitEraseGesture() {
     if (_gestureBefore != null && _gestureChanged) {
-      _commitSnapshot(_gestureBefore!);
+      if (_eraseNeedsGlobal) {
+        _invalidateStrokesGlobal();
+        _commitSnapshot(_gestureBefore!);
+      } else {
+        if (_eraseDirty != null) _invalidateStrokeCaches(_eraseDirty!);
+        _commitSnapshot(_gestureBefore!, region: _eraseDirty);
+      }
     }
     _gestureBefore = null;
     _gestureChanged = false;
+    _eraseDirty = null;
+    _eraseNeedsGlobal = false;
+  }
+
+  void _setChunkHandoff(
+    Iterable<DrawingStroke> strokes,
+    Rect region, {
+    bool overTiles = false,
+  }) {
+    final copies = <DrawingStroke>[for (final s in strokes) s.clone()];
+    _chunkHandoffStrokes = copies;
+    _chunkHandoffRegion = copies.isEmpty ? null : region;
+    _chunkHandoffOverTiles = overTiles;
+  }
+
+  void _addChunkHandoff(
+    DrawingStroke stroke,
+    Rect region, {
+    required bool overTiles,
+  }) {
+    if (_chunkHandoffStrokes.isEmpty ||
+        _chunkHandoffOverTiles != overTiles ||
+        _chunkHandoffRegion == null) {
+      _setChunkHandoff([stroke], region, overTiles: overTiles);
+      return;
+    }
+    _chunkHandoffStrokes = [..._chunkHandoffStrokes, stroke.clone()];
+    _chunkHandoffRegion = _chunkHandoffRegion!.expandToInclude(region);
+  }
+
+  void _clearChunkHandoff() {
+    if (_chunkHandoffOverTiles && _chunkRefreshKeys.isNotEmpty) return;
+    _chunkHandoffStrokes = const [];
+    _chunkHandoffRegion = null;
+    _chunkHandoffOverTiles = false;
+  }
+
+  void _appendStrokeCaches(DrawingStroke stroke, Rect region) {
+    if (_overviewDirty) {
+      _setChunkHandoff([stroke], region);
+      _invalidateStrokeCaches(region);
+      return;
+    }
+    final needsTileHandoff = _queueChunkRefreshRegion(region);
+    if (needsTileHandoff) {
+      _addChunkHandoff(stroke, region, overTiles: true);
+    }
+    _scheduleOverviewBake(delay: const Duration(milliseconds: 80));
+    _scheduleChunkPump();
   }
 
   /// Invalidate only the tiles the last selection edit touched: the union of the
   /// selection box BEFORE the edit and AFTER it, inflated to cover stroke width
   /// (a resize can scale ink well past the point bounds). Falls back to a full
   /// invalidate when neither box is known.
-  void _invalidateEditedTiles(Rect? before, Rect? after) {
+  /// Incremental move/resize/rotate commit: re-file ONLY the moved strokes in the
+  /// tile index (remove the pre-edit objects by identity, append the transformed
+  /// clones) and patch ONLY the edited region of the overview — instead of
+  /// rebuilding the whole index + re-baking the full overview (O(all strokes),
+  /// the pen-up hitch/crash on dense boards). The trade: a moved stroke draws on
+  /// top within its new tile (accepted). Falls back to a full invalidate when the
+  /// region is unknown.
+  void _invalidateEditedTilesIncremental(Rect? before, Rect? after) {
+    final newStrokes = <DrawingStroke>[
+      for (final i in _lassoCtrl.selectedIndices)
+        if (i < _data.strokes.length) _data.strokes[i],
+    ];
+    Rect? region = before;
+    if (after != null) {
+      region = region == null ? after : region.expandToInclude(after);
+    }
+    if (region == null || _preEditStrokes.isEmpty) {
+      // No usable delta → safe full path.
+      _invalidateEditedTiles(before, after);
+      return;
+    }
+    _strokeTiles.removeStrokes(_preEditStrokes);
+    if (newStrokes.isNotEmpty) _strokeTiles.appendAll(newStrokes);
+    _preEditStrokes = const [];
+    double maxW = 24;
+    for (final s in newStrokes) {
+      if (s.strokeWidth > maxW) maxW = s.strokeWidth;
+    }
+    // The index is already updated (removeStrokes + appendAll above), so the
+    // vector tiles show the moved ink crisp & correct. _invalidateStrokeCaches
+    // marks the overview dirty → the display rides those crisp tiles instead of
+    // the blurry ring overlay (the drop flash), while the ring/overview re-bake
+    // in the background. Images/blocks dragged alongside ride their own live
+    // layer, so a mixed selection is covered.
+    _invalidateStrokeCaches(region.inflate(maxW + 48));
+  }
+
+  /// A destructive stroke edit whose extent is [region]: move/resize/rotate/erase/
+  /// restore. These mutate already-baked ink, so the baked overview + ring are
+  /// stale and the append-only delta can't fix them. Mark the overview dirty so
+  /// the DISPLAY falls back to the crisp VECTOR TILES (already updated incremen-
+  /// tally, no ghost) instead of swapping to the ring overlay — that swap was the
+  /// blurry flash on drop. The ring/overview re-bake in the background (punch +
+  /// regional patch) and take the display back once crisp. NO handoff here: the
+  /// handoff is the pen's append-only path; using it on a destructive edit is what
+  /// pinned the display to the blurry overlay. O(region), never the whole board.
+  void _invalidateStrokeCaches(Rect region) {
+    // An edit means the user is focused on the content → crisp. Kill any leftover
+    // pan linger so the post-edit display doesn't briefly cave to the (blurry)
+    // overview because a pan happened in the last few hundred ms.
+    _overviewLinger = false;
+    _overviewLingerTimer?.cancel();
+    _overviewDirty = true;
+    _punchChunkRegion(region);
+    unawaited(_patchOverviewRegion(region));
+    _disposeFocus();
+    _scheduleChunkPump();
+  }
+
+  /// The old "nuke everything" behaviour, kept ONLY for structural resets with no
+  /// usable region: clear, full rebuild, region-less restore. Bumps the global
+  /// chunk version (every tile re-bakes) and re-bakes the whole overview.
+  void _invalidateStrokesGlobal() {
+    _overviewDirty = true;
+    _scheduleOverviewBake();
+    _disposeFocus();
+    _chunkRefreshKeys.clear();
+    _clearChunkHandoff();
+    _chunkVersion++;
+    _scheduleChunkPump();
+  }
+
+  /// Rebuild the overview image with ONLY [region] redrawn (old image blitted,
+  /// the region cleared and re-rendered from the now-current index). Same size /
+  /// bounds / count as before, so the overview stays "complete". Falls back to a
+  /// full bake when there's no image yet or one is already in flight.
+  Future<void> _patchOverviewRegion(Rect region) async {
+    final base = _overviewImage;
+    final bounds = _overviewBounds;
+    if (base == null || bounds == null) {
+      _overviewDirty = true;
+      _scheduleOverviewBake();
+      return;
+    }
+    if (_overviewBaking) {
+      // A bake/patch is already in flight → coalesce this region and retry the
+      // patch when it finishes (see _flushPendingPatch), instead of falling back
+      // to a full O(N) re-bake. Stays dirty until the retry lands.
+      _pendingPatchRegion =
+          _pendingPatchRegion == null
+              ? region
+              : _pendingPatchRegion!.expandToInclude(region);
+      _overviewDirty = true;
+      return;
+    }
+    // Edit pushed ink past the baked extent → the patch can't cover it. Full bake.
+    if (!bounds.contains(region.topLeft) ||
+        !bounds.contains(region.bottomRight)) {
+      _overviewDirty = true;
+      _scheduleOverviewBake();
+      return;
+    }
+    final clip = region.intersect(bounds);
+    if (clip.width <= 0 || clip.height <= 0) return;
+    _overviewBaking = true;
+    // Count at recording time: the patch image reflects exactly these strokes.
+    // Strokes appended during the async toImage() stay in the delta (their commit
+    // re-flags _overviewDirty via the _overviewBaking guard above).
+    final patchedCount = _data.strokes.length;
+    try {
+      final imgScale = base.width / bounds.width;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-bounds.left, -bounds.top);
+      canvas.drawImageRect(
+        base,
+        Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
+        bounds,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      canvas.save();
+      canvas.clipRect(clip);
+      canvas.drawRect(clip, Paint()..blendMode = BlendMode.clear);
+      _drawRegionCulled(canvas, clip);
+      canvas.restore();
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(base.width, base.height);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      // The overview was fully re-baked under us (different image) → our patch is
+      // stale; drop it.
+      if (!identical(_overviewImage, base)) {
+        image.dispose();
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => base.dispose());
+      _overviewImage = image;
+      _overviewDirty = false;
+      _clearChunkHandoff();
+      // The patched region was redrawn from the strokes present at record time and
+      // the rest of the image was already complete → the overview now reflects
+      // strokes[0..patchedCount). Sync bakedCount so the delta layer doesn't
+      // redraw the just-committed stroke ON TOP of the patched base (double-draw,
+      // visible on highlighter); anything appended mid-bake stays in the delta.
+      _overviewBakedCount = patchedCount;
+      CrashLogger.instance.note(
+        'PERF patch-overview-pizarra: region '
+        '${clip.width.toStringAsFixed(0)}x${clip.height.toStringAsFixed(0)}, '
+        'img ${base.width}x${base.height}',
+      );
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'patchOverview pizarra');
+    } finally {
+      _overviewBaking = false;
+      _flushPendingPatch();
+    }
+  }
+
+  /// Run a patch that was coalesced while another bake/patch was in flight.
+  void _flushPendingPatch() {
+    final r = _pendingPatchRegion;
+    if (r == null || !mounted) return;
+    _pendingPatchRegion = null;
+    unawaited(_patchOverviewRegion(r));
+  }
+
+  /// Non-incremental selection invalidate (mutate: color/width/delete/dup/flip).
+  /// Returns the inflated region touched (for the snapshot's undo region), or
+  /// null when it fell back to a full rebuild.
+  Rect? _invalidateEditedTiles(Rect? before, Rect? after) {
+    _preEditStrokes = const [];
     Rect? region = before;
     if (after != null) {
       region = region == null ? after : region.expandToInclude(after);
     }
     final selected = _lassoCtrl.selectedIndices.length;
     final forceRebuild = region == null || selected > 128;
-    _overviewDirty = true;
-    _disposeFocus();
     if (forceRebuild) {
       _strokeTiles.rebuild(_data.strokes);
+      _invalidateStrokesGlobal();
       CrashLogger.instance.note(
         'PERF lasso-tiles-pizarra: rebuild, selected $selected, '
         'strokes ${_data.strokes.length}, tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
         'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
       );
-      return;
+      return null;
     }
     double maxW = 24;
     for (final i in _lassoCtrl.selectedIndices) {
@@ -3610,6 +3987,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
     final inflated = region.inflate(maxW + 48);
     _strokeTiles.invalidateRegion(inflated, _data.strokes);
+    _invalidateStrokeCaches(inflated);
     CrashLogger.instance.note(
       'PERF lasso-tiles-pizarra: region, selected $selected, '
       'strokes ${_data.strokes.length}, rect ${inflated.left.toStringAsFixed(1)},'
@@ -3618,6 +3996,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       'tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
       'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
     );
+    return inflated;
   }
 
   void _lassoMutate(VoidCallback op) {
@@ -3632,11 +4011,55 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final dirtyBefore = _dirtyStrokeIds.length;
     final nullIdsBefore = _data.strokes.where((s) => s.dbId == null).length;
     _cloneSelectedStrokesInPlace();
+    final preEdit = _preEditStrokes; // originals (still in the index at OLD tiles)
+    // Clones that replaced the selection in-place (same geometry, kept dbId).
+    // After the op they're the "kept" strokes for color/width/flip/duplicate; for
+    // delete/cut the op drops them from _data.strokes (filtered out via liveSet).
+    final clones = <DrawingStroke>[
+      for (final i in _lassoCtrl.selectedIndices)
+        if (i < _data.strokes.length) _data.strokes[i],
+    ];
     final regionBefore = _lassoCtrl.boundingBox;
     op();
     final countAfterOp = _data.strokes.length;
-    _invalidateEditedTiles(regionBefore, _lassoCtrl.boundingBox);
-    _commitSnapshot(before);
+    // Incremental tile-index update — O(selection), NOT a full rebuild/region
+    // rescan O(all). Both old paths recomputed strokeBounds for every stroke
+    // (rebuild when selected>128, invalidateRegion(all) otherwise) → the 50-90ms
+    // lasso hitch on dense boards. Remove the pre-edit objects from their OLD
+    // tiles and re-file the post-edit objects in their NEW tiles.
+    Rect? region = regionBefore;
+    final after = _lassoCtrl.boundingBox;
+    if (after != null) {
+      region = region == null ? after : region.expandToInclude(after);
+    }
+    // Identity hash of the live list (cheap — no strokeBounds), so clones the op
+    // DELETED (delete/cut) are dropped from the re-index set instead of ghosting.
+    final liveSet = Set<DrawingStroke>.identity()..addAll(_data.strokes);
+    final added = <DrawingStroke>[];
+    final seen = Set<DrawingStroke>.identity();
+    for (final s in clones) {
+      if (liveSet.contains(s) && seen.add(s)) added.add(s);
+    }
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < _data.strokes.length) {
+        final s = _data.strokes[i];
+        if (seen.add(s)) added.add(s); // new copies (duplicate/paste)
+      }
+    }
+    _strokeTiles.removeStrokes(preEdit);
+    if (added.isNotEmpty) _strokeTiles.appendAll(added);
+    _preEditStrokes = const [];
+    if (region != null) {
+      double maxW = 24;
+      for (final s in added) {
+        if (s.strokeWidth > maxW) maxW = s.strokeWidth;
+      }
+      region = region.inflate(maxW + 48);
+      _invalidateStrokeCaches(region);
+    } else {
+      _invalidateStrokesGlobal();
+    }
+    _commitSnapshot(before, region: region);
     // Post-op selection: edited rows (color/width/flip) → UPDATE; new copies
     // (duplicate/paste, dbId == null) → insert pass; deleted → diff pass.
     _markSelectionDirty();
@@ -3659,20 +4082,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final entry = _undoStack.removeLast();
     setState(() {
       if (entry is _WhiteboardSnapshotEntry) {
-        _redoStack.add(_WhiteboardSnapshotEntry(_snapshot()));
-        _restore(entry.snapshot);
+        _redoStack.add(_WhiteboardSnapshotEntry(_snapshot(), entry.region));
+        _restore(entry.snapshot, region: entry.region);
       } else if (entry is _WhiteboardStrokeAddEntry &&
           _data.strokes.isNotEmpty) {
         final removed = _data.strokes.removeLast();
         _markCanvasDirty();
         _redoStack.add(_WhiteboardStrokeAddEntry(removed.clone()));
-        _strokeTiles.invalidateRegion(
-          strokeBounds(removed).inflate(removed.strokeWidth + 4),
-          _data.strokes,
-        );
-        _overviewDirty = true;
-        _disposeFocus();
-        _scheduleOverviewBake();
+        final region = strokeBounds(removed).inflate(removed.strokeWidth + 4);
+        _strokeTiles.invalidateRegion(region, _data.strokes);
+        _invalidateStrokeCaches(region);
         CrashLogger.instance.note(
           'PERF undo-pizarra: stroke-add undo, strokes ${_data.strokes.length}, '
           'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
@@ -3689,8 +4108,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final entry = _redoStack.removeLast();
     setState(() {
       if (entry is _WhiteboardSnapshotEntry) {
-        _undoStack.add(_WhiteboardSnapshotEntry(_snapshot()));
-        _restore(entry.snapshot);
+        _undoStack.add(_WhiteboardSnapshotEntry(_snapshot(), entry.region));
+        _restore(entry.snapshot, region: entry.region);
       } else if (entry is _WhiteboardStrokeAddEntry) {
         // Same instance in _data.strokes and the tile index (identity-based
         // lasso hide); the undo entry keeps its own independent clone.
@@ -3699,9 +4118,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _markCanvasDirty();
         _undoStack.add(_WhiteboardStrokeAddEntry(entry.stroke.clone()));
         _strokeTiles.append(restored);
-        _overviewDirty = true;
-        _disposeFocus();
-        _scheduleOverviewBake();
+        _invalidateStrokeCaches(
+          strokeBounds(restored).inflate(restored.strokeWidth + 4),
+        );
         CrashLogger.instance.note(
           'PERF redo-pizarra: stroke-add redo, strokes ${_data.strokes.length}, '
           'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
@@ -3714,7 +4133,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Future<void> _confirmClear() async {
-    if (_data.strokes.isEmpty && _dbStrokeBounds == null) return;
+    if (_data.strokes.isEmpty) return;
     final ok = await showDialog<bool>(
       context: context,
       builder:
@@ -3746,6 +4165,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final before = _snapshot();
       setState(() => _data.strokes = []);
       _strokeTiles.rebuild(_data.strokes);
+      _invalidateStrokesGlobal();
       _commitSnapshot(before);
       _strokesNeedFullPersist = true;
       _persist();
@@ -3770,23 +4190,23 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   Size _viewport = Size.zero;
+  // Cached so the async bake/chunk paths never call MediaQuery.of(context):
+  // a post-frame _chunkPump firing during teardown looked up a deactivated
+  // widget's context → crash on close (whiteboard:4050). Refreshed below.
+  double _dpr = 1.0;
 
   Rect? _contentBounds() {
     double minX = double.infinity, minY = double.infinity;
     double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-    final dbBounds = _dbStrokeBounds;
-    if (dbBounds != null) {
-      minX = dbBounds.left;
-      minY = dbBounds.top;
-      maxX = dbBounds.right;
-      maxY = dbBounds.bottom;
-    }
     for (final s in _data.strokes) {
-      for (final p in s.points) {
-        if (p[0] < minX) minX = p[0];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] < minY) minY = p[1];
-        if (p[1] > maxY) maxY = p[1];
+      final sp = s.points;
+      for (int i = 0; i < sp.length; i++) {
+        final x = sp.x(i);
+        final y = sp.y(i);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
     for (final im in _data.images) {
@@ -3811,11 +4231,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
-  /// Debounced re-bake of the zoomed-out overview after the ink settles.
-  void _scheduleOverviewBake() {
+  /// Debounced re-bake of the zoomed-out overview after the ink settles. The
+  /// 350ms debounce coalesces a stream of edits; discrete one-shot actions
+  /// (undo/redo) pass a short delay so the smooth overview returns fast instead
+  /// of leaving decimated (lod≥1) tiles showing — the "jagged for a bit".
+  void _scheduleOverviewBake({
+    Duration delay = const Duration(milliseconds: 350),
+  }) {
     _overviewBakePending = true;
     _overviewTimer?.cancel();
-    _overviewTimer = Timer(const Duration(milliseconds: 350), () {
+    _overviewTimer = Timer(delay, () {
       if (mounted) unawaited(_bakeOverview());
     });
   }
@@ -3845,20 +4270,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _overviewBakePending = true;
       return;
     }
-    if (_hydratingStrokes || _visibleHydrateRunning || _visibleHydrateQueued) {
-      _overviewBakePending = true;
-      CrashLogger.instance.note(
-        'PERF bake-overview-pizarra: skip hydration, '
-        'hydrating $_hydratingStrokes, visible $_visibleHydrateRunning, '
-        'queued $_visibleHydrateQueued, dirty $_overviewDirty, '
-        'strokes ${_data.strokes.length}, baked $_overviewBakedCount',
-      );
-      _overviewTimer?.cancel();
-      _overviewTimer = Timer(const Duration(milliseconds: 120), () {
-        if (mounted) unawaited(_bakeOverview());
-      });
-      return;
-    }
     _overviewBakePending = false;
     final fullBounds = _contentBounds();
     if (fullBounds == null || fullBounds.width <= 0 || fullBounds.height <= 0) {
@@ -3868,13 +4279,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _overviewThreshold = 0;
       _overviewBakedCount = 0;
       _overviewDirty = false;
+      _clearChunkHandoff();
       old0?.dispose();
       if (mounted) setState(() {});
       return;
     }
     _overviewBaking = true;
     try {
-      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final dpr = _dpr;
       const maxDim = 6144.0;
       const maxPixels = 36000000.0;
       final strokes = _data.strokes;
@@ -3926,8 +4338,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         );
         from = oldBaked;
       }
+      // Very dense board: decimate + don't cache paths. The overview is
+      // downsampled (decimation invisible), and NOT caching avoids retaining a
+      // Path per stroke — caching ~1M of them is what OOMs the open bake.
+      final frugal = (count - from) > _kOverviewFrugalThreshold;
+      final bakeLod = frugal ? 1 : 0;
       for (int i = from; i < count; i++) {
-        drawStroke(canvas, strokes[i]); // full fidelity — the master copy
+        drawStroke(canvas, strokes[i], lod: bakeLod, cache: !frugal);
       }
       final picture = recorder.endRecording();
       final image = await picture.toImage(w, h);
@@ -3946,6 +4363,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _overviewBounds = bounds;
       _overviewBakedCount = count;
       _overviewDirty = false; // fresh image matches _data → overview safe again
+      _clearChunkHandoff();
       // Only show the overview while it stays crisp: screen px (zoom·dpr) must
       // not exceed the image density. Capped so it never replaces the detailed
       // zoomed-in view.
@@ -3962,11 +4380,183 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     } finally {
       _overviewBaking = false;
       if (_overviewBakePending && mounted) {
+        // A full re-bake folds the whole list → any coalesced regional patch is
+        // superseded.
+        _pendingPatchRegion = null;
         _overviewTimer?.cancel();
         _overviewTimer = Timer(const Duration(milliseconds: 80), () {
           if (mounted) unawaited(_bakeOverview());
         });
+      } else {
+        _flushPendingPatch();
       }
+    }
+  }
+
+  // ─── Disk-cached overview ─────────────────────────────────────────────────
+  // The overview image is persisted next to the note's images. On reopen we blit
+  // the saved PNG instead of re-baking every stroke — the open-time win on dense
+  // boards (and it sidesteps the first-bake OOM on subsequent opens). Validated
+  // by (count, maxDbId): if the loaded strokes don't match the saved signature
+  // the cache is stale and ignored. Only ever saved when the overview is current
+  // (matches _data), so a loaded image always matches the loaded strokes.
+
+  Future<String?> _overviewDir() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      return p.join(dir.path, 'note_images', '${widget.note.id}');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  ({int count, int maxId}) _strokeSignature() {
+    var maxId = 0;
+    for (final s in _data.strokes) {
+      final id = s.dbId;
+      if (id != null && id > maxId) maxId = id;
+    }
+    return (count: _data.strokes.length, maxId: maxId);
+  }
+
+  /// Camera (#2a): persisted independently of the overview (overview.json gets
+  /// DELETED when stale, but the last view is always worth restoring). Just the
+  /// scale + translation of the InteractiveViewer matrix.
+  Future<Matrix4?> _loadCamera() async {
+    try {
+      final base = await _overviewDir();
+      if (base == null) return null;
+      final f = File(p.join(base, 'camera.json'));
+      if (!await f.exists()) return null;
+      final m = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+      final scale = (m['scale'] as num).toDouble();
+      final tx = (m['tx'] as num).toDouble();
+      final ty = (m['ty'] as num).toDouble();
+      if (!scale.isFinite || scale <= 0 || !tx.isFinite || !ty.isFinite) {
+        return null;
+      }
+      // Scale the Z axis too: getMaxScaleOnAxis() (= _viewScale, and what the
+      // InteractiveViewer clamps against) returns the MAX of the 3 axes. Leaving Z
+      // at 1.0 made a saved scale < 1.0 report as 1.0 → the IV snapped it back to
+      // 1.0 on apply (the intermittent "doesn't restore" when zoomed out at close).
+      return Matrix4.identity()
+        ..setEntry(0, 0, scale)
+        ..setEntry(1, 1, scale)
+        ..setEntry(2, 2, scale)
+        ..setEntry(0, 3, tx)
+        ..setEntry(1, 3, ty);
+    } catch (e) {
+      CrashLogger.instance.note('PERF load-camera-pizarra: NULL ($e)');
+      return null;
+    }
+  }
+
+  /// Save the camera. Takes a CLONE of the matrix because dispose() disposes
+  /// [_viewCtrl] before this async write runs.
+  Future<void> _saveCamera(Matrix4 m) async {
+    try {
+      final base = await _overviewDir();
+      if (base == null) return;
+      await Directory(base).create(recursive: true);
+      await File(p.join(base, 'camera.json')).writeAsString(
+        jsonEncode({
+          'scale': m.getMaxScaleOnAxis(),
+          'tx': m.storage[12],
+          'ty': m.storage[13],
+        }),
+      );
+    } catch (_) {}
+  }
+
+  /// Try to seed [_overviewImage] from disk. Returns true only on an EXACT match
+  /// with the loaded strokes (so no bake is needed). Stale/missing → false.
+  Future<bool> _loadDiskOverview() async {
+    try {
+      final base = await _overviewDir();
+      if (base == null || !mounted) return false;
+      final metaFile = File(p.join(base, 'overview.json'));
+      final imgFile = File(p.join(base, 'overview.png'));
+      if (!await metaFile.exists() || !await imgFile.exists()) return false;
+      final meta =
+          jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>;
+      final sig = _strokeSignature();
+      if ((meta['count'] as num).toInt() != sig.count ||
+          (meta['maxId'] as num).toInt() != sig.maxId) {
+        return false; // strokes changed since this overview was saved
+      }
+      final bytes = await imgFile.readAsBytes();
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      if (!mounted) {
+        image.dispose();
+        return false;
+      }
+      _overviewImage?.dispose();
+      _overviewImage = image;
+      _overviewBounds = Rect.fromLTRB(
+        (meta['l'] as num).toDouble(),
+        (meta['t'] as num).toDouble(),
+        (meta['r'] as num).toDouble(),
+        (meta['b'] as num).toDouble(),
+      );
+      _overviewBakedCount = sig.count;
+      _overviewThreshold = (meta['threshold'] as num).toDouble();
+      _overviewDirty = false;
+      CrashLogger.instance.note(
+        'PERF overview-disk-pizarra: load HIT, count ${sig.count}, '
+        'img ${image.width}x${image.height}',
+      );
+      setState(() {});
+      return true;
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'loadDiskOverview pizarra');
+      return false;
+    }
+  }
+
+  /// Persist the current overview (only when it's complete: matches _data and
+  /// clean) so a reopen can blit it instead of re-baking. If it's NOT current,
+  /// delete any stale file instead — a reopen must never blit a stale overview
+  /// (the signature can't tell apart two in-place-edited states of equal count).
+  Future<void> _saveDiskOverview() async {
+    final base = await _overviewDir();
+    if (base == null) return;
+    final pngFile = File(p.join(base, 'overview.png'));
+    final metaFile = File(p.join(base, 'overview.json'));
+    final image = _overviewImage;
+    final bounds = _overviewBounds;
+    final current =
+        image != null &&
+        bounds != null &&
+        !_overviewDirty &&
+        _overviewBakedCount == _data.strokes.length;
+    if (!current) {
+      try {
+        if (await pngFile.exists()) await pngFile.delete();
+        if (await metaFile.exists()) await metaFile.delete();
+      } catch (_) {}
+      return;
+    }
+    final sig = _strokeSignature();
+    try {
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (png == null) return;
+      await Directory(base).create(recursive: true);
+      await pngFile.writeAsBytes(png.buffer.asUint8List(), flush: true);
+      await metaFile.writeAsString(
+        jsonEncode({
+          'count': sig.count,
+          'maxId': sig.maxId,
+          'l': bounds.left,
+          't': bounds.top,
+          'r': bounds.right,
+          'b': bounds.bottom,
+          'threshold': _overviewThreshold,
+        }),
+      );
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'saveDiskOverview pizarra');
     }
   }
 
@@ -4019,11 +4609,44 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     }
     if (_settleStillFrames >= _settleStillFramesNeeded) {
       _stopSettleWatch();
-      if (_overviewLinger && mounted) {
-        setState(() => _overviewLinger = false);
-      }
       unawaited(_bakeFocus());
+      // Pre-load / refresh the chunk ring for the settled zoom (or free it if we
+      // dropped below the engage threshold). Budgeted; runs in stillness here.
+      _scheduleChunkPump();
+      // Hold the overview a ms grace, then drop to the crisp vector tiles (the
+      // micro-hitch lands here, in stillness — not during the gesture).
+      if (_overviewLinger) _armOverviewLingerDrop();
     }
+  }
+
+  /// Hold the overview [_kOverviewLingerGraceMs] after the view stops, then drop
+  /// to the crisp vector tiles. A new gesture cancels it (the overview stays up
+  /// across a burst of quick pans); the drop only fires once the user truly rests.
+  void _armOverviewLingerDrop() {
+    _overviewLingerTimer?.cancel();
+    _overviewLingerTimer = Timer(
+      const Duration(milliseconds: _kOverviewLingerGraceMs),
+      () {
+        _overviewLingerTimer = null;
+        if (!mounted ||
+            _viewGestureActive ||
+            _activePointers.isNotEmpty ||
+            _isDrawing) {
+          return;
+        }
+        if (_overviewLinger) setState(() => _overviewLinger = false);
+      },
+    );
+  }
+
+  /// Show the zoom-% readout and keep it up for a short window after the last zoom
+  /// change (so it doesn't flicker off between pinch frames / on release).
+  void _pingZoomLabel() {
+    _zoomLabelTimer?.cancel();
+    if (!_zoomLabelVisible && mounted) setState(() => _zoomLabelVisible = true);
+    _zoomLabelTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _zoomLabelVisible = false);
+    });
   }
 
   void _disposeFocus() {
@@ -4035,6 +4658,34 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _focusBounds = null;
     _focusScale = 0;
     _focusBakedCount = 0;
+  }
+
+  /// Draw the strokes overlapping [region], pulled from the spatial index
+  /// instead of scanning all of `_data.strokes`. On a dense board the full scan
+  /// is hundreds of ms even when the region is nearly empty (the zoom-in lag in
+  /// a sparse area), because it still touches every one of the ~569k strokes.
+  /// Per-tile, clipped to the tile rect, in insertion (= global z) order, so the
+  /// z-order is correct and disjoint tiles never double-blend. Returns the draw
+  /// count (logged by the focus bake).
+  int _drawRegionCulled(Canvas canvas, Rect region, {Set<DrawingStroke>? skip}) {
+    final ts = _strokeTiles.tileSize;
+    var drawn = 0;
+    for (final key in _strokeTiles.tilesInRect(region)) {
+      final list = _strokeTiles.strokesAt(key);
+      if (list == null || list.isEmpty) continue;
+      final tileRect = Rect.fromLTWH(key.$1 * ts, key.$2 * ts, ts, ts);
+      final clip = tileRect.intersect(region);
+      if (clip.width <= 0 || clip.height <= 0) continue;
+      canvas.save();
+      canvas.clipRect(clip);
+      for (final s in list) {
+        if (skip != null && skip.contains(s)) continue;
+        drawStroke(canvas, s);
+        drawn++;
+      }
+      canvas.restore();
+    }
+    return drawn;
   }
 
   /// Bake the high-res focus tile for the current view, culled to the strokes in
@@ -4063,7 +4714,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _disposeFocus();
       return;
     }
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = _dpr;
     final cap = _focusMaxDim / region.longestSide;
     // Region too large for a denser-than-base image (low zoom, near the
     // threshold) → the base already covers this view. Skip focus: avoids an
@@ -4098,11 +4749,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final canvas = Canvas(recorder);
       canvas.scale(imgScale);
       canvas.translate(-region.left, -region.top);
-      canvas.clipRect(region);
-      for (int i = 0; i < count; i++) {
-        final s = strokes[i];
-        if (strokeBounds(s).overlaps(region)) drawStroke(canvas, s);
-      }
+      final drawn = _drawRegionCulled(canvas, region);
       final picture = recorder.endRecording();
       final image = await picture.toImage(w, h);
       picture.dispose();
@@ -4119,16 +4766,248 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _focusScale = imgScale;
       _focusBakedCount = count;
       CrashLogger.instance.note(
-        'PERF bake-focus-pizarra: done, count $count, img ${w}x$h, '
-        'scale ${imgScale.toStringAsFixed(2)}, '
-        'region ${region.left.toStringAsFixed(1)},${region.top.toStringAsFixed(1)},'
-        '${region.width.toStringAsFixed(1)}x${region.height.toStringAsFixed(1)}',
+        'PERF bake-focus-pizarra: done, total $count drawn $drawn (culled), '
+        'img ${w}x$h, scale ${imgScale.toStringAsFixed(2)}',
       );
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakeFocus pizarra');
     } finally {
       _focusBaking = false;
+    }
+  }
+
+  // ── Chunk tile ring ────────────────────────────────────────────────────────
+
+  /// Engaged only past where the focus tile can still be baked at full screen
+  /// density (its overscan region tops out for large viewports / high zoom),
+  /// where panning softens. Below it (zoomed out, base overview crisp, or small
+  /// viewport where focus is pixel-perfect) chunks stay dormant.
+  bool get _chunkEngaged {
+    if (!_tilesEnabled || _viewport == Size.zero) return false;
+    if (_viewScale <= _overviewThreshold) {
+      return false; // base overview is crisp
+    }
+    final dpr = _dpr;
+    final regionLongest = _visibleRectFor(_viewport).longestSide * 2; // focus overscan
+    final cap = _focusMaxDim / regionLongest; // focus density ceiling
+    return _viewScale * dpr > cap * 1.03; // focus can't reach screen density
+  }
+
+  String _chunkKey(int gx, int gy) => '$gx:$gy';
+
+  /// Cells whose world rect overlaps viewport + ring, nearest-first, capped.
+  List<(int, int, Rect)> _wantedChunks(double tileWorld) {
+    final visible = _visibleRectFor(_viewport);
+    final ring = visible.inflate(visible.longestSide * _kChunkRingFactor);
+    final gx0 = (ring.left / tileWorld).floor();
+    final gy0 = (ring.top / tileWorld).floor();
+    final gx1 = (ring.right / tileWorld).ceil();
+    final gy1 = (ring.bottom / tileWorld).ceil();
+    final center = visible.center;
+    final out = <(int, int, Rect)>[];
+    for (int gy = gy0; gy < gy1; gy++) {
+      for (int gx = gx0; gx < gx1; gx++) {
+        final rect = Rect.fromLTWH(
+          gx * tileWorld,
+          gy * tileWorld,
+          tileWorld,
+          tileWorld,
+        );
+        if (rect.overlaps(ring)) out.add((gx, gy, rect));
+      }
+    }
+    out.sort(
+      (a, b) => (a.$3.center - center).distanceSquared.compareTo(
+        (b.$3.center - center).distanceSquared,
+      ),
+    );
+    // Cap the ring by a total-bytes budget (nearest-first already sorted, so we
+    // keep the cells around the viewport and drop the far overscan). Each cell is
+    // baked at <= _kChunkMaxTilePx, so per-tile bytes = min(physical, cap)² × 4.
+    final rawPx = tileWorld * _chunkGridScale * _dpr;
+    final tilePx = rawPx.clamp(1.0, _kChunkMaxTilePx.toDouble());
+    final tileBytes = tilePx * tilePx * 4;
+    final maxByMem = (_kChunkMemBudgetBytes / tileBytes).floor();
+    final cap = math.min(_kChunkMaxTiles, math.max(4, maxByMem));
+    if (out.length > cap) out.removeRange(cap, out.length);
+    return out;
+  }
+
+  /// Punch a hole in the ring: drop ONLY the chunk tiles overlapping [world] so
+  /// the pump re-bakes just those; every other tile keeps its cached raster and
+  /// keeps showing. Replaces the old global `_chunkVersion++` for stroke edits
+  /// whose extent is known. While the hole re-bakes, the overview base + delta
+  /// cover it (no visible gap).
+  /// Drop the stale ring cells overlapping [world] so the pump re-bakes them
+  /// fresh (the display meanwhile rides the vector tiles / overview base).
+  void _punchChunkRegion(Rect world) {
+    if (_chunkTiles.isEmpty) return;
+    var hit = false;
+    for (final key in _chunkTiles.keys.toList()) {
+      if (_chunkTiles[key]!.worldRect.overlaps(world)) {
+        final img = _chunkTiles.remove(key)!.image;
+        _chunkRefreshKeys.remove(key);
+        WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+        hit = true;
+      }
+    }
+    if (hit) _scheduleChunkPump();
+  }
+
+  bool _queueChunkRefreshRegion(Rect world) {
+    if (_chunkTiles.isEmpty) return false;
+    var hit = false;
+    for (final entry in _chunkTiles.entries) {
+      if (entry.value.version == _chunkVersion &&
+          entry.value.worldRect.overlaps(world)) {
+        _chunkRefreshKeys.add(entry.key);
+        hit = true;
+      }
+    }
+    if (hit) _scheduleChunkPump();
+    return hit;
+  }
+
+  void _disposeAllChunks() {
+    if (_chunkTiles.isEmpty) return;
+    for (final t in _chunkTiles.values) {
+      final img = t.image;
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+    _chunkTiles.clear();
+    _chunkRefreshKeys.clear();
+    _clearChunkHandoff();
+    _chunkTileWorld = 0;
+  }
+
+  void _scheduleChunkPump() {
+    if (_chunkPumpScheduled || !mounted) return;
+    _chunkPumpScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chunkPumpScheduled = false;
+      unawaited(_chunkPump());
+    });
+  }
+
+  /// Budgeted baker: keeps the ring filled around the viewport, baking a few
+  /// tiles per frame nearest-first (runs DURING pan, not only at rest). Drawing
+  /// / lasso own the main isolate → it backs off for them. Re-anchors the grid
+  /// to a new zoom only when settled (mid zoom-gesture the pyramid covers it).
+  Future<void> _chunkPump() async {
+    if (!mounted) return;
+    if (_isDrawing ||
+        _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating) {
+      return;
+    }
+    if (!_chunkEngaged || _viewport == Size.zero || _data.strokes.isEmpty) {
+      _disposeAllChunks();
+      return;
+    }
+    final visible = _visibleRectFor(_viewport);
+    final scaleChanged =
+        _chunkTileWorld <= 0 ||
+        (_viewScale - _chunkGridScale).abs() / _viewScale > 0.02;
+    if (scaleChanged) {
+      // During an active zoom gesture the scale changes every frame; re-anchoring
+      // per frame would thrash. Defer to settle — the pyramid covers the gap.
+      if (_viewGestureActive) return;
+      _chunkGridScale = _viewScale;
+      _chunkTileWorld = visible.longestSide / _kChunkTilesAcross;
+      _chunkRefreshKeys.clear();
+      _clearChunkHandoff();
+      _chunkVersion++;
+    }
+    final tileWorld = _chunkTileWorld;
+    final wanted = _wantedChunks(tileWorld);
+    final wantedKeys = wanted.map((c) => _chunkKey(c.$1, c.$2)).toSet();
+    for (final key in _chunkTiles.keys.toList()) {
+      if (!wantedKeys.contains(key)) {
+        final img = _chunkTiles.remove(key)!.image;
+        _chunkRefreshKeys.remove(key);
+        WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+      }
+    }
+    var baked = 0;
+    for (final (gx, gy, rect) in wanted) {
+      if (baked >= _kChunkPerFrame) break;
+      final key = _chunkKey(gx, gy);
+      final existing = _chunkTiles[key];
+      final refresh = _chunkRefreshKeys.contains(key);
+      if (existing != null && existing.version == _chunkVersion && !refresh) {
+        continue;
+      }
+      if (_chunkBaking.contains(key)) continue;
+      baked++;
+      await _bakeChunk(gx, gy, rect, tileWorld);
+      if (_isDrawing) break; // a draw started during the await → yield
+    }
+    final hasPending = wanted.any((c) {
+      final t = _chunkTiles[_chunkKey(c.$1, c.$2)];
+      final key = _chunkKey(c.$1, c.$2);
+      return t == null ||
+          t.version != _chunkVersion ||
+          _chunkRefreshKeys.contains(key);
+    });
+    if (hasPending && _chunkEngaged) _scheduleChunkPump();
+  }
+
+  /// Bake one cell at the EXACT anchored zoom (1:1 with the screen → zero blur),
+  /// ink-only, world-anchored, culled to the strokes overlapping the cell (the
+  /// infinite-canvas analog of the notebook's per-page loop). Same `drawStroke`
+  /// path as base/focus so tile↔base edges match chromatically.
+  Future<void> _bakeChunk(int gx, int gy, Rect cell, double tileWorld) async {
+    final key = _chunkKey(gx, gy);
+    if (_chunkBaking.contains(key) || !mounted) return;
+    final version = _chunkVersion;
+    final refresh = _chunkRefreshKeys.contains(key);
+    final dpr = _dpr;
+    var imgScale = _chunkGridScale * dpr;
+    var px = (tileWorld * imgScale).round();
+    if (px <= 0) return;
+    // Density ceiling: above _kChunkMaxTilePx bake at reduced scale (drawImageRect
+    // stretches it to fill the cell). The focus tile keeps the live viewport
+    // crisp; the ring only carries pan-headroom, so slight softness is invisible
+    // until a soft cell becomes the focus — and it stops the per-cell 48MB OOM.
+    if (px > _kChunkMaxTilePx) {
+      imgScale = imgScale * _kChunkMaxTilePx / px;
+      px = _kChunkMaxTilePx;
+    }
+    _chunkBaking.add(key);
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-cell.left, -cell.top); // world → cell-local
+      _drawRegionCulled(canvas, cell);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(px, px);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _chunkTiles[key];
+      if (old != null) {
+        final oldImg = old.image;
+        WidgetsBinding.instance.addPostFrameCallback((_) => oldImg.dispose());
+      }
+      _chunkTiles[key] = _WbChunkTile(
+        cell,
+        version,
+        image,
+        DateTime.now().millisecondsSinceEpoch - (refresh ? _kChunkFadeMs : 0),
+      );
+      _chunkRefreshKeys.remove(key);
+      _clearChunkHandoff();
+      if (!refresh) _chunkFadeCtrl.forward(from: 0);
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeChunk pizarra');
+    } finally {
+      _chunkBaking.remove(key);
     }
   }
 
@@ -4160,7 +5039,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _zoomSnapshotPending = false;
     _zoomSnapshotBaking = true;
     try {
-      final dpr = MediaQuery.of(context).devicePixelRatio;
+      final dpr = _dpr;
       final image = await boundary.toImage(pixelRatio: dpr);
       if (!mounted) {
         image.dispose();
@@ -4184,13 +5063,26 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   bool _viewInitialized = false;
 
-  /// Open centered: a new (empty) whiteboard lands on the canvas centre — far
-  /// from the real 10k×10k edges — instead of the top-left corner, so the user
-  /// never bumps into the boundary in normal use. An existing board centres on
-  /// its content. Runs once, after the data and viewport are both ready.
+  /// Camera (view matrix) restored from disk on open (#2a). Set in
+  /// [_ensureCanvasBlock] BEFORE the data setState, so [_maybeInitView] can land
+  /// the user exactly where they left off instead of re-centring.
+  Matrix4? _savedCamera;
+
+  /// Open where you left off: if a saved camera exists, restore it. Else a new
+  /// (empty) whiteboard lands on the canvas centre — far from the real 10k×10k
+  /// edges — instead of the top-left corner; an existing board centres on its
+  /// content. Runs once, after the data and viewport are both ready.
   void _maybeInitView() {
     if (_viewInitialized || _blockId == null || _viewport == Size.zero) return;
     _viewInitialized = true;
+    final cam = _savedCamera;
+    if (cam != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _viewCtrl.value = cam;
+      });
+      return;
+    }
     final box = _contentBounds();
     final cx = box?.center.dx ?? _kCanvasW / 2;
     final cy = box?.center.dy ?? _kCanvasH / 2;
@@ -4298,11 +5190,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final strokes = _data.strokes;
     final images = _data.images;
     final imageCache = _imgCache;
+    final double pixelRatio = MediaQuery.of(context).devicePixelRatio;
+    const double maxLiftDim = 2048;
+    var captureScale = _viewScale * pixelRatio;
+    final double longest = math.max(bb.width, bb.height) * captureScale;
+    if (longest > maxLiftDim) captureScale *= maxLiftDim / longest;
 
     try {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
+      canvas.scale(captureScale);
       canvas.translate(-bb.left, -bb.top);
 
       for (final i in selectedImageIndices) {
@@ -4320,8 +5218,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       }
 
       final picture = recorder.endRecording();
-      final width = bb.width.ceil();
-      final height = bb.height.ceil();
+      final width = (bb.width * captureScale).ceil();
+      final height = (bb.height * captureScale).ceil();
       final img = await picture.toImage(
         width > 0 ? width : 1,
         height > 0 ? height : 1,
@@ -4329,15 +5227,77 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       picture.dispose();
 
       if (mounted &&
-          _lassoCtrl.phase == LassoPhase.moving &&
+          _kLassoGesturePhases.contains(_lassoCtrl.phase) &&
           _lassoCtrl.boundingBox == bb) {
+        final old = _lassoCtrl.liftedInk;
         _lassoCtrl.liftedInk = img;
         _lassoCtrl.liftedRect = bb;
+        if (old != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+        }
         _lassoGestureTick.value++;
       } else {
         img.dispose();
       }
     } catch (_) {}
+  }
+
+  Future<void> _bakeLassoBackground() async {
+    if (_lassoBgBaking || !mounted || _viewport == Size.zero) return;
+    final strokes = _data.strokes;
+    final skip = Set<DrawingStroke>.identity();
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < strokes.length) skip.add(strokes[i]);
+    }
+    final visible = _visibleRectFor(_viewport);
+    final region = visible.intersect(
+      const Rect.fromLTWH(0, 0, _kCanvasW, _kCanvasH),
+    );
+    if (region.width <= 0 || region.height <= 0) {
+      _disposeLassoBg();
+      return;
+    }
+    final dpr = _dpr;
+    final cap = _focusMaxDim / region.longestSide;
+    final imgScale = math.min(_viewScale * dpr, cap);
+    if (imgScale <= 0) return;
+    _lassoBgBaking = true;
+    try {
+      final w = (region.width * imgScale).ceil();
+      final h = (region.height * imgScale).ceil();
+      if (w <= 0 || h <= 0) return;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-region.left, -region.top);
+      _drawRegionCulled(canvas, region, skip: skip);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(w, h);
+      picture.dispose();
+      if (!mounted || !_kLassoGesturePhases.contains(_lassoCtrl.phase)) {
+        image.dispose();
+        return;
+      }
+      final old = _lassoBgImage;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _lassoBgImage = image;
+      _lassoBgRect = region;
+      _lassoPhaseTick.value++;
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeLassoBg pizarra');
+    } finally {
+      _lassoBgBaking = false;
+    }
+  }
+
+  void _disposeLassoBg() {
+    final img = _lassoBgImage;
+    if (img == null) return;
+    _lassoBgImage = null;
+    _lassoBgRect = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
   }
 
   Color get _accent => widget.note.color ?? widget.folder.color;
@@ -4391,7 +5351,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // Beyond this many visible tiles (zoomed way out) the per-tile RepaintBoundary
   // overhead isn't worth it — ink is tiny on screen anyway — so fall back to a
   // single direct painter.
-  static const int _kMaxLiveTiles = 48;
+  // Above this many visible stroke-tiles the viewport is too dense / zoomed out to
+  // mount live tiles → use the (bounded) overview instead. Kept well above a normal
+  // working zoom (~20-48 tiles) so editing stays on crisp tiles across the whole
+  // comfortable range; only a real zoom-out crosses it, which also stops the whole
+  // 10k canvas rendering as raw tiles.
+  static const int _kMaxLiveTiles = 140;
 
   /// The zoomed-out overview: the cached ink image positioned in world space
   /// (the InteractiveViewer scales it), plus any strokes added since the last
@@ -4463,7 +5428,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // Rebuilds on pan/zoom, lasso phase, and any ink change (the index is a
       // ChangeNotifier). Each rebuild just re-emits tile widgets (cheap); only
       // tiles whose version changed actually re-rasterize.
-      animation: Listenable.merge([_viewCtrl, _lassoPhaseTick, _strokeTiles]),
+      animation: Listenable.merge([
+        _viewCtrl,
+        _lassoPhaseTick,
+        _strokeTiles,
+        _chunkFadeCtrl,
+      ]),
       builder: (_, _) {
         if (_zoomGestureActive && _zoomSnapshotImage != null) {
           _overviewActive = false;
@@ -4473,10 +5443,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             renderRect: _visibleRectFor(viewport),
             tileCount: 0,
             inGesture: false,
-            hydrationActive:
-                _hydratingStrokes ||
-                _visibleHydrateRunning ||
-                _visibleHydrateQueued,
+            hydrationActive: false,
             canOverview: false,
             lod: lodForScale(_viewScale),
           );
@@ -4498,42 +5465,152 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         // Decimate stroke detail when zoomed out so dense tiles rasterize fast.
         final lod = lodForScale(_viewScale);
 
+        final lassoBg = _lassoBgImage;
+        final lassoBgRect = _lassoBgRect;
+        if (inGesture && lassoBg != null && lassoBgRect != null) {
+          _overviewActive = false;
+          _strokeFallbackActive = false;
+          _logWhiteboardLayerDecision(
+            'lasso-bg',
+            renderRect: renderRect,
+            tileCount: tileKeys.length,
+            inGesture: inGesture,
+            hydrationActive: false,
+            canOverview: false,
+            lod: lod,
+          );
+          return Positioned.fromRect(
+            rect: lassoBgRect,
+            child: IgnorePointer(
+              child: RawImage(
+                image: lassoBg,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.medium,
+              ),
+            ),
+          );
+        }
+
         // Zoomed-out overview: blit the cached ink image instead of re-drawing
         // every stroke per frame. Skipped during a lasso gesture (the image
         // can't hide the live selection) → tiles take over there.
         final overview = _overviewImage;
-        final hydrationActive =
-            _hydratingStrokes ||
-            _visibleHydrateRunning ||
-            _visibleHydrateQueued;
+        final hydrationActive = false;
+        final handoffActive =
+            _chunkHandoffRegion != null && _chunkHandoffStrokes.isNotEmpty;
         final canOverview =
             overview != null &&
             _overviewBounds != null &&
             !inGesture &&
-            !_overviewDirty &&
+            (!_overviewDirty || (handoffActive && _chunkEngaged)) &&
             !hydrationActive;
         // Show the overview whenever it's crisp (zoomed out), under tile
         // pressure, OR through ANY moving view gesture + the post-fling linger
         // (the focus tile keeps it crisp when zoomed in). Mirrors the notebook.
+        // P1 — ring persists at rest: when the chunk ring is engaged (zoomed in),
+        // keep the ring overlay even at rest instead of flipping the whole
+        // viewport to freshly-mounted vector tiles (the re-path hitch on settle).
+        // The overlay fills any not-yet-baked cell with base+delta (the pyramid),
+        // so a just-punched hole shows a brief blur, never a frame stall — and the
+        // pump re-bakes that cell within a few frames. The total ring is memory-
+        // capped (see _kChunkMemBudgetBytes) so it can't OOM. Suppressed during an
+        // The overview/ring raster is a GESTURE-TIME layer only: shown while
+        // zoomed out (base is crisp there), under tile pressure (too many live
+        // tiles to raster per frame), during an active pan/zoom, or through the
+        // post-gesture linger (a ms grace so a burst of quick pans doesn't drop to
+        // vector tiles between touches — that re-mount is the micro-hitch). AT REST
+        // (zoomed in, gesture done, linger expired) the display is the crisp vector
+        // tiles, so a destructive edit mutates them IN PLACE — no layer swap, no
+        // blurry flash, no ghost (the pen's no-blur property, generalised to every
+        // edit). Removed the old "ring persists at rest" term: keeping the raster
+        // up at rest is exactly what made edits swap to the blurry overlay.
         _overviewActive =
             canOverview &&
             (_viewScale < _overviewThreshold ||
                 _strokeFallbackActive ||
                 _viewTransformActive ||
                 _overviewLinger);
+        // High-zoom chunk ring (pyramid L0): full-res world tiles composited OVER
+        // the base+focus, per-cell. Schedule the baker whenever engaged (also
+        // pre-loads at rest) or when tiles still need freeing after dropping below
+        // the threshold.
+        if (_chunkEngaged || _chunkTiles.isNotEmpty) _scheduleChunkPump();
+
         if (_overviewActive) {
           final delta = math.max(0, _data.strokes.length - _overviewBakedCount);
-          _logWhiteboardLayerDecision(
-            'overview',
-            renderRect: renderRect,
-            tileCount: tileKeys.length,
-            inGesture: inGesture,
-            hydrationActive: hydrationActive,
-            canOverview: canOverview,
-            lod: lod,
-            delta: delta,
-          );
-          return _overviewStrokeLayer(overview!, renderRect);
+          // Base/focus + delta only in the holes (even-odd clip), tiles on top →
+          // zero doubling/seam. A stroke edit punches only the touched cells out
+          // of the ring (per-tile, not a global version bump), so the rest keep
+          // showing while the base+delta fills the hole until the pump re-bakes it.
+          if (_chunkEngaged && _overviewBounds != null) {
+            final curTiles = <_WbChunkTile>[];
+            for (final t in _chunkTiles.values) {
+              if (t.version == _chunkVersion &&
+                  t.worldRect.overlaps(renderRect)) {
+                curTiles.add(t);
+              }
+            }
+            if (curTiles.isNotEmpty) {
+              _logWhiteboardLayerDecision(
+                'ov-overlay',
+                renderRect: renderRect,
+                tileCount: tileKeys.length,
+                inGesture: inGesture,
+                hydrationActive: hydrationActive,
+                canOverview: canOverview,
+                lod: lod,
+                delta: delta,
+                chunkAll: _chunkTiles.length,
+                chunkCur: curTiles.length,
+              );
+              final baked = _overviewBakedCount.clamp(0, _data.strokes.length);
+              final deltaStrokes =
+                  baked < _data.strokes.length
+                      ? _data.strokes.sublist(baked)
+                      : null;
+              return Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _WhiteboardChunkOverlayPainter(
+                        baseImage: overview!,
+                        baseBounds: _overviewBounds!,
+                        focusImage: _focusImage,
+                        focusBounds: _focusBounds,
+                        delta: deltaStrokes,
+                        tiles: curTiles,
+                        visibleWorld: renderRect,
+                        dirtyWorld: _overviewDirty ? _chunkHandoffRegion : null,
+                        handoff:
+                            _chunkHandoffStrokes.isEmpty
+                                ? null
+                                : _chunkHandoffStrokes,
+                        handoffOverTiles: _chunkHandoffOverTiles,
+                      ),
+                      size: const Size(_kCanvasW, _kCanvasH),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          if (_overviewDirty) {
+            _overviewActive = false;
+          } else {
+            _logWhiteboardLayerDecision(
+              'ov-stroke',
+              renderRect: renderRect,
+              tileCount: tileKeys.length,
+              inGesture: inGesture,
+              hydrationActive: hydrationActive,
+              canOverview: canOverview,
+              lod: lod,
+              delta: delta,
+              chunkAll: _chunkTiles.length,
+              chunkCur: 0,
+            );
+            return _overviewStrokeLayer(overview!, renderRect);
+          }
         }
 
         if (_strokeFallbackActive) {
@@ -4592,6 +5669,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           canOverview: canOverview,
           lod: lod,
         );
+        // At rest: ONLY the live vector tiles over the paper layer (max sharpness).
+        // No overview base underneath — the stroke tiles are transparent between
+        // ink, so a blurry base under them bleeds through the gaps = blur at rest
+        // (exactly the bug). "What you don't see = overview" is the during-pan
+        // path (_viewTransformActive → overview); at rest you don't see headroom.
         return Positioned.fill(
           child: IgnorePointer(
             child: Stack(
@@ -4943,25 +6025,25 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                     onPointerCancel: _onCancel,
                                     child: InteractiveViewer(
                                       transformationController: _viewCtrl,
-                                      minScale: 0.3,
+                                      minScale: 0.5,
                                       maxScale: 4.0,
                                       onInteractionStart: (details) {
-                                        if (_hydratingStrokes) {
-                                          _viewChangedDuringHydration = true;
-                                        }
                                         _viewGestureActive = true;
                                         _viewMoved = false;
                                         _zoomGestureActive = false;
                                         _zoomGestureSeen = false;
                                         _zoomGestureScale = 1;
                                         // New gesture interrupts the prior fling's
-                                        // settle watch (re-armed on its end); the
-                                        // overview stays up across the chain.
+                                        // settle watch (re-armed on its end) and its
+                                        // linger-drop grace; the overview stays up
+                                        // across the whole burst of pans.
                                         _stopSettleWatch();
+                                        _overviewLingerTimer?.cancel();
                                       },
                                       onInteractionUpdate: (details) {
                                         final zooming =
                                             (details.scale - 1.0).abs() > 0.01;
+                                        if (zooming) _pingZoomLabel();
                                         if (!_viewMoved &&
                                             (zooming ||
                                                 details
@@ -4974,11 +6056,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                           if (mounted) setState(() {});
                                         }
                                         _zoomGestureScale = details.scale;
-                                        _zoomGestureCurrentFocal =
-                                            details.localFocalPoint;
                                         if (zooming && !_zoomGestureSeen) {
                                           _zoomGestureSeen = true;
                                           _zoomGestureActive = true;
+                                          _zoomGestureScale = 1;
                                           if (mounted) setState(() {});
                                         } else if (_zoomGestureActive) {
                                           if (mounted) setState(() {});
@@ -5008,7 +6089,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                             resetPos: false,
                                           );
                                         }
-                                        _refreshVisibleHydration();
                                       },
                                       boundaryMargin: EdgeInsets.symmetric(
                                         horizontal: c.maxWidth,
@@ -5182,6 +6262,46 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                   worldRect: _marqueeWorld,
                                   onConfirm: _confirmMarquee,
                                   onCancel: _cancelMarquee,
+                                ),
+                              ),
+                            // Zoom-% readout: centred just above the toolbar, only
+                            // while pinch-zooming (fades out shortly after).
+                            if (_zoomLabelVisible)
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 14,
+                                child: IgnorePointer(
+                                  child: Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: yCream,
+                                        border: Border.all(
+                                          color: yBorderStrong,
+                                          width: yLineMid,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: yBorderStrong,
+                                            offset: Offset(2, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        '[ ${(_viewScale * 100).round()} % ]',
+                                        style: yMono(
+                                          size: 11,
+                                          weight: FontWeight.w700,
+                                          tracking: 1.5,
+                                          color: yInk,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                           ],

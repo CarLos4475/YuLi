@@ -7,10 +7,10 @@ void main() {
   DrawingStroke strokeAt(double x, double y) => DrawingStroke(
         colorValue: 0xFF000000,
         strokeWidth: 3,
-        points: [
+        points: StrokePoints.fromNested([
           [x, y],
           [x + 40, y + 10],
-        ],
+        ]),
       );
 
   bool indexed(StrokeTileIndex idx, DrawingStroke s) {

@@ -371,11 +371,16 @@ class FountainPenEngine {
   /// preview and the baked render so they are pixel-identical (no jump / shrink
   /// when the pen lifts). Input: raw `[x, y, pressure, timestamp]` points.
   static (List<Offset>, List<double>) bakeGeometry(
-      List<List<double>> raw, double strokeWidth,
+      StrokePoints raw, double strokeWidth,
       {double viewScale = 1.0}) {
-    final rawPts = raw.map((p) => Offset(p[0], p[1])).toList();
-    final pressures = raw.map((p) => p.length > 2 ? p[2] : 0.5).toList();
-    final timestamps = raw.map((p) => p.length > 3 ? p[3].toInt() : 0).toList();
+    final rawPts = raw.toOffsets();
+    final pressures = [
+      for (int i = 0; i < raw.length; i++) raw.comps > 2 ? raw.z(i) : 0.5,
+    ];
+    final timestamps = [
+      for (int i = 0; i < raw.length; i++)
+        raw.comps > 3 ? raw.comp(i, 3).toInt() : 0,
+    ];
 
     // Decimation distance is in WORLD pixels, but the gesture is perceptual:
     // zoomed in, a normal-looking letter occupies few world pixels, so a fixed
@@ -414,7 +419,7 @@ class FountainPenEngine {
 
   /// Tessellated path for an in-progress (raw) fountain stroke — same geometry
   /// the finished stroke will have.
-  static Path rawFountainPath(List<List<double>> raw, double strokeWidth,
+  static Path rawFountainPath(StrokePoints raw, double strokeWidth,
       {double viewScale = 1.0}) {
     final (centerline, widths) =
         bakeGeometry(raw, strokeWidth, viewScale: viewScale);
@@ -430,9 +435,9 @@ class FountainPenEngine {
     final (centerline, widths) =
         bakeGeometry(active.points, active.strokeWidth, viewScale: viewScale);
 
-    final baked = <List<double>>[];
+    final baked = StrokePoints(comps: 3);
     for (int i = 0; i < centerline.length; i++) {
-      baked.add([centerline[i].dx, centerline[i].dy, widths[i]]);
+      baked.add(centerline[i].dx, centerline[i].dy, widths[i]);
     }
 
     return DrawingStroke(

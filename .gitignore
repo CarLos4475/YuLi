@@ -88,3 +88,8 @@ node_modules/
 
 # Math OCR model training (local, no Mathpix)
 math_model/
+
+# Notas internas de desarrollo (no van al repo)
+OptimizacionPendiente.md
+lib/presentation/screens/flight/NUKES.md
+lib/presentation/screens/flight/NUKES_NOTEBOOK.md

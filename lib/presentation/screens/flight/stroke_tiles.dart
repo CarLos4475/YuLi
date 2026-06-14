@@ -93,6 +93,45 @@ class StrokeTileIndex extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove specific strokes (by identity) from the tiles their CURRENT bounds
+  /// overlap. Used as the first half of an incremental move/resize/rotate commit:
+  /// pass the PRE-edit stroke objects (untouched originals) so their cached
+  /// bounds still point at the OLD position. O(strokes × tiles each spans), not
+  /// O(all). Pair with [appendAll] of the post-edit objects.
+  void removeStrokes(Iterable<DrawingStroke> strokes) {
+    final touched = <(int, int)>{};
+    for (final s in strokes) {
+      for (final k in _keysIn(strokeBounds(s))) {
+        final list = _tiles[k];
+        if (list == null) continue;
+        final before = list.length;
+        list.removeWhere((e) => identical(e, s));
+        if (list.length != before) {
+          touched.add(k);
+          if (list.isEmpty) _tiles.remove(k);
+        }
+      }
+    }
+    if (touched.isNotEmpty) {
+      _bump(touched);
+      notifyListeners();
+    }
+  }
+
+  /// Add several strokes to the tiles their current bounds overlap. Appended at
+  /// the tail of each bucket → a moved/edited stroke draws on top within its new
+  /// tile (the deliberate trade for an O(selection) commit vs a full rebuild).
+  void appendAll(Iterable<DrawingStroke> strokes) {
+    final touched = <(int, int)>{};
+    for (final s in strokes) {
+      _index(s, touched);
+    }
+    if (touched.isNotEmpty) {
+      _bump(touched);
+      notifyListeners();
+    }
+  }
+
   void clear() {
     final touched = <(int, int)>{..._tiles.keys};
     _tiles.clear();

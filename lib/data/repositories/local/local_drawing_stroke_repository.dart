@@ -65,10 +65,14 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     int blockId,
   ) => _db.drawingStrokesDao.debugStatsByBlock(blockId);
 
-  List<DrawingStrokeRecord> _recordsFromRows(List<DrawingStrokeRow> rows) {
+  List<DrawingStrokeRecord> _recordsFromRows(List<QueryRow> rows) {
     return [
       for (final r in rows)
-        DrawingStrokeRecord(id: r.id, position: r.position, data: r.data),
+        DrawingStrokeRecord(
+          id: r.read<int>('id'),
+          position: r.read<int>('position'),
+          data: r.read<Uint8List>('data'),
+        ),
     ];
   }
 
@@ -115,7 +119,7 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
       strokes.map((s) => _toCompanion(blockId, s)).toList(),
     );
     final rows = await _db.drawingStrokesDao.getByBlock(blockId);
-    return rows.map((r) => r.id).toList();
+    return rows.map((r) => r.read<int>('id')).toList();
   }
 
   @override

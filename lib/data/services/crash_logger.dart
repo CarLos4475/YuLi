@@ -17,6 +17,18 @@ class CrashLogger {
   File? _file;
   Future<void> _writeTail = Future.value();
   static const _maxBytes = 256 * 1024; // ~256 KB, then trimmed to half
+  // Mirror every entry to logcat (tag 'flutter') so logs are readable with
+  // `adb logcat -s flutter` even on a non-debuggable release APK. OFF by default:
+  // the synchronous print() per entry adds churn on hot paths (the whiteboard
+  // logged a layer decision per frame). Flip to true to debug; the file stays the
+  // durable, shareable record either way.
+  static const bool _mirrorToLogcat = false;
+  void _logcat(String message) {
+    // Flutter routes stdout to logcat (tag 'flutter') even in release, unlike
+    // dart:developer.log (service-protocol only → invisible in release).
+    // ignore: avoid_print
+    if (_mirrorToLogcat) print('YULILOG $message');
+  }
 
   Future<void> init() async {
     try {
@@ -44,12 +56,14 @@ class CrashLogger {
           ..writeln(error.toString())
           ..writeln(stack?.toString() ?? '(sin stack trace)')
           ..writeln();
+    _logcat('ERROR${context.isEmpty ? '' : ' · $context'}: $error');
     _appendRaw(entry.toString());
   }
 
   /// Lightweight timestamped note (diagnostics / perf instrumentation). Like
   /// [record] but for plain messages, not errors. Fire-and-forget, never throws.
   void note(String message) {
+    _logcat(message);
     _appendRaw('[${DateTime.now().toIso8601String()}] $message\n');
   }
 

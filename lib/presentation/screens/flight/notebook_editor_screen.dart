@@ -95,6 +95,93 @@ class _ViewportRasterTile {
   });
 }
 
+/// Composites the high-zoom overview when the chunk ring is engaged: per-cell,
+/// the base/focus image (+ post-bake delta strokes) fills only the holes where
+/// no tile is ready (even-odd clip), then the full-res tiles draw on top. The
+/// clip is what prevents the base and a tile drawing the same ink twice (the
+/// "tint"/halo of the earlier single-rectangle attempt). All in world coords.
+class _NotebookChunkOverlayPainter extends CustomPainter {
+  final List<int> pageBlockIds;
+  final Map<int, DrawingData> pageData;
+  final Map<int, ui.Image> pageImage; // chosen base/focus per visible page
+  final Map<int, int> pageBaked; // baked stroke count → delta = the rest
+  final List<(Rect, ui.Image)> tiles; // current-version tiles (worldRect, image)
+  final Rect visibleWorld;
+
+  const _NotebookChunkOverlayPainter({
+    required this.pageBlockIds,
+    required this.pageData,
+    required this.pageImage,
+    required this.pageBaked,
+    required this.tiles,
+    required this.visibleWorld,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..isAntiAlias = true
+          ..filterQuality = FilterQuality.medium;
+    // 1. Base ink + delta, clipped to the holes (everything NOT covered by a tile).
+    final hole = Path()..addRect(visibleWorld);
+    for (final (r, _) in tiles) {
+      hole.addRect(r);
+    }
+    hole.fillType = PathFillType.evenOdd;
+    canvas.save();
+    canvas.clipPath(hole);
+    for (int i = 0; i < pageBlockIds.length; i++) {
+      final bid = pageBlockIds[i];
+      final top = i * (kNotebookPageHeight + kNotebookPageGap);
+      final pageWorld = Rect.fromLTWH(
+        0,
+        top,
+        kNotebookPageWidth,
+        kNotebookPageHeight,
+      );
+      if (!pageWorld.overlaps(visibleWorld)) continue;
+      final img = pageImage[bid];
+      if (img != null) {
+        canvas.drawImageRect(
+          img,
+          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+          pageWorld,
+          paint,
+        );
+      }
+      final data = pageData[bid];
+      if (data != null) {
+        final baked = (pageBaked[bid] ?? 0).clamp(0, data.strokes.length).toInt();
+        if (baked < data.strokes.length) {
+          canvas.save();
+          canvas.translate(0, top);
+          canvas.clipRect(
+            const Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight),
+          );
+          for (int s = baked; s < data.strokes.length; s++) {
+            drawStroke(canvas, data.strokes[s]);
+          }
+          canvas.restore();
+        }
+      }
+    }
+    canvas.restore();
+    // 2. Full-res tiles on top (where they exist they own the cell).
+    for (final (r, image) in tiles) {
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        r,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _NotebookChunkOverlayPainter old) => true;
+}
+
 abstract class _NotebookHistoryEntry {
   const _NotebookHistoryEntry();
 }
@@ -277,6 +364,28 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final Map<int, double> _overviewFocusScaleByPage = {};
   final Map<int, int> _overviewFocusBakedCountByPage = {};
   final Set<int> _overviewFocusBakingPages = {};
+  // ── Chunk tile ring (pyramid L0, dynamic) ──────────────────────────────────
+  // Above the per-page focus ceiling (~2.4x) the page image tops out and panning
+  // softens. This is a Minecraft-style ring of WORLD-anchored raster tiles baked
+  // at the EXACT current zoom (1:1 with the screen → zero blur), generated at the
+  // leading edge and freed behind as you pan, with the pyramid base UNDER them as
+  // fallback (never a white hole). Tiles are ink-only and bake with the very same
+  // drawStroke path as base/focus, so tile↔base edges match chromatically. Purely
+  // additive; _tilesEnabled=false reverts to exactly today's behaviour.
+  final Map<String, _ViewportRasterTile> _chunkTiles = {};
+  final Set<String> _chunkBaking = {};
+  double _chunkGridScale = 0; // zoom the current grid is anchored to
+  double _chunkTileWorld = 0; // cell side in world units (viewport fraction)
+  int _chunkVersion = 0; // bumped on ink edit → stale tiles discarded
+  bool _chunkPumpScheduled = false;
+  final bool _tilesEnabled = true; // master switch (A/B revert: flip + rebuild)
+  static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
+  static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
+  static const int _kChunkMaxTiles = 36;
+  static const int _kChunkPerFrame = 1; // bakes/frame (budgeted, runs during pan)
+  // Above this many strokes in one page-overview bake, render decimated + uncached
+  // (avoids the path-cache balloon on a dense page).
+  static const int _kOverviewFrugalThreshold = 60000;
   // Fires the focus bake only once the view has truly STOPPED — including the
   // InteractiveViewer's fling/inertia AFTER the finger lifts. Baking mid-fling
   // would land the (main-isolate) recording micro-stutter while things are still
@@ -319,6 +428,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _zoomSnapshotPending = false;
   bool _zoomGestureActive = false;
   bool _zoomGestureSeen = false;
+  // Small zoom-% readout, shown briefly while pinch-zooming (above the toolbar).
+  bool _zoomLabelVisible = false;
+  Timer? _zoomLabelTimer;
   double _zoomGestureScale = 1;
   Offset _zoomGestureStartFocal = Offset.zero;
   Offset _zoomGestureCurrentFocal = Offset.zero;
@@ -471,11 +583,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _deferredDecodeTimer?.cancel();
     _persistTimer?.cancel();
     _overviewTimer?.cancel();
+    _zoomLabelTimer?.cancel();
     _settleTicker?.dispose();
     for (final img in _overviewFocusByPage.values) {
       img.dispose();
     }
     _overviewFocusByPage.clear();
+    for (final t in _chunkTiles.values) {
+      t.image.dispose();
+    }
+    _chunkTiles.clear();
     _zoomSnapshotTimer?.cancel();
     _zoomSnapshotImage?.dispose();
     _viewportRasterTimer?.cancel();
@@ -505,6 +622,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _lassoGestureTick.dispose();
     _lassoPhaseTick.dispose();
     super.dispose();
+  }
+
+  /// Show the zoom-% readout and keep it up for a short window after the last zoom
+  /// change (so it doesn't flicker off between pinch frames / on release).
+  void _pingZoomLabel() {
+    _zoomLabelTimer?.cancel();
+    if (!_zoomLabelVisible && mounted) setState(() => _zoomLabelVisible = true);
+    _zoomLabelTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _zoomLabelVisible = false);
+    });
   }
 
   /// On leaving the notebook, delete image files no longer referenced by any
@@ -572,9 +699,22 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _lastBg = PageBackground.fromString(drawingBlocks.last.background ?? '');
     _lastBgColor = drawingBlocks.last.bgColor;
 
+    // Lazy open: decode ONLY the page the initial scroll lands on (the last one,
+    // see _applyInitialScroll); queue the rest for a background sweep. The editor
+    // shows in ~one page's decode time instead of blocking on all N. There is NO
+    // eviction — once swept, every page stays resident (today's steady state),
+    // just reached after open rather than before it. That's the safe half of the
+    // old dynamic-hydration idea; the part that misbehaved (evict + re-decode
+    // while panning) is deliberately left out.
+    final eagerIdx = drawingBlocks.length - 1;
     var totalStrokes = 0;
     var totalPoints = 0;
-    for (final b in drawingBlocks) {
+    for (int i = 0; i < drawingBlocks.length; i++) {
+      final b = drawingBlocks[i];
+      if (i != eagerIdx) {
+        _pendingDecode[b.id] = b;
+        continue;
+      }
       if (!mounted) return;
       _hydratingPages.add(b.id);
       try {
@@ -608,7 +748,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// background stops; far pages remain cold on disk.
   Future<void> _decodeMorePages() async {
     if (!mounted) return;
-    if (_isDrawing) {
+    // Back off while the user is actively drawing or moving the view: a page
+    // decode is heavy enough that running it mid-gesture would stutter the pen /
+    // pan. The sweep resumes the moment things go idle. (This — never evicting,
+    // never re-decoding what's already in — is what keeps the feel intact.)
+    if (_isDrawing || _viewGestureActive) {
       _scheduleDeferredDecode();
       return;
     }
@@ -657,7 +801,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _paintVersion++;
       setState(() {});
     }
-    if (_hasPendingDecodeInLiveWindow()) {
+    if (_hasAnyPendingDecode()) {
       _scheduleDeferredDecode();
     }
     sw.stop();
@@ -681,6 +825,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           return da.compareTo(db);
         });
     for (final pageIndex in order) {
+      final blockId = _pageBlockIds[pageIndex];
+      if (_pendingDecode.containsKey(blockId) &&
+          !_hydratingPages.contains(blockId)) {
+        return blockId;
+      }
+    }
+    // Fallback: sweep ALL remaining pages (not just the live window) nearest the
+    // current page first, so a lazy-opened notebook fully decodes in the
+    // background — not only what happens to be on screen.
+    final current = _currentVisiblePage;
+    final all =
+        [for (int i = 0; i < _pageBlockIds.length; i++) i]
+          ..sort((a, b) => (a - current).abs().compareTo((b - current).abs()));
+    for (final pageIndex in all) {
       final blockId = _pageBlockIds[pageIndex];
       if (_pendingDecode.containsKey(blockId) &&
           !_hydratingPages.contains(blockId)) {
@@ -723,19 +881,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return wanted;
   }
 
-  bool _hasPendingDecodeInLiveWindow() {
+  /// Any page still queued for the background decode sweep (and not already in
+  /// flight). Drives the sweep's keep-going condition.
+  bool _hasAnyPendingDecode() {
     if (_pendingDecode.isEmpty) return false;
-    for (final pageIndex in _livePageIndices()) {
-      final blockId = _pageBlockIds[pageIndex];
-      if (_pendingDecode.containsKey(blockId) &&
-          !_hydratingPages.contains(blockId)) {
-        return true;
-      }
+    for (final id in _pendingDecode.keys) {
+      if (!_hydratingPages.contains(id)) return true;
     }
-    return false;
-  }
-
-  bool _hasEvictableColdPages() {
     return false;
   }
 
@@ -743,67 +895,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return 0;
   }
 
-  bool _hasEvictableColdPagesDisabled() {
-    if (_pageData.isEmpty ||
-        _undoStack.isNotEmpty ||
-        _redoStack.isNotEmpty ||
-        _isDrawing ||
-        _activePageIndex != null ||
-        _lassoCtrl.phase != LassoPhase.idle) {
-      return false;
-    }
-    final keep = _livePageIndices(margin: _evictPageMargin);
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      if (keep.contains(i)) continue;
-      final blockId = _pageBlockIds[i];
-      if (_pageData.containsKey(blockId) &&
-          !_dirtyPersistPages.contains(blockId) &&
-          !_hydratingPages.contains(blockId)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  int _evictColdPagesDisabled() {
-    if (_pageData.isEmpty ||
-        _undoStack.isNotEmpty ||
-        _redoStack.isNotEmpty ||
-        _isDrawing ||
-        _activePageIndex != null ||
-        _lassoCtrl.phase != LassoPhase.idle) {
-      return 0;
-    }
-    final keep = _livePageIndices(margin: _evictPageMargin);
-    var evicted = 0;
-    for (int i = 0; i < _pageBlockIds.length; i++) {
-      if (keep.contains(i)) continue;
-      final blockId = _pageBlockIds[i];
-      if (!_pageData.containsKey(blockId) ||
-          _dirtyPersistPages.contains(blockId) ||
-          _hydratingPages.contains(blockId)) {
-        continue;
-      }
-      final shell = _pageShells[blockId];
-      if (shell == null) continue;
-      _pageData.remove(blockId);
-      _pendingDecode[blockId] = shell;
-      _pageWorldStrokeCache.remove(blockId);
-      _pageTiles.remove(blockId)?.dispose();
-      _persistedStrokeIdsByBlock.remove(blockId);
-      _dirtyStrokeIdsByBlock.remove(blockId);
-      _nextStrokePosByBlock.remove(blockId);
-      _disposeFocus(blockId);
-      evicted++;
-    }
-    return evicted;
-  }
-
   void _scheduleDeferredDecode([
     Duration delay = const Duration(milliseconds: 16),
   ]) {
-    if (!mounted ||
-        (!_hasPendingDecodeInLiveWindow() && !_hasEvictableColdPages())) {
+    if (!mounted || !_hasAnyPendingDecode()) {
       return;
     }
     _deferredDecodeTimer?.cancel();
@@ -912,8 +1007,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final id = stroke.dbId;
     if (id == null || stroke.points.isEmpty) return;
     var sumY = 0.0;
-    for (final p in stroke.points) {
-      sumY += p[1];
+    final sp = stroke.points;
+    for (int i = 0; i < sp.length; i++) {
+      sumY += sp.y(i);
     }
     final pageIndex = _nearestPageIndex(sumY / stroke.points.length);
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
@@ -1011,9 +1107,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   DrawingStroke _worldStrokeForPage(int pageIndex, DrawingStroke stroke) {
     final c = stroke.clone();
     final offset = _pageOffsetY(pageIndex);
-    for (final pt in c.points) {
-      pt[1] += offset;
-    }
+    c.points.translate(0, offset);
     return c;
   }
 
@@ -1068,9 +1162,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   DrawingStroke _localStrokeFromWorld(int pageIndex, DrawingStroke stroke) {
     final c = stroke.clone();
     final offset = _pageOffsetY(pageIndex);
-    for (final pt in c.points) {
-      pt[1] -= offset;
-    }
+    c.points.translate(0, -offset);
     return c;
   }
 
@@ -1169,6 +1261,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         final insertStrokes = <DrawingStroke>[];
         final insertWrites = <DrawingStrokeWrite>[];
         for (final stroke in strokesSnapshot) {
+          // A dbId not in `persisted` means the stroke was RESURRECTED by undo/redo
+          // (its row was deleted when the op was first applied) → re-insert with a
+          // fresh id. The board-doubling bug had a different cause (open wiping the
+          // tracking set) fixed at the source, so persisted is accurate here.
           if (stroke.dbId != null && persisted.contains(stroke.dbId)) {
             continue;
           }
@@ -1274,7 +1370,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
   }
 
-  void _persistPage(int pageIndex) {
+  void _persistPage(int pageIndex, {Rect? overviewRegion}) {
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
     _dirtyPersistPages.add(_pageBlockIds[pageIndex]);
     _persistTimer?.cancel();
@@ -1282,22 +1378,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (!mounted) return;
       unawaited(_flushPendingPersists());
     });
-    // Page ink changed → its zoomed-out overview image is stale.
+    // Page ink changed → its zoomed-out overview image needs updating.
     final bid = _pageBlockIds[pageIndex];
-    _scheduleOverviewBake(bid);
-    // In-place edit (move/resize/rotate = same count, erase = fewer) changed
-    // already-baked strokes → the append-only delta can't fix it. Mark the page
-    // stale so it shows tiles until the re-bake, else the edited ink ghosts at
-    // its old spot on release. Appends (count grows) stay on overview+delta.
-    final data = _pageData[bid];
-    if (data != null &&
-        data.strokes.length <= (_overviewBakedCountByPage[bid] ?? 0)) {
-      _overviewStalePages.add(bid);
+    if (overviewRegion != null && _overviewByPage[bid] != null) {
+      // Regional patch (O(region)): redraw ONLY the edited slice of the page
+      // overview instead of re-baking all the page's strokes (O(page), the
+      // lasso/eraser lag — worst at zoom-out, where a stale page renders every
+      // stroke). Keeps the page fresh so it stays on the cheap overview blit.
+      unawaited(_patchPageOverviewRegion(bid, overviewRegion));
+    } else {
+      _scheduleOverviewBake(bid);
+      // In-place edit (move/resize/rotate = same count, erase = fewer) changed
+      // already-baked strokes → the append-only delta can't fix it. Mark the
+      // page stale so it shows tiles until the re-bake, else the edited ink
+      // ghosts at its old spot on release. Appends (count grows) stay on
+      // overview+delta.
+      final data = _pageData[bid];
+      if (data != null &&
+          data.strokes.length <= (_overviewBakedCountByPage[bid] ?? 0)) {
+        _overviewStalePages.add(bid);
+      }
     }
     // Drop the high-res focus too: it has the OLD strokes baked in, so an erase
     // or lasso-move would leave a ghost. Falls back to base+delta; the focus
     // re-bakes on the next settle. (At rest zoomed-in you're on vector anyway.)
     _disposeFocus(bid);
+    // Same for the chunk ring: bump the version so the now-stale tiles stop being
+    // shown (curTiles filters by version → the overlay yields to base+delta) and
+    // re-bake at the new state on the next pump.
+    _chunkVersion++;
+    _scheduleChunkPump();
     // Retired (Phase A is overview-based): the viewport-raster / zoom-snapshot
     // bakes ran on every edit but their layers are now inert, so they were pure
     // waste. Kept callable for a possible Phase B LOD pyramid.
@@ -1360,8 +1470,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         );
         from = oldBaked;
       }
+      // Dense page: decimate + don't cache paths (the overview is downsampled, so
+      // decimation is invisible, and caching a Path per stroke balloons memory).
+      final frugal = (count - from) > _kOverviewFrugalThreshold;
+      final bakeLod = frugal ? 1 : 0;
       for (int i = from; i < count; i++) {
-        drawStroke(canvas, strokes[i]);
+        drawStroke(canvas, strokes[i], lod: bakeLod, cache: !frugal);
       }
       final picture = recorder.endRecording();
       final image = await picture.toImage(w, h);
@@ -1388,6 +1502,100 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakePageOverview cuaderno');
+    } finally {
+      _overviewBakingPages.remove(blockId);
+    }
+  }
+
+  /// Strokes whose tiles overlap [region] in page [blockId] (deduped by identity),
+  /// from the page's spatial index → O(region), not O(page). Used to fill a just-
+  /// patched overview slice crisp without re-drawing the whole page.
+  List<DrawingStroke> _strokesInPageRegion(int blockId, Rect region) {
+    final index = _pageTileIndex(blockId);
+    final seen = <DrawingStroke>{};
+    final out = <DrawingStroke>[];
+    for (final key in index.tilesInRect(region)) {
+      final list = index.strokesAt(key);
+      if (list == null) continue;
+      for (final s in list) {
+        if (seen.add(s)) out.add(s);
+      }
+    }
+    return out;
+  }
+
+  /// Patch ONLY [region] (page-local) of a page's overview image: blit the old
+  /// image, clear the region, redraw just the strokes that fall in it (O(region)).
+  /// The cheap alternative to [_bakePageOverview]'s full re-draw of every page
+  /// stroke on a destructive edit — the lasso/eraser lag, worst at zoom-out. The
+  /// page stays fresh (not stale) so it keeps using the overview blit. Falls back
+  /// to a full bake when there's no base image yet.
+  Future<void> _patchPageOverviewRegion(int blockId, Rect region) async {
+    final base = _overviewByPage[blockId];
+    final data = _pageData[blockId];
+    if (base == null || data == null || _overviewBakingPages.contains(blockId)) {
+      _overviewStalePages.add(blockId);
+      _scheduleOverviewBake(blockId);
+      return;
+    }
+    const pageRect = Rect.fromLTWH(
+      0,
+      0,
+      kNotebookPageWidth,
+      kNotebookPageHeight,
+    );
+    final clip = region.intersect(pageRect);
+    if (clip.width <= 0 || clip.height <= 0) {
+      _overviewStalePages.remove(blockId);
+      return;
+    }
+    _overviewBakingPages.add(blockId);
+    // Count at record time: strokes appended during the async toImage() stay in
+    // the delta; their commit re-flags the page (the _overviewBakingPages guard).
+    final patchedCount = data.strokes.length;
+    try {
+      final imgScale = base.width / kNotebookPageWidth;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale); // strokes are page-local — no translate (as in bake)
+      canvas.drawImageRect(
+        base,
+        Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
+        pageRect,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      canvas.save();
+      canvas.clipRect(clip);
+      canvas.drawRect(clip, Paint()..blendMode = BlendMode.clear);
+      for (final s in _strokesInPageRegion(blockId, clip)) {
+        drawStroke(canvas, s, lod: 0, cache: false);
+      }
+      canvas.restore();
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(base.width, base.height);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      // The overview was fully re-baked under us (different image) → our patch is
+      // stale; drop it.
+      if (!identical(_overviewByPage[blockId], base)) {
+        image.dispose();
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => base.dispose());
+      _overviewByPage[blockId] = image;
+      _overviewStalePages.remove(blockId);
+      _overviewBakedCountByPage[blockId] = patchedCount;
+      CrashLogger.instance.note(
+        'PERF patch-overview-cuaderno: page ${_pageBlockIds.indexOf(blockId)}, '
+        'region ${clip.width.toStringAsFixed(0)}x${clip.height.toStringAsFixed(0)}, '
+        'img ${base.width}x${base.height}',
+      );
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'patchPageOverview cuaderno');
     } finally {
       _overviewBakingPages.remove(blockId);
     }
@@ -1507,6 +1715,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       }
       await _bakePageFocus(_pageBlockIds[i], _viewScale);
     }
+    // Pre-load / refresh the chunk ring for the settled zoom (or free it if we
+    // dropped below the engage threshold). Budgeted; runs in stillness here.
+    if (mounted) _scheduleChunkPump();
   }
 
   /// Render one page's strokes at a density matched to [targetScale] (capped by
@@ -1592,6 +1803,190 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _overviewFocusScaleByPage.clear();
     _overviewFocusBakedCountByPage.clear();
     if (mounted) setState(() {});
+  }
+
+  // ── Chunk tile ring ────────────────────────────────────────────────────────
+
+  /// Engaged only past the per-page focus ceiling (~2.4x), where the page image
+  /// can no longer reach full device res and panning softens. Below it the
+  /// existing pyramid is already crisp → chunks stay dormant.
+  bool get _chunkEngaged {
+    if (!_tilesEnabled) return false;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final ceiling = (_focusMaxDim / kNotebookPageHeight) / dpr;
+    return _viewScale > ceiling * 0.97;
+  }
+
+  String _chunkKey(int gx, int gy) => '$gx:$gy';
+
+  /// Cells whose world rect overlaps viewport + ring, nearest-first, capped.
+  List<(int, int, Rect)> _wantedChunks(double tileWorld) {
+    final visible = _visibleRectFor(_viewport);
+    final ring = visible.inflate(visible.longestSide * _kChunkRingFactor);
+    final gx0 = (ring.left / tileWorld).floor();
+    final gy0 = (ring.top / tileWorld).floor();
+    final gx1 = (ring.right / tileWorld).ceil();
+    final gy1 = (ring.bottom / tileWorld).ceil();
+    final center = visible.center;
+    final out = <(int, int, Rect)>[];
+    for (int gy = gy0; gy < gy1; gy++) {
+      for (int gx = gx0; gx < gx1; gx++) {
+        final rect = Rect.fromLTWH(
+          gx * tileWorld,
+          gy * tileWorld,
+          tileWorld,
+          tileWorld,
+        );
+        if (rect.overlaps(ring)) out.add((gx, gy, rect));
+      }
+    }
+    out.sort(
+      (a, b) => (a.$3.center - center).distanceSquared.compareTo(
+        (b.$3.center - center).distanceSquared,
+      ),
+    );
+    if (out.length > _kChunkMaxTiles) out.removeRange(_kChunkMaxTiles, out.length);
+    return out;
+  }
+
+  void _disposeAllChunks() {
+    if (_chunkTiles.isEmpty) return;
+    for (final t in _chunkTiles.values) {
+      final img = t.image;
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+    _chunkTiles.clear();
+    _chunkTileWorld = 0;
+  }
+
+  void _scheduleChunkPump() {
+    if (_chunkPumpScheduled || !mounted) return;
+    _chunkPumpScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chunkPumpScheduled = false;
+      unawaited(_chunkPump());
+    });
+  }
+
+  /// Budgeted baker: keeps the ring filled around the viewport, baking a few
+  /// tiles per frame nearest-first (runs DURING pan, not only at rest). Drawing
+  /// / lasso own the main isolate → it backs off for them. Re-anchors the grid
+  /// to a new zoom only when settled (mid zoom-gesture the pyramid covers it).
+  Future<void> _chunkPump() async {
+    if (!mounted) return;
+    if (_isDrawing ||
+        _lassoCtrl.phase == LassoPhase.moving ||
+        _lassoCtrl.phase == LassoPhase.resizing ||
+        _lassoCtrl.phase == LassoPhase.rotating) {
+      return;
+    }
+    if (!_chunkEngaged || _viewport == Size.zero || _pageBlockIds.isEmpty) {
+      _disposeAllChunks();
+      return;
+    }
+    final visible = _visibleRectFor(_viewport);
+    final scaleChanged =
+        _chunkTileWorld <= 0 ||
+        (_viewScale - _chunkGridScale).abs() / _viewScale > 0.02;
+    if (scaleChanged) {
+      // During an active zoom gesture the scale changes every frame; re-anchoring
+      // per frame would thrash. Defer to settle — the pyramid covers the gap.
+      if (_viewGestureActive) return;
+      _chunkGridScale = _viewScale;
+      _chunkTileWorld = visible.longestSide / _kChunkTilesAcross;
+      _chunkVersion++;
+    }
+    final tileWorld = _chunkTileWorld;
+    final wanted = _wantedChunks(tileWorld);
+    final wantedKeys = wanted.map((c) => _chunkKey(c.$1, c.$2)).toSet();
+    for (final key in _chunkTiles.keys.toList()) {
+      if (!wantedKeys.contains(key)) {
+        final img = _chunkTiles.remove(key)!.image;
+        WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+      }
+    }
+    var baked = 0;
+    for (final (gx, gy, rect) in wanted) {
+      if (baked >= _kChunkPerFrame) break;
+      final key = _chunkKey(gx, gy);
+      final existing = _chunkTiles[key];
+      if (existing != null && existing.version == _chunkVersion) continue;
+      if (_chunkBaking.contains(key)) continue;
+      baked++;
+      await _bakeChunk(gx, gy, rect, tileWorld);
+      if (_isDrawing) break; // a draw started during the await → yield
+    }
+    final hasPending = wanted.any((c) {
+      final t = _chunkTiles[_chunkKey(c.$1, c.$2)];
+      return t == null || t.version != _chunkVersion;
+    });
+    if (hasPending && _chunkEngaged) _scheduleChunkPump();
+  }
+
+  /// Bake one cell at the EXACT anchored zoom (1:1 with the screen → zero blur),
+  /// ink-only, world-anchored. Same `drawStroke` path as base/focus so tile↔base
+  /// edges match chromatically.
+  Future<void> _bakeChunk(int gx, int gy, Rect cell, double tileWorld) async {
+    final key = _chunkKey(gx, gy);
+    if (_chunkBaking.contains(key) || !mounted) return;
+    final version = _chunkVersion;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final imgScale = _chunkGridScale * dpr;
+    final px = (tileWorld * imgScale).round();
+    if (px <= 0 || px > 4096) return; // texture-limit guard (shouldn't hit by design)
+    _chunkBaking.add(key);
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-cell.left, -cell.top); // world → cell-local
+      canvas.clipRect(cell);
+      for (int i = 0; i < _pageBlockIds.length; i++) {
+        final top = _pageOffsetY(i);
+        final pageRect = Rect.fromLTWH(
+          0,
+          top,
+          kNotebookPageWidth,
+          kNotebookPageHeight,
+        );
+        if (!pageRect.overlaps(cell)) continue;
+        final data = _pageData[_pageBlockIds[i]];
+        if (data == null || data.strokes.isEmpty) continue;
+        canvas.save();
+        canvas.translate(0, top); // page-local → world
+        canvas.clipRect(
+          const Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight),
+        );
+        for (final s in data.strokes) {
+          drawStroke(canvas, s);
+        }
+        canvas.restore();
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(px, px);
+      picture.dispose();
+      if (!mounted) {
+        image.dispose();
+        return;
+      }
+      final old = _chunkTiles[key];
+      if (old != null) {
+        final oldImg = old.image;
+        WidgetsBinding.instance.addPostFrameCallback((_) => oldImg.dispose());
+      }
+      _chunkTiles[key] = _ViewportRasterTile(
+        key: key,
+        worldRect: cell,
+        bucket: 0,
+        version: version,
+        image: image,
+      );
+      setState(() {});
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeChunk cuaderno');
+    } finally {
+      _chunkBaking.remove(key);
+    }
   }
 
   void _scheduleZoomSnapshotBake({
@@ -2571,7 +2966,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // leave it for the scribble-erase on pen-up.
     final snapPts = _active!.points;
     if (isScribble(snapPts, viewScale: _viewScale)) return false;
-    final shape = ShapeRecognizer.detect(_active!.points);
+    final shape = ShapeRecognizer.detect(snapPts.toNested());
     if (shape == null) return false;
     if (!_canSnapHeldShape(shape.kind, snapPts)) return false;
     // Highlighter only snaps to straight lines (a marker arrow/box reads odd).
@@ -2583,14 +2978,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return true;
   }
 
-  bool _canSnapHeldShape(ShapeKind kind, List<List<double>> points) {
+  bool _canSnapHeldShape(ShapeKind kind, StrokePoints points) {
     if (kind == ShapeKind.line || kind == ShapeKind.arrow) return true;
     if (!shapeKindIsClosed(kind) && kind != ShapeKind.pentagram) return true;
     final bounds = scribbleBounds(points);
     final diag2 = bounds.width * bounds.width + bounds.height * bounds.height;
     if (diag2 <= 0) return false;
-    final start = Offset(points.first[0], points.first[1]);
-    final end = Offset(points.last[0], points.last[1]);
+    final start = Offset(points.firstX, points.firstY);
+    final end = Offset(points.lastX, points.lastY);
     final dist2 = (start - end).distanceSquared;
     return dist2 / diag2 <= 0.09;
   }
@@ -2610,11 +3005,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
-      final end = src.points.last;
-      _snapRefDist = (Offset(end[0], end[1]) - _snapCenter!).distance.clamp(
-        1.0,
-        1e9,
-      );
+      _snapRefDist =
+          (Offset(src.points.lastX, src.points.lastY) - _snapCenter!).distance
+              .clamp(1.0, 1e9);
     }
     setState(() {
       _active = DrawingStroke(
@@ -2623,7 +3016,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         filled: _fillShapes && shapeKindIsClosed(shape.kind),
         isShape: true,
         isHighlighter: src.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -2654,7 +3047,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         filled: _active!.filled,
         isShape: true,
         isHighlighter: _active!.isHighlighter,
-        points: pts,
+        points: StrokePoints.fromNested(pts),
       );
     });
   }
@@ -2844,13 +3237,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _ensurePageAt(pageIdx);
       if (pageIdx >= _pageBlockIds.length) return;
     }
-    final blockId = _pageBlockIds[pageIdx];
-    if (!_pageData.containsKey(blockId)) {
+    _activePageIndex = pageIdx;
+    // Lazy open: if the background sweep hasn't decoded this page yet, don't
+    // draw into a non-existent DrawingData (the ink would be lost). Jump it to
+    // the front of the sweep and skip this gesture — by the next tap it's ready.
+    // The page you open to is decoded eagerly, so this only bites a fast scroll
+    // into a far cold page before the sweep catches up.
+    if (_pageData[_pageBlockIds[pageIdx]] == null) {
       _scheduleDeferredDecode(Duration.zero);
+      _isDrawing = false;
       return;
     }
-
-    _activePageIndex = pageIdx;
     final local = _worldToPageLocal(world, pageIdx);
 
     if (_tool == DrawTool.lasso) {
@@ -2876,25 +3273,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           colorValue: _color.toARGB32(),
           strokeWidth: _strokeW,
           isFountainPen: true,
-          points: [
-            [sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()],
-          ],
+          points: StrokePoints(comps: 4)
+            ..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
         );
       });
       return;
     }
 
     setState(() {
+      final pencil = _tool == DrawTool.pencil;
+      final pts = StrokePoints(comps: pencil ? 3 : 2);
+      if (pencil) {
+        pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+      } else {
+        pts.add(sp.dx, sp.dy);
+      }
       _active = DrawingStroke(
         colorValue: _color.toARGB32(),
         strokeWidth: _strokeW,
         isHighlighter: _tool == DrawTool.highlighter,
-        isPencil: _tool == DrawTool.pencil,
-        points: [
-          _tool == DrawTool.pencil
-              ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-              : [sp.dx, sp.dy],
-        ],
+        isPencil: pencil,
+        points: pts,
       );
     });
     if (_tool == DrawTool.pen || _tool == DrawTool.highlighter) {
@@ -3012,12 +3411,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final sp = _stabilize(local);
     if (_tool == DrawTool.fountainPen) {
       final pressure = e.pressure.isFinite ? e.pressure : 0.5;
-      _active!.points.add([
+      _active!.points.add(
         sp.dx,
         sp.dy,
         pressure,
         e.timeStamp.inMilliseconds.toDouble(),
-      ]);
+      );
       _activeTick.value++;
       moveSw?.stop();
       if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
@@ -3025,19 +3424,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     final pts = _active!.points;
     if (pts.isNotEmpty && !_stabilizer.isOn) {
-      final dx = sp.dx - pts.last[0];
-      final dy = sp.dy - pts.last[1];
+      final dx = sp.dx - pts.lastX;
+      final dy = sp.dy - pts.lastY;
       if (dx * dx + dy * dy < _minDist2) {
         moveSw?.stop();
         if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
         return;
       }
     }
-    pts.add(
-      _active!.isPencil
-          ? [sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5]
-          : [sp.dx, sp.dy],
-    );
+    if (_active!.isPencil) {
+      pts.add(sp.dx, sp.dy, e.pressure.isFinite ? e.pressure : 0.5);
+    } else {
+      pts.add(sp.dx, sp.dy);
+    }
     _activeTick.value++;
     moveSw?.stop();
     if (moveSw != null) _recordInkMove(moveSw.elapsedMicroseconds);
@@ -3093,7 +3492,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
     if (_activePointers.isEmpty) _maxSimultaneous = 0;
-    if (_activePointers.isEmpty) _scheduleDeferredDecode();
 
     if (_reachedPullThreshold && _activePointers.isEmpty) {
       _reachedPullThreshold = false;
@@ -3175,16 +3573,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final a = _active;
     if (a == null || a.isShape) return;
     final tip = predictedTipPoint(a.points);
-    if (tip != null) a.points.add(tip);
+    if (tip != null) a.points.addLikeLast(tip.dx, tip.dy);
   }
 
   void _finishStroke() {
     final sw = Stopwatch()..start();
     if (_snapKind != null) return;
     if (_active == null || _activePageIndex == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 2 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.isEmpty) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -3208,8 +3605,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final activeStroke = _active!.clone();
       Rect? dirty;
       data.strokes.removeWhere((s) {
-        for (final p in s.points) {
-          if (bounds.contains(Offset(p[0], p[1]))) {
+        final sp = s.points;
+        for (int i = 0; i < sp.length; i++) {
+          if (bounds.contains(sp.offset(i))) {
             final b = strokeBounds(s);
             dirty = dirty == null ? b : dirty!.expandToInclude(b);
             return true;
@@ -3271,9 +3669,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _finishFountainStroke() {
     final sw = Stopwatch()..start();
     if (_active == null || _activePageIndex == null) return;
-    _active!.points.removeWhere(
-      (p) => p.length < 4 || !p[0].isFinite || !p[1].isFinite,
-    );
+    final ap = _active!.points;
+    ap.removeWhere((i) => !ap.x(i).isFinite || !ap.y(i).isFinite);
     if (_active!.points.length < 2) {
       setState(() => _active = null);
       _resetInkPerf();
@@ -3377,6 +3774,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _rebuildWorldStrokeCache(blockId);
       _inkTick.value++;
       setState(() {});
+      // NO regional patch here: the eraser fires per pointer-move, so patching each
+      // move flickers the overview mid-erase. The debounced full bake folds it once
+      // on release (the live vector tiles show the erase meanwhile). A per-gesture
+      // patch on pen-up would be the win (TODO), like the whiteboard's commit hook.
       _persistPage(pageIndex);
     }
   }
@@ -3513,18 +3914,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startRotation(worldPos, strokes, images, blocks);
+        _captureLassoSelection();
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startResize(corner, worldPos, strokes, images, blocks);
+        _captureLassoSelection();
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
         _gestureBefore = _snapshot();
         _lassoCtrl.startSideResize(side, worldPos, strokes, images, blocks);
+        _captureLassoSelection();
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
@@ -3719,6 +4123,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     required int touched,
     required bool structural,
     required String reason,
+    // The caller already updated the page tile index incrementally (remove the
+    // pre-edit objects, file the new) → skip the full rebuild/invalidateRegion.
+    bool skipIndex = false,
   }) {
     final blockId = _pageBlockIds[pageIndex];
     final data = _pageData[blockId];
@@ -3727,14 +4134,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final forceRebuild = structural || region == null || touched > 128;
     _overviewStalePages.add(blockId);
     _disposeFocus(blockId);
-    if (forceRebuild) {
+    if (skipIndex) {
+      // nothing — index already in sync
+    } else if (forceRebuild) {
       index.rebuild(data.strokes);
     } else {
       index.invalidateRegion(region, data.strokes);
     }
     CrashLogger.instance.note(
       'PERF lasso-tiles-cuaderno: $reason page $pageIndex, '
-      '${forceRebuild ? 'rebuild' : 'region'}, touched $touched, '
+      '${skipIndex ? 'incremental' : (forceRebuild ? 'rebuild' : 'region')}, touched $touched, '
       'strokes ${data.strokes.length}, tiles ${index.debugTileCount}/${index.debugEntryCount}, '
       'stale ${_overviewStalePages.contains(blockId)}, '
       'baked ${_overviewBakedCountByPage[blockId] ?? 0}, '
@@ -3750,6 +4159,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final removalsByPage = <int, List<int>>{};
     final appendsByPage = <int, List<DrawingStroke>>{};
     final structuralPages = <int>{};
+    // Pre/post stroke objects per page so the tile index can be updated
+    // INCREMENTALLY (remove the old, file the new) instead of rebuilt from the
+    // whole page — the pen-up hitch on dense pages. Old objects keep their
+    // pre-edit bounds (they were replaced, not mutated), so removeStrokes finds
+    // their old tiles by identity.
+    final oldByPage = <int, List<DrawingStroke>>{};
+    final newByPage = <int, List<DrawingStroke>>{};
     // Each selected stroke's final (page, object) so we can re-derive the flat
     // selection indices AFTER all list mutations settle. A cross-page move
     // removes from the source + appends to the target → every later flat index
@@ -3782,8 +4198,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final worldStroke = worldStrokes[worldIndex];
       if (worldStroke.points.isEmpty) continue;
       var sumY = 0.0;
-      for (final pt in worldStroke.points) {
-        sumY += pt[1];
+      final wp = worldStroke.points;
+      for (int i = 0; i < wp.length; i++) {
+        sumY += wp.y(i);
       }
       final targetPage = _nearestPageIndex(sumY / worldStroke.points.length);
       if (targetPage < 0 || targetPage >= _pageBlockIds.length) continue;
@@ -3813,10 +4230,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         } else {
           _rebuildWorldStrokeCache(sourceBlockId);
         }
+        (oldByPage[sourcePage] ??= []).add(oldLocal);
+        (newByPage[sourcePage] ??= []).add(newLocal);
         placed.add((sourcePage, newLocal));
       } else {
         (removalsByPage[sourcePage] ??= []).add(sourceLocal);
         (appendsByPage[targetPage] ??= []).add(newLocal);
+        (oldByPage[sourcePage] ??= []).add(oldLocal);
+        (newByPage[targetPage] ??= []).add(newLocal);
         structuralPages.add(sourcePage);
         structuralPages.add(targetPage);
         placed.add((targetPage, newLocal));
@@ -3858,14 +4279,29 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final pageIndex = entry.key;
       final blockId = _pageBlockIds[pageIndex];
       if (_pageData[blockId] == null) continue;
+      // Incremental tile-index update: pull the pre-edit objects, file the moved
+      // ones — O(selection) instead of rebuilding the whole page.
+      final index = _pageTileIndex(blockId);
+      final olds = oldByPage[pageIndex];
+      final news = newByPage[pageIndex];
+      if (olds != null && olds.isNotEmpty) index.removeStrokes(olds);
+      if (news != null && news.isNotEmpty) index.appendAll(news);
       _refreshLassoPageVisuals(
         pageIndex,
         entry.value,
         touched: touched,
         structural: structuralPages.contains(pageIndex),
         reason: 'length',
+        skipIndex: true,
       );
-      _persistPage(pageIndex);
+      // Pass the per-page dirty rect → _persistPage patches only that slice of the
+      // overview (O(region)) instead of re-baking the whole page (the lasso lag).
+      // Cross-page moves (structural) changed the page's count → fall to bake.
+      _persistPage(
+        pageIndex,
+        overviewRegion:
+            structuralPages.contains(pageIndex) ? null : entry.value,
+      );
     }
 
     if (skippedSourceCold > 0 ||
@@ -3993,8 +4429,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         continue;
       }
       var sumY = 0.0;
-      for (final pt in worldStroke.points) {
-        sumY += pt[1];
+      final wp = worldStroke.points;
+      for (int i = 0; i < wp.length; i++) {
+        sumY += wp.y(i);
       }
       final pageIndex = _nearestPageIndex(sumY / worldStroke.points.length);
       if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) {
@@ -4143,7 +4580,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final sw = Stopwatch()..start();
     if (affected.isEmpty) {
       setState(() {});
-      CrashLogger.instance.note('PERF lasso-sync-cuaderno: 0 paginas, 0ms');
+//PERF-LOG CrashLogger.instance.note('PERF lasso-sync-cuaderno: 0 paginas, 0ms');
       return;
     }
     if (lengthStable) {
@@ -4183,16 +4620,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final s in strokeSource) {
       if (s.points.isEmpty) continue;
       double sumY = 0;
-      for (final pt in s.points) {
-        sumY += pt[1];
+      final sp = s.points;
+      for (int i = 0; i < sp.length; i++) {
+        sumY += sp.y(i);
       }
       final idx = _nearestPageIndex(sumY / s.points.length);
       if (idx < 0 || !affected.contains(idx)) continue;
       final c = s.clone();
-      final pageTop = _pageOffsetY(idx);
-      for (final pt in c.points) {
-        pt[1] -= pageTop;
-      }
+      c.points.translate(0, -_pageOffsetY(idx));
       pages[_pageBlockIds[idx]]!.add(c);
     }
     for (final im in worldImages) {
@@ -4535,7 +4970,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       strokeWidth: _strokeW,
       isShape: true,
       filled: closed && _fillShapes,
-      points: buildShape(kind, local.dx, local.dy, size, size),
+      points: StrokePoints.fromNested(
+        buildShape(kind, local.dx, local.dy, size, size),
+      ),
     );
     final before = _snapshot();
     setState(() {
@@ -4741,7 +5178,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final s = all[i];
       if (s.isHighlighter) continue;
       if (s.isShape && !includeShapes) continue;
-      strokes.add(s.points.map((p) => Offset(p[0], p[1])).toList());
+      strokes.add(s.points.toOffsets());
     }
     return strokes;
   }
@@ -5166,6 +5603,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // Zoomed-out: too many tiles to be worth per-tile boundaries → one painter.
   static const int _kMaxLiveTiles = 48;
 
+  // Debug switch for the per-frame layer-decision log (see below).
+  static const bool _kLayerPerfLog = false;
+
   void _logNotebookLayerDecision(
     String source, {
     required Rect visible,
@@ -5183,6 +5623,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     required int lod,
     required String details,
   }) {
+    // Off by default: runs per build (≈ per pan frame) and builds a big key string
+    // each time — churn on the hot path. Flip on (with CrashLogger._mirrorToLogcat)
+    // to debug the per-page layer decision in `adb logcat`.
+    if (!_kLayerPerfLog) return;
     final now = DateTime.now();
     final moving =
         _viewGestureActive ||
@@ -5271,6 +5715,71 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                     _viewTransformActive ||
                     _overviewLinger ||
                     (_viewGestureActive && _overviewStickyThisGesture));
+
+            // High-zoom chunk ring (pyramid L0): full-res world tiles composited
+            // OVER the base, per-cell — base/focus + delta only in the holes (no
+            // ready tile), tiles on top. The even-odd clip prevents doubling. On
+            // any ink edit _chunkVersion bumps → curTiles empties → this branch
+            // yields to the path below until the ring re-bakes. Stale pages also
+            // fall through (the path below handles them). Dormant ≤ ~2.4x.
+            if (_chunkEngaged) {
+              _scheduleChunkPump(); // fill/follow the ring (also pre-loads at rest)
+              if (_overviewActive) {
+                var anyStale = false;
+                final pageImage = <int, ui.Image>{};
+                final pageBaked = <int, int>{};
+                for (int i = 0; i < _pageBlockIds.length; i++) {
+                  final bid = _pageBlockIds[i];
+                  final top = _pageOffsetY(i);
+                  final pageWorld = Rect.fromLTWH(
+                    0,
+                    top,
+                    kNotebookPageWidth,
+                    kNotebookPageHeight,
+                  );
+                  if (!pageWorld.overlaps(visible)) continue;
+                  if (_overviewStalePages.contains(bid)) {
+                    anyStale = true;
+                    break;
+                  }
+                  final focusImg = _overviewFocusByPage[bid];
+                  final img = focusImg ?? _overviewByPage[bid];
+                  if (img != null) {
+                    pageImage[bid] = img;
+                    pageBaked[bid] =
+                        focusImg != null
+                            ? (_overviewFocusBakedCountByPage[bid] ?? 0)
+                            : (_overviewBakedCountByPage[bid] ?? 0);
+                  }
+                }
+                if (!anyStale) {
+                  final curTiles = <(Rect, ui.Image)>[];
+                  for (final t in _chunkTiles.values) {
+                    if (t.version == _chunkVersion &&
+                        t.worldRect.overlaps(visible)) {
+                      curTiles.add((t.worldRect, t.image));
+                    }
+                  }
+                  if (curTiles.isNotEmpty) {
+                    return RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _NotebookChunkOverlayPainter(
+                          pageBlockIds: _pageBlockIds,
+                          pageData: _pageData,
+                          pageImage: pageImage,
+                          pageBaked: pageBaked,
+                          tiles: curTiles,
+                          visibleWorld: visible,
+                        ),
+                        size: canvasSize,
+                      ),
+                    );
+                  }
+                }
+              }
+            } else if (_chunkTiles.isNotEmpty) {
+              _scheduleChunkPump(); // dropped below threshold → pump frees the ring
+            }
 
             final tiles = <Widget>[];
             final pageDetails = <String>[];
@@ -5803,7 +6312,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final images = _allVisibleImages;
     final imageCache = _imgCache;
     final double pixelRatio = MediaQuery.of(context).devicePixelRatio;
-    final double captureScale = _viewScale * pixelRatio;
+    // Cap the lifted texture's longest side: a large selection at high zoom would
+    // otherwise be a many-MP image that's slow to blit every gesture frame (the
+    // "move is laggy" on dense pages). Re-baked crisp on commit, so the cap only
+    // softens the live drag.
+    const double maxLiftDim = 2048;
+    var captureScale = _viewScale * pixelRatio;
+    final double longest = math.max(bb.width, bb.height) * captureScale;
+    if (longest > maxLiftDim) captureScale *= maxLiftDim / longest;
 
     try {
       final recorder = ui.PictureRecorder();
@@ -5835,11 +6351,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       );
       picture.dispose();
 
+      const gesturePhases = {
+        LassoPhase.moving,
+        LassoPhase.resizing,
+        LassoPhase.rotating,
+      };
       if (mounted &&
-          _lassoCtrl.phase == LassoPhase.moving &&
+          gesturePhases.contains(_lassoCtrl.phase) &&
           _lassoCtrl.boundingBox == bb) {
+        final old = _lassoCtrl.liftedInk;
         _lassoCtrl.liftedInk = img;
         _lassoCtrl.liftedRect = bb;
+        if (old != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+        }
         _lassoGestureTick.value++;
       } else {
         img.dispose();
@@ -6273,6 +6798,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                     (details.scale - 1.0)
                                                         .abs() >
                                                     0.01;
+                                                if (zooming) _pingZoomLabel();
                                                 if (!_viewMoved &&
                                                     (zooming ||
                                                         details
@@ -6544,6 +7070,51 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                     child: const EraserCursor(
                                                       radius:
                                                           _eraserScreenRadius,
+                                                    ),
+                                                  ),
+                                                if (_zoomLabelVisible)
+                                                  Positioned(
+                                                    left: 0,
+                                                    right: 0,
+                                                    bottom: 14,
+                                                    child: IgnorePointer(
+                                                      child: Center(
+                                                        child: Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 12,
+                                                                vertical: 5,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: yCream,
+                                                            border: Border.all(
+                                                              color:
+                                                                  yBorderStrong,
+                                                              width: yLineMid,
+                                                            ),
+                                                            boxShadow: const [
+                                                              BoxShadow(
+                                                                color:
+                                                                    yBorderStrong,
+                                                                offset: Offset(
+                                                                  2,
+                                                                  2,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          child: Text(
+                                                            '[ ${(_viewScale * 100).round()} % ]',
+                                                            style: yMono(
+                                                              size: 11,
+                                                              weight:
+                                                                  FontWeight.w700,
+                                                              tracking: 1.5,
+                                                              color: yInk,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
                                                     ),
                                                   ),
                                               ],

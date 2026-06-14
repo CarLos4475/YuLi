@@ -144,6 +144,51 @@ class LassoPainter extends CustomPainter {
     final scX = ctrl.isSideResize ? ctrl.resizeScaleX : ctrl.resizeScale;
     final scY = ctrl.isSideResize ? ctrl.resizeScaleY : ctrl.resizeScale;
 
+    // Lifted: stretch the captured texture into the scaled box (one blit) instead
+    // of re-pathing every selected stroke per frame. Re-baked crisp on release.
+    if (liftedInk != null && ctrl.liftedRect != null) {
+      final lr = ctrl.liftedRect!;
+      final src = Rect.fromLTWH(
+        0,
+        0,
+        liftedInk!.width.toDouble(),
+        liftedInk!.height.toDouble(),
+      );
+      final dst = Rect.fromPoints(
+        Offset(
+          pivot.dx + (lr.left - pivot.dx) * scX,
+          pivot.dy + (lr.top - pivot.dy) * scY,
+        ),
+        Offset(
+          pivot.dx + (lr.right - pivot.dx) * scX,
+          pivot.dy + (lr.bottom - pivot.dy) * scY,
+        ),
+      );
+      canvas.drawImageRect(
+        liftedInk!,
+        src,
+        dst,
+        Paint()..filterQuality = ui.FilterQuality.low,
+      );
+      if (ctrl.boundingBox != null) {
+        final bb = ctrl.boundingBox!;
+        _drawBoundingBox(
+          canvas,
+          Rect.fromPoints(
+            Offset(
+              pivot.dx + (bb.left - pivot.dx) * scX,
+              pivot.dy + (bb.top - pivot.dy) * scY,
+            ),
+            Offset(
+              pivot.dx + (bb.right - pivot.dx) * scX,
+              pivot.dy + (bb.bottom - pivot.dy) * scY,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     for (final i in ctrl.selectedImageIndices) {
       if (i >= images.length) continue;
       final im = images[i];
@@ -207,9 +252,9 @@ class LassoPainter extends CustomPainter {
     if (!highlight) _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
-      final p = stroke.points[0];
-      final px = pivot.dx + (p[0] - pivot.dx) * scX;
-      final py = pivot.dy + (p[1] - pivot.dy) * scY;
+      final pts = stroke.points;
+      final px = pivot.dx + (pts.x(0) - pivot.dx) * scX;
+      final py = pivot.dy + (pts.y(0) - pivot.dy) * scY;
       canvas.drawCircle(
         Offset(px, py),
         paint.strokeWidth / 2,
@@ -232,22 +277,21 @@ class LassoPainter extends CustomPainter {
     double tx(double x) => pivot.dx + (x - pivot.dx) * scX;
     double ty(double y) => pivot.dy + (y - pivot.dy) * scY;
 
-    final path = Path()..moveTo(tx(pts[0][0]), ty(pts[0][1]));
+    final path = Path()..moveTo(tx(pts.x(0)), ty(pts.y(0)));
     if (stroke.isShape) {
       for (int i = 1; i < pts.length; i++) {
-        path.lineTo(tx(pts[i][0]), ty(pts[i][1]));
+        path.lineTo(tx(pts.x(i)), ty(pts.y(i)));
       }
       return path;
     }
     for (int i = 1; i < pts.length - 1; i++) {
-      final x0 = tx(pts[i][0]);
-      final y0 = ty(pts[i][1]);
-      final x1 = tx(pts[i + 1][0]);
-      final y1 = ty(pts[i + 1][1]);
+      final x0 = tx(pts.x(i));
+      final y0 = ty(pts.y(i));
+      final x1 = tx(pts.x(i + 1));
+      final y1 = ty(pts.y(i + 1));
       path.quadraticBezierTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
     }
-    final last = pts.last;
-    path.lineTo(tx(last[0]), ty(last[1]));
+    path.lineTo(tx(pts.lastX), ty(pts.lastY));
     return path;
   }
 
@@ -262,9 +306,9 @@ class LassoPainter extends CustomPainter {
           ..style = PaintingStyle.stroke;
 
     if (stroke.points.length == 1) {
-      final p = stroke.points[0];
+      final pts = stroke.points;
       canvas.drawCircle(
-        Offset(p[0] + offset.dx, p[1] + offset.dy),
+        Offset(pts.x(0) + offset.dx, pts.y(0) + offset.dy),
         (stroke.strokeWidth + 6) / 2,
         paint..style = PaintingStyle.fill,
       );
@@ -291,9 +335,9 @@ class LassoPainter extends CustomPainter {
     _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
-      final p = stroke.points[0];
+      final pts = stroke.points;
       canvas.drawCircle(
-        Offset(p[0] + offset.dx, p[1] + offset.dy),
+        Offset(pts.x(0) + offset.dx, pts.y(0) + offset.dy),
         stroke.strokeWidth / 2,
         paint..style = PaintingStyle.fill,
       );
@@ -306,22 +350,21 @@ class LassoPainter extends CustomPainter {
 
   Path _buildStrokePath(DrawingStroke stroke, Offset offset) {
     final pts = stroke.points;
-    final path = Path()..moveTo(pts[0][0] + offset.dx, pts[0][1] + offset.dy);
+    final path = Path()..moveTo(pts.x(0) + offset.dx, pts.y(0) + offset.dy);
     if (stroke.isShape) {
       for (int i = 1; i < pts.length; i++) {
-        path.lineTo(pts[i][0] + offset.dx, pts[i][1] + offset.dy);
+        path.lineTo(pts.x(i) + offset.dx, pts.y(i) + offset.dy);
       }
       return path;
     }
     for (int i = 1; i < pts.length - 1; i++) {
-      final x0 = pts[i][0] + offset.dx;
-      final y0 = pts[i][1] + offset.dy;
-      final x1 = pts[i + 1][0] + offset.dx;
-      final y1 = pts[i + 1][1] + offset.dy;
+      final x0 = pts.x(i) + offset.dx;
+      final y0 = pts.y(i) + offset.dy;
+      final x1 = pts.x(i + 1) + offset.dx;
+      final y1 = pts.y(i + 1) + offset.dy;
       path.quadraticBezierTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
     }
-    final last = pts.last;
-    path.lineTo(last[0] + offset.dx, last[1] + offset.dy);
+    path.lineTo(pts.lastX + offset.dx, pts.lastY + offset.dy);
     return path;
   }
 
@@ -333,6 +376,44 @@ class LassoPainter extends CustomPainter {
     final angle = ctrl.rotationAngle;
     final cos = math.cos(angle);
     final sin = math.sin(angle);
+
+    // Lifted: rotate the captured texture about the box center (one blit) instead
+    // of re-pathing every selected stroke per frame. Re-baked crisp on release.
+    if (liftedInk != null && ctrl.liftedRect != null) {
+      final lr = ctrl.liftedRect!;
+      final src = Rect.fromLTWH(
+        0,
+        0,
+        liftedInk!.width.toDouble(),
+        liftedInk!.height.toDouble(),
+      );
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(angle);
+      canvas.translate(-center.dx, -center.dy);
+      canvas.drawImageRect(
+        liftedInk!,
+        src,
+        lr,
+        Paint()..filterQuality = ui.FilterQuality.low,
+      );
+      canvas.restore();
+      if (ctrl.boundingBox != null) {
+        final bb = ctrl.boundingBox!;
+        final corners =
+            [bb.topLeft, bb.topRight, bb.bottomRight, bb.bottomLeft]
+                .map((c) => _rotatePoint(c, center, cos, sin))
+                .toList();
+        _drawDashedPolyline(
+          canvas,
+          corners,
+          const Color(0x802D4B8E),
+          1.5 / (ctrl.hitScale <= 0 ? 1.0 : ctrl.hitScale),
+          close: true,
+        );
+      }
+      return;
+    }
 
     for (final i in ctrl.selectedImageIndices) {
       if (i >= images.length) continue;
@@ -401,8 +482,7 @@ class LassoPainter extends CustomPainter {
     if (!highlight) _applyHighlighter(paint, stroke);
 
     if (stroke.points.length == 1) {
-      final p = stroke.points[0];
-      final r = _rotatePoint(Offset(p[0], p[1]), center, cos, sin);
+      final r = _rotatePoint(stroke.points.offset(0), center, cos, sin);
       canvas.drawCircle(
         r,
         paint.strokeWidth / 2,
@@ -422,8 +502,7 @@ class LassoPainter extends CustomPainter {
     double sin,
   ) {
     final pts = stroke.points;
-    Offset r(int i) =>
-        _rotatePoint(Offset(pts[i][0], pts[i][1]), center, cos, sin);
+    Offset r(int i) => _rotatePoint(pts.offset(i), center, cos, sin);
     final first = r(0);
     final path = Path()..moveTo(first.dx, first.dy);
     if (stroke.isShape) {

@@ -41,10 +41,10 @@ void main() {
   DrawingStroke pen(double x, double y) => DrawingStroke(
     colorValue: 0xFF000000,
     strokeWidth: 3,
-    points: [
+    points: StrokePoints.fromNested([
       [x, y],
       [x + 10, y + 10],
-    ],
+    ]),
   );
 
   test('insert + getByBlock round-trips strokes with dbId', () async {
@@ -58,8 +58,8 @@ void main() {
     expect(rows.length, 2);
     final restored = rows.map(strokeFromRecord).toList();
     expect(restored[0].dbId, a.dbId);
-    expect(restored[0].points.first, [0.0, 0.0]);
-    expect(restored[1].points.first, [50.0, 50.0]);
+    expect(restored[0].points.offset(0), const Offset(0, 0));
+    expect(restored[1].points.offset(0), const Offset(50, 50));
   });
 
   test('insertMany round-trips strokes in position order', () async {
@@ -95,17 +95,17 @@ void main() {
     final moved = DrawingStroke(
       colorValue: s.colorValue,
       strokeWidth: s.strokeWidth,
-      points: [
+      points: StrokePoints.fromNested([
         [100, 100],
         [110, 110],
-      ],
+      ]),
     )..dbId = s.dbId;
     await strokeRepo.update(s.dbId!, strokeWrite(0, moved));
 
     final rows = await strokeRepo.getByBlock(blockId);
     expect(rows.length, 1);
     expect(rows.first.id, s.dbId);
-    expect(strokeFromRecord(rows.first).points.first, [100.0, 100.0]);
+    expect(strokeFromRecord(rows.first).points.offset(0), const Offset(100, 100));
   });
 
   test('updateMany mutates several stored strokes in one batch', () async {
@@ -127,9 +127,9 @@ void main() {
     final restored =
         (await strokeRepo.getByBlock(blockId)).map(strokeFromRecord).toList();
     expect(restored.map((s) => s.dbId).toList(), [a.dbId, b.dbId, c.dbId]);
-    expect(restored[0].points.first, [100.0, 100.0]);
-    expect(restored[1].points.first, [10.0, 10.0]);
-    expect(restored[2].points.first, [300.0, 300.0]);
+    expect(restored[0].points.offset(0), const Offset(100, 100));
+    expect(restored[1].points.offset(0), const Offset(10, 10));
+    expect(restored[2].points.offset(0), const Offset(300, 300));
   });
 
   test('deleteByIds removes only the named rows', () async {
@@ -203,32 +203,32 @@ void main() {
         colorValue: 0xFF112233,
         strokeWidth: 4,
         isFountainPen: true,
-        points: [
+        points: StrokePoints.fromNested([
           [0, 0, 2.0],
           [5, 5, 3.5],
           [10, 2, 1.0],
-        ],
+        ]),
       );
       final shape = DrawingStroke(
         colorValue: 0xFF445566,
         strokeWidth: 2,
         isShape: true,
         filled: true,
-        points: [
+        points: StrokePoints.fromNested([
           [0, 0],
           [20, 0],
           [20, 20],
           [0, 20],
-        ],
+        ]),
       );
       final hl = DrawingStroke(
         colorValue: 0x55FFFF00,
         strokeWidth: 18,
         isHighlighter: true,
-        points: [
+        points: StrokePoints.fromNested([
           [0, 0],
           [30, 0],
-        ],
+        ]),
       );
       for (final (i, s) in [fountain, shape, hl].indexed) {
         s.dbId = await strokeRepo.insert(blockId, strokeWrite(i, s));
@@ -237,7 +237,10 @@ void main() {
           (await strokeRepo.getByBlock(blockId)).map(strokeFromRecord).toList();
       expect(restored.length, 3);
       expect(restored[0].isFountainPen, true);
-      expect(restored[0].points[1], [5.0, 5.0, 3.5]);
+      expect(restored[0].points.comps, 3);
+      expect(restored[0].points.x(1), 5.0);
+      expect(restored[0].points.y(1), 5.0);
+      expect(restored[0].points.z(1), 3.5);
       expect(restored[1].isShape, true);
       expect(restored[1].filled, true);
       expect(restored[2].isHighlighter, true);
