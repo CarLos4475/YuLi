@@ -490,6 +490,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   EraserMode _eraserMode = EraserMode.stroke;
   bool _eraserPopupOpen = false;
   Offset? _eraserCursor;
+  // Accumulated dirty region of the in-flight erase gesture (page-local), patched
+  // into the overview ONCE on pen-up — per-move patching flickered mid-erase.
+  Rect? _eraseDirtyRegion;
+  int? _erasePageIndex;
 
   @override
   void initState() {
@@ -1370,7 +1374,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
   }
 
-  void _persistPage(int pageIndex, {Rect? overviewRegion}) {
+  void _persistPage(
+    int pageIndex, {
+    Rect? overviewRegion,
+    bool deferOverview = false,
+  }) {
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
     _dirtyPersistPages.add(_pageBlockIds[pageIndex]);
     _persistTimer?.cancel();
@@ -1380,6 +1388,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
     // Page ink changed → its zoomed-out overview image needs updating.
     final bid = _pageBlockIds[pageIndex];
+    // Mid-gesture (erase): persist DB + drop focus, but skip the overview bake AND
+    // the ring — the live vector tiles show the edit (the ring/focus aren't shown
+    // at rest-zoom anyway), and one regional patch + ring invalidation on pen-up
+    // folds it in without the per-move churn.
+    if (deferOverview) {
+      _disposeFocus(bid);
+      return;
+    }
     if (overviewRegion != null && _overviewByPage[bid] != null) {
       // Regional patch (O(region)): redraw ONLY the edited slice of the page
       // overview instead of re-baking all the page's strokes (O(page), the
@@ -1403,10 +1419,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // or lasso-move would leave a ghost. Falls back to base+delta; the focus
     // re-bakes on the next settle. (At rest zoomed-in you're on vector anyway.)
     _disposeFocus(bid);
-    // Same for the chunk ring: bump the version so the now-stale tiles stop being
-    // shown (curTiles filters by version → the overlay yields to base+delta) and
-    // re-bake at the new state on the next pump.
-    _chunkVersion++;
+    // Chunk ring: invalidate ONLY this page's cells (its world rect, or the tight
+    // edited slice if known) instead of bumping _chunkVersion globally — editing
+    // one page no longer softens every other page on the next pan. The pump
+    // re-bakes the freed cells; untouched pages stay crisp.
+    final pageTop = _pageOffsetY(pageIndex);
+    final chunkWorld = (overviewRegion ??
+            const Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight))
+        .translate(0, pageTop);
+    _invalidateChunkRegion(chunkWorld);
     _scheduleChunkPump();
     // Retired (Phase A is overview-based): the viewport-raster / zoom-snapshot
     // bakes ran on every edit but their layers are now inert, so they were pure
@@ -1857,6 +1878,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     _chunkTiles.clear();
     _chunkTileWorld = 0;
+  }
+
+  /// Drop ONLY the ring cells overlapping [world] (world coords) instead of
+  /// bumping _chunkVersion (which discards every page's tiles). The untouched
+  /// cells keep their version → stay crisp on the next pan; the pump re-bakes the
+  /// freed ones nearest-first. The per-edit alternative to a global ring nuke:
+  /// editing one page no longer softens every other page.
+  void _invalidateChunkRegion(Rect world) {
+    if (_chunkTiles.isEmpty) return;
+    for (final key in _chunkTiles.keys.toList()) {
+      final t = _chunkTiles[key];
+      if (t != null && t.worldRect.overlaps(world)) {
+        _chunkTiles.remove(key);
+        final img = t.image;
+        WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+      }
+    }
   }
 
   void _scheduleChunkPump() {
@@ -3780,11 +3818,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _rebuildWorldStrokeCache(blockId);
       _inkTick.value++;
       setState(() {});
-      // NO regional patch here: the eraser fires per pointer-move, so patching each
-      // move flickers the overview mid-erase. The debounced full bake folds it once
-      // on release (the live vector tiles show the erase meanwhile). A per-gesture
-      // patch on pen-up would be the win (TODO), like the whiteboard's commit hook.
-      _persistPage(pageIndex);
+      // Accumulate the touched region across the gesture; the overview is patched
+      // ONCE on pen-up (_commitEraseGesture) — patching per move flickered. The
+      // live vector tiles show the erase meanwhile, so deferring is invisible.
+      if (dirty != null) {
+        final d = dirty!.inflate(4);
+        _eraseDirtyRegion = _eraseDirtyRegion?.expandToInclude(d) ?? d;
+      }
+      _erasePageIndex = pageIndex;
+      _persistPage(pageIndex, deferOverview: true);
     }
   }
 
@@ -5439,6 +5481,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (_gestureBefore != null && _gestureChanged) {
       _commitSnapshot(_gestureBefore!);
     }
+    // Fold the whole gesture's erased region into the overview with one regional
+    // patch (O(region)) instead of the per-move full-page bake (O(page)).
+    final page = _erasePageIndex;
+    if (page != null && _gestureChanged) {
+      _persistPage(page, overviewRegion: _eraseDirtyRegion);
+    }
+    _eraseDirtyRegion = null;
+    _erasePageIndex = null;
     _gestureBefore = null;
     _gestureChanged = false;
   }
