@@ -109,20 +109,22 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
             const SizedBox(width: 8),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => showModeHelp(
-                context,
-                mode: 'FLIGHT',
-                accent: yFlight,
-                description: 'Organiza tus notas en carpetas con colores. '
-                    'Crea notas de texto con bloques, cuadernos con páginas '
-                    'o pizarras infinitas para dibujo con stylus.',
-                tips: [
-                  'Crea carpetas para agrupar notas por tema',
-                  'Usa notas bloque para texto, math y listas',
-                  'Los cuadernos tienen páginas A4 con dibujo',
-                  'Las pizarras son lienzos infinitos con zoom',
-                ],
-              ),
+              onTap:
+                  () => showModeHelp(
+                    context,
+                    mode: 'FLIGHT',
+                    accent: yFlight,
+                    description:
+                        'Organiza tus notas en carpetas con colores. '
+                        'Crea notas de texto con bloques, cuadernos con páginas '
+                        'o pizarras infinitas para dibujo con stylus.',
+                    tips: [
+                      'Crea carpetas para agrupar notas por tema',
+                      'Usa notas bloque para texto, math y listas',
+                      'Los cuadernos tienen páginas A4 con dibujo',
+                      'Las pizarras son lienzos infinitos con zoom',
+                    ],
+                  ),
               child: Container(
                 width: 38,
                 height: 38,
@@ -556,7 +558,7 @@ class _FolderGrid extends ConsumerWidget {
             crossAxisCount: cols,
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
-            mainAxisExtent: 200,
+            mainAxisExtent: 264,
           ),
           itemBuilder: (_, i) {
             if (i >= folders.length) {
@@ -619,71 +621,86 @@ class _FolderCard extends ConsumerWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: folder.color,
-              border: Border.all(color: yBorderStrong, width: yLineMid),
+          Positioned.fill(
+            left: 8,
+            top: 8,
+            right: -8,
+            bottom: -8,
+            child: CustomPaint(painter: _FolderShapePainter(color: yInk)),
+          ),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _FolderShapePainter(color: folder.color, border: true),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-                  child: Column(
+          ),
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 64, 18, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Expanded(
+                        child: Text(
+                          folder.name,
+                          style: ySans(
+                            size: 28,
+                            weight: FontWeight.w700,
+                            color: yCream,
+                            height: 1.0,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Expanded(
-                            child: Text(
-                              folder.name,
-                              style: ySans(
-                                size: 28,
-                                weight: FontWeight.w700,
-                                letterSpacing: -0.8,
-                                color: yCream,
-                                height: 1.0,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
                           Text(
-                            count.toString().padLeft(2, '0'),
+                            'NOTAS',
                             style: yMono(
-                              size: 11,
+                              size: 9,
                               weight: FontWeight.w700,
                               tracking: 1.2,
                               color: yCream.withValues(alpha: 0.85),
                             ),
                           ),
+                          Text(
+                            count.toString().padLeft(2, '0'),
+                            style: yMono(
+                              size: 24,
+                              weight: FontWeight.w700,
+                              tracking: 1.0,
+                              color: yCream,
+                            ),
+                          ),
                         ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        lastEdit == null
-                            ? 'SIN NOTAS'
-                            : 'EDITADA ${_lastEditLabel(lastEdit).toUpperCase()}',
-                        style: yMono(
-                          size: 10,
-                          tracking: 1.4,
-                          color: yCream.withValues(alpha: 0.75),
-                        ),
                       ),
                     ],
                   ),
-                ),
-                Container(height: 2, color: yCream.withValues(alpha: 0.25)),
-                // Recent notes preview
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                  const SizedBox(height: 4),
+                  Text(
+                    lastEdit == null
+                        ? 'SIN NOTAS'
+                        : 'EDITADA ${_lastEditLabel(lastEdit).toUpperCase()}',
+                    style: yMono(
+                      size: 10,
+                      tracking: 1.4,
+                      color: yCream.withValues(alpha: 0.75),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(height: 1.5, color: yCream.withValues(alpha: 0.32)),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 64,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (int i = 0; i < recents.length; i++)
+                        for (int i = 0; i < recents.take(3).length; i++)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 4),
                             child: Opacity(
@@ -691,18 +708,15 @@ class _FolderCard extends ConsumerWidget {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '▸',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontFamily: 'monospace',
-                                      color: yCream.withValues(alpha: 0.7),
-                                    ),
+                                  Icon(
+                                    YuLiIcons.chevronRight,
+                                    size: 12,
+                                    color: yCream.withValues(alpha: 0.72),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      recents[i].title ?? '(sin título)',
+                                      recents[i].title ?? 'Sin titulo',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: yBody(
@@ -719,44 +733,34 @@ class _FolderCard extends ConsumerWidget {
                       ],
                     ),
                   ),
-                ),
-                // Footer enter affordance
-                Container(height: 2, color: yCream.withValues(alpha: 0.25)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'ABRIR CARPETA',
-                        style: yMono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          tracking: 1.4,
-                          color: yCream.withValues(alpha: 0.85),
+                  const Spacer(),
+                  Container(height: 2, color: yBorderStrong),
+                  SizedBox(
+                    height: 44,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'ABRIR CARPETA',
+                          style: yMono(
+                            size: 10,
+                            weight: FontWeight.w700,
+                            tracking: 1.4,
+                            color: yCream.withValues(alpha: 0.85),
+                          ),
                         ),
-                      ),
-                      Text(
-                        '→',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: yCream,
-                          height: 1.0,
-                        ),
-                      ),
-                    ],
+                        Icon(YuLiIcons.arrowRight, size: 20, color: yCream),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           if (pinned)
             Positioned(
-              top: -2,
-              right: 16,
+              top: 44,
+              right: 18,
               child: Transform.rotate(
                 angle: 0.035,
                 child: Container(
@@ -765,14 +769,21 @@ class _FolderCard extends ConsumerWidget {
                     color: yAmber2,
                     border: Border.all(color: yBorderStrong, width: yLineThin),
                   ),
-                  child: Text(
-                    '★ FIJADA',
-                    style: yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(YuLiIcons.star, size: 10, color: yInk),
+                      const SizedBox(width: 4),
+                      Text(
+                        'FIJADA',
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: yInk,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -781,6 +792,45 @@ class _FolderCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _FolderShapePainter extends CustomPainter {
+  final Color color;
+  final bool border;
+
+  const _FolderShapePainter({required this.color, this.border = false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bodyTop = size.height * 0.17;
+    final tabEnd = size.width * 0.40;
+    final tabDrop = size.height * 0.105;
+    final path =
+        Path()
+          ..moveTo(0, bodyTop)
+          ..lineTo(16, bodyTop - tabDrop)
+          ..lineTo(tabEnd, bodyTop - tabDrop)
+          ..lineTo(tabEnd + 34, bodyTop)
+          ..lineTo(size.width, bodyTop)
+          ..lineTo(size.width, size.height)
+          ..lineTo(0, size.height)
+          ..close();
+    canvas.drawPath(path, Paint()..color = color);
+    if (border) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = yBorderStrong
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = yLineMid
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FolderShapePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.border != border;
 }
 
 class _FolderListRow extends ConsumerWidget {
@@ -1103,11 +1153,7 @@ class _FolderMenuItem extends StatelessWidget {
             const SizedBox(width: 12),
             Text(
               label,
-              style: ySans(
-                size: 15,
-                weight: FontWeight.w600,
-                color: color,
-              ),
+              style: ySans(size: 15, weight: FontWeight.w600, color: color),
             ),
           ],
         ),

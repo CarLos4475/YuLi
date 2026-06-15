@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,6 +15,8 @@ import '../../theme/lab_icons.dart';
 
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
+import '../../../domain/models/note_block.dart';
+import '../../../domain/models/page_background.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import 'note_editor_screen.dart';
 import 'new_note_picker.dart';
@@ -73,6 +73,17 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
     );
   }
 
+  List<Note> _sortNotes(List<Note> notes, Set<int> pinned) {
+    final indexed = notes.indexed.toList();
+    indexed.sort((a, b) {
+      final pa = pinned.contains(a.$2.id) ? 0 : 1;
+      final pb = pinned.contains(b.$2.id) ? 0 : 1;
+      if (pa != pb) return pa - pb;
+      return a.$1.compareTo(b.$1);
+    });
+    return [for (final item in indexed) item.$2];
+  }
+
   Future<void> _createNote() async {
     final kind = await showNewNotePicker(context);
     if (kind == null || !mounted) return;
@@ -115,6 +126,8 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
   Widget build(BuildContext context) {
     final notes =
         ref.watch(notesByFolderProvider(widget.folder.id)).valueOrNull ?? [];
+    final pinned = ref.watch(pinnedNotesProvider);
+    final sortedNotes = _sortNotes(notes, pinned);
     final pending =
         ref
             .watch(pendingTasksForFolderProvider(widget.folder.id))
@@ -147,7 +160,7 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
                 child: Container(
                   color: yCream,
                   child:
-                      notes.isEmpty
+                      sortedNotes.isEmpty
                           ? Center(
                             child: Text(
                               'SIN NOTAS — toca + NOTA',
@@ -159,8 +172,11 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
                             ),
                           )
                           : _grid
-                          ? _NoteGrid(notes: notes, folder: widget.folder)
-                          : _NoteList(notes: notes, folder: widget.folder),
+                          ? _NoteGrid(notes: sortedNotes, folder: widget.folder)
+                          : _NoteList(
+                            notes: sortedNotes,
+                            folder: widget.folder,
+                          ),
                 ),
               ),
               if (pending.isNotEmpty)
@@ -394,7 +410,7 @@ class _NoteGrid extends ConsumerWidget {
             crossAxisCount: cols,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
-            mainAxisExtent: 168,
+            mainAxisExtent: 206,
           ),
           itemCount: notes.length,
           itemBuilder: (_, i) => _NoteCard(note: notes[i], folder: folder),
@@ -423,6 +439,112 @@ class _NoteList extends ConsumerWidget {
 
 // ─── Note card (saturated) ────────────────────────────────────────────────
 
+class _NotebookCardPreview {
+  final int pageCount;
+  final PageBackground pattern;
+  final Color paperColor;
+
+  const _NotebookCardPreview({
+    required this.pageCount,
+    required this.pattern,
+    required this.paperColor,
+  });
+
+  List<String> get lines {
+    final pageLabel = pageCount == 1 ? 'Pagina' : 'Paginas';
+    return [
+      '$pageLabel ${pageCount.toString().padLeft(2, '0')}',
+      'Color ${_colorHex(paperColor)}',
+      'Patron ${_patternLabel(pattern)}',
+    ];
+  }
+
+  static String _colorHex(Color color) =>
+      '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+
+  static String _patternLabel(PageBackground pattern) => switch (pattern) {
+    PageBackground.blank => 'Blanco',
+    PageBackground.lined => 'Lineas',
+    PageBackground.grid => 'Cuadricula',
+    PageBackground.gridSmall => 'Cuadricula chica',
+    PageBackground.dotted => 'Puntos',
+  };
+}
+
+final _notebookCardPreviewProvider =
+    StreamProvider.family<_NotebookCardPreview, int>((ref, noteId) {
+      return ref.watch(noteBlockRepositoryProvider).watchByNote(noteId).map((
+        blocks,
+      ) {
+        final pages =
+            blocks.whereType<DrawingBlock>().toList()
+              ..sort((a, b) => a.position.compareTo(b.position));
+        final last = pages.isEmpty ? null : pages.last;
+        return _NotebookCardPreview(
+          pageCount: pages.isEmpty ? 1 : pages.length,
+          pattern: PageBackground.fromString(last?.background ?? ''),
+          paperColor: Color(last?.bgColor ?? 0xFFFFFFFF),
+        );
+      });
+    });
+
+class _TextNoteCardPreview {
+  final String excerpt;
+  final int wordCount;
+
+  const _TextNoteCardPreview({required this.excerpt, required this.wordCount});
+}
+
+final _textNoteCardPreviewProvider = StreamProvider.family<
+  _TextNoteCardPreview,
+  int
+>((ref, noteId) {
+  return ref.watch(noteBlockRepositoryProvider).watchByNote(noteId).map((
+    blocks,
+  ) {
+    final ordered = List<NoteBlock>.from(blocks)
+      ..sort((a, b) => a.position.compareTo(b.position));
+    final pieces = <String>[];
+    for (final block in ordered) {
+      final text = switch (block) {
+        TextBlock b => _cleanBlockText(b.markdown),
+        BulletsBlock b => b.items
+            .map(_cleanBlockText)
+            .where((item) => item.isNotEmpty)
+            .join(' / '),
+        MathBlock b =>
+          b.latex.trim().isEmpty ? '' : 'Formula ${b.latex.trim()}',
+        TareasBlock b => b.taskIds.isEmpty ? '' : 'Tareas ${b.taskIds.length}',
+        DrawingBlock _ => '',
+      };
+      if (text.isNotEmpty) pieces.add(text);
+      if (pieces.join(' ').length >= 220) break;
+    }
+    final body = pieces.join(' ').trim();
+    final excerpt =
+        body.isEmpty
+            ? 'Sin contenido todavia'
+            : body.length > 220
+            ? '${body.substring(0, 220)}...'
+            : body;
+    return _TextNoteCardPreview(excerpt: excerpt, wordCount: _wordCount(body));
+  });
+});
+
+String _cleanBlockText(String value) {
+  return value
+      .replaceAll(RegExp(r'#{1,6}\s+'), '')
+      .replaceAll(RegExp(r'[*_`~>\[\]()]'), '')
+      .replaceAll(RegExp(r'!\S+'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+int _wordCount(String value) {
+  if (value.trim().isEmpty) return 0;
+  return RegExp(r'\S+').allMatches(value.trim()).length;
+}
+
 class _NoteCard extends ConsumerWidget {
   final Note note;
   final Folder folder;
@@ -438,34 +560,12 @@ class _NoteCard extends ConsumerWidget {
   }
 
   String _previewOf(Note n) {
-    if (n.kind == NoteKind.notebook) return _notebookPreview(n);
-    if (n.kind == NoteKind.whiteboard) return 'Pizarra infinita · pan + zoom';
+    if (n.kind == NoteKind.whiteboard) return 'Pizarra infinita / pan + zoom';
     final clean = n.rawMarkdown
         .replaceAll(RegExp(r'#{1,6}\s+'), '')
         .replaceAll(RegExp(r'[*_`~]'), '')
         .replaceAll(RegExp(r'\n+'), ' ');
-    return clean.length > 220 ? '${clean.substring(0, 220)}…' : clean;
-  }
-
-  String _notebookPreview(Note n) {
-    final bg = _readNotebookBackground(n.rawMarkdown);
-    return switch (bg) {
-      'lined' => 'Cuaderno A4 · líneas',
-      'grid' => 'Cuaderno A4 · cuadrícula',
-      'dotted' => 'Cuaderno A4 · puntos',
-      _ => 'Cuaderno A4 · blanco',
-    };
-  }
-
-  String _readNotebookBackground(String raw) {
-    if (raw.isEmpty) return 'blank';
-    try {
-      final meta = jsonDecode(raw);
-      if (meta is Map && meta['pageBackground'] is String) {
-        return meta['pageBackground'] as String;
-      }
-    } catch (_) {}
-    return 'blank';
+    return clean.length > 220 ? '${clean.substring(0, 220)}...' : clean;
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
@@ -503,23 +603,14 @@ class _NoteCard extends ConsumerWidget {
   }
 
   void _showOptions(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder:
-          (ctx) => EditItemDialog(
-            title: 'Nota',
-            initialName: note.displayTitle,
-            initialColor: note.color ?? folder.color,
-            onSave: (name, color) async {
-              await ref
-                  .read(noteRepositoryProvider)
-                  .update(note.copyWith(title: name, color: color));
-            },
-            onDelete: () async {
-              Navigator.pop(ctx);
-              await _confirmDelete(context, ref);
-            },
-          ),
+    final pinned = ref.read(pinnedNotesProvider).contains(note.id);
+    _showNoteActions(
+      context,
+      ref,
+      note,
+      folder,
+      pinned,
+      onDelete: () => _confirmDelete(context, ref),
     );
   }
 
@@ -527,7 +618,30 @@ class _NoteCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pinned = ref.watch(pinnedNotesProvider).contains(note.id);
     final bg = note.color ?? folder.color;
-    final preview = _previewOf(note);
+    final notebookPreview =
+        note.kind == NoteKind.notebook
+            ? ref.watch(_notebookCardPreviewProvider(note.id)).valueOrNull
+            : null;
+    final textPreview =
+        note.kind == NoteKind.block
+            ? ref.watch(_textNoteCardPreviewProvider(note.id)).valueOrNull
+            : null;
+    final preview = switch (note.kind) {
+      NoteKind.notebook => '',
+      NoteKind.block =>
+        textPreview?.excerpt ??
+            (note.rawMarkdown.trim().isEmpty
+                ? 'Sin contenido todavia'
+                : _previewOf(note)),
+      NoteKind.whiteboard => _previewOf(note),
+    };
+    final footerMetric =
+        note.kind == NoteKind.block
+            ? '${textPreview?.wordCount ?? 0} PALABRAS'
+            : '${note.sizeBytes}B';
+    final notebookLines =
+        notebookPreview?.lines ??
+        const ['Paginas 01', 'Color #FFFFFF', 'Patron Blanco'];
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap:
@@ -552,75 +666,104 @@ class _NoteCard extends ConsumerWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border.all(color: yBorderStrong, width: yLineMid),
+          Positioned.fill(
+            left: 8,
+            top: 8,
+            right: -8,
+            bottom: -8,
+            child: CustomPaint(
+              painter: _NoteCardBackgroundPainter(kind: note.kind, color: yInk),
             ),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _NoteKindBadge(kind: note.kind),
-                const SizedBox(height: 6),
-                Text(
-                  note.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ySans(
-                    size: 20,
-                    weight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                    color: yCream,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: Text(
-                    preview,
-                    maxLines: 3,
+          ),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _NoteCardBackgroundPainter(
+                kind: note.kind,
+                color: bg,
+                border: true,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(painter: _NoteCardPainter(kind: note.kind)),
+            ),
+          ),
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                note.kind == NoteKind.notebook ? 64 : 16,
+                14,
+                note.kind == NoteKind.block ? 54 : 16,
+                12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _NoteKindBadge(kind: note.kind),
+                  const SizedBox(height: 6),
+                  Text(
+                    note.displayTitle,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: yBody(
-                      size: 12,
-                      color: yCream.withValues(alpha: 0.85),
-                      height: 1.4,
+                    style: ySans(
+                      size: 20,
+                      weight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                      color: yCream,
+                      height: 1.1,
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(height: 1.5, color: yCream.withValues(alpha: 0.3)),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _lastEditLabel(note.updatedAt).toUpperCase(),
-                      style: yMono(
-                        size: 9,
-                        weight: FontWeight.w700,
-                        tracking: 1.2,
-                        color: yCream.withValues(alpha: 0.85),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child:
+                        note.kind == NoteKind.notebook
+                            ? _NotebookPreviewLines(lines: notebookLines)
+                            : Text(
+                              preview,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: yBody(
+                                size: 12,
+                                color: yCream.withValues(alpha: 0.85),
+                                height: 1.4,
+                              ),
+                            ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(height: 1.5, color: yCream.withValues(alpha: 0.3)),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _lastEditLabel(note.updatedAt).toUpperCase(),
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yCream.withValues(alpha: 0.85),
+                        ),
                       ),
-                    ),
-                    Text(
-                      '${note.sizeBytes}B',
-                      style: yMono(
-                        size: 9,
-                        weight: FontWeight.w700,
-                        tracking: 1.2,
-                        color: yCream.withValues(alpha: 0.85),
+                      Text(
+                        footerMetric,
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w700,
+                          tracking: 1.2,
+                          color: yCream.withValues(alpha: 0.85),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           if (pinned)
             Positioned(
               top: -2,
-              right: 12,
+              right: note.kind == NoteKind.block ? 68 : 12,
               child: Transform.rotate(
                 angle: 0.035,
                 child: Container(
@@ -629,14 +772,21 @@ class _NoteCard extends ConsumerWidget {
                     color: yAmber2,
                     border: Border.all(color: yBorderStrong, width: yLineThin),
                   ),
-                  child: Text(
-                    '★ FIJADA',
-                    style: yMono(
-                      size: 9,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(YuLiIcons.star, size: 10, color: yInk),
+                      const SizedBox(width: 4),
+                      Text(
+                        'FIJADA',
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: yInk,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -647,6 +797,408 @@ class _NoteCard extends ConsumerWidget {
   }
 }
 
+void _showNoteActions(
+  BuildContext context,
+  WidgetRef ref,
+  Note note,
+  Folder folder,
+  bool pinned, {
+  VoidCallback? onDelete,
+}) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: yCream,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    builder:
+        (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Text(
+                  note.displayTitle.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
+                ),
+              ),
+              _NoteActionItem(
+                icon: YuLiIcons.star,
+                label: pinned ? 'Desfijar' : 'Fijar',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(pinnedNotesProvider.notifier).toggle(note.id);
+                },
+              ),
+              _NoteActionItem(
+                icon: YuLiIcons.pen,
+                label: 'Editar',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showEditNoteDialog(context, ref, note, folder);
+                },
+              ),
+              _NoteActionItem(
+                icon: YuLiIcons.trash,
+                label: 'Eliminar',
+                destructive: true,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (onDelete != null) {
+                    onDelete();
+                  } else {
+                    _confirmDeleteNote(context, ref, note);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+  );
+}
+
+void _showEditNoteDialog(
+  BuildContext context,
+  WidgetRef ref,
+  Note note,
+  Folder folder,
+) {
+  showDialog(
+    context: context,
+    builder:
+        (ctx) => EditItemDialog(
+          title: 'Nota',
+          initialName: note.displayTitle,
+          initialColor: note.color ?? folder.color,
+          onSave: (name, color) async {
+            await ref
+                .read(noteRepositoryProvider)
+                .update(note.copyWith(title: name, color: color));
+          },
+          onDelete: () async {
+            Navigator.pop(ctx);
+            await _confirmDeleteNote(context, ref, note);
+          },
+        ),
+  );
+}
+
+Future<void> _confirmDeleteNote(
+  BuildContext context,
+  WidgetRef ref,
+  Note note,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder:
+        (ctx) => AlertDialog(
+          backgroundColor: yCream,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: Text(
+            'Eliminar nota',
+            style: ySans(size: 20, weight: FontWeight.w700),
+          ),
+          content: Text(
+            'Se movera la nota a la papelera.',
+            style: yBody(size: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
+  );
+  if (confirmed == true) {
+    await ref.read(noteRepositoryProvider).softDelete(note.id);
+  }
+}
+
+class _NoteActionItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  const _NoteActionItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = destructive ? yFight : yInk;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: ySans(size: 15, weight: FontWeight.w600, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotebookPreviewLines extends StatelessWidget {
+  final List<String> lines;
+
+  const _NotebookPreviewLines({required this.lines});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        for (final line in lines.take(3))
+          SizedBox(
+            height: 18,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                line,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  tracking: 1.1,
+                  color: yCream.withValues(alpha: 0.86),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _NoteCardBackgroundPainter extends CustomPainter {
+  final NoteKind kind;
+  final Color color;
+  final bool border;
+
+  const _NoteCardBackgroundPainter({
+    required this.kind,
+    required this.color,
+    this.border = false,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path =
+        kind == NoteKind.block
+            ? (Path()
+              ..moveTo(0, 0)
+              ..lineTo(size.width - 58, 0)
+              ..lineTo(size.width, 58)
+              ..lineTo(size.width, size.height)
+              ..lineTo(0, size.height)
+              ..close())
+            : (Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height)));
+    canvas.drawPath(path, Paint()..color = color);
+    if (border) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = yBorderStrong
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = yLineMid
+          ..strokeJoin = StrokeJoin.miter,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _NoteCardBackgroundPainter oldDelegate) =>
+      oldDelegate.kind != kind ||
+      oldDelegate.color != color ||
+      oldDelegate.border != border;
+}
+
+class _NoteCardPainter extends CustomPainter {
+  final NoteKind kind;
+
+  const _NoteCardPainter({required this.kind});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    switch (kind) {
+      case NoteKind.whiteboard:
+        _paintWhiteboard(canvas, size);
+      case NoteKind.notebook:
+        _paintNotebook(canvas, size);
+      case NoteKind.block:
+        _paintTextNote(canvas, size);
+    }
+  }
+
+  void _paintWhiteboard(Canvas canvas, Size size) {
+    final dotPaint = Paint()..color = yCream.withValues(alpha: 0.12);
+    for (double x = 24; x < size.width - 24; x += 18) {
+      for (double y = 34; y < size.height - 46; y += 18) {
+        canvas.drawCircle(Offset(x, y), 1.1, dotPaint);
+      }
+    }
+    final line =
+        Paint()
+          ..color = yCream.withValues(alpha: 0.62)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round;
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.16, size.height * 0.48, 50, 36),
+      line,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.36, size.height * 0.57),
+      Offset(size.width * 0.46, size.height * 0.57),
+      line,
+    );
+    final circle = Rect.fromCircle(
+      center: Offset(size.width * 0.56, size.height * 0.56),
+      radius: 28,
+    );
+    canvas.drawOval(circle, line);
+    canvas.drawLine(
+      Offset(circle.center.dx - 8, circle.center.dy - 10),
+      Offset(circle.center.dx + 8, circle.center.dy + 12),
+      line,
+    );
+    canvas.drawLine(
+      Offset(circle.center.dx + 8, circle.center.dy - 10),
+      Offset(circle.center.dx - 8, circle.center.dy + 12),
+      line,
+    );
+    final graph =
+        Path()
+          ..moveTo(size.width * 0.75, size.height * 0.42)
+          ..lineTo(size.width * 0.75, size.height * 0.25)
+          ..moveTo(size.width * 0.75, size.height * 0.42)
+          ..lineTo(size.width * 0.92, size.height * 0.42)
+          ..moveTo(size.width * 0.79, size.height * 0.39)
+          ..cubicTo(
+            size.width * 0.82,
+            size.height * 0.28,
+            size.width * 0.86,
+            size.height * 0.43,
+            size.width * 0.90,
+            size.height * 0.29,
+          );
+    canvas.drawPath(graph, line);
+    final hatchRect = Rect.fromLTWH(size.width - 64, size.height - 44, 64, 44);
+    canvas.drawRect(
+      hatchRect,
+      Paint()..color = yBorderStrong.withValues(alpha: 0.12),
+    );
+    canvas.save();
+    canvas.clipRect(hatchRect);
+    final hatch =
+        Paint()
+          ..color = yBorderStrong
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2;
+    for (double x = hatchRect.left - 36; x < hatchRect.right; x += 10) {
+      canvas.drawLine(
+        Offset(x, hatchRect.bottom + 2),
+        Offset(x + 42, hatchRect.top - 2),
+        hatch,
+      );
+    }
+    canvas.restore();
+    canvas.drawRect(
+      hatchRect,
+      Paint()
+        ..color = yBorderStrong
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = yLineMid,
+    );
+  }
+
+  void _paintNotebook(Canvas canvas, Size size) {
+    final ringPaint = Paint()..color = yInk;
+    for (double y = 28; y < size.height - 26; y += 25) {
+      canvas.drawRect(Rect.fromLTWH(-3, y, 24, 9), ringPaint);
+      canvas.drawRect(
+        Rect.fromLTWH(18, y + 2, 12, 5),
+        Paint()..color = yCream.withValues(alpha: 0.32),
+      );
+    }
+    final line =
+        Paint()
+          ..color = yCream.withValues(alpha: 0.22)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4;
+    for (double y = size.height * 0.42; y < size.height - 52; y += 18) {
+      canvas.drawLine(Offset(60, y), Offset(size.width - 18, y), line);
+    }
+    canvas.drawLine(
+      const Offset(54, 40),
+      Offset(54, size.height - 48),
+      Paint()
+        ..color = yCream.withValues(alpha: 0.16)
+        ..strokeWidth = 1.2,
+    );
+  }
+
+  void _paintTextNote(Canvas canvas, Size size) {
+    final fold =
+        Path()
+          ..moveTo(size.width - 58, 0)
+          ..lineTo(size.width, 58)
+          ..lineTo(size.width - 58, 58)
+          ..close();
+    canvas.drawPath(fold, Paint()..color = yCream.withValues(alpha: 0.9));
+    final foldBorder =
+        Paint()
+          ..color = yBorderStrong
+          ..strokeWidth = yLineMid
+          ..strokeJoin = StrokeJoin.miter;
+    canvas.drawLine(
+      Offset(size.width - 58, 0),
+      Offset(size.width, 58),
+      foldBorder,
+    );
+    canvas.drawLine(
+      Offset(size.width - 58, 58),
+      Offset(size.width, 58),
+      foldBorder,
+    );
+    canvas.drawLine(
+      Offset(size.width - 58, 0),
+      Offset(size.width - 58, 58),
+      foldBorder,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _NoteCardPainter oldDelegate) =>
+      oldDelegate.kind != kind;
+}
+
 class _NoteRow extends ConsumerWidget {
   final Note note;
   final Folder folder;
@@ -655,6 +1207,7 @@ class _NoteRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pinned = ref.watch(pinnedNotesProvider).contains(note.id);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap:
@@ -675,6 +1228,7 @@ class _NoteRow extends ConsumerWidget {
                   },
             ),
           ),
+      onLongPress: () => _showNoteActions(context, ref, note, folder, pinned),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
@@ -693,6 +1247,10 @@ class _NoteRow extends ConsumerWidget {
                 style: ySans(size: 16, weight: FontWeight.w700, color: yCream),
               ),
             ),
+            if (pinned) ...[
+              const SizedBox(width: 8),
+              Icon(YuLiIcons.star, size: 14, color: yAmber2),
+            ],
             const SizedBox(width: 8),
             Text(
               '→',
