@@ -403,14 +403,13 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
       key: _layerKey,
       builder: (context, constraints) {
         _avail = Size(constraints.maxWidth, constraints.maxHeight);
-        final kinds = _c.open.toList();
         return IgnorePointer(
           ignoring: widget.hidden,
           child: Stack(
             children: [
-              // Magnet target hint while dragging.
               if (_dragging != null && !widget.hidden) ..._magnetHints(),
-              for (final k in kinds) _buildDockedPalette(k),
+              for (final k in FloatingPaletteKind.values)
+                _buildDockedPalette(k),
             ],
           ),
         );
@@ -442,11 +441,11 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
     final hEst = _estHeight(k);
     final isDrag = _dragging == k;
     final docked = _dockTopLeft(k, hEst);
+    final isOpen = _c.isOpen(k);
     Offset tl;
     if (isDrag) {
       tl = _dragTopLeft;
-    } else if (widget.hidden) {
-      // Slide off toward the palette's own edge.
+    } else if (widget.hidden || !isOpen) {
       final offX = _c.edgeOf(k) == PaletteEdge.left
           ? -(_paletteWidth + 24)
           : _avail.width + 24;
@@ -457,33 +456,38 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
     return AnimatedPositioned(
       key: ValueKey(k),
       duration: isDrag ? Duration.zero : const Duration(milliseconds: 260),
-      curve: widget.hidden ? Curves.easeInCubic : Curves.easeOutBack,
+      curve: widget.hidden || !isOpen
+          ? Curves.easeInCubic
+          : Curves.easeOutBack,
       left: tl.dx,
       top: tl.dy,
-      child: GestureDetector(
-        behavior: HitTestBehavior.deferToChild,
-        onLongPressStart: (d) => _onDragStart(k, d, _dockTopLeft(k, hEst)),
-        onLongPressMoveUpdate: _onDragMove,
-        onLongPressEnd: (_) => _onDragEnd(k, hEst),
-        child: AnimatedScale(
-          scale: isDrag ? 1.06 : 1.0,
-          duration: const Duration(milliseconds: 140),
-          child: _PaletteCard(
-            kind: k,
-            dragging: isDrag,
-            maxItemsHeight: _cappedItems(k),
-            controller: _c,
-            accent: widget.accent,
-            activeColor: widget.activeColor,
-            activeWidth: widget.activeWidth,
-            onPickColor: widget.onPickColor,
-            onPickWidth: widget.onPickWidth,
-            onInsertShape: widget.onInsertShape,
-            onUndo: widget.onUndo,
-            onRedo: widget.onRedo,
-            canUndo: widget.canUndo,
-            canRedo: widget.canRedo,
-            onEyedropper: widget.onEyedropper,
+      child: IgnorePointer(
+        ignoring: !isOpen || widget.hidden,
+        child: GestureDetector(
+          behavior: HitTestBehavior.deferToChild,
+          onLongPressStart: (d) => _onDragStart(k, d, _dockTopLeft(k, hEst)),
+          onLongPressMoveUpdate: _onDragMove,
+          onLongPressEnd: (_) => _onDragEnd(k, hEst),
+          child: AnimatedScale(
+            scale: isDrag ? 1.06 : 1.0,
+            duration: const Duration(milliseconds: 140),
+            child: _PaletteCard(
+              kind: k,
+              dragging: isDrag,
+              maxItemsHeight: _cappedItems(k),
+              controller: _c,
+              accent: widget.accent,
+              activeColor: widget.activeColor,
+              activeWidth: widget.activeWidth,
+              onPickColor: widget.onPickColor,
+              onPickWidth: widget.onPickWidth,
+              onInsertShape: widget.onInsertShape,
+              onUndo: widget.onUndo,
+              onRedo: widget.onRedo,
+              canUndo: widget.canUndo,
+              canRedo: widget.canRedo,
+              onEyedropper: widget.onEyedropper,
+            ),
           ),
         ),
       ),
