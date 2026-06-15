@@ -378,6 +378,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   double _chunkTileWorld = 0; // cell side in world units (viewport fraction)
   int _chunkVersion = 0; // bumped on ink edit → stale tiles discarded
   bool _chunkPumpScheduled = false;
+  // Draw-burst: true between committed strokes of a writing burst. While set, the
+  // per-page overview re-bake AND chunk pump are deferred (the page tile index +
+  // overview delta show the un-baked strokes meanwhile); both flush once at the
+  // pause, over the set of pages the burst touched.
+  bool _drawBurstActive = false;
+  Timer? _drawBurstTimer;
+  final Set<int> _drawBurstPages = {};
+  static const int _kDrawBakeDebounceMs = 700;
+  static const int _kDrawDeltaCap = 40;
   final bool _tilesEnabled = true; // master switch (A/B revert: flip + rebuild)
   static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
   static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
@@ -587,6 +596,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _deferredDecodeTimer?.cancel();
     _persistTimer?.cancel();
     _overviewTimer?.cancel();
+    _drawBurstTimer?.cancel();
     _zoomLabelTimer?.cancel();
     _settleTicker?.dispose();
     for (final img in _overviewFocusByPage.values) {
@@ -1378,6 +1388,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     int pageIndex, {
     Rect? overviewRegion,
     bool deferOverview = false,
+    bool dbOnly = false,
+    bool drawBurst = false,
   }) {
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
     _dirtyPersistPages.add(_pageBlockIds[pageIndex]);
@@ -1386,6 +1398,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (!mounted) return;
       unawaited(_flushPendingPersists());
     });
+    // Edits that don't touch strokes (background, image insert/crop, text/task
+    // block insert/edit/resize/drag) only need the DB write: the overview AND the
+    // ring are ink-only (images/blocks live in always-on overlay layers), so a
+    // re-bake here reproduces an identical image — pure waste. Measured on the TGR:
+    // dragging a block on a dense page hit ~250% CPU (2.5x a pan) purely from this
+    // re-bake. Skip it.
+    if (dbOnly) return;
     // Page ink changed → its zoomed-out overview image needs updating.
     final bid = _pageBlockIds[pageIndex];
     // Mid-gesture (erase): persist DB + drop focus, but skip the overview bake AND
@@ -1394,6 +1413,28 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // folds it in without the per-move churn.
     if (deferOverview) {
       _disposeFocus(bid);
+      return;
+    }
+    // Draw-burst throttle (mirrors whiteboard): during a writing burst the page
+    // tile index already shows the new stroke (vector tiles at high zoom), so defer
+    // the per-page overview re-bake + chunk ring invalidation/pump to the pause —
+    // they fired per stroke (the sustained-writing heat). Flush sooner if the
+    // un-baked delta grows past the cap so its per-frame redraw stays cheap.
+    if (drawBurst) {
+      _disposeFocus(bid);
+      _drawBurstPages.add(bid);
+      final baked = _overviewBakedCountByPage[bid] ?? 0;
+      final pendingDelta = (_pageData[bid]?.strokes.length ?? 0) - baked;
+      if (pendingDelta > _kDrawDeltaCap) {
+        _flushDrawBurst();
+      } else {
+        _drawBurstActive = true;
+        _drawBurstTimer?.cancel();
+        _drawBurstTimer = Timer(
+          const Duration(milliseconds: _kDrawBakeDebounceMs),
+          _flushDrawBurst,
+        );
+      }
       return;
     }
     if (overviewRegion != null && _overviewByPage[bid] != null) {
@@ -1435,6 +1476,27 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // _scheduleZoomSnapshotBake();
     // _invalidateViewportRasterTiles();
     // _scheduleViewportRasterBake();
+  }
+
+  /// End of a writing burst (pause, or per-page delta cap hit): run the single
+  /// per-page overview re-bake + chunk ring invalidation/pump that were deferred
+  /// per-stroke, so the heat lands once at the pause instead of ~4x/s per page.
+  void _flushDrawBurst() {
+    _drawBurstTimer?.cancel();
+    _drawBurstTimer = null;
+    _drawBurstActive = false;
+    if (!mounted) return;
+    for (final bid in _drawBurstPages) {
+      final pageIndex = _pageBlockIds.indexOf(bid);
+      if (pageIndex < 0) continue;
+      _scheduleOverviewBake(bid);
+      final pageTop = _pageOffsetY(pageIndex);
+      _invalidateChunkRegion(
+        Rect.fromLTWH(0, pageTop, kNotebookPageWidth, kNotebookPageHeight),
+      );
+    }
+    _drawBurstPages.clear();
+    _scheduleChunkPump();
   }
 
   /// Debounced re-bake of one page's zoomed-out overview after its ink settles.
@@ -1913,6 +1975,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Future<void> _chunkPump() async {
     if (!mounted) return;
     if (_isDrawing ||
+        _drawBurstActive ||
         _lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
         _lassoCtrl.phase == LassoPhase.rotating) {
@@ -2375,7 +2438,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _paintVersion++;
       });
       _commitSnapshot(before);
-      _persistPage(pageIdx);
+      _persistPage(pageIdx, dbOnly: true);
       _imgCache?.get(filename);
       HapticFeedback.lightImpact();
     } catch (_) {}
@@ -3696,7 +3759,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _commitStrokeAdd(_pageBlockIds[_activePageIndex!], data.strokes.last);
     historySw.stop();
     final persistSw = Stopwatch()..start();
-    _persistPage(_activePageIndex!);
+    _persistPage(_activePageIndex!, drawBurst: true);
     persistSw.stop();
     sw.stop();
     _logInkPerf(
@@ -3745,7 +3808,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _commitStrokeAdd(_pageBlockIds[_activePageIndex!], baked);
     historySw.stop();
     final persistSw = Stopwatch()..start();
-    _persistPage(_activePageIndex!);
+    _persistPage(_activePageIndex!, drawBurst: true);
     persistSw.stop();
     sw.stop();
     _logInkPerf(
@@ -4551,6 +4614,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     List<CanvasTextBlock> worldTextBlocks,
     Set<int> affected, {
     bool force = false,
+    bool strokesChanged = true,
   }) {
     if (!force &&
         _lassoCtrl.selectedImageIndices.isEmpty &&
@@ -4592,7 +4656,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       data.images = imagesByPage[bid]!;
       data.taskBlocks = blocksByPage[bid]!;
       data.textBlocks = textBlocksByPage[bid]!;
-      _persistPage(i);
+      // Objects (images/blocks) live in always-on overlay/background layers, NOT
+      // in the ink-only overview/ring. When the gesture moved no strokes, this is
+      // a pure object move/delete/dup → DB write only, no re-bake (the ~250% spike
+      // measured on the TGR for dragging a task block on a dense page).
+      _persistPage(i, dbOnly: !strokesChanged);
     }
     return true;
   }
@@ -4638,6 +4706,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         worldBlocks,
         worldTextBlocks,
         affected,
+        strokesChanged: strokeStats.$1 > 0,
       );
       final changed = strokeStats.$1 > 0 || objectsChanged;
       if (changed) {
@@ -4789,6 +4858,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         textBlocks,
         affected,
         force: objectSelectionBefore,
+        strokesChanged: strokeStats.$1 > 0,
       );
       _finishIncrementalLassoSync(
         affected,
@@ -4807,6 +4877,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         affected,
         force:
             objectSelectionBefore || _lassoCtrl.selectedImageIndices.isNotEmpty,
+        strokesChanged: strokeStats.$1 > 0,
       );
       _finishIncrementalLassoSync(
         affected,
@@ -4876,7 +4947,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _tool = DrawTool.task;
     });
     _commitSnapshot(before);
-    _persistPage(pageIdx);
+    _persistPage(pageIdx, dbOnly: true);
     HapticFeedback.lightImpact();
   }
 
@@ -4910,7 +4981,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _tool = DrawTool.text;
     });
     _commitSnapshot(before);
-    _persistPage(pageIdx);
+    _persistPage(pageIdx, dbOnly: true);
     HapticFeedback.lightImpact();
   }
 
@@ -4957,7 +5028,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _toolbarVisible = false;
     });
     _commitSnapshot(before);
-    _persistPage(pageIdx);
+    _persistPage(pageIdx, dbOnly: true);
     HapticFeedback.lightImpact();
   }
 
@@ -5077,7 +5148,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 !gesture &&
                 (_tool == DrawTool.lasso || _palmRejection),
             onPersist: () async {
-              _persistPage(pageIndex);
+              _persistPage(pageIndex, dbOnly: true);
             },
             onTasksChanged: () {
               if (mounted) setState(() {});
@@ -5090,7 +5161,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 data.images,
                 data.taskBlocks,
               );
-              _persistPage(pageIndex);
+              _persistPage(pageIndex, dbOnly: true);
             },
           ),
         );
@@ -5159,7 +5230,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             interactive: !selected && !gesture && _tool == DrawTool.text,
             movable: !selected && !gesture && _tool == DrawTool.text,
             onPersist: () async {
-              _persistPage(pageIndex);
+              _persistPage(pageIndex, dbOnly: true);
             },
             onChanged: () {
               if (mounted) setState(() {});
@@ -5173,12 +5244,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 _allVisibleTaskBlocks,
                 _allVisibleTextBlocks,
               );
-              _persistPage(pageIndex);
+              _persistPage(pageIndex, dbOnly: true);
             },
             onDragStart: () => _gestureBefore = _snapshot(),
             onDragEnd: () {
               _commitGesture();
-              _persistPage(pageIndex);
+              _persistPage(pageIndex, dbOnly: true);
             },
           ),
         );
@@ -5312,7 +5383,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _lassoCtrl.deselect();
     });
     _commitSnapshot(before);
-    _persistPage(pageIdx);
+    _persistPage(pageIdx, dbOnly: true);
     _imgCache?.get(newName);
   }
 
@@ -6288,7 +6359,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       }
     });
     for (final i in targets) {
-      _persistPage(i);
+      _persistPage(i, dbOnly: true);
     }
   }
 
@@ -6302,7 +6373,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       }
     });
     for (final i in targets) {
-      _persistPage(i);
+      _persistPage(i, dbOnly: true);
     }
   }
 

@@ -347,6 +347,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // the focus tile keeps the held overview crisp meanwhile, so the wait isn't blurry.
   static const int _kOverviewLingerGraceMs = 350;
   Timer? _overviewLingerTimer;
+  // Draw-burst throttle for the overview re-bake. Each committed stroke schedules
+  // a re-bake that re-encodes the whole base image (measured ~27MP toImage firing
+  // ~4x/s on a dense board = the sustained-writing heat). The delta layer already
+  // shows the un-baked strokes crisp, so during a writing burst defer the bake to
+  // a real pause; only when the un-baked delta exceeds [_kDrawDeltaCap] force a
+  // soon-ish bake so the per-frame delta redraw stays cheap.
+  static const int _kDrawBakeDebounceMs = 700;
+  static const int _kDrawDeltaCap = 40;
   // Small zoom-% readout, shown briefly while pinch-zooming (top of the toolbar).
   bool _zoomLabelVisible = false;
   Timer? _zoomLabelTimer;
@@ -383,6 +391,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   double _chunkTileWorld = 0; // cell side in world units (viewport fraction)
   int _chunkVersion = 0; // bumped on ink edit → stale tiles discarded
   bool _chunkPumpScheduled = false;
+  // Draw-burst: true between committed strokes of a writing burst. While set, the
+  // per-stroke overview re-bake AND chunk cell re-bake are deferred (the delta +
+  // handoff show the un-baked strokes meanwhile); both flush once at the pause.
+  bool _drawBurstActive = false;
+  Timer? _drawBurstTimer;
   Rect? _chunkHandoffRegion;
   List<DrawingStroke> _chunkHandoffStrokes = const [];
   bool _chunkHandoffOverTiles = false;
@@ -1110,6 +1123,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (_blockId != null) unawaited(_saveCamera(_viewCtrl.value.clone()));
     _settleTicker?.dispose();
     _overviewLingerTimer?.cancel();
+    _drawBurstTimer?.cancel();
     _zoomLabelTimer?.cancel();
     _focusImage?.dispose();
     for (final t in _chunkTiles.values) {
@@ -3778,6 +3792,33 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     if (needsTileHandoff) {
       _addChunkHandoff(stroke, region, overTiles: true);
     }
+    // Draw-burst throttle: a per-stroke overview re-bake (full-image toImage) AND a
+    // per-stroke chunk cell re-bake (drawing every stroke in the cell — the
+    // build-bound hitch at high zoom) are the sustained-writing heat. The delta +
+    // handoff already show the un-baked strokes crisp, so during a burst defer BOTH
+    // re-bakes to a pause; flush sooner if the un-baked delta grows past the cap so
+    // its per-frame redraw stays cheap.
+    final pendingDelta = _data.strokes.length - _overviewBakedCount;
+    if (pendingDelta > _kDrawDeltaCap) {
+      _flushDrawBurst();
+    } else {
+      _drawBurstActive = true;
+      _drawBurstTimer?.cancel();
+      _drawBurstTimer = Timer(
+        const Duration(milliseconds: _kDrawBakeDebounceMs),
+        _flushDrawBurst,
+      );
+    }
+  }
+
+  /// End of a writing burst (pause, or delta cap hit): run the single overview
+  /// re-bake + chunk pump that were deferred per-stroke, so the heat lands once at
+  /// the pause instead of ~4x/s during writing.
+  void _flushDrawBurst() {
+    _drawBurstTimer?.cancel();
+    _drawBurstTimer = null;
+    _drawBurstActive = false;
+    if (!mounted) return;
     _scheduleOverviewBake(delay: const Duration(milliseconds: 80));
     _scheduleChunkPump();
   }
@@ -4897,6 +4938,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Future<void> _chunkPump() async {
     if (!mounted) return;
     if (_isDrawing ||
+        _drawBurstActive ||
         _lassoCtrl.phase == LassoPhase.moving ||
         _lassoCtrl.phase == LassoPhase.resizing ||
         _lassoCtrl.phase == LassoPhase.rotating) {
