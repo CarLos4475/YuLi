@@ -64,8 +64,14 @@ void fillStrokeShape(Canvas canvas, DrawingStroke stroke) {
 /// screen pixels, so its grain texture / fountain-width / extra points are
 /// sub-pixel — drawing them in full is pure raster cost (the heat on dense,
 /// zoomed-out boards). LOD 0 = full fidelity; 1/2 = decimated flat polyline.
+/// Zoom at/above which strokes render at full fidelity (LOD 0). Below it the
+/// vector tiles decimate (flat polyline, no fountain width, plain highlighter) —
+/// so this is also the zoom below which the crisp LOD-0 overview raster is
+/// preferred over the tiles (see _overviewActive in both editors).
+const double kLodFullDetailScale = 0.6;
+
 int lodForScale(double scale) {
-  if (scale >= 0.6) return 0;
+  if (scale >= kLodFullDetailScale) return 0;
   if (scale >= 0.32) return 1;
   return 2;
 }
@@ -125,13 +131,20 @@ void _drawStrokeSimplified(
 }) {
   final pts = stroke.points;
   final paint = Paint()
-    ..color = stroke.isHighlighter
-        ? Color(stroke.colorValue).withValues(alpha: 0.4)
-        : Color(stroke.colorValue)
+    ..color = Color(stroke.colorValue)
     ..strokeWidth = stroke.strokeWidth
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round
     ..style = PaintingStyle.stroke;
+  if (stroke.isHighlighter) {
+    // Match the LOD-0 highlighter (drawStroke): multiply + 0.5. Without this the
+    // marker visibly jumps to a stronger plain-srcOver tint the moment the view
+    // decimates (zoom < kLodFullDetailScale) — the "highlighter gets darker on
+    // pan/lasso" glitch.
+    paint
+      ..blendMode = BlendMode.multiply
+      ..color = Color(stroke.colorValue).withValues(alpha: 0.5);
+  }
   if (pts.length == 1) {
     canvas.drawCircle(
       Offset(pts.x(0), pts.y(0)),

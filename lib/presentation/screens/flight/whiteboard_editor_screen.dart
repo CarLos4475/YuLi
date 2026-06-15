@@ -3946,7 +3946,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         base,
         Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
         bounds,
-        Paint()..filterQuality = FilterQuality.medium,
+        // dst maps to exactly base.width device px → 1:1 integer; nearest copies
+        // the un-patched area texel-for-texel (no per-edit generational blur).
+        Paint()..filterQuality = FilterQuality.none,
       );
       canvas.save();
       canvas.clipRect(clip);
@@ -4362,10 +4364,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      canvas.scale(imgScale);
-      canvas.translate(-bounds.left, -bounds.top);
       var from = 0;
       if (incremental) {
+        // Bit-exact 1:1 blit of the prior overview (same bounds → identical pixel
+        // dims) in device space, nearest, BEFORE the scale/translate. Blitting it
+        // through the scaled+translated canvas lands the dst on a fractional edge
+        // and medium re-samples the WHOLE image on every bake → a soft generation
+        // that compounds over a long session. Strokes below still draw under the
+        // transform.
         canvas.drawImageRect(
           oldImage,
           Rect.fromLTWH(
@@ -4374,11 +4380,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             oldImage.width.toDouble(),
             oldImage.height.toDouble(),
           ),
-          oldBounds, // same size 1:1 → no quality loss
-          Paint()..filterQuality = FilterQuality.medium,
+          Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+          Paint()..filterQuality = FilterQuality.none,
         );
         from = oldBaked;
       }
+      canvas.scale(imgScale);
+      canvas.translate(-bounds.left, -bounds.top);
       // Very dense board: decimate + don't cache paths. The overview is
       // downsampled (decimation invisible), and NOT caching avoids retaining a
       // Path per stroke — caching ~1M of them is what OOMs the open bake.
@@ -5573,7 +5581,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         // up at rest is exactly what made edits swap to the blurry overlay.
         _overviewActive =
             canOverview &&
-            (_viewScale < _overviewThreshold ||
+            (_viewScale < kLodFullDetailScale ||
                 _strokeFallbackActive ||
                 _viewTransformActive ||
                 _overviewLinger);

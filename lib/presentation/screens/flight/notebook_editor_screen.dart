@@ -424,6 +424,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _viewMoved = false;
   bool _overviewStickyThisGesture = false;
   bool _overviewActive = false;
+  // Frozen full-detail snapshot of the surroundings (selection excluded) baked at
+  // lasso grab and blitted during the drag, so the non-selected ink doesn't
+  // decimate to rough LOD-1 tiles while moving below kLodFullDetailScale (mirrors
+  // the whiteboard's _lassoBgImage). World-space rect.
+  ui.Image? _lassoBgImage;
+  Rect? _lassoBgRect;
+  bool _lassoBgBaking = false;
   // Keep the overview raster mounted from gesture-end through the WHOLE fling,
   // handing back to crisp vector only when the view truly stops (the settle
   // Ticker flips this off). A fixed timer was wrong: the fling outlasts it, so
@@ -609,6 +616,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _chunkTiles.clear();
     _zoomSnapshotTimer?.cancel();
     _zoomSnapshotImage?.dispose();
+    _lassoBgImage?.dispose();
     _viewportRasterTimer?.cancel();
     for (final tile in _viewportRasterTiles.values) {
       tile.image.dispose();
@@ -1422,7 +1430,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // un-baked delta grows past the cap so its per-frame redraw stays cheap.
     if (drawBurst) {
       _disposeFocus(bid);
-      _drawBurstPages.add(bid);
+      if (_drawBurstPages.add(bid)) {
+        // First burst stroke on this page: free its chunk tiles ONCE now (cheap
+        // dispose; the pump stays bailed on _drawBurstActive so the re-bake heat
+        // still lands only at the pause). Without this the old tile keeps owning
+        // the cell during a fast pan and the just-written delta — clipped to the
+        // tile-less holes by the overlay painter — blinks out until the pause
+        // re-bake folds it in. (Whiteboard dodges this with handoff-over-tiles;
+        // the notebook draws its delta in holes, so the hole must exist.)
+        final pageTop = _pageOffsetY(pageIndex);
+        _invalidateChunkRegion(
+          Rect.fromLTWH(0, pageTop, kNotebookPageWidth, kNotebookPageHeight),
+        );
+      }
       final baked = _overviewBakedCountByPage[bid] ?? 0;
       final pendingDelta = (_pageData[bid]?.strokes.length ?? 0) - baked;
       if (pendingDelta > _kDrawDeltaCap) {
@@ -1537,9 +1557,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      canvas.scale(imgScale); // strokes are already page-local — no translate
       var from = 0;
       if (incremental) {
+        // Bit-exact 1:1 blit of the prior overview (page size is fixed → identical
+        // pixel dims) in device space, nearest, BEFORE the scale. Blitting through
+        // the scaled canvas lands the dst on a fractional edge and medium re-samples
+        // the WHOLE image on every bake → a soft generation that compounds over a
+        // long session. Strokes below still draw under the scale.
         canvas.drawImageRect(
           oldImage,
           Rect.fromLTWH(
@@ -1548,11 +1572,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             oldImage.width.toDouble(),
             oldImage.height.toDouble(),
           ),
-          const Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight),
-          Paint()..filterQuality = FilterQuality.medium,
+          Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+          Paint()..filterQuality = FilterQuality.none,
         );
         from = oldBaked;
       }
+      canvas.scale(imgScale); // strokes are already page-local — no translate
       // Dense page: decimate + don't cache paths (the overview is downsampled, so
       // decimation is invisible, and caching a Path per stroke balloons memory).
       final frugal = (count - from) > _kOverviewFrugalThreshold;
@@ -1645,7 +1670,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         base,
         Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
         pageRect,
-        Paint()..filterQuality = FilterQuality.medium,
+        // dst maps to exactly base.width device px → 1:1 integer; nearest copies
+        // the un-patched area texel-for-texel (no per-edit generational blur).
+        Paint()..filterQuality = FilterQuality.none,
       );
       canvas.save();
       canvas.clipRect(clip);
@@ -1682,6 +1709,107 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     } finally {
       _overviewBakingPages.remove(blockId);
     }
+  }
+
+  /// Bake a crisp (screen-res, LOD 0), one-shot raster of the visible region with
+  /// the SELECTED strokes excluded, shown frozen during a lasso drag. The lasso
+  /// turns the per-page overview off (it can't hide the live selection without a
+  /// ghost), so without this the surroundings fall to decimated LOD-1 tiles and
+  /// deform the whole drag below kLodFullDetailScale. The live selection rides its
+  /// own _liveGestureTransform layer on top. Mirrors the whiteboard.
+  Future<void> _bakeNotebookLassoBackground() async {
+    if (_lassoBgBaking || !mounted || _viewport == Size.zero) return;
+    final visible = _visibleRectFor(_viewport);
+    if (visible.width <= 0 || visible.height <= 0) {
+      _disposeLassoBg();
+      return;
+    }
+    // Selected strokes (per page) → skip; the live layer draws them transformed.
+    final skip = Set<DrawingStroke>.identity();
+    int globalIdx = 0;
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final data = _pageData[_pageBlockIds[i]];
+      final count = data?.strokes.length ?? 0;
+      if (data != null) {
+        for (int j = 0; j < count; j++) {
+          if (_lassoCtrl.selectedIndices.contains(globalIdx + j)) {
+            skip.add(data.strokes[j]);
+          }
+        }
+      }
+      globalIdx += count;
+    }
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    const maxDim = 4096.0;
+    final cap = maxDim / visible.longestSide;
+    final imgScale = math.min(_viewScale * dpr, cap);
+    if (imgScale <= 0) return;
+    _lassoBgBaking = true;
+    try {
+      final w = (visible.width * imgScale).ceil();
+      final h = (visible.height * imgScale).ceil();
+      if (w <= 0 || h <= 0) return;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(imgScale);
+      canvas.translate(-visible.left, -visible.top);
+      for (int i = 0; i < _pageBlockIds.length; i++) {
+        final bid = _pageBlockIds[i];
+        final data = _pageData[bid];
+        if (data == null) continue;
+        final pageTop = _pageOffsetY(i);
+        final pageWorld = Rect.fromLTWH(
+          0,
+          pageTop,
+          kNotebookPageWidth,
+          kNotebookPageHeight,
+        );
+        if (!pageWorld.overlaps(visible)) continue;
+        final localRect = Rect.fromLTRB(
+          visible.left,
+          visible.top - pageTop,
+          visible.right,
+          visible.bottom - pageTop,
+        ).intersect(
+          const Rect.fromLTWH(0, 0, kNotebookPageWidth, kNotebookPageHeight),
+        );
+        if (localRect.width <= 0 || localRect.height <= 0) continue;
+        canvas.save();
+        canvas.translate(0, pageTop);
+        canvas.clipRect(localRect);
+        for (final s in _strokesInPageRegion(bid, localRect)) {
+          if (skip.contains(s)) continue;
+          drawStroke(canvas, s);
+        }
+        canvas.restore();
+      }
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(w, h);
+      picture.dispose();
+      if (!mounted || !_kLassoGesturePhases.contains(_lassoCtrl.phase)) {
+        image.dispose();
+        return;
+      }
+      final old = _lassoBgImage;
+      if (old != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+      }
+      _lassoBgImage = image;
+      _lassoBgRect = visible;
+      _lassoPhaseTick.value++;
+    } catch (e, st) {
+      CrashLogger.instance.record(e, st, context: 'bakeLassoBg cuaderno');
+    } finally {
+      _lassoBgBaking = false;
+    }
+  }
+
+  void _disposeLassoBg() {
+    final img = _lassoBgImage;
+    if (img == null) return;
+    _lassoBgImage = null;
+    _lassoBgRect = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
   }
 
   /// The zoom below which the BASE per-page image is already crisp → no focus
@@ -2953,10 +3081,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // rebuilds every page/overlay/provider — the grab/drop jank). The ink layers
     // + toolbar refresh via _lassoPhaseTick. EXCEPTION: block selections, whose
     // overlays must (un)wrap their live-transform in build().
-    final grabOrRelease =
-        (prev == LassoPhase.selected && _kLassoGesturePhases.contains(phase)) ||
-        (_kLassoGesturePhases.contains(prev) && phase == LassoPhase.selected);
-    if (grabOrRelease && !_selectionHasBlocks) {
+    final grab =
+        prev == LassoPhase.selected && _kLassoGesturePhases.contains(phase);
+    final release =
+        _kLassoGesturePhases.contains(prev) && phase == LassoPhase.selected;
+    if ((grab || release) && !_selectionHasBlocks) {
+      if (grab) {
+        // Freeze a crisp snapshot of the surroundings so the drag doesn't show
+        // decimated LOD-1 tiles below kLodFullDetailScale.
+        if (_lassoBgImage == null) unawaited(_bakeNotebookLassoBackground());
+      } else {
+        _disposeLassoBg();
+      }
       _lassoPhaseTick.value++;
       _lassoGestureTick.value++;
       return;
@@ -5835,10 +5971,32 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 _lassoCtrl.phase == LassoPhase.moving ||
                 _lassoCtrl.phase == LassoPhase.resizing ||
                 _lassoCtrl.phase == LassoPhase.rotating;
+            // During the drag, blit the frozen full-detail snapshot of the
+            // surroundings (baked at grab, selection excluded) instead of the
+            // decimated LOD-1 tiles. The live selection rides its own
+            // _liveGestureTransform layer above this one.
+            final lassoBg = _lassoBgImage;
+            final lassoBgRect = _lassoBgRect;
+            if (inLasso && lassoBg != null && lassoBgRect != null) {
+              _overviewActive = false;
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fromRect(
+                    rect: lassoBgRect,
+                    child: RawImage(
+                      image: lassoBg,
+                      fit: BoxFit.fill,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                  ),
+                ],
+              );
+            }
             _overviewActive =
                 !inLasso &&
                 _overviewByPage.isNotEmpty &&
-                (_viewScale < _overviewThreshold ||
+                (_viewScale < kLodFullDetailScale ||
                     _viewTransformActive ||
                     _overviewLinger ||
                     (_viewGestureActive && _overviewStickyThisGesture));
