@@ -221,12 +221,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final Map<int, DrawingData> _pageData = {};
   final List<int> _pageBlockIds = [];
   final Map<int, DrawingBlock> _pageShells = {};
-  // Temporarily kept empty: pages are decoded eagerly on open so pan/scroll does
-  // not pay hydration cost mid-gesture.
+  // Pages not yet decoded on a lazy open: queued here, swept in the background
+  // (window-first via _livePageMargin, then nearest-first), never evicted once in.
   final Map<int, DrawingBlock> _pendingDecode = {};
   final Set<int> _hydratingPages = {};
   static const int _livePageMargin = 2;
-  static const int _evictPageMargin = 4;
 
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
@@ -583,7 +582,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _loadPages();
+      final restoreCamera = await _loadNotebookCamera();
+      await _loadPages(restoreCamera: restoreCamera);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _applyInitialScroll();
         _scheduleDeferredDecode(Duration.zero);
@@ -638,6 +638,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _pullAnimCtrl.dispose();
     _drawerAnimCtrl.dispose();
     _imgCache?.dispose();
+    // Persist where the user left off (clone: _viewCtrl is disposed right after).
+    if (_scrollApplied && _pageBlockIds.isNotEmpty) {
+      unawaited(_saveNotebookCamera(_viewCtrl.value.clone()));
+    }
     _viewCtrl.dispose();
     _activeTick.dispose();
     _zoomGestureTick.dispose();
@@ -688,7 +692,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Page management ───────────────────────────────────────────────────
 
-  Future<void> _loadPages() async {
+  Future<void> _loadPages({Matrix4? restoreCamera}) async {
     final sw = Stopwatch()..start();
     final repo = ref.read(noteBlockRepositoryProvider);
     final blocks = await repo.getByNote(widget.note.id);
@@ -721,14 +725,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _lastBg = PageBackground.fromString(drawingBlocks.last.background ?? '');
     _lastBgColor = drawingBlocks.last.bgColor;
 
-    // Lazy open: decode ONLY the page the initial scroll lands on (the last one,
-    // see _applyInitialScroll); queue the rest for a background sweep. The editor
-    // shows in ~one page's decode time instead of blocking on all N. There is NO
-    // eviction — once swept, every page stays resident (today's steady state),
-    // just reached after open rather than before it. That's the safe half of the
-    // old dynamic-hydration idea; the part that misbehaved (evict + re-decode
-    // while panning) is deliberately left out.
-    final eagerIdx = drawingBlocks.length - 1;
+    // Restore the saved scroll so we open where the user LEFT OFF (not always the
+    // last page). _currentVisiblePage needs _pageBlockIds (populated above) + a valid
+    // context (we're post-frame) — both ready here. No saved camera (first open) ->
+    // last page, as before.
+    if (restoreCamera != null && mounted) {
+      _viewCtrl.value = restoreCamera;
+      _scrollApplied = true;
+    }
+    // Lazy open: decode ONLY the page the initial scroll lands on; queue the rest for
+    // a background sweep (window-first, nearest-first). The editor shows in ~one
+    // page's decode time instead of blocking on all N. There is NO eviction — once
+    // swept, every page stays resident (the safe half of the old dynamic-hydration
+    // idea; the part that misbehaved, evict + re-decode while panning, is left out).
+    final eagerIdx =
+        restoreCamera != null ? _currentVisiblePage : drawingBlocks.length - 1;
     var totalStrokes = 0;
     var totalPoints = 0;
     for (int i = 0; i < drawingBlocks.length; i++) {
@@ -939,6 +950,64 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final dx = (vw - kNotebookPageWidth) / 2;
     final dy = -lastPageTop + 40;
     _viewCtrl.value = Matrix4.translationValues(dx, dy, 0);
+  }
+
+  // Persisted scroll/zoom so reopening a notebook lands where you left off (and the
+  // lazy-decode sweep prioritizes THAT region, not always the last page). Stored as
+  // scale/tx/ty next to the note's images. Mirrors the whiteboard's _saveCamera.
+  Future<String?> _cameraFilePath() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      // Own dir — NOT note_images/<id>/, whose non-image files _reconcileImageFiles
+      // deletes as orphans (that ate camera.json and reset the position every open).
+      return p.join(dir.path, 'notebook_cameras', '${widget.note.id}.json');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Matrix4?> _loadNotebookCamera() async {
+    try {
+      final path = await _cameraFilePath();
+      if (path == null) return null;
+      final f = File(path);
+      if (!await f.exists()) return null;
+      final m = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+      final scale = (m['scale'] as num).toDouble();
+      final tx = (m['tx'] as num).toDouble();
+      final ty = (m['ty'] as num).toDouble();
+      if (!scale.isFinite || scale <= 0 || !tx.isFinite || !ty.isFinite) {
+        return null;
+      }
+      // Scale Z too: getMaxScaleOnAxis (= _viewScale, what the IV clamps against)
+      // takes the max of the 3 axes; leaving Z at 1 makes a saved scale < 1 snap
+      // back to 1 on apply (same gotcha the whiteboard hit).
+      return Matrix4.identity()
+        ..setEntry(0, 0, scale)
+        ..setEntry(1, 1, scale)
+        ..setEntry(2, 2, scale)
+        ..setEntry(0, 3, tx)
+        ..setEntry(1, 3, ty);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Takes a CLONE: dispose() disposes _viewCtrl before this async write runs.
+  Future<void> _saveNotebookCamera(Matrix4 m) async {
+    try {
+      final path = await _cameraFilePath();
+      if (path == null) return;
+      final f = File(path);
+      await f.parent.create(recursive: true);
+      await f.writeAsString(
+        jsonEncode({
+          'scale': m.getMaxScaleOnAxis(),
+          'tx': m.storage[12],
+          'ty': m.storage[13],
+        }),
+      );
+    } catch (_) {}
   }
 
   Future<DrawingData> _decodeData(DrawingBlock b) async {
