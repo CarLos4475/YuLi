@@ -151,6 +151,10 @@ class _WhiteboardChunkOverlayPainter extends CustomPainter {
   final Rect? focusBounds;
   final List<DrawingStroke>? delta;
   final List<_WbChunkTile> tiles;
+  // Previous-generation tiles (a zoom ago), drawn SCALED under the new tiles while
+  // the new grid bakes — the crisp-ish fallback that replaces the upscaled overview
+  // during a re-anchor. Empty except mid re-anchor.
+  final List<_WbChunkTile> prevTiles;
   final Rect visibleWorld;
   final Rect? dirtyWorld;
   final List<DrawingStroke>? handoff;
@@ -163,6 +167,7 @@ class _WhiteboardChunkOverlayPainter extends CustomPainter {
     required this.focusBounds,
     required this.delta,
     required this.tiles,
+    required this.prevTiles,
     required this.visibleWorld,
     required this.dirtyWorld,
     required this.handoff,
@@ -176,19 +181,43 @@ class _WhiteboardChunkOverlayPainter extends CustomPainter {
           ..isAntiAlias = true
           ..filterQuality = FilterQuality.medium;
     // 1. Base + focus + delta, clipped to the holes (everything NOT under a tile).
-    final hole = Path()..addRect(visibleWorld);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final dirty = dirtyWorld?.intersect(visibleWorld);
-    if (dirty != null && dirty.width > 0 && dirty.height > 0) {
-      hole.addRect(dirty);
-    }
-    for (final t in tiles) {
-      final age = nowMs - t.bornMs;
-      if (age >= _kChunkFadeMs) hole.addRect(t.worldRect);
-    }
-    hole.fillType = PathFillType.evenOdd;
     canvas.save();
-    canvas.clipPath(hole);
+    if (prevTiles.isEmpty) {
+      // Single grid → tiles never overlap, so even-odd punches each cleanly (the
+      // original, cheap path). visibleWorld + each covered rect, odd = uncovered.
+      final hole = Path()..addRect(visibleWorld);
+      final dirty = dirtyWorld?.intersect(visibleWorld);
+      if (dirty != null && dirty.width > 0 && dirty.height > 0) {
+        hole.addRect(dirty);
+      }
+      for (final t in tiles) {
+        final age = nowMs - t.bornMs;
+        if (age >= _kChunkFadeMs) hole.addRect(t.worldRect);
+      }
+      hole.fillType = PathFillType.evenOdd;
+      canvas.clipPath(hole);
+    } else {
+      // Re-anchor: prev-gen and new-gen tiles are DIFFERENT grids that OVERLAP, so
+      // even-odd would double-toggle the overlap and re-expose the base (the
+      // ghost/doubling). Use a real union-difference: base shows only where NEITHER
+      // a prev tile NOR a new tile covers (newly revealed edges). New tiles are
+      // drawn at full opacity in this case (no fade), so all of them cover.
+      final covered = Path();
+      for (final t in tiles) {
+        covered.addRect(t.worldRect);
+      }
+      for (final t in prevTiles) {
+        covered.addRect(t.worldRect);
+      }
+      canvas.clipPath(
+        Path.combine(
+          PathOperation.difference,
+          Path()..addRect(visibleWorld),
+          covered,
+        ),
+      );
+    }
     canvas.drawImageRect(
       baseImage,
       Rect.fromLTWH(
@@ -223,18 +252,58 @@ class _WhiteboardChunkOverlayPainter extends CustomPainter {
         drawStroke(canvas, s);
       }
     }
-    // 2. Full-res tiles on top (where they exist they own the cell).
+    // 2a. Previous-gen tiles (scaled fallback), drawn ONLY where no new tile sits
+    // yet. Under a new tile their semi-transparent ink (highlighter, filled shapes)
+    // would double-composite with the new tile's own ink → a stronger color (the
+    // "reveal"). New tiles below draw at full opacity, so prev↔new is a clean hard
+    // swap per cell — no base wash, no alpha doubling.
+    if (prevTiles.isNotEmpty) {
+      canvas.save();
+      if (tiles.isNotEmpty) {
+        final newUnion = Path();
+        for (final t in tiles) {
+          newUnion.addRect(t.worldRect);
+        }
+        canvas.clipPath(
+          Path.combine(
+            PathOperation.difference,
+            Path()..addRect(visibleWorld),
+            newUnion,
+          ),
+        );
+      }
+      for (final t in prevTiles) {
+        canvas.drawImageRect(
+          t.image,
+          Rect.fromLTWH(
+            0,
+            0,
+            t.image.width.toDouble(),
+            t.image.height.toDouble(),
+          ),
+          t.worldRect,
+          paint,
+        );
+      }
+      canvas.restore();
+    }
+    // 2b. Full-res tiles on top (where they exist they own the cell).
     for (final t in tiles) {
-      final opacity = ((nowMs - t.bornMs) / _kChunkFadeMs).clamp(0.0, 1.0);
       final tilePaint =
           Paint()
             ..isAntiAlias = true
             ..filterQuality = FilterQuality.medium;
-      if (opacity < 1) {
-        tilePaint.colorFilter = ColorFilter.mode(
-          const Color(0xFFFFFFFF).withValues(alpha: opacity),
-          BlendMode.modulate,
-        );
+      // Fade-in only when there's NO prev underlayer (the normal append/edit case).
+      // During a re-anchor prev already covers crisp, so fading would expose it/the
+      // base under the tile's semi-transparent ink → highlighter/fill doubling.
+      if (prevTiles.isEmpty) {
+        final opacity = ((nowMs - t.bornMs) / _kChunkFadeMs).clamp(0.0, 1.0);
+        if (opacity < 1) {
+          tilePaint.colorFilter = ColorFilter.mode(
+            const Color(0xFFFFFFFF).withValues(alpha: opacity),
+            BlendMode.modulate,
+          );
+        }
       }
       canvas.drawImageRect(
         t.image,
@@ -385,6 +454,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // the validated notebook implementation; the page loop becomes a strokeBounds
   // cull (infinite canvas, no pages).
   final Map<String, _WbChunkTile> _chunkTiles = {};
+  // Previous-generation tiles kept ALIVE through a zoom re-anchor: shown scaled
+  // under the new grid while it bakes (1/frame), so the re-anchor doesn't flash
+  // the expensive upscaled overview (~79ms raster). Disposed once the new ring
+  // covers the viewport, or on any ink edit (their ink would be stale).
+  final Map<String, _WbChunkTile> _chunkTilesPrev = {};
   final Set<String> _chunkBaking = {};
   final Set<String> _chunkRefreshKeys = {};
   double _chunkGridScale = 0; // zoom the current grid is anchored to
@@ -1130,6 +1204,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       t.image.dispose();
     }
     _chunkTiles.clear();
+    for (final t in _chunkTilesPrev.values) {
+      t.image.dispose();
+    }
+    _chunkTilesPrev.clear();
     _zoomSnapshotTimer?.cancel();
     _zoomSnapshotImage?.dispose();
     _lassoBgImage?.dispose();
@@ -3699,6 +3777,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _invalidateStrokeCaches(region);
     } else {
       _overviewDirty = true;
+      _disposeChunkPrev(); // full restore → prev-gen ink is stale
       _chunkVersion++;
       _scheduleOverviewBake(delay: const Duration(milliseconds: 16));
       _scheduleChunkPump();
@@ -3893,6 +3972,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _overviewDirty = true;
     _scheduleOverviewBake();
     _disposeFocus();
+    _disposeChunkPrev(); // global ink reset → prev-gen ink is stale
     _chunkRefreshKeys.clear();
     _clearChunkHandoff();
     _chunkVersion++;
@@ -4891,6 +4971,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// Drop the stale ring cells overlapping [world] so the pump re-bakes them
   /// fresh (the display meanwhile rides the vector tiles / overview base).
   void _punchChunkRegion(Rect world) {
+    // An ink edit invalidates the previous-gen fallback (its ink is now stale).
+    _disposeChunkPrev();
     if (_chunkTiles.isEmpty) return;
     var hit = false;
     for (final key in _chunkTiles.keys.toList()) {
@@ -4919,6 +5001,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   void _disposeAllChunks() {
+    _disposeChunkPrev();
     if (_chunkTiles.isEmpty) return;
     for (final t in _chunkTiles.values) {
       final img = t.image;
@@ -4928,6 +5011,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _chunkRefreshKeys.clear();
     _clearChunkHandoff();
     _chunkTileWorld = 0;
+  }
+
+  /// Drop the previous-generation tiles kept alive through a zoom re-anchor (once
+  /// the new ring covers, or on any ink edit that makes their ink stale).
+  void _disposeChunkPrev() {
+    if (_chunkTilesPrev.isEmpty) return;
+    for (final t in _chunkTilesPrev.values) {
+      final img = t.image;
+      WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
+    }
+    _chunkTilesPrev.clear();
   }
 
   void _scheduleChunkPump() {
@@ -4964,6 +5058,17 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // During an active zoom gesture the scale changes every frame; re-anchoring
       // per frame would thrash. Defer to settle — the pyramid covers the gap.
       if (_viewGestureActive) return;
+      // Option A: keep the just-superseded tiles as a SCALED fallback while the new
+      // grid bakes (1/frame). Shown under the new tiles, they spare the re-anchor
+      // from flashing the expensive upscaled overview (~79ms raster). Dropped once
+      // the new ring covers (below) or on any ink edit (_disposeChunkPrev). The old
+      // dispose loop below would have nuked these immediately — capture them first.
+      // Skip the fallback mid-edit (overview dirty): those tiles have a punched hole
+      // in the edited region whose stale base would flash through during the zoom —
+      // the crisp vector-tile path (canOverview false while dirty) covers it instead.
+      _disposeChunkPrev();
+      if (!_overviewDirty) _chunkTilesPrev.addAll(_chunkTiles);
+      _chunkTiles.clear();
       _chunkGridScale = _viewScale;
       _chunkTileWorld = visible.longestSide / _kChunkTilesAcross;
       _chunkRefreshKeys.clear();
@@ -5001,7 +5106,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           t.version != _chunkVersion ||
           _chunkRefreshKeys.contains(key);
     });
-    if (hasPending && _chunkEngaged) _scheduleChunkPump();
+    if (hasPending && _chunkEngaged) {
+      _scheduleChunkPump();
+    } else {
+      // New ring covers the viewport → the scaled fallback is no longer needed.
+      _disposeChunkPrev();
+    }
   }
 
   /// Bake one cell at the EXACT anchored zoom (1:1 with the screen → zero blur),
@@ -5605,7 +5715,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 curTiles.add(t);
               }
             }
-            if (curTiles.isNotEmpty) {
+            // Prev-gen tiles bridging a zoom re-anchor (scaled fallback under the
+            // new ring). Lets the overlay path run even before any new tile baked.
+            final prevTiles = <_WbChunkTile>[];
+            for (final t in _chunkTilesPrev.values) {
+              if (t.worldRect.overlaps(renderRect)) prevTiles.add(t);
+            }
+            if (curTiles.isNotEmpty || prevTiles.isNotEmpty) {
               _logWhiteboardLayerDecision(
                 'ov-overlay',
                 renderRect: renderRect,
@@ -5634,6 +5750,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                         focusBounds: _focusBounds,
                         delta: deltaStrokes,
                         tiles: curTiles,
+                        prevTiles: prevTiles,
                         visibleWorld: renderRect,
                         dirtyWorld: _overviewDirty ? _chunkHandoffRegion : null,
                         handoff:
