@@ -388,7 +388,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   bool _zoomGestureSeen = false;
   double _zoomGestureScale = 1;
   final Offset _zoomGestureStartFocal = Offset.zero;
-  Offset _zoomGestureCurrentFocal = Offset.zero;
+  final Offset _zoomGestureCurrentFocal = Offset.zero;
   // True while a 2-finger pan/zoom is in flight. The overview stays up for the
   // WHOLE gesture (even past its crisp threshold) and only hands back to the
   // crisp tiles when the gesture ENDS — otherwise crossing the threshold while
@@ -744,10 +744,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   // pixel (anything: paper, strokes, images, text), not stroke hit-testing.
   final GlobalKey _canvasBoundaryKey = GlobalKey();
 
-  // Pinned snapshots (PiN): frozen raster cut-outs that float over the canvas.
-  // Held in a process-level store keyed by note, so they survive leaving and
-  // re-entering the note; only an app kill (or closing a window) drops them.
-  late final List<PinnedSnapshot> _pins = PinnedSnapshotStore.instance.forNote(
+  late final FloatingPinController _pinController =
+      FloatingPinControllerStore.instance.forNote(
     widget.note.id,
   );
 
@@ -1006,6 +1004,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
 
   // ─── Pinned snapshots (PiN) ───────────────────────────────────────────────
 
+  Rect _pinUsableBounds() => Rect.fromLTWH(
+    8,
+    8,
+    (_viewport.width - 16).clamp(0.0, double.infinity).toDouble(),
+    (_viewport.height - 16).clamp(0.0, double.infinity).toDouble(),
+  );
+
   /// Capture the current lasso selection as a frozen raster cut-out and pin it
   /// over the canvas. Captures EVERYTHING under the selection (paper, ink,
   /// images, blocks) — same boundary the eyedropper samples.
@@ -1061,48 +1066,14 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return;
     }
 
-    setState(() {
-      _pins.add(
-        PinnedSnapshot(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          image: cropped,
-          pos: Offset(
-            screenRect.left.clamp(8.0, _viewport.width - 60),
-            screenRect.top.clamp(8.0, _viewport.height - 60),
-          ),
-          width: screenRect.width.clamp(120.0, _viewport.width * 0.6),
-        ),
-      );
-    });
-    HapticFeedback.mediumImpact();
-  }
-
-  void _movePin(String id, Offset delta) {
-    final p = _pins.where((e) => e.id == id).firstOrNull;
-    if (p == null) return;
-    setState(() {
-      p.pos = Offset(
-        (p.pos.dx + delta.dx).clamp(48 - p.width, _viewport.width - 48),
-        (p.pos.dy + delta.dy).clamp(8.0, _viewport.height - 48),
-      );
-    });
-  }
-
-  void _resizePin(String id, double dWidth) {
-    final p = _pins.where((e) => e.id == id).firstOrNull;
-    if (p == null) return;
-    setState(
-      () => p.width = (p.width + dWidth).clamp(100.0, _viewport.width * 0.95),
+    final width =
+        screenRect.width.clamp(120.0, _viewport.width * 0.6).toDouble();
+    _pinController.addSnapshot(
+      image: cropped,
+      rect: Rect.fromLTWH(screenRect.left, screenRect.top, width, 0),
+      usableBounds: _pinUsableBounds(),
     );
-  }
-
-  void _closePin(String id) {
-    final i = _pins.indexWhere((e) => e.id == id);
-    if (i < 0) return;
-    setState(() {
-      _pins[i].dispose();
-      _pins.removeAt(i);
-    });
+    HapticFeedback.mediumImpact();
   }
 
   void _confirmLoupe() {
@@ -6386,15 +6357,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                       ),
                                 ),
                               ),
-                            if (_pins.isNotEmpty)
-                              Positioned.fill(
-                                child: PinnedSnapshotsLayer(
-                                  pins: _pins,
-                                  onMove: _movePin,
-                                  onResize: _resizePin,
-                                  onClose: _closePin,
-                                ),
+                            Positioned.fill(
+                              child: FloatingPinsLayer(
+                                controller: _pinController,
+                                usableBounds: _pinUsableBounds(),
                               ),
+                            ),
                             // Reactive to _lassoPhaseTick so a grab/release
                             // hides/shows it without a full-tree setState.
                             ValueListenableBuilder<int>(

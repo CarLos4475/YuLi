@@ -489,9 +489,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // canvas), not stroke hit-testing. See whiteboard editor for details.
   final GlobalKey _canvasBoundaryKey = GlobalKey();
 
-  // Pinned snapshots (PiN): process-level store keyed by note so they survive
-  // leaving and re-entering. See pinned_snapshots.dart.
-  late final List<PinnedSnapshot> _pins = PinnedSnapshotStore.instance.forNote(
+  late final FloatingPinController _pinController =
+      FloatingPinControllerStore.instance.forNote(
     widget.note.id,
   );
 
@@ -2796,6 +2795,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Pinned snapshots (PiN) ───────────────────────────────────────────────
 
+  Rect _pinUsableBounds() => Rect.fromLTWH(
+    8,
+    8,
+    (_viewport.width - 16).clamp(0.0, double.infinity).toDouble(),
+    (_viewport.height - 16).clamp(0.0, double.infinity).toDouble(),
+  );
+
   /// Capture the current lasso selection as a frozen raster cut-out and pin it
   /// over the canvas (paper, ink, images, blocks) — same boundary the eyedropper
   /// samples. The window floats fixed in viewport space across page changes.
@@ -2850,48 +2856,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return;
     }
 
-    setState(() {
-      _pins.add(
-        PinnedSnapshot(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          image: cropped,
-          pos: Offset(
-            screenRect.left.clamp(8.0, _viewport.width - 60),
-            screenRect.top.clamp(8.0, _viewport.height - 60),
-          ),
-          width: screenRect.width.clamp(120.0, _viewport.width * 0.6),
-        ),
-      );
-    });
-    HapticFeedback.mediumImpact();
-  }
-
-  void _movePin(String id, Offset delta) {
-    final p = _pins.where((e) => e.id == id).firstOrNull;
-    if (p == null) return;
-    setState(() {
-      p.pos = Offset(
-        (p.pos.dx + delta.dx).clamp(48 - p.width, _viewport.width - 48),
-        (p.pos.dy + delta.dy).clamp(8.0, _viewport.height - 48),
-      );
-    });
-  }
-
-  void _resizePin(String id, double dWidth) {
-    final p = _pins.where((e) => e.id == id).firstOrNull;
-    if (p == null) return;
-    setState(
-      () => p.width = (p.width + dWidth).clamp(100.0, _viewport.width * 0.95),
+    final width =
+        screenRect.width.clamp(120.0, _viewport.width * 0.6).toDouble();
+    _pinController.addSnapshot(
+      image: cropped,
+      rect: Rect.fromLTWH(screenRect.left, screenRect.top, width, 0),
+      usableBounds: _pinUsableBounds(),
     );
-  }
-
-  void _closePin(String id) {
-    final i = _pins.indexWhere((e) => e.id == id);
-    if (i < 0) return;
-    setState(() {
-      _pins[i].dispose();
-      _pins.removeAt(i);
-    });
+    HapticFeedback.mediumImpact();
   }
 
   void _confirmLoupe() {
@@ -7377,18 +7349,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                               ),
                                         ),
                                       ),
-                                    // Pinned snapshots (PiN) — viewport-pinned,
-                                    // sibling of the canvas Listener so they don't
-                                    // leak pointers and stay fixed across pages.
-                                    if (_pins.isNotEmpty)
-                                      Positioned.fill(
-                                        child: PinnedSnapshotsLayer(
-                                          pins: _pins,
-                                          onMove: _movePin,
-                                          onResize: _resizePin,
-                                          onClose: _closePin,
-                                        ),
+                                    Positioned.fill(
+                                      child: FloatingPinsLayer(
+                                        controller: _pinController,
+                                        usableBounds: _pinUsableBounds(),
                                       ),
+                                    ),
                                     // Eyedropper loupe (viewport-space, pinned).
                                     if (_eyedropImg != null)
                                       ..._buildLoupeOverlay(viewport),
