@@ -851,7 +851,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCanvasBlock());
-    SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+    // Per-frame timings callback exists only to log slow frames — skip it
+    // entirely in production so there's no per-frame work.
+    if (CrashLogger.perfLogging) {
+      SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+    }
   }
 
   void _selectTool(DrawTool t) {
@@ -1751,26 +1755,30 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         if (bgColorValue != null) 'bgc': bgColorValue,
         'whiteboard': true,
       });
-      final dbStats = await strokeRepo.debugStatsByBlock(blockId);
-      final memPoints = _pointCount(strokesSnapshot);
-      final livePoints = _pointCount(_data.strokes);
-      sw.stop();
-      CrashLogger.instance.note(
-        'PERF guardar-pizarra: ${strokesSnapshot.length} trazos, '
-        '$memPoints puntos, live ${_data.strokes.length}/$livePoints, '
-        '+$inserted ~$updated -$deleted, '
-        'db ${dbStats.count} trazos/${dbStats.points} puntos/maxPos ${dbStats.maxPosition ?? -1}, '
-        'strokesDB ${strokeMs}ms, total(+DB) ${sw.elapsedMilliseconds}ms',
-      );
-      if (dbStats.count != strokesSnapshot.length ||
-          dbStats.points != memPoints) {
+      // Save-stats logging only: a DB stats query + point counts purely to feed
+      // the note. Skipped entirely in production.
+      if (CrashLogger.perfLogging) {
+        final dbStats = await strokeRepo.debugStatsByBlock(blockId);
+        final memPoints = _pointCount(strokesSnapshot);
+        final livePoints = _pointCount(_data.strokes);
+        sw.stop();
         CrashLogger.instance.note(
-          'WARN persist-pizarra-mismatch: block $blockId, '
-          'mem ${strokesSnapshot.length}/$memPoints vs '
-          'db ${dbStats.count}/${dbStats.points}, '
-          'live ${_data.strokes.length}/$livePoints, '
-          '+$inserted ~$updated -$deleted',
+          'PERF guardar-pizarra: ${strokesSnapshot.length} trazos, '
+          '$memPoints puntos, live ${_data.strokes.length}/$livePoints, '
+          '+$inserted ~$updated -$deleted, '
+          'db ${dbStats.count} trazos/${dbStats.points} puntos/maxPos ${dbStats.maxPosition ?? -1}, '
+          'strokesDB ${strokeMs}ms, total(+DB) ${sw.elapsedMilliseconds}ms',
         );
+        if (dbStats.count != strokesSnapshot.length ||
+            dbStats.points != memPoints) {
+          CrashLogger.instance.note(
+            'WARN persist-pizarra-mismatch: block $blockId, '
+            'mem ${strokesSnapshot.length}/$memPoints vs '
+            'db ${dbStats.count}/${dbStats.points}, '
+            'live ${_data.strokes.length}/$livePoints, '
+            '+$inserted ~$updated -$deleted',
+          );
+        }
       }
     } catch (e, st) {
       failed = true;
@@ -1834,20 +1842,22 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     int? persistMs,
     int? snapshotMs,
   }) {
-    final countSw = Stopwatch()..start();
-    final totalPoints = _pointCount(_data.strokes);
-    countSw.stop();
-    final totalMs = _inkPerfSw?.elapsedMilliseconds ?? finishMs;
-    CrashLogger.instance.note(
-      'PERF escribir-pizarra: $kind, trazo ${stroke.points.length} puntos, '
-      'total ${_data.strokes.length} trazos/$totalPoints puntos, '
-      'moves $_inkMoveSamples, slowMoves $_inkSlowMoves, '
-      'worstMove ${(_inkWorstMoveUs / 1000).toStringAsFixed(1)}ms, '
-      'total ${totalMs}ms, finish ${finishMs}ms, '
-      'snapshot ${snapshotMs ?? -1}ms, append ${appendMs ?? -1}ms, '
-      'history ${historyMs ?? -1}ms, persist-schedule ${persistMs ?? -1}ms, '
-      'count ${countSw.elapsedMilliseconds}ms',
-    );
+    if (CrashLogger.perfLogging) {
+      final countSw = Stopwatch()..start();
+      final totalPoints = _pointCount(_data.strokes);
+      countSw.stop();
+      final totalMs = _inkPerfSw?.elapsedMilliseconds ?? finishMs;
+      CrashLogger.instance.note(
+        'PERF escribir-pizarra: $kind, trazo ${stroke.points.length} puntos, '
+        'total ${_data.strokes.length} trazos/$totalPoints puntos, '
+        'moves $_inkMoveSamples, slowMoves $_inkSlowMoves, '
+        'worstMove ${(_inkWorstMoveUs / 1000).toStringAsFixed(1)}ms, '
+        'total ${totalMs}ms, finish ${finishMs}ms, '
+        'snapshot ${snapshotMs ?? -1}ms, append ${appendMs ?? -1}ms, '
+        'history ${historyMs ?? -1}ms, persist-schedule ${persistMs ?? -1}ms, '
+        'count ${countSw.elapsedMilliseconds}ms',
+      );
+    }
     _resetInkPerf();
   }
 
@@ -6500,6 +6510,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                               child: FloatingPinsLayer(
                                 controller: _pinController,
                                 usableBounds: _pinUsableBounds(),
+                                accent: _accent,
                               ),
                             ),
                             // Reactive to _lassoPhaseTick so a grab/release

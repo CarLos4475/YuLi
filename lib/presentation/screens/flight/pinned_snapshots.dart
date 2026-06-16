@@ -461,13 +461,13 @@ class FloatingPinsLayer extends StatefulWidget {
   final Rect usableBounds;
 
   /// Note/folder accent — fills primary controls and the resize handle.
-  ///final Color accent;
+  final Color accent;
 
   const FloatingPinsLayer({
     super.key,
     required this.controller,
     required this.usableBounds,
-  /// required this.accent,
+    required this.accent,
   });
 
   @override
@@ -520,6 +520,7 @@ class _FloatingPinsLayerState extends State<FloatingPinsLayer>
                 pin: pin,
                 controller: widget.controller,
                 usableBounds: widget.usableBounds,
+                accent: widget.accent,
                 exitProgress: _exits[pin.id]?.value ?? 0,
                 closing: _closing.contains(pin.id),
                 onRequestClose: _requestClose,
@@ -535,6 +536,7 @@ class _FloatingPinWindow extends StatefulWidget {
   final FloatingPin pin;
   final FloatingPinController controller;
   final Rect usableBounds;
+  final Color accent;
   final double exitProgress;
   final bool closing;
   final void Function(String id) onRequestClose;
@@ -544,6 +546,7 @@ class _FloatingPinWindow extends StatefulWidget {
     required this.pin,
     required this.controller,
     required this.usableBounds,
+    required this.accent,
     required this.exitProgress,
     required this.closing,
     required this.onRequestClose,
@@ -667,6 +670,7 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
         return PdfPinBody(
           filePath: payload.filePath,
           initialPage: payload.page,
+          accent: widget.accent,
           onPageChanged: (p) =>
               widget.controller.updatePdfPage(widget.pin.id, p),
         );
@@ -674,6 +678,7 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
         return VideoPinBody(
           videoId: payload.videoId,
           startSeconds: payload.lastPositionSeconds,
+          accent: widget.accent,
           // Collapsing pauses (the WebView stays mounted, just hidden).
           active: !widget.pin.collapsed,
           onPosition: (s) =>
@@ -762,9 +767,9 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
                                       child: Container(
                                         width: _kHandle,
                                         height: _kHandle,
-                                        decoration: const BoxDecoration(
-                                          color: yCream,
-                                          border: Border(
+                                        decoration: BoxDecoration(
+                                          color: widget.accent,
+                                          border: const Border(
                                             left: BorderSide(
                                               color: yBorderStrong,
                                               width: yLineThin,
@@ -775,10 +780,10 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
                                             ),
                                           ),
                                         ),
-                                        child: Icon(
+                                        child: const Icon(
                                           YuLiIcons.maximize,
-                                          size: 11,
-                                          color: yInk,
+                                          size: 12,
+                                          color: Colors.white,
                                         ),
                                       ),
                                     ),

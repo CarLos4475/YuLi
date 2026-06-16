@@ -17,6 +17,9 @@ class PdfPinBody extends StatefulWidget {
   /// Page to open at (1-based) — the persisted last page.
   final int initialPage;
 
+  /// Note/folder accent — fills the primary control + the slider track.
+  final Color accent;
+
   /// Fires when the visible page changes, so the owner can persist it.
   final ValueChanged<int>? onPageChanged;
 
@@ -24,6 +27,7 @@ class PdfPinBody extends StatefulWidget {
     super.key,
     required this.filePath,
     this.initialPage = 1,
+    required this.accent,
     this.onPageChanged,
   });
 
@@ -175,7 +179,7 @@ class _PdfPinBodyState extends State<PdfPinBody> {
                         enabled: ready && page > 1,
                         onTap: () => _goTo(page - 1),
                       ),
-                      _iconBtn(
+                      _primaryBtn(
                         YuLiIcons.chevronRight,
                         enabled: ready && page < total,
                         onTap: () => _goTo(page + 1),
@@ -207,9 +211,10 @@ class _PdfPinBodyState extends State<PdfPinBody> {
                         child: SliderTheme(
                           data: SliderThemeData(
                             trackHeight: 2,
-                            thumbColor: yInk,
-                            activeTrackColor: yInk,
+                            thumbColor: widget.accent,
+                            activeTrackColor: widget.accent,
                             inactiveTrackColor: yBorderSoft,
+                            overlayColor: widget.accent.withValues(alpha: 0.15),
                             overlayShape: const RoundSliderOverlayShape(
                                 overlayRadius: 12),
                             thumbShape: const RoundSliderThumbShape(
@@ -258,6 +263,25 @@ class _PdfPinBodyState extends State<PdfPinBody> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Icon(icon, size: 16, color: enabled ? yInk : yBorderSoft),
+      ),
+    );
+  }
+
+  /// Filled accent square (the design's primary control).
+  Widget _primaryBtn(IconData icon,
+      {required bool enabled, required VoidCallback onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 28,
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: enabled ? widget.accent : yBorderSoft,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Icon(icon, size: 16, color: Colors.white),
       ),
     );
   }

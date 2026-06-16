@@ -114,6 +114,7 @@ void main() {
                 return FloatingPinsLayer(
                   controller: controller,
                   usableBounds: bounds,
+                  accent: const Color(0xFF2A4BD7),
                 );
               },
             ),

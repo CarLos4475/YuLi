@@ -36,6 +36,8 @@ class YuLiIcons {
   static const IconData eye = LucideIcons.eye;
   static const IconData undo = LucideIcons.undo;
   static const IconData redo = LucideIcons.redo;
+  static const IconData rotateCcw = LucideIcons.rotateCcw;
+  static const IconData rotateCw = LucideIcons.rotateCw;
   static const IconData copy = LucideIcons.copy;
   static const IconData clipboard = LucideIcons.clipboard;
   static const IconData flipHorizontal = LucideIcons.flipHorizontal;

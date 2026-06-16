@@ -17,12 +17,21 @@ class CrashLogger {
   File? _file;
   Future<void> _writeTail = Future.value();
   static const _maxBytes = 256 * 1024; // ~256 KB, then trimmed to half
-  // Mirror every entry to logcat (tag 'flutter') so logs are readable with
-  // `adb logcat -s flutter` even on a non-debuggable release APK. OFF by default:
-  // the synchronous print() per entry adds churn on hot paths (the whiteboard
-  // logged a layer decision per frame). Flip to true to debug; the file stays the
-  // durable, shareable record either way.
-  static const bool _mirrorToLogcat = true;
+
+  /// Master switch for PERF instrumentation ([note]). OFF in production.
+  ///
+  /// When false, [note] is a complete no-op (no file write, no logcat) AND every
+  /// caller MUST guard its prep with `if (CrashLogger.perfLogging)` so the
+  /// expensive bits that exist ONLY to feed a note — `_pointCount` over every
+  /// stroke, the per-frame timings callback, the per-save DB stats query — never
+  /// run. That keeps the instrumentation in the tree (flip this to true to
+  /// measure) while costing nothing on hot paths and never filling the in-app
+  /// crash log. Real errors ([record]) persist regardless of this flag.
+  static const bool perfLogging = false;
+
+  // When perf is being measured, also mirror [record] errors to logcat. Errors
+  // always hit the durable file either way.
+  static const bool _mirrorToLogcat = false;
   void _logcat(String message) {
     // Flutter routes stdout to logcat (tag 'flutter') even in release, unlike
     // dart:developer.log (service-protocol only → invisible in release).
@@ -61,9 +70,13 @@ class CrashLogger {
   }
 
   /// Lightweight timestamped note (diagnostics / perf instrumentation). Like
-  /// [record] but for plain messages, not errors. Fire-and-forget, never throws.
+  /// [record] but for plain messages, not errors. No-op unless [perfLogging] is
+  /// on; when on it goes to BOTH the durable file and logcat. Fire-and-forget,
+  /// never throws.
   void note(String message) {
-    _logcat(message);
+    if (!perfLogging) return;
+    // ignore: avoid_print
+    print('YULILOG $message');
     _appendRaw('[${DateTime.now().toIso8601String()}] $message\n');
   }
 

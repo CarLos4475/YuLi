@@ -1161,22 +1161,24 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     int? persistMs,
     int? snapshotMs,
   }) {
-    final data = _pageData[_pageBlockIds[pageIndex]];
-    final countSw = Stopwatch()..start();
-    final pagePoints = data == null ? -1 : _pointCount(data.strokes);
-    countSw.stop();
-    final totalMs = _inkPerfSw?.elapsedMilliseconds ?? finishMs;
-    CrashLogger.instance.note(
-      'PERF escribir-cuaderno: $kind, pagina $pageIndex, '
-      'trazo ${stroke.points.length} puntos, '
-      'pagina ${data?.strokes.length ?? -1} trazos/$pagePoints puntos, '
-      'moves $_inkMoveSamples, slowMoves $_inkSlowMoves, '
-      'worstMove ${(_inkWorstMoveUs / 1000).toStringAsFixed(1)}ms, '
-      'total ${totalMs}ms, finish ${finishMs}ms, '
-      'snapshot ${snapshotMs ?? -1}ms, append ${appendMs ?? -1}ms, '
-      'history ${historyMs ?? -1}ms, persist-schedule ${persistMs ?? -1}ms, '
-      'count ${countSw.elapsedMilliseconds}ms',
-    );
+    if (CrashLogger.perfLogging) {
+      final data = _pageData[_pageBlockIds[pageIndex]];
+      final countSw = Stopwatch()..start();
+      final pagePoints = data == null ? -1 : _pointCount(data.strokes);
+      countSw.stop();
+      final totalMs = _inkPerfSw?.elapsedMilliseconds ?? finishMs;
+      CrashLogger.instance.note(
+        'PERF escribir-cuaderno: $kind, pagina $pageIndex, '
+        'trazo ${stroke.points.length} puntos, '
+        'pagina ${data?.strokes.length ?? -1} trazos/$pagePoints puntos, '
+        'moves $_inkMoveSamples, slowMoves $_inkSlowMoves, '
+        'worstMove ${(_inkWorstMoveUs / 1000).toStringAsFixed(1)}ms, '
+        'total ${totalMs}ms, finish ${finishMs}ms, '
+        'snapshot ${snapshotMs ?? -1}ms, append ${appendMs ?? -1}ms, '
+        'history ${historyMs ?? -1}ms, persist-schedule ${persistMs ?? -1}ms, '
+        'count ${countSw.elapsedMilliseconds}ms',
+      );
+    }
     _resetInkPerf();
   }
 
@@ -1429,9 +1431,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         if (bgColorValue != null) 'bgc': bgColorValue,
         'starred': starred,
       });
-      final dbStats = await strokes.debugStatsByBlock(blockId);
-      final memPoints = _pointCount(strokesSnapshot);
-      final livePoints = _pointCount(data.strokes);
       final shell = _pageShells[blockId];
       if (shell != null) {
         _pageShells[blockId] = shell.copyWith(
@@ -1444,24 +1443,31 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           starred: starred,
         );
       }
-      sw.stop();
-      CrashLogger.instance.note(
-        'PERF guardar-cuaderno: page $pageIndex, ${strokesSnapshot.length} trazos, '
-        '$memPoints puntos, live ${data.strokes.length}/$livePoints, '
-        '+$inserted ~$updated -$deleted, '
-        'db ${dbStats.count} trazos/${dbStats.points} puntos/maxPos ${dbStats.maxPosition ?? -1}, '
-        'strokesDB ${strokeMs}ms, '
-        'total(+DB) ${sw.elapsedMilliseconds}ms',
-      );
-      if (dbStats.count != strokesSnapshot.length ||
-          dbStats.points != memPoints) {
+      // Save-stats logging only: a DB stats query + point counts purely to feed
+      // the note. Skipped entirely in production.
+      if (CrashLogger.perfLogging) {
+        final dbStats = await strokes.debugStatsByBlock(blockId);
+        final memPoints = _pointCount(strokesSnapshot);
+        final livePoints = _pointCount(data.strokes);
+        sw.stop();
         CrashLogger.instance.note(
-          'WARN persist-cuaderno-mismatch: page $pageIndex block $blockId, '
-          'mem ${strokesSnapshot.length}/$memPoints vs '
-          'db ${dbStats.count}/${dbStats.points}, '
-          'live ${data.strokes.length}/$livePoints, '
-          '+$inserted ~$updated -$deleted',
+          'PERF guardar-cuaderno: page $pageIndex, ${strokesSnapshot.length} trazos, '
+          '$memPoints puntos, live ${data.strokes.length}/$livePoints, '
+          '+$inserted ~$updated -$deleted, '
+          'db ${dbStats.count} trazos/${dbStats.points} puntos/maxPos ${dbStats.maxPosition ?? -1}, '
+          'strokesDB ${strokeMs}ms, '
+          'total(+DB) ${sw.elapsedMilliseconds}ms',
         );
+        if (dbStats.count != strokesSnapshot.length ||
+            dbStats.points != memPoints) {
+          CrashLogger.instance.note(
+            'WARN persist-cuaderno-mismatch: page $pageIndex block $blockId, '
+            'mem ${strokesSnapshot.length}/$memPoints vs '
+            'db ${dbStats.count}/${dbStats.points}, '
+            'live ${data.strokes.length}/$livePoints, '
+            '+$inserted ~$updated -$deleted',
+          );
+        }
       }
     } catch (_) {
       _dirtyPersistPages.add(blockId);
@@ -7495,6 +7501,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                       child: FloatingPinsLayer(
                                         controller: _pinController,
                                         usableBounds: _pinUsableBounds(),
+                                        accent: _accent,
                                       ),
                                     ),
                                     // Eyedropper loupe (viewport-space, pinned).

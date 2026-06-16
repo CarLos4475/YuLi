@@ -85,6 +85,9 @@ class VideoPinBody extends StatefulWidget {
   final String videoId;
   final int startSeconds;
   final bool active;
+
+  /// Note/folder accent — fills the play button + the seek track.
+  final Color accent;
   final ValueChanged<int>? onPosition;
 
   const VideoPinBody({
@@ -92,6 +95,7 @@ class VideoPinBody extends StatefulWidget {
     required this.videoId,
     this.startSeconds = 0,
     this.active = true,
+    required this.accent,
     this.onPosition,
   });
 
@@ -216,22 +220,24 @@ class _VideoPinBodyState extends State<VideoPinBody> {
                     final shown = (drag?.round() ?? pos).clamp(0, total);
                     return Row(
                       children: [
-                        _iconBtn(
+                        _primaryBtn(
                           playing ? YuLiIcons.pause : YuLiIcons.play,
                           () => playing
                               ? _controller.pauseVideo()
                               : _controller.playVideo(),
                         ),
-                        _miniBtn('-10', () => _seek(pos - 10)),
-                        _miniBtn('+10', () => _seek(pos + 10)),
+                        _skipBtn(YuLiIcons.rotateCcw, () => _seek(pos - 10)),
+                        _skipBtn(YuLiIcons.rotateCw, () => _seek(pos + 10)),
                         const SizedBox(width: 4),
                         Expanded(
                           child: SliderTheme(
                             data: SliderThemeData(
                               trackHeight: 2,
-                              thumbColor: yInk,
-                              activeTrackColor: yInk,
+                              thumbColor: widget.accent,
+                              activeTrackColor: widget.accent,
                               inactiveTrackColor: yBorderSoft,
+                              overlayColor:
+                                  widget.accent.withValues(alpha: 0.15),
                               overlayShape: const RoundSliderOverlayShape(
                                   overlayRadius: 11),
                               thumbShape: const RoundSliderThumbShape(
@@ -286,14 +292,48 @@ class _VideoPinBodyState extends State<VideoPinBody> {
         ),
       );
 
-  Widget _miniBtn(String label, VoidCallback onTap) => GestureDetector(
+  /// Filled accent square (the design's primary play/pause control).
+  Widget _primaryBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 30,
+          height: 28,
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            color: widget.accent,
+            border: Border.all(color: yBorderStrong, width: yLineThin),
+          ),
+          child: Icon(icon, size: 16, color: Colors.white),
+        ),
+      );
+
+  /// Circular skip arrow with a tiny "10" inside (YouTube-style -10/+10).
+  Widget _skipBtn(IconData icon, VoidCallback onTap) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Text(
-            label,
-            style: yMono(size: 10, weight: FontWeight.w700, color: yInk),
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, size: 20, color: yInk),
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(
+                    '10',
+                    style: yMono(
+                      size: 6.5,
+                      weight: FontWeight.w800,
+                      color: yInk,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
