@@ -9079,6 +9079,702 @@ class ScheduleWeekNotesCompanion extends UpdateCompanion<ScheduleWeekNoteRow> {
   }
 }
 
+class $FloatingPinsTable extends FloatingPins
+    with TableInfo<$FloatingPinsTable, FloatingPinRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FloatingPinsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _leftMeta = const VerificationMeta('left');
+  @override
+  late final GeneratedColumn<double> left = GeneratedColumn<double>(
+    'left',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _topMeta = const VerificationMeta('top');
+  @override
+  late final GeneratedColumn<double> top = GeneratedColumn<double>(
+    'top',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<double> width = GeneratedColumn<double>(
+    'width',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _heightMeta = const VerificationMeta('height');
+  @override
+  late final GeneratedColumn<double> height = GeneratedColumn<double>(
+    'height',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _collapsedMeta = const VerificationMeta(
+    'collapsed',
+  );
+  @override
+  late final GeneratedColumn<bool> collapsed = GeneratedColumn<bool>(
+    'collapsed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("collapsed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _metadataJsonMeta = const VerificationMeta(
+    'metadataJson',
+  );
+  @override
+  late final GeneratedColumn<String> metadataJson = GeneratedColumn<String>(
+    'metadata_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    noteId,
+    kind,
+    left,
+    top,
+    width,
+    height,
+    collapsed,
+    sortOrder,
+    metadataJson,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'floating_pins';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FloatingPinRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_noteIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('left')) {
+      context.handle(
+        _leftMeta,
+        left.isAcceptableOrUnknown(data['left']!, _leftMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_leftMeta);
+    }
+    if (data.containsKey('top')) {
+      context.handle(
+        _topMeta,
+        top.isAcceptableOrUnknown(data['top']!, _topMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_topMeta);
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+        _widthMeta,
+        width.isAcceptableOrUnknown(data['width']!, _widthMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_widthMeta);
+    }
+    if (data.containsKey('height')) {
+      context.handle(
+        _heightMeta,
+        height.isAcceptableOrUnknown(data['height']!, _heightMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_heightMeta);
+    }
+    if (data.containsKey('collapsed')) {
+      context.handle(
+        _collapsedMeta,
+        collapsed.isAcceptableOrUnknown(data['collapsed']!, _collapsedMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('metadata_json')) {
+      context.handle(
+        _metadataJsonMeta,
+        metadataJson.isAcceptableOrUnknown(
+          data['metadata_json']!,
+          _metadataJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FloatingPinRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FloatingPinRow(
+      id:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}id'],
+          )!,
+      noteId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}note_id'],
+          )!,
+      kind:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}kind'],
+          )!,
+      left:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}left'],
+          )!,
+      top:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}top'],
+          )!,
+      width:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}width'],
+          )!,
+      height:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.double,
+            data['${effectivePrefix}height'],
+          )!,
+      collapsed:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}collapsed'],
+          )!,
+      sortOrder:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}sort_order'],
+          )!,
+      metadataJson:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}metadata_json'],
+          )!,
+      createdAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}created_at'],
+          )!,
+      updatedAt:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.dateTime,
+            data['${effectivePrefix}updated_at'],
+          )!,
+    );
+  }
+
+  @override
+  $FloatingPinsTable createAlias(String alias) {
+    return $FloatingPinsTable(attachedDatabase, alias);
+  }
+}
+
+class FloatingPinRow extends DataClass implements Insertable<FloatingPinRow> {
+  final int id;
+  final int noteId;
+  final String kind;
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final bool collapsed;
+  final int sortOrder;
+  final String metadataJson;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const FloatingPinRow({
+    required this.id,
+    required this.noteId,
+    required this.kind,
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.collapsed,
+    required this.sortOrder,
+    required this.metadataJson,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['note_id'] = Variable<int>(noteId);
+    map['kind'] = Variable<String>(kind);
+    map['left'] = Variable<double>(left);
+    map['top'] = Variable<double>(top);
+    map['width'] = Variable<double>(width);
+    map['height'] = Variable<double>(height);
+    map['collapsed'] = Variable<bool>(collapsed);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['metadata_json'] = Variable<String>(metadataJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  FloatingPinsCompanion toCompanion(bool nullToAbsent) {
+    return FloatingPinsCompanion(
+      id: Value(id),
+      noteId: Value(noteId),
+      kind: Value(kind),
+      left: Value(left),
+      top: Value(top),
+      width: Value(width),
+      height: Value(height),
+      collapsed: Value(collapsed),
+      sortOrder: Value(sortOrder),
+      metadataJson: Value(metadataJson),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory FloatingPinRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FloatingPinRow(
+      id: serializer.fromJson<int>(json['id']),
+      noteId: serializer.fromJson<int>(json['noteId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      left: serializer.fromJson<double>(json['left']),
+      top: serializer.fromJson<double>(json['top']),
+      width: serializer.fromJson<double>(json['width']),
+      height: serializer.fromJson<double>(json['height']),
+      collapsed: serializer.fromJson<bool>(json['collapsed']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      metadataJson: serializer.fromJson<String>(json['metadataJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'noteId': serializer.toJson<int>(noteId),
+      'kind': serializer.toJson<String>(kind),
+      'left': serializer.toJson<double>(left),
+      'top': serializer.toJson<double>(top),
+      'width': serializer.toJson<double>(width),
+      'height': serializer.toJson<double>(height),
+      'collapsed': serializer.toJson<bool>(collapsed),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'metadataJson': serializer.toJson<String>(metadataJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  FloatingPinRow copyWith({
+    int? id,
+    int? noteId,
+    String? kind,
+    double? left,
+    double? top,
+    double? width,
+    double? height,
+    bool? collapsed,
+    int? sortOrder,
+    String? metadataJson,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => FloatingPinRow(
+    id: id ?? this.id,
+    noteId: noteId ?? this.noteId,
+    kind: kind ?? this.kind,
+    left: left ?? this.left,
+    top: top ?? this.top,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    collapsed: collapsed ?? this.collapsed,
+    sortOrder: sortOrder ?? this.sortOrder,
+    metadataJson: metadataJson ?? this.metadataJson,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  FloatingPinRow copyWithCompanion(FloatingPinsCompanion data) {
+    return FloatingPinRow(
+      id: data.id.present ? data.id.value : this.id,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      left: data.left.present ? data.left.value : this.left,
+      top: data.top.present ? data.top.value : this.top,
+      width: data.width.present ? data.width.value : this.width,
+      height: data.height.present ? data.height.value : this.height,
+      collapsed: data.collapsed.present ? data.collapsed.value : this.collapsed,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      metadataJson:
+          data.metadataJson.present
+              ? data.metadataJson.value
+              : this.metadataJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FloatingPinRow(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('kind: $kind, ')
+          ..write('left: $left, ')
+          ..write('top: $top, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('collapsed: $collapsed, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('metadataJson: $metadataJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    noteId,
+    kind,
+    left,
+    top,
+    width,
+    height,
+    collapsed,
+    sortOrder,
+    metadataJson,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FloatingPinRow &&
+          other.id == this.id &&
+          other.noteId == this.noteId &&
+          other.kind == this.kind &&
+          other.left == this.left &&
+          other.top == this.top &&
+          other.width == this.width &&
+          other.height == this.height &&
+          other.collapsed == this.collapsed &&
+          other.sortOrder == this.sortOrder &&
+          other.metadataJson == this.metadataJson &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class FloatingPinsCompanion extends UpdateCompanion<FloatingPinRow> {
+  final Value<int> id;
+  final Value<int> noteId;
+  final Value<String> kind;
+  final Value<double> left;
+  final Value<double> top;
+  final Value<double> width;
+  final Value<double> height;
+  final Value<bool> collapsed;
+  final Value<int> sortOrder;
+  final Value<String> metadataJson;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const FloatingPinsCompanion({
+    this.id = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.left = const Value.absent(),
+    this.top = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
+    this.collapsed = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.metadataJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  FloatingPinsCompanion.insert({
+    this.id = const Value.absent(),
+    required int noteId,
+    required String kind,
+    required double left,
+    required double top,
+    required double width,
+    required double height,
+    this.collapsed = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.metadataJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : noteId = Value(noteId),
+       kind = Value(kind),
+       left = Value(left),
+       top = Value(top),
+       width = Value(width),
+       height = Value(height);
+  static Insertable<FloatingPinRow> custom({
+    Expression<int>? id,
+    Expression<int>? noteId,
+    Expression<String>? kind,
+    Expression<double>? left,
+    Expression<double>? top,
+    Expression<double>? width,
+    Expression<double>? height,
+    Expression<bool>? collapsed,
+    Expression<int>? sortOrder,
+    Expression<String>? metadataJson,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (noteId != null) 'note_id': noteId,
+      if (kind != null) 'kind': kind,
+      if (left != null) 'left': left,
+      if (top != null) 'top': top,
+      if (width != null) 'width': width,
+      if (height != null) 'height': height,
+      if (collapsed != null) 'collapsed': collapsed,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (metadataJson != null) 'metadata_json': metadataJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  FloatingPinsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? noteId,
+    Value<String>? kind,
+    Value<double>? left,
+    Value<double>? top,
+    Value<double>? width,
+    Value<double>? height,
+    Value<bool>? collapsed,
+    Value<int>? sortOrder,
+    Value<String>? metadataJson,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return FloatingPinsCompanion(
+      id: id ?? this.id,
+      noteId: noteId ?? this.noteId,
+      kind: kind ?? this.kind,
+      left: left ?? this.left,
+      top: top ?? this.top,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      collapsed: collapsed ?? this.collapsed,
+      sortOrder: sortOrder ?? this.sortOrder,
+      metadataJson: metadataJson ?? this.metadataJson,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (left.present) {
+      map['left'] = Variable<double>(left.value);
+    }
+    if (top.present) {
+      map['top'] = Variable<double>(top.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<double>(width.value);
+    }
+    if (height.present) {
+      map['height'] = Variable<double>(height.value);
+    }
+    if (collapsed.present) {
+      map['collapsed'] = Variable<bool>(collapsed.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (metadataJson.present) {
+      map['metadata_json'] = Variable<String>(metadataJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FloatingPinsCompanion(')
+          ..write('id: $id, ')
+          ..write('noteId: $noteId, ')
+          ..write('kind: $kind, ')
+          ..write('left: $left, ')
+          ..write('top: $top, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('collapsed: $collapsed, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('metadataJson: $metadataJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9113,6 +9809,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $ScheduleWeekNotesTable scheduleWeekNotes =
       $ScheduleWeekNotesTable(this);
+  late final $FloatingPinsTable floatingPins = $FloatingPinsTable(this);
   late final TasksDao tasksDao = TasksDao(this as AppDatabase);
   late final NotesDao notesDao = NotesDao(this as AppDatabase);
   late final NoteBlocksDao noteBlocksDao = NoteBlocksDao(this as AppDatabase);
@@ -9126,6 +9823,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this as AppDatabase,
   );
   late final ScheduleDao scheduleDao = ScheduleDao(this as AppDatabase);
+  late final FloatingPinsDao floatingPinsDao = FloatingPinsDao(
+    this as AppDatabase,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9151,6 +9851,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     scheduleBlocks,
     scheduleSettings,
     scheduleWeekNotes,
+    floatingPins,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -10456,6 +11157,24 @@ final class $$NotesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$FloatingPinsTable, List<FloatingPinRow>>
+  _floatingPinsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.floatingPins,
+    aliasName: $_aliasNameGenerator(db.notes.id, db.floatingPins.noteId),
+  );
+
+  $$FloatingPinsTableProcessedTableManager get floatingPinsRefs {
+    final manager = $$FloatingPinsTableTableManager(
+      $_db,
+      $_db.floatingPins,
+    ).filter((f) => f.noteId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_floatingPinsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
@@ -10675,6 +11394,31 @@ class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
           }) => $$CanvasContextSourcesTableFilterComposer(
             $db: $db,
             $table: $db.canvasContextSources,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> floatingPinsRefs(
+    Expression<bool> Function($$FloatingPinsTableFilterComposer f) f,
+  ) {
+    final $$FloatingPinsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.floatingPins,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FloatingPinsTableFilterComposer(
+            $db: $db,
+            $table: $db.floatingPins,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -10974,6 +11718,31 @@ class $$NotesTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> floatingPinsRefs<T extends Object>(
+    Expression<T> Function($$FloatingPinsTableAnnotationComposer a) f,
+  ) {
+    final $$FloatingPinsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.floatingPins,
+      getReferencedColumn: (t) => t.noteId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FloatingPinsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.floatingPins,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$NotesTableTableManager
@@ -10997,6 +11766,7 @@ class $$NotesTableTableManager
             bool noteBlocksRefs,
             bool kanbanCardsRefs,
             bool canvasContextSourcesRefs,
+            bool floatingPinsRefs,
           })
         > {
   $$NotesTableTableManager(_$AppDatabase db, $NotesTable table)
@@ -11076,6 +11846,7 @@ class $$NotesTableTableManager
             noteBlocksRefs = false,
             kanbanCardsRefs = false,
             canvasContextSourcesRefs = false,
+            floatingPinsRefs = false,
           }) {
             return PrefetchHooks(
               db: db,
@@ -11086,6 +11857,7 @@ class $$NotesTableTableManager
                 if (noteBlocksRefs) db.noteBlocks,
                 if (kanbanCardsRefs) db.kanbanCards,
                 if (canvasContextSourcesRefs) db.canvasContextSources,
+                if (floatingPinsRefs) db.floatingPins,
               ],
               addJoins: <
                 T extends TableManagerState<
@@ -11247,6 +12019,27 @@ class $$NotesTableTableManager
                           ),
                       typedResults: items,
                     ),
+                  if (floatingPinsRefs)
+                    await $_getPrefetchedData<
+                      NoteRow,
+                      $NotesTable,
+                      FloatingPinRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NotesTableReferences
+                          ._floatingPinsRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NotesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).floatingPinsRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) =>
+                              referencedItems.where((e) => e.noteId == item.id),
+                      typedResults: items,
+                    ),
                 ];
               },
             );
@@ -11275,6 +12068,7 @@ typedef $$NotesTableProcessedTableManager =
         bool noteBlocksRefs,
         bool kanbanCardsRefs,
         bool canvasContextSourcesRefs,
+        bool floatingPinsRefs,
       })
     >;
 typedef $$NoteImagesTableCreateCompanionBuilder =
@@ -18417,6 +19211,456 @@ typedef $$ScheduleWeekNotesTableProcessedTableManager =
       ScheduleWeekNoteRow,
       PrefetchHooks Function({bool labSpaceId})
     >;
+typedef $$FloatingPinsTableCreateCompanionBuilder =
+    FloatingPinsCompanion Function({
+      Value<int> id,
+      required int noteId,
+      required String kind,
+      required double left,
+      required double top,
+      required double width,
+      required double height,
+      Value<bool> collapsed,
+      Value<int> sortOrder,
+      Value<String> metadataJson,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$FloatingPinsTableUpdateCompanionBuilder =
+    FloatingPinsCompanion Function({
+      Value<int> id,
+      Value<int> noteId,
+      Value<String> kind,
+      Value<double> left,
+      Value<double> top,
+      Value<double> width,
+      Value<double> height,
+      Value<bool> collapsed,
+      Value<int> sortOrder,
+      Value<String> metadataJson,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$FloatingPinsTableReferences
+    extends BaseReferences<_$AppDatabase, $FloatingPinsTable, FloatingPinRow> {
+  $$FloatingPinsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NotesTable _noteIdTable(_$AppDatabase db) => db.notes.createAlias(
+    $_aliasNameGenerator(db.floatingPins.noteId, db.notes.id),
+  );
+
+  $$NotesTableProcessedTableManager get noteId {
+    final $_column = $_itemColumn<int>('note_id')!;
+
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_noteIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$FloatingPinsTableFilterComposer
+    extends Composer<_$AppDatabase, $FloatingPinsTable> {
+  $$FloatingPinsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get left => $composableBuilder(
+    column: $table.left,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get top => $composableBuilder(
+    column: $table.top,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get collapsed => $composableBuilder(
+    column: $table.collapsed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get metadataJson => $composableBuilder(
+    column: $table.metadataJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NotesTableFilterComposer get noteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FloatingPinsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FloatingPinsTable> {
+  $$FloatingPinsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get left => $composableBuilder(
+    column: $table.left,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get top => $composableBuilder(
+    column: $table.top,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get collapsed => $composableBuilder(
+    column: $table.collapsed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get metadataJson => $composableBuilder(
+    column: $table.metadataJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NotesTableOrderingComposer get noteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FloatingPinsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FloatingPinsTable> {
+  $$FloatingPinsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<double> get left =>
+      $composableBuilder(column: $table.left, builder: (column) => column);
+
+  GeneratedColumn<double> get top =>
+      $composableBuilder(column: $table.top, builder: (column) => column);
+
+  GeneratedColumn<double> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<double> get height =>
+      $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<bool> get collapsed =>
+      $composableBuilder(column: $table.collapsed, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get metadataJson => $composableBuilder(
+    column: $table.metadataJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$NotesTableAnnotationComposer get noteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.noteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FloatingPinsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FloatingPinsTable,
+          FloatingPinRow,
+          $$FloatingPinsTableFilterComposer,
+          $$FloatingPinsTableOrderingComposer,
+          $$FloatingPinsTableAnnotationComposer,
+          $$FloatingPinsTableCreateCompanionBuilder,
+          $$FloatingPinsTableUpdateCompanionBuilder,
+          (FloatingPinRow, $$FloatingPinsTableReferences),
+          FloatingPinRow,
+          PrefetchHooks Function({bool noteId})
+        > {
+  $$FloatingPinsTableTableManager(_$AppDatabase db, $FloatingPinsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$FloatingPinsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () => $$FloatingPinsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () =>
+                  $$FloatingPinsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> noteId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<double> left = const Value.absent(),
+                Value<double> top = const Value.absent(),
+                Value<double> width = const Value.absent(),
+                Value<double> height = const Value.absent(),
+                Value<bool> collapsed = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<String> metadataJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => FloatingPinsCompanion(
+                id: id,
+                noteId: noteId,
+                kind: kind,
+                left: left,
+                top: top,
+                width: width,
+                height: height,
+                collapsed: collapsed,
+                sortOrder: sortOrder,
+                metadataJson: metadataJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int noteId,
+                required String kind,
+                required double left,
+                required double top,
+                required double width,
+                required double height,
+                Value<bool> collapsed = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<String> metadataJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => FloatingPinsCompanion.insert(
+                id: id,
+                noteId: noteId,
+                kind: kind,
+                left: left,
+                top: top,
+                width: width,
+                height: height,
+                collapsed: collapsed,
+                sortOrder: sortOrder,
+                metadataJson: metadataJson,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$FloatingPinsTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({noteId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (noteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.noteId,
+                            referencedTable: $$FloatingPinsTableReferences
+                                ._noteIdTable(db),
+                            referencedColumn:
+                                $$FloatingPinsTableReferences
+                                    ._noteIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FloatingPinsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FloatingPinsTable,
+      FloatingPinRow,
+      $$FloatingPinsTableFilterComposer,
+      $$FloatingPinsTableOrderingComposer,
+      $$FloatingPinsTableAnnotationComposer,
+      $$FloatingPinsTableCreateCompanionBuilder,
+      $$FloatingPinsTableUpdateCompanionBuilder,
+      (FloatingPinRow, $$FloatingPinsTableReferences),
+      FloatingPinRow,
+      PrefetchHooks Function({bool noteId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -18461,4 +19705,6 @@ class $AppDatabaseManager {
       $$ScheduleSettingsTableTableManager(_db, _db.scheduleSettings);
   $$ScheduleWeekNotesTableTableManager get scheduleWeekNotes =>
       $$ScheduleWeekNotesTableTableManager(_db, _db.scheduleWeekNotes);
+  $$FloatingPinsTableTableManager get floatingPins =>
+      $$FloatingPinsTableTableManager(_db, _db.floatingPins);
 }

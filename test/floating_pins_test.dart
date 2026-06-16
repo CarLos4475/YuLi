@@ -1,7 +1,11 @@
 import 'dart:ui' as ui;
 
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:yuli/data/local/database.dart';
+import 'package:yuli/data/repositories/local/local_floating_pin_repository.dart';
+import 'package:yuli/domain/models/floating_pin_record.dart';
 import 'package:yuli/presentation/screens/flight/pinned_snapshots.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
 
@@ -13,6 +17,32 @@ Future<ui.Image> _testImage({int width = 200, int height = 100}) {
     Paint()..color = const Color(0xFF123456),
   );
   return recorder.endRecording().toImage(width, height);
+}
+
+/// Records seam calls so controller behaviour can be asserted without Drift.
+class _FakePersistence implements FloatingPinPersistence {
+  int _nextId = 100;
+  final List<int> inserted = [];
+  final List<FloatingPin> saved = [];
+  final List<FloatingPin> removed = [];
+  final List<List<int>> reorders = [];
+
+  @override
+  Future<int> insert(FloatingPin pin) async {
+    final id = _nextId++;
+    inserted.add(id);
+    return id;
+  }
+
+  @override
+  void save(FloatingPin pin) => saved.add(pin);
+
+  @override
+  void remove(FloatingPin pin) => removed.add(pin);
+
+  @override
+  void reorder(List<FloatingPin> pins) =>
+      reorders.add([for (final p in pins) p.dbId!]);
 }
 
 void main() {
@@ -128,5 +158,134 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.value, isEmpty);
     expect(find.byKey(ValueKey(pin.id)), findsNothing);
+  });
+
+  test('image pin persists through the seam; snapshot stays volatile', () async {
+    final controller = FloatingPinController();
+    final fake = _FakePersistence();
+    controller.persistence = fake;
+    final bounds = Rect.fromLTWH(8, 8, 800, 600);
+
+    final img = await controller.addImage(
+      filePath: '/tmp/a.jpg',
+      aspectRatio: 2.0,
+      rect: const Rect.fromLTWH(0, 0, 200, 0),
+      usableBounds: bounds,
+    );
+    expect(img.dbId, isNotNull);
+    expect(img.persisted, isTrue);
+    expect(fake.inserted, hasLength(1));
+    expect(fake.reorders, isNotEmpty); // z-order written on add
+    // aspect 2.0 → body height = width / 2.
+    expect(img.rect.height, floatingPinHeaderHeight + 100);
+
+    controller.commitRect(img.id, const Rect.fromLTWH(40, 40, 160, 0), bounds);
+    expect(fake.saved, isNotEmpty);
+
+    fake.saved.clear();
+    controller.toggleCollapsed(img.id);
+    expect(fake.saved.single.collapsed, isTrue);
+
+    // A volatile snapshot must NOT hit the seam.
+    final snap = controller.addSnapshot(
+      image: await _testImage(),
+      rect: const Rect.fromLTWH(0, 0, 120, 0),
+      usableBounds: bounds,
+    );
+    fake.saved.clear();
+    controller.commitRect(snap.id, const Rect.fromLTWH(10, 10, 120, 0), bounds);
+    expect(fake.saved, isEmpty);
+
+    // Closing a persisted pin removes via the seam; a snapshot does not.
+    controller.close(img.id);
+    expect(fake.removed.single.dbId, img.dbId);
+    controller.close(snap.id);
+    expect(fake.removed, hasLength(1));
+  });
+
+  test('loadPersisted is idempotent and sits behind volatile snapshots', () async {
+    final controller = FloatingPinController();
+    final bounds = Rect.fromLTWH(8, 8, 800, 600);
+    final snap = controller.addSnapshot(
+      image: await _testImage(),
+      rect: const Rect.fromLTWH(0, 0, 120, 0),
+      usableBounds: bounds,
+    );
+    final persisted = FloatingPin(
+      id: 'db1',
+      dbId: 1,
+      kind: FloatingPinKind.image,
+      payload: ImagePinPayload(filePath: '/tmp/x.jpg', aspectRatio: 1),
+      rect: const Rect.fromLTWH(0, 0, 100, 100),
+    );
+
+    controller.loadPersisted([persisted]);
+    // Persisted (older) behind, the session snapshot on top (list end = front).
+    expect(controller.value.map((p) => p.id).toList(), ['db1', snap.id]);
+    expect(controller.persistedLoaded, isTrue);
+
+    controller.loadPersisted([persisted]); // no-op on re-entry
+    expect(controller.value.where((p) => p.id == 'db1'), hasLength(1));
+  });
+
+  group('repository round-trip', () {
+    late AppDatabase db;
+    late LocalFloatingPinRepository repo;
+
+    setUp(() {
+      db = AppDatabase.forTesting(NativeDatabase.memory());
+      repo = LocalFloatingPinRepository(db);
+    });
+    tearDown(() async => db.close());
+
+    Future<int> makeNote() async {
+      final folderId = await db
+          .into(db.folders)
+          .insert(FoldersCompanion.insert(name: 'f', color: '#FFFFFF'));
+      return db.into(db.notes).insert(NotesCompanion.insert(folderId: folderId));
+    }
+
+    FloatingPinRecord rec(int noteId, String filename, int order) =>
+        FloatingPinRecord(
+          id: 0,
+          noteId: noteId,
+          kind: 'image',
+          left: 1,
+          top: 2,
+          width: 100,
+          height: 80,
+          collapsed: false,
+          sortOrder: order,
+          metadata: {'filename': filename, 'aspect': 1.25},
+        );
+
+    test('insert, order, update, delete and GC references', () async {
+      final noteId = await makeNote();
+      final id1 = await repo.insert(rec(noteId, 'a.jpg', 0));
+      final id2 = await repo.insert(rec(noteId, 'b.jpg', 1));
+
+      var pins = await repo.forNote(noteId);
+      expect(pins.map((p) => p.id).toList(), [id1, id2]);
+      expect(pins.first.metadata['filename'], 'a.jpg');
+      expect((pins.first.metadata['aspect'] as num).toDouble(), 1.25);
+
+      await repo.setOrder([id2, id1]);
+      pins = await repo.forNote(noteId);
+      expect(pins.map((p) => p.id).toList(), [id2, id1]);
+
+      await repo.update(
+        pins.firstWhere((p) => p.id == id1).copyWith(collapsed: true),
+      );
+      pins = await repo.forNote(noteId);
+      expect(pins.firstWhere((p) => p.id == id1).collapsed, isTrue);
+
+      var referenced = await repo.referencedFilesByNote();
+      expect(referenced[noteId], {'a.jpg', 'b.jpg'});
+
+      await repo.delete(id1);
+      referenced = await repo.referencedFilesByNote();
+      expect(referenced[noteId], {'b.jpg'});
+      expect(await repo.forNote(noteId), hasLength(1));
+    });
   });
 }

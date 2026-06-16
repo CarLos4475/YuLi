@@ -44,6 +44,8 @@ import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
 import 'note_cell_model.dart';
 import 'pinned_snapshots.dart';
+import 'floating_pin_persistence.dart';
+import '../../../data/services/floating_pin_storage.dart';
 import 'popup_reveal.dart';
 import 'shape_recognizer.dart';
 import 'shape_picker_popup.dart';
@@ -610,12 +612,16 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   CanvasImageCache? _imgCache;
   String? _imageDirPath;
   bool _imagePanelOpen = false;
+  // When the image picker is opened from "NUEVO PIN" its result becomes a
+  // floating image pin instead of an inline canvas image.
+  bool _imagePanelForPin = false;
   bool _bgPopupOpen = false;
   bool _bgColorPickerOpen = false;
   EraserMode _eraserMode = EraserMode.stroke;
   bool _eraserPopupOpen = false;
   bool _shapePopupOpen = false;
   bool _morePopupOpen = false;
+  bool _addPinPopupOpen = false;
   bool _floatingToolbarsPopupOpen = false;
   Offset? _eraserCursor; // screen pos for the eraser indicator
   // Raw (un-stabilized) pen points — used for scribble-erase detection so the
@@ -787,6 +793,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       duration: const Duration(milliseconds: _kChunkFadeMs),
     );
     _lassoCtrl.onChanged = _onLassoChanged;
+    _pinController.persistence = RepoFloatingPinPersistence(
+      repo: ref.read(floatingPinRepositoryProvider),
+      noteId: widget.note.id,
+    );
+    unawaited(_loadFloatingPins());
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
       setState(() => _recentWidths = widths);
@@ -1010,6 +1021,46 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     (_viewport.width - 16).clamp(0.0, double.infinity).toDouble(),
     (_viewport.height - 16).clamp(0.0, double.infinity).toDouble(),
   );
+
+  /// Hydrates this note's persisted floating pins (image/pdf/video) once.
+  Future<void> _loadFloatingPins() async {
+    if (_pinController.persistedLoaded) return;
+    final pins = await loadFloatingPins(
+      repo: ref.read(floatingPinRepositoryProvider),
+      noteId: widget.note.id,
+    );
+    if (!mounted) return;
+    _pinController.loadPersisted(pins);
+  }
+
+  /// Copies a picked image into floating-pin storage and pins it (persisted).
+  Future<void> _addImagePin(File f) async {
+    try {
+      final bytes = await f.readAsBytes();
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final iw = frame.image.width.toDouble();
+      final ih = frame.image.height.toDouble();
+      frame.image.dispose();
+      if (iw <= 0 || ih <= 0) return;
+
+      final filename = '${const Uuid().v4()}.jpg';
+      final dest =
+          await copyIntoFloatingPins(noteId: widget.note.id, src: f, filename: filename);
+
+      final bounds = _pinUsableBounds();
+      final width = (bounds.width * 0.42).clamp(140.0, 560.0).toDouble();
+      final left = bounds.left + (bounds.width - width) / 2;
+      final top = bounds.top + bounds.height * 0.16;
+      await _pinController.addImage(
+        filePath: dest.path,
+        aspectRatio: iw / ih,
+        rect: Rect.fromLTWH(left, top, width, 0),
+        usableBounds: bounds,
+      );
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
+  }
 
   /// Capture the current lasso selection as a frozen raster cut-out and pin it
   /// over the canvas. Captures EVERYTHING under the selection (paper, ink,
@@ -1803,7 +1854,21 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       if (_imagePanelOpen) {
         _colorPickerOpen = false;
         _widthPickerOpen = false;
+      } else {
+        _imagePanelForPin = false;
       }
+    });
+  }
+
+  /// Opens the image picker so the result becomes a floating image pin.
+  void _newImagePin() {
+    setState(() {
+      _morePopupOpen = false;
+      _addPinPopupOpen = false;
+      _imagePanelForPin = true;
+      _imagePanelOpen = true;
+      _colorPickerOpen = false;
+      _widthPickerOpen = false;
     });
   }
 
@@ -6459,8 +6524,13 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 child: ImageInsertPanel(
                   accent: _accent,
                   onPick: (file) {
+                    final forPin = _imagePanelForPin;
                     _toggleImagePanel();
-                    _insertImageFile(file);
+                    if (forPin) {
+                      _addImagePin(file);
+                    } else {
+                      _insertImageFile(file);
+                    }
                   },
                   onClose: _toggleImagePanel,
                 ),
@@ -6525,6 +6595,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                 open: _morePopupOpen,
                 onDismiss: () => setState(() => _morePopupOpen = false),
                 child: _buildMorePopup(),
+              ),
+              RevealPopup(
+                key: const ValueKey('rp-add-pin'),
+                open: _addPinPopupOpen,
+                onDismiss: () => setState(() => _addPinPopupOpen = false),
+                child: _buildAddPinPopup(),
               ),
               RevealPopup(
                 key: const ValueKey('rp-floating-toolbars'),
@@ -7114,6 +7190,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             },
           ),
           _toolBtn(
+            icon: YuLiIcons.pin,
+            active: _addPinPopupOpen,
+            label: 'AGREGAR PIN',
+            onTap: () => setState(() {
+              _morePopupOpen = false;
+              _addPinPopupOpen = true;
+            }),
+          ),
+          _toolBtn(
             icon: YuLiIcons.trash,
             active: false,
             label: 'BORRAR',
@@ -7121,6 +7206,34 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
               setState(() => _morePopupOpen = false);
               _confirmClear();
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Pin-type chooser opened from "AGREGAR PIN". Only Imagen in V2a; PDF/Video
+  /// land in later phases.
+  Widget _buildAddPinPopup() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _toolBtn(
+            icon: YuLiIcons.images,
+            active: false,
+            label: 'IMAGEN',
+            onTap: _newImagePin,
           ),
         ],
       ),

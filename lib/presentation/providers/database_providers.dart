@@ -9,6 +9,7 @@ import '../../data/repositories/local/local_lab_space_repository.dart';
 import '../../data/repositories/local/local_kanban_repository.dart';
 import '../../data/repositories/local/local_notification_repository.dart';
 import '../../data/repositories/local/local_schedule_repository.dart';
+import '../../data/repositories/local/local_floating_pin_repository.dart';
 import '../../data/services/local_reminder_scheduler.dart';
 import '../../data/services/reminder_coordinator.dart';
 import '../../data/services/reminder_preferences.dart';
@@ -21,6 +22,7 @@ import '../../domain/repositories/note_block_repository.dart';
 import '../../domain/repositories/drawing_stroke_repository.dart';
 import '../../domain/repositories/lab_space_repository.dart';
 import '../../domain/repositories/kanban_card_repository.dart';
+import '../../domain/repositories/floating_pin_repository.dart';
 import '../../domain/models/notification_item.dart';
 import '../../domain/services/reminder_scheduler.dart';
 import '../../domain/models/task.dart' as domain_task;
@@ -78,6 +80,10 @@ final kanbanCardRepositoryProvider = Provider<KanbanCardRepository>((ref) {
     ref.watch(databaseProvider),
     reminders: ref.watch(reminderCoordinatorProvider),
   );
+});
+
+final floatingPinRepositoryProvider = Provider<FloatingPinRepository>((ref) {
+  return LocalFloatingPinRepository(ref.watch(databaseProvider));
 });
 
 final reminderPreferencesProvider = Provider<ReminderPreferences>((ref) {

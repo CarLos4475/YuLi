@@ -11,6 +11,7 @@ import 'data/services/launcher_icon_service.dart';
 import 'presentation/theme/app_tokens.dart';
 import 'presentation/providers/database_providers.dart';
 import 'presentation/providers/image_storage_providers.dart';
+import 'presentation/providers/floating_pin_providers.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/widgets/app_banner.dart';
 import 'presentation/widgets/yuli_design.dart';
@@ -123,6 +124,7 @@ class _AppInit extends ConsumerWidget {
         // Reclaim orphaned image folders once the DB is settled. Fire-and-
         // forget; never blocks the shell.
         ref.read(imageCleanupProvider);
+        ref.read(floatingPinCleanupProvider);
         return AppShell(archivedTaskCount: archivedCount);
       },
     );

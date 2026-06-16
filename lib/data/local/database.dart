@@ -21,6 +21,7 @@ import 'tables/notifications_table.dart';
 import 'tables/schedule_blocks_table.dart';
 import 'tables/schedule_settings_table.dart';
 import 'tables/schedule_week_notes_table.dart';
+import 'tables/floating_pins_table.dart';
 import 'daos/tasks_dao.dart';
 import 'daos/notes_dao.dart';
 import 'daos/note_blocks_dao.dart';
@@ -30,6 +31,7 @@ import 'daos/lab_spaces_dao.dart';
 import 'daos/kanban_dao.dart';
 import 'daos/notifications_dao.dart';
 import 'daos/schedule_dao.dart';
+import 'daos/floating_pins_dao.dart';
 
 part 'database.g.dart';
 
@@ -55,6 +57,7 @@ part 'database.g.dart';
     ScheduleBlocks,
     ScheduleSettings,
     ScheduleWeekNotes,
+    FloatingPins,
   ],
   daos: [
     TasksDao,
@@ -66,6 +69,7 @@ part 'database.g.dart';
     KanbanDao,
     NotificationsDao,
     ScheduleDao,
+    FloatingPinsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -73,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -219,6 +223,11 @@ class AppDatabase extends _$AppDatabase {
         try {
           await m.deleteTable('drawing_strokes');
           await m.createTable(drawingStrokes);
+        } catch (_) {}
+      }
+      if (from <= 23) {
+        try {
+          await m.createTable(floatingPins);
         } catch (_) {}
       }
     },
@@ -460,6 +469,9 @@ class AppDatabase extends _$AppDatabase {
     await (delete(noteBlocks)..where((b) => b.noteId.equals(noteId))).go();
     await (delete(noteVersions)..where((v) => v.noteId.equals(noteId))).go();
     await (delete(noteImages)..where((i) => i.noteId.equals(noteId))).go();
+    // Floating-pin rows die with the note; their files are reclaimed by the
+    // startup GC (rows-first, files-after — never the reverse).
+    await (delete(floatingPins)..where((f) => f.noteId.equals(noteId))).go();
     await (delete(noteTaskLinks)..where((l) => l.noteId.equals(noteId))).go();
     // Canvas context sources: both when this note IS a canvas and when it is
     // used as a source by another canvas.

@@ -59,6 +59,8 @@ import '../lab/lab_space_detail_screen.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'pinned_snapshots.dart';
+import 'floating_pin_persistence.dart';
+import '../../../data/services/floating_pin_storage.dart';
 import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
 import 'shape_recognizer.dart';
@@ -268,6 +270,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   CanvasImageCache? _imgCache;
   String? _imageDirPath;
   bool _imagePanelOpen = false;
+  // When the image picker is opened from "NUEVO PIN" its result becomes a
+  // floating image pin instead of an inline page image.
+  bool _imagePanelForPin = false;
+  bool _addPinPopupOpen = false;
   bool _shapePopupOpen = false;
   bool _morePopupOpen = false;
   bool _floatingToolbarsPopupOpen = false;
@@ -532,6 +538,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       CurvedAnimation(parent: _drawerAnimCtrl, curve: Curves.easeOutCubic),
     );
     _lassoCtrl.onChanged = _onLassoChanged;
+    _pinController.persistence = RepoFloatingPinPersistence(
+      repo: ref.read(floatingPinRepositoryProvider),
+      noteId: widget.note.id,
+    );
+    unawaited(_loadFloatingPins());
     StrokeWidthPrefs.load().then((widths) {
       if (!mounted) return;
       setState(() => _recentWidths = widths);
@@ -2588,7 +2599,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (_imagePanelOpen) {
         _colorPickerOpen = false;
         _widthPickerOpen = false;
+      } else {
+        _imagePanelForPin = false;
       }
+    });
+  }
+
+  /// Opens the image picker so the result becomes a floating image pin.
+  void _newImagePin() {
+    setState(() {
+      _morePopupOpen = false;
+      _addPinPopupOpen = false;
+      _imagePanelForPin = true;
+      _imagePanelOpen = true;
+      _colorPickerOpen = false;
+      _widthPickerOpen = false;
     });
   }
 
@@ -2801,6 +2826,49 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     (_viewport.width - 16).clamp(0.0, double.infinity).toDouble(),
     (_viewport.height - 16).clamp(0.0, double.infinity).toDouble(),
   );
+
+  /// Hydrates this note's persisted floating pins (image/pdf/video) once.
+  Future<void> _loadFloatingPins() async {
+    if (_pinController.persistedLoaded) return;
+    final pins = await loadFloatingPins(
+      repo: ref.read(floatingPinRepositoryProvider),
+      noteId: widget.note.id,
+    );
+    if (!mounted) return;
+    _pinController.loadPersisted(pins);
+  }
+
+  /// Copies a picked image into floating-pin storage and pins it (persisted).
+  Future<void> _addImagePin(File f) async {
+    try {
+      final bytes = await f.readAsBytes();
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final iw = frame.image.width.toDouble();
+      final ih = frame.image.height.toDouble();
+      frame.image.dispose();
+      if (iw <= 0 || ih <= 0) return;
+
+      final filename = '${const Uuid().v4()}.jpg';
+      final dest = await copyIntoFloatingPins(
+        noteId: widget.note.id,
+        src: f,
+        filename: filename,
+      );
+
+      final bounds = _pinUsableBounds();
+      final width = (bounds.width * 0.42).clamp(140.0, 560.0).toDouble();
+      final left = bounds.left + (bounds.width - width) / 2;
+      final top = bounds.top + bounds.height * 0.16;
+      await _pinController.addImage(
+        filePath: dest.path,
+        aspectRatio: iw / ih,
+        rect: Rect.fromLTWH(left, top, width, 0),
+        usableBounds: bounds,
+      );
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
+  }
 
   /// Capture the current lasso selection as a frozen raster cut-out and pin it
   /// over the canvas (paper, ink, images, blocks) — same boundary the eyedropper
@@ -7504,6 +7572,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 child: _buildMorePopup(),
               ),
               RevealPopup(
+                key: const ValueKey('rp-add-pin'),
+                open: _addPinPopupOpen,
+                onDismiss: () => setState(() => _addPinPopupOpen = false),
+                child: _buildAddPinPopup(),
+              ),
+              RevealPopup(
                 key: const ValueKey('rp-floating-toolbars'),
                 open: _floatingToolbarsPopupOpen,
                 onDismiss:
@@ -7517,8 +7591,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 child: ImageInsertPanel(
                   accent: _accent,
                   onPick: (file) {
+                    final forPin = _imagePanelForPin;
                     _toggleImagePanel();
-                    _insertImageFile(file);
+                    if (forPin) {
+                      _addImagePin(file);
+                    } else {
+                      _insertImageFile(file);
+                    }
                   },
                   onClose: _toggleImagePanel,
                 ),
@@ -7969,6 +8048,34 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
   }
 
+  /// Pin-type chooser opened from "AGREGAR PIN". Only Imagen in V2a; PDF/Video
+  /// land in later phases.
+  Widget _buildAddPinPopup() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 340),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _toolBtn(
+            icon: YuLiIcons.images,
+            active: false,
+            label: 'IMAGEN',
+            onTap: _newImagePin,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMorePopup() {
     return Container(
       constraints: const BoxConstraints(maxWidth: 340),
@@ -8025,6 +8132,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               setState(() => _morePopupOpen = false);
               _toggleBgPopup();
             },
+          ),
+          _toolBtn(
+            icon: YuLiIcons.pin,
+            active: _addPinPopupOpen,
+            label: 'AGREGAR PIN',
+            onTap: () => setState(() {
+              _morePopupOpen = false;
+              _addPinPopupOpen = true;
+            }),
           ),
         ],
       ),
