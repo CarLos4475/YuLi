@@ -405,12 +405,17 @@ class _FloatingPalettesLayerState extends State<FloatingPalettesLayer> {
         _avail = Size(constraints.maxWidth, constraints.maxHeight);
         return IgnorePointer(
           ignoring: widget.hidden,
-          child: Stack(
-            children: [
-              if (_dragging != null && !widget.hidden) ..._magnetHints(),
-              for (final k in FloatingPaletteKind.values)
-                _buildDockedPalette(k),
-            ],
+          // Own compositor layer: a palette drag (setState here) repaints inside
+          // this boundary only — never bubbling to the shared overlay (pins,
+          // cursors) or forcing the canvas to recomposite. Pin-parity.
+          child: RepaintBoundary(
+            child: Stack(
+              children: [
+                if (_dragging != null && !widget.hidden) ..._magnetHints(),
+                for (final k in FloatingPaletteKind.values)
+                  _buildDockedPalette(k),
+              ],
+            ),
           ),
         );
       },

@@ -7830,7 +7830,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _togglePalette(FloatingPaletteKind kind) {
     if (_palettes == null) return;
     HapticFeedback.selectionClick();
-    setState(() => _palettes!.toggle(kind));
+    // Drive the toggle through the controller's notifyListeners: ONLY the
+    // palette layer and the toolbars popup (both wrapped in AnimatedBuilder on
+    // _palettes) rebuild — never the whole editor tree. Pin-parity.
+    _palettes!.toggle(kind);
   }
 
   Widget _toolbar() {
@@ -8306,7 +8309,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   Widget _buildFloatingToolbarsPopup() {
-    return Container(
+    final palettes = _palettes;
+    // Wrapped in AnimatedBuilder so the active-state of the toggles reflects the
+    // controller WITHOUT a full-editor setState (see _togglePalette).
+    Widget content() => Container(
       constraints: const BoxConstraints(maxWidth: 340),
       decoration: BoxDecoration(
         color: yCream,
@@ -8346,6 +8352,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           ),
         ],
       ),
+    );
+    if (palettes == null) return content();
+    return AnimatedBuilder(
+      animation: palettes,
+      builder: (_, _) => content(),
     );
   }
 
