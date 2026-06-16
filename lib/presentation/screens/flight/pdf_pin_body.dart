@@ -4,6 +4,66 @@ import 'package:pdfx/pdfx.dart';
 
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import 'pin_dialog.dart';
+import 'pin_recents.dart';
+
+/// What the PDF dialog returns: either "open the file picker for a new PDF", or
+/// "re-pin this recent file" (by its source path). Null = the user cancelled.
+sealed class PdfPromptResult {
+  const PdfPromptResult();
+}
+
+class PdfPromptPickNew extends PdfPromptResult {
+  const PdfPromptPickNew();
+}
+
+class PdfPromptRecent extends PdfPromptResult {
+  final String path;
+  final String? title;
+  const PdfPromptRecent(this.path, this.title);
+}
+
+/// YuLi dialog for the PDF pin: a big ELEGIR ARCHIVO action plus the recents
+/// list (recents whose file was deleted are already pruned by [PinRecents.pdf]).
+/// Returns the user's intent; the caller runs the file picker / copy.
+Future<PdfPromptResult?> promptPdf(
+  BuildContext context, {
+  required Color accent,
+}) async {
+  final recents = await PinRecents.pdf();
+  if (!context.mounted) return null;
+  return showDialog<PdfPromptResult>(
+    context: context,
+    builder: (ctx) => PinDialogShell(
+      icon: YuLiIcons.fileText,
+      title: 'AGREGAR PDF',
+      accent: accent,
+      footer: Row(
+        children: [
+          const Spacer(),
+          PinGhostButton(label: 'CANCELAR', onTap: () => Navigator.pop(ctx)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PinBigActionButton(
+            icon: YuLiIcons.folder,
+            label: 'ELEGIR ARCHIVO PDF',
+            accent: accent,
+            onTap: () => Navigator.pop(ctx, const PdfPromptPickNew()),
+          ),
+          PinRecentsList(
+            recents: recents,
+            leadingIcon: YuLiIcons.fileText,
+            accent: accent,
+            onPick: (r) => Navigator.pop(ctx, PdfPromptRecent(r.value, r.title)),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 /// Body of a floating PDF pin: a pinch-zoom page view plus a brutalist control
 /// bar (prev/next, tappable N/TOTAL, page slider, reset zoom). Owns the pdfx

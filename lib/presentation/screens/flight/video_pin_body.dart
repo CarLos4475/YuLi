@@ -6,72 +6,79 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import 'pin_dialog.dart';
+import 'pin_recents.dart';
 
 /// Height of the YuLi study bar under the 16:9 player. Reserved by the pin clamp
 /// (see [VideoPinPayload.bottomChromeHeight]) so width drives the player height.
 const double kVideoStudyBarHeight = 38;
 
-/// Brutalist dialog: paste a YouTube link (+ optional title) for a new video
-/// pin. Returns null on cancel / empty link.
+/// YuLi dialog: paste a YouTube link (+ optional title) for a new video pin, or
+/// tap a recent. Returns null on cancel / empty link.
 Future<({String url, String? title})?> promptYoutubeVideo(
-    BuildContext context) async {
+  BuildContext context, {
+  required Color accent,
+}) async {
+  final recents = await PinRecents.video();
+  if (!context.mounted) return null;
   final urlCtrl = TextEditingController();
   final titleCtrl = TextEditingController();
-  InputDecoration deco(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: yMono(size: 11, color: yMuted),
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      );
   return showDialog<({String url, String? title})>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: yCream,
-      shape: const RoundedRectangleBorder(
-        side: BorderSide(color: yBorderStrong, width: yLineMid),
-        borderRadius: BorderRadius.zero,
-      ),
-      title: Text(
-        'PEGAR LINK DE YOUTUBE',
-        style: yMono(size: 11, weight: FontWeight.w700, tracking: 1.2),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: urlCtrl,
-            autofocus: true,
-            keyboardType: TextInputType.url,
-            style: yMono(size: 12),
-            decoration: deco('https://youtu.be/...'),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: titleCtrl,
-            style: yMono(size: 12),
-            decoration: deco('TÍTULO (OPCIONAL)'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: Text('CANCELAR', style: yMono(size: 11, color: yMuted)),
+    builder: (ctx) {
+      void confirm() {
+        final url = urlCtrl.text.trim();
+        if (url.isEmpty) {
+          Navigator.pop(ctx);
+          return;
+        }
+        final title = titleCtrl.text.trim();
+        Navigator.pop(ctx, (url: url, title: title.isEmpty ? null : title));
+      }
+
+      return PinDialogShell(
+        icon: YuLiIcons.circlePlay,
+        title: 'AGREGAR VIDEO',
+        accent: accent,
+        footer: Row(
+          children: [
+            const Spacer(),
+            PinGhostButton(label: 'CANCELAR', onTap: () => Navigator.pop(ctx)),
+            const SizedBox(width: 6),
+            PinPrimaryButton(
+              label: 'AGREGAR',
+              icon: YuLiIcons.plus,
+              accent: accent,
+              onTap: confirm,
+            ),
+          ],
         ),
-        TextButton(
-          onPressed: () {
-            final url = urlCtrl.text.trim();
-            if (url.isEmpty) {
-              Navigator.pop(ctx);
-              return;
-            }
-            final title = titleCtrl.text.trim();
-            Navigator.pop(ctx, (url: url, title: title.isEmpty ? null : title));
-          },
-          child: Text('AGREGAR', style: yMono(size: 11, weight: FontWeight.w700)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            pinDialogField(
+              controller: urlCtrl,
+              hint: 'https://youtu.be/...',
+              accent: accent,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 10),
+            pinDialogField(
+              controller: titleCtrl,
+              hint: 'TÍTULO (OPCIONAL)',
+              accent: accent,
+            ),
+            PinRecentsList(
+              recents: recents,
+              leadingIcon: YuLiIcons.circlePlay,
+              accent: accent,
+              onPick: (r) => Navigator.pop(ctx, (url: r.value, title: r.title)),
+            ),
+          ],
         ),
-      ],
-    ),
+      );
+    },
   );
 }
 

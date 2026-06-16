@@ -63,6 +63,9 @@ dependencies:
 
   # YouTube playback (floating video pins) — online-only by nature
   youtube_player_iframe: ^6.0.2
+  # Generic web pins (GeoGebra, school portal, etc.) — online-only. Already in the
+  # tree via youtube_player_iframe; promoted to a direct dep for the WebView API.
+  webview_flutter: ^4.14.0
   lucide_icons_flutter: ^3.1.14+2
   sensors_plus: ^7.0.0
   audioplayers: ^6.7.1

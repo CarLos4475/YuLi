@@ -60,8 +60,11 @@ import 'ocr_flow.dart';
 import '../lab/lab_space_detail_screen.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
+import 'pdf_pin_body.dart';
+import 'pin_recents.dart';
 import 'pinned_snapshots.dart';
 import 'video_pin_body.dart';
+import 'web_pin_body.dart';
 import 'floating_pin_persistence.dart';
 import '../../../data/services/floating_pin_storage.dart';
 import 'notebook_constants.dart';
@@ -2626,40 +2629,66 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
   }
 
-  /// Picks a PDF and pins it (persisted, free-resize).
+  /// Opens the PDF dialog (recents + pick), then pins the chosen file.
   Future<void> _newPdfPin() async {
     setState(() {
       _morePopupOpen = false;
       _addPinPopupOpen = false;
     });
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-      );
-      final picked = result?.files.single;
-      final path = picked?.path;
-      if (path == null) return;
-      final filename = '${const Uuid().v4()}.pdf';
-      final dest = await copyIntoFloatingPins(
-        noteId: widget.note.id,
-        src: File(path),
-        filename: filename,
-      );
-      final bounds = _pinUsableBounds();
-      final width = (bounds.width * 0.45).clamp(220.0, 640.0).toDouble();
-      final height =
-          (width * 1.3).clamp(160.0, bounds.height * 0.85).toDouble();
-      final left = bounds.left + (bounds.width - width) / 2;
-      final top = bounds.top + bounds.height * 0.08;
-      await _pinController.addPdf(
-        filePath: dest.path,
-        rect: Rect.fromLTWH(left, top, width, height),
-        usableBounds: bounds,
-        title: _pdfTitle(picked!.name),
-      );
-      HapticFeedback.mediumImpact();
+      final pick = await promptPdf(context, accent: _accent);
+      if (pick == null) return;
+      String srcPath;
+      String? title;
+      if (pick is PdfPromptRecent) {
+        if (!File(pick.path).existsSync()) {
+          await PinRecents.removePdf(pick.path);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PDF NO ENCONTRADO EN EL DISPOSITIVO')),
+            );
+          }
+          return;
+        }
+        srcPath = pick.path;
+        title = pick.title;
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf'],
+        );
+        final picked = result?.files.single;
+        final path = picked?.path;
+        if (path == null) return;
+        srcPath = path;
+        title = _pdfTitle(picked!.name);
+      }
+      await _pinPdfFromSource(srcPath, title);
     } catch (_) {}
+  }
+
+  /// Copies a source PDF into the note's floating-pins storage, pins it, and
+  /// records it in the recents. Shared by "pick new" and "re-pin recent".
+  Future<void> _pinPdfFromSource(String srcPath, String? title) async {
+    final filename = '${const Uuid().v4()}.pdf';
+    final dest = await copyIntoFloatingPins(
+      noteId: widget.note.id,
+      src: File(srcPath),
+      filename: filename,
+    );
+    final bounds = _pinUsableBounds();
+    final width = (bounds.width * 0.45).clamp(220.0, 640.0).toDouble();
+    final height = (width * 1.3).clamp(160.0, bounds.height * 0.85).toDouble();
+    final left = bounds.left + (bounds.width - width) / 2;
+    final top = bounds.top + bounds.height * 0.08;
+    await _pinController.addPdf(
+      filePath: dest.path,
+      rect: Rect.fromLTWH(left, top, width, height),
+      usableBounds: bounds,
+      title: title,
+    );
+    unawaited(PinRecents.pushPdf(PinRecent(value: srcPath, title: title)));
+    HapticFeedback.mediumImpact();
   }
 
   String _pdfTitle(String filename) {
@@ -2673,7 +2702,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _morePopupOpen = false;
       _addPinPopupOpen = false;
     });
-    final entry = await promptYoutubeVideo(context);
+    final entry = await promptYoutubeVideo(context, accent: _accent);
     if (entry == null) return;
     final videoId = YoutubePlayerController.convertUrlToId(entry.url);
     if (videoId == null) {
@@ -2693,6 +2722,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       rect: Rect.fromLTWH(left, top, width, 0),
       usableBounds: bounds,
       title: entry.title,
+    );
+    unawaited(
+      PinRecents.pushVideo(PinRecent(value: entry.url, title: entry.title)),
+    );
+    HapticFeedback.mediumImpact();
+  }
+
+  /// Prompts for a URL (+ optional title) and pins a WebView (GeoGebra, a school
+  /// portal, etc.). Free-resize like the PDF pin.
+  Future<void> _newWebPin() async {
+    setState(() {
+      _morePopupOpen = false;
+      _addPinPopupOpen = false;
+    });
+    final entry = await promptWebUrl(context, accent: _accent);
+    if (entry == null) return;
+    final bounds = _pinUsableBounds();
+    final width = (bounds.width * 0.5).clamp(260.0, 720.0).toDouble();
+    final height =
+        (bounds.height * 0.6).clamp(220.0, bounds.height * 0.85).toDouble();
+    final left = bounds.left + (bounds.width - width) / 2;
+    final top = bounds.top + bounds.height * 0.06;
+    await _pinController.addWeb(
+      url: entry.url,
+      rect: Rect.fromLTWH(left, top, width, height),
+      usableBounds: bounds,
+      title: entry.title,
+    );
+    unawaited(
+      PinRecents.pushWeb(PinRecent(value: entry.url, title: entry.title)),
     );
     HapticFeedback.mediumImpact();
   }
@@ -8163,6 +8222,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             active: false,
             label: 'VIDEO',
             onTap: _newVideoPin,
+          ),
+          _toolBtn(
+            icon: YuLiIcons.globe,
+            active: false,
+            label: 'WEB',
+            onTap: _newWebPin,
           ),
         ],
       ),

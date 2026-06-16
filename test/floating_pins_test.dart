@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:drift/native.dart';
@@ -7,7 +8,10 @@ import 'package:yuli/data/local/database.dart';
 import 'package:yuli/data/repositories/local/local_floating_pin_repository.dart';
 import 'package:yuli/domain/models/floating_pin_record.dart';
 import 'package:yuli/presentation/screens/flight/pinned_snapshots.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yuli/presentation/screens/flight/pin_recents.dart';
 import 'package:yuli/presentation/screens/flight/video_pin_body.dart';
+import 'package:yuli/presentation/screens/flight/web_pin_body.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
 
 Future<ui.Image> _testImage({int width = 200, int height = 100}) {
@@ -264,6 +268,77 @@ void main() {
     );
     expect(fake.saved.single.toMetadata()['videoId'], 'abc123');
     expect(fake.saved.single.toMetadata()['t'], 42);
+  });
+
+  test('web pin is free-resize, persisted, and stores its url', () async {
+    final controller = FloatingPinController();
+    final fake = _FakePersistence();
+    controller.persistence = fake;
+    final bounds = Rect.fromLTWH(8, 8, 1000, 800);
+
+    final w = await controller.addWeb(
+      url: 'https://geogebra.org/classic',
+      rect: const Rect.fromLTWH(20, 20, 360, 480),
+      usableBounds: bounds,
+    );
+    expect(w.kind, FloatingPinKind.web);
+    expect(w.persisted, isTrue);
+    expect(fake.inserted, hasLength(1));
+    // Free-resize: width and height move independently (no aspect lock).
+    expect(w.rect.width, 360);
+    expect(w.rect.height, 480);
+    expect(w.toMetadata()['url'], 'https://geogebra.org/classic');
+
+    controller.commitRect(w.id, const Rect.fromLTWH(20, 20, 520, 300), bounds);
+    final after = controller.value.single;
+    expect(after.rect.width, 520);
+    expect(after.rect.height, 300); // not derived from width
+  });
+
+  test('pin recents: newest-first, de-duped, capped, independent lists', () async {
+    SharedPreferences.setMockInitialValues({});
+    for (var i = 0; i < 12; i++) {
+      await PinRecents.pushWeb(PinRecent(value: 'https://s$i.test', title: 'S$i'));
+    }
+    var web = await PinRecents.web();
+    expect(web.length, PinRecents.cap); // oldest evicted past the cap
+    expect(web.first.value, 'https://s11.test'); // newest first
+
+    // Re-pushing an existing entry moves it to front without growing the list.
+    await PinRecents.pushWeb(const PinRecent(value: 'https://s5.test', title: 'x'));
+    web = await PinRecents.web();
+    expect(web.length, PinRecents.cap);
+    expect(web.first.value, 'https://s5.test');
+    expect(web.where((r) => r.value == 'https://s5.test'), hasLength(1));
+
+    // The video list is a separate key.
+    expect(await PinRecents.video(), isEmpty);
+  });
+
+  test('pdf recents prune entries whose source file was deleted', () async {
+    SharedPreferences.setMockInitialValues({});
+    final dir = await Directory.systemTemp.createTemp('pinrec');
+    final a = File('${dir.path}/a.pdf')..writeAsStringSync('x');
+    final b = File('${dir.path}/b.pdf')..writeAsStringSync('x');
+
+    await PinRecents.pushPdf(PinRecent(value: a.path, title: 'A'));
+    await PinRecents.pushPdf(PinRecent(value: b.path, title: 'B'));
+    expect(await PinRecents.pdf(), hasLength(2));
+
+    a.deleteSync();
+    final after = await PinRecents.pdf();
+    expect(after.map((r) => r.value).toList(), [b.path]); // deleted one gone
+    // The prune is persisted, so a second load stays trimmed.
+    expect(await PinRecents.pdf(), hasLength(1));
+
+    dir.deleteSync(recursive: true);
+  });
+
+  test('normalizeWebUrl prepends https and rejects empty input', () {
+    expect(normalizeWebUrl('  '), isNull);
+    expect(normalizeWebUrl('geogebra.org'), 'https://geogebra.org');
+    expect(normalizeWebUrl('http://x.test'), 'http://x.test');
+    expect(normalizeWebUrl(' https://y.test '), 'https://y.test');
   });
 
   test('loadPersisted is idempotent and sits behind volatile snapshots', () async {

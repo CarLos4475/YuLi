@@ -8,8 +8,9 @@ import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import 'pdf_pin_body.dart';
 import 'video_pin_body.dart';
+import 'web_pin_body.dart';
 
-enum FloatingPinKind { snapshot, image, pdf, video }
+enum FloatingPinKind { snapshot, image, pdf, video, web }
 
 /// Per-kind payload. Snapshot owns a volatile [ui.Image]; image references a
 /// file on disk decoded through Flutter's ImageCache. Sealed so adding a kind
@@ -113,6 +114,26 @@ class VideoPinPayload extends FloatingPinPayload {
   void dispose() {}
 }
 
+class WebPinPayload extends FloatingPinPayload {
+  /// Page URL (online-only by nature; no file on disk). Persisted like a
+  /// bookmark — reopening loads this, not wherever the user navigated to.
+  final String url;
+
+  WebPinPayload({required this.url});
+
+  @override
+  double get aspectRatio => 1.0; // unused: web resizes freely
+  @override
+  bool get aspectLocked => false;
+  @override
+  String? get mediaFilename => null; // remote — nothing for the file GC
+  @override
+  Map<String, dynamic> metadataExtras() => {'url': url};
+  @override
+  // WebViewController is owned by the body widget's State.
+  void dispose() {}
+}
+
 class FloatingPin {
   final String id;
 
@@ -143,6 +164,7 @@ class FloatingPin {
         FloatingPinKind.image => 'image',
         FloatingPinKind.pdf => 'pdf',
         FloatingPinKind.video => 'video',
+        FloatingPinKind.web => 'web',
       };
 
   /// Header tag (uppercase per UI convention).
@@ -151,6 +173,7 @@ class FloatingPin {
         FloatingPinKind.image => 'IMAGEN',
         FloatingPinKind.pdf => 'PDF',
         FloatingPinKind.video => 'VIDEO',
+        FloatingPinKind.web => 'WEB',
       };
 
   Map<String, dynamic> toMetadata() => {
@@ -257,6 +280,28 @@ class FloatingPinController {
     var pin = FloatingPin(
       id: _newId(),
       kind: FloatingPinKind.video,
+      payload: payload,
+      rect: clampPinRect(rect, payload: payload, usableBounds: usableBounds),
+      title: title,
+    );
+    final dbId = await persistence?.insert(pin);
+    pin = pin.copyWith(dbId: dbId);
+    _pins.value = List.unmodifiable([..._pins.value, pin]);
+    persistence?.reorder(_persistedOf(_pins.value));
+    return pin;
+  }
+
+  /// Adds a persisted web pin (free-resize, online-only, no file on disk).
+  Future<FloatingPin> addWeb({
+    required String url,
+    required Rect rect,
+    required Rect usableBounds,
+    String? title,
+  }) async {
+    final payload = WebPinPayload(url: url);
+    var pin = FloatingPin(
+      id: _newId(),
+      kind: FloatingPinKind.web,
       payload: payload,
       rect: clampPinRect(rect, payload: payload, usableBounds: usableBounds),
       title: title,
@@ -684,6 +729,8 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
           onPosition: (s) =>
               widget.controller.updateVideoPosition(widget.pin.id, s),
         );
+      case WebPinPayload():
+        return WebPinBody(url: payload.url, accent: widget.accent);
     }
   }
 

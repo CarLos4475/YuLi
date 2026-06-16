@@ -130,6 +130,19 @@ FloatingPin? _pinFromRecord(FloatingPinRecord r, String noteDirPath) {
         collapsed: r.collapsed,
         title: r.metadata['title'] as String?,
       );
+    case 'web':
+      // Remote — no file on disk, so no existence check.
+      final url = r.metadata['url'];
+      if (url is! String || url.isEmpty) return null;
+      return FloatingPin(
+        id: 'db${r.id}',
+        dbId: r.id,
+        kind: FloatingPinKind.web,
+        payload: WebPinPayload(url: url),
+        rect: r.rect,
+        collapsed: r.collapsed,
+        title: r.metadata['title'] as String?,
+      );
     default:
       return null;
   }

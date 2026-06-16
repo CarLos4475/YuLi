@@ -33,6 +33,7 @@ class YuLiIcons {
   static const IconData refresh = LucideIcons.refreshCw;
   static const IconData link = LucideIcons.link;
   static const IconData externalLink = LucideIcons.externalLink;
+  static const IconData globe = LucideIcons.globe;
   static const IconData eye = LucideIcons.eye;
   static const IconData undo = LucideIcons.undo;
   static const IconData redo = LucideIcons.redo;
