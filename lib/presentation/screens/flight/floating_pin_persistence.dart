@@ -98,7 +98,22 @@ FloatingPin? _pinFromRecord(FloatingPinRecord r, String noteDirPath) {
         collapsed: r.collapsed,
         title: title,
       );
+    case 'pdf':
+      final filename = r.metadata['filename'];
+      if (filename is! String || filename.isEmpty) return null;
+      final path = p.join(noteDirPath, filename);
+      if (!File(path).existsSync()) return null;
+      final page = (r.metadata['page'] as num?)?.toInt() ?? 1;
+      return FloatingPin(
+        id: 'db${r.id}',
+        dbId: r.id,
+        kind: FloatingPinKind.pdf,
+        payload: PdfPinPayload(filePath: path, page: page < 1 ? 1 : page),
+        rect: r.rect,
+        collapsed: r.collapsed,
+        title: r.metadata['title'] as String?,
+      );
     default:
-      return null; // pdf/video land in later phases
+      return null; // video lands in a later phase
   }
 }

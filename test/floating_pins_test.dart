@@ -203,6 +203,39 @@ void main() {
     expect(fake.removed, hasLength(1));
   });
 
+  test('pdf pin is free-resize and persisted', () async {
+    final controller = FloatingPinController();
+    final fake = _FakePersistence();
+    controller.persistence = fake;
+    final bounds = Rect.fromLTWH(8, 8, 800, 600);
+
+    final pdf = await controller.addPdf(
+      filePath: '/tmp/x.pdf',
+      rect: const Rect.fromLTWH(20, 20, 300, 400),
+      usableBounds: bounds,
+    );
+    expect(pdf.kind, FloatingPinKind.pdf);
+    expect(pdf.persisted, isTrue);
+    expect(fake.inserted, hasLength(1));
+    // Free-resize: width and height move independently (no aspect lock).
+    expect(pdf.rect.width, 300);
+    expect(pdf.rect.height, 400);
+
+    controller.commitRect(pdf.id, const Rect.fromLTWH(20, 20, 500, 400), bounds);
+    final after = controller.value.single;
+    expect(after.rect.width, 500);
+    expect(after.rect.height, 400); // not derived from width
+
+    // Page is recorded in the payload + persisted in metadata (survives reopen).
+    fake.saved.clear();
+    controller.updatePdfPage(pdf.id, 7);
+    expect((controller.value.single.payload as PdfPinPayload).page, 7);
+    expect(fake.saved.single.toMetadata()['page'], 7);
+    // No-op when the page is unchanged.
+    controller.updatePdfPage(pdf.id, 7);
+    expect(fake.saved, hasLength(1));
+  });
+
   test('loadPersisted is idempotent and sits behind volatile snapshots', () async {
     final controller = FloatingPinController();
     final bounds = Rect.fromLTWH(8, 8, 800, 600);

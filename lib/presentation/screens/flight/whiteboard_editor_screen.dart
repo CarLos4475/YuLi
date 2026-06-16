@@ -12,6 +12,7 @@ import 'package:flutter/scheduler.dart'
     show SchedulerBinding, FrameTiming, Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -1870,6 +1871,47 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _colorPickerOpen = false;
       _widthPickerOpen = false;
     });
+  }
+
+  /// Picks a PDF and pins it (persisted, free-resize).
+  Future<void> _newPdfPin() async {
+    setState(() {
+      _morePopupOpen = false;
+      _addPinPopupOpen = false;
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+      final picked = result?.files.single;
+      final path = picked?.path;
+      if (path == null) return;
+      final filename = '${const Uuid().v4()}.pdf';
+      final dest = await copyIntoFloatingPins(
+        noteId: widget.note.id,
+        src: File(path),
+        filename: filename,
+      );
+      final bounds = _pinUsableBounds();
+      final width = (bounds.width * 0.45).clamp(220.0, 640.0).toDouble();
+      final height =
+          (width * 1.3).clamp(160.0, bounds.height * 0.85).toDouble();
+      final left = bounds.left + (bounds.width - width) / 2;
+      final top = bounds.top + bounds.height * 0.08;
+      await _pinController.addPdf(
+        filePath: dest.path,
+        rect: Rect.fromLTWH(left, top, width, height),
+        usableBounds: bounds,
+        title: _pdfTitle(picked!.name),
+      );
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
+  }
+
+  String _pdfTitle(String filename) {
+    final dot = filename.lastIndexOf('.');
+    return dot > 0 ? filename.substring(0, dot) : filename;
   }
 
   void _toggleBgPopup() {
@@ -7234,6 +7276,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             active: false,
             label: 'IMAGEN',
             onTap: _newImagePin,
+          ),
+          _toolBtn(
+            icon: YuLiIcons.fileText,
+            active: false,
+            label: 'PDF',
+            onTap: _newPdfPin,
           ),
         ],
       ),

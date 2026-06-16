@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import 'pdf_pin_body.dart';
 
-enum FloatingPinKind { snapshot, image }
+enum FloatingPinKind { snapshot, image, pdf }
 
 /// Per-kind payload. Snapshot owns a volatile [ui.Image]; image references a
 /// file on disk decoded through Flutter's ImageCache. Sealed so adding a kind
@@ -19,6 +20,9 @@ sealed class FloatingPinPayload {
 
   /// Filename under `floating_pins/{noteId}/` for media kinds (null = none).
   String? get mediaFilename;
+
+  /// Kind-specific bits to persist in `metadata_json` (e.g. a PDF's page).
+  Map<String, dynamic> metadataExtras() => const {};
 
   void dispose();
 }
@@ -56,6 +60,29 @@ class ImagePinPayload extends FloatingPinPayload {
   void dispose() {}
 }
 
+class PdfPinPayload extends FloatingPinPayload {
+  /// Absolute path under `floating_pins/{noteId}/{uuid}.pdf`.
+  final String filePath;
+
+  /// Last page the user was on (1-based). Mutated as they navigate and
+  /// persisted so the page survives collapse, leaving the note, and app restart.
+  int page;
+
+  PdfPinPayload({required this.filePath, this.page = 1});
+
+  @override
+  double get aspectRatio => 1.0; // unused: PDF resizes freely
+  @override
+  bool get aspectLocked => false;
+  @override
+  String get mediaFilename => filePath.split(Platform.pathSeparator).last;
+  @override
+  Map<String, dynamic> metadataExtras() => {'page': page};
+  @override
+  // pdfx controller is owned by the body widget's State, not the payload.
+  void dispose() {}
+}
+
 class FloatingPin {
   final String id;
 
@@ -84,18 +111,21 @@ class FloatingPin {
   String get kindName => switch (kind) {
         FloatingPinKind.snapshot => 'snapshot',
         FloatingPinKind.image => 'image',
+        FloatingPinKind.pdf => 'pdf',
       };
 
   /// Header tag (uppercase per UI convention).
   String get kindTag => switch (kind) {
         FloatingPinKind.snapshot => 'PIN',
         FloatingPinKind.image => 'IMAGEN',
+        FloatingPinKind.pdf => 'PDF',
       };
 
   Map<String, dynamic> toMetadata() => {
         if (payload.mediaFilename != null) 'filename': payload.mediaFilename,
         'aspect': payload.aspectRatio,
         if (title != null) 'title': title,
+        ...payload.metadataExtras(),
       };
 
   FloatingPin copyWith({Rect? rect, bool? collapsed, int? dbId}) => FloatingPin(
@@ -184,6 +214,28 @@ class FloatingPinController {
     return pin;
   }
 
+  /// Adds a persisted PDF pin (free-resize). File already copied by the caller.
+  Future<FloatingPin> addPdf({
+    required String filePath,
+    required Rect rect,
+    required Rect usableBounds,
+    String? title,
+  }) async {
+    final payload = PdfPinPayload(filePath: filePath);
+    var pin = FloatingPin(
+      id: _newId(),
+      kind: FloatingPinKind.pdf,
+      payload: payload,
+      rect: clampPinRect(rect, payload: payload, usableBounds: usableBounds),
+      title: title,
+    );
+    final dbId = await persistence?.insert(pin);
+    pin = pin.copyWith(dbId: dbId);
+    _pins.value = List.unmodifiable([..._pins.value, pin]);
+    persistence?.reorder(_persistedOf(_pins.value));
+    return pin;
+  }
+
   void commitRect(String id, Rect rect, Rect usableBounds) {
     _replace(
       id,
@@ -197,6 +249,19 @@ class FloatingPinController {
   void toggleCollapsed(String id) {
     _replace(id, (pin) => pin.copyWith(collapsed: !pin.collapsed),
         persist: true);
+  }
+
+  /// Records the current PDF page so it survives collapse / re-open / restart.
+  /// Mutates the payload in place (no layout change) and persists the row; the
+  /// list is untouched so the layer doesn't rebuild.
+  void updatePdfPage(String id, int page) {
+    final idx = _pins.value.indexWhere((p) => p.id == id);
+    if (idx < 0) return;
+    final pin = _pins.value[idx];
+    final payload = pin.payload;
+    if (payload is! PdfPinPayload || payload.page == page) return;
+    payload.page = page;
+    if (pin.persisted) persistence?.save(pin);
   }
 
   void bringToFront(String id) {
@@ -478,12 +543,17 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
   void _resize(DragUpdateDetails details) {
     final delta = details.globalPosition - _gestureStartPointer;
     final nextWidth = _gestureStartRect.width + delta.dx;
+    // Free-resize kinds (pdf) grow in both axes from the corner; aspect-locked
+    // kinds derive height from width in the clamp, so dy is ignored there.
+    final nextHeight = widget.pin.payload.aspectLocked
+        ? _gestureStartRect.height
+        : _gestureStartRect.height + delta.dy;
     _liveRect.value = _clamp(
       Rect.fromLTWH(
         _gestureStartRect.left,
         _gestureStartRect.top,
         nextWidth,
-        _gestureStartRect.height,
+        nextHeight,
       ),
     );
   }
@@ -520,6 +590,13 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
           fit: BoxFit.fill,
           cacheWidth: cacheW,
           gaplessPlayback: true,
+        );
+      case PdfPinPayload():
+        return PdfPinBody(
+          filePath: payload.filePath,
+          initialPage: payload.page,
+          onPageChanged: (p) =>
+              widget.controller.updatePdfPage(widget.pin.id, p),
         );
     }
   }
@@ -569,7 +646,10 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
                           widget.controller.toggleCollapsed(widget.pin.id),
                       onClose: () => widget.onRequestClose(widget.pin.id),
                     ),
-                    if (factor > 0 && bodyHeight > 0)
+                    // Body stays MOUNTED even when fully collapsed (height 0,
+                    // clipped) so stateful bodies — a PDF's current page, later
+                    // a video — survive collapse/restore instead of resetting.
+                    if (bodyHeight > 0)
                       ClipRect(
                         child: SizedBox(
                           width: double.infinity,
