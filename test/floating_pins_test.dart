@@ -7,6 +7,7 @@ import 'package:yuli/data/local/database.dart';
 import 'package:yuli/data/repositories/local/local_floating_pin_repository.dart';
 import 'package:yuli/domain/models/floating_pin_record.dart';
 import 'package:yuli/presentation/screens/flight/pinned_snapshots.dart';
+import 'package:yuli/presentation/screens/flight/video_pin_body.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
 
 Future<ui.Image> _testImage({int width = 200, int height = 100}) {
@@ -234,6 +235,34 @@ void main() {
     // No-op when the page is unchanged.
     controller.updatePdfPage(pdf.id, 7);
     expect(fake.saved, hasLength(1));
+  });
+
+  test('video pin: 16:9 + study-bar chrome, position persists', () async {
+    final controller = FloatingPinController();
+    final fake = _FakePersistence();
+    controller.persistence = fake;
+    final bounds = Rect.fromLTWH(8, 8, 1000, 800);
+
+    final v = await controller.addVideo(
+      videoId: 'abc123',
+      rect: const Rect.fromLTWH(0, 0, 320, 0),
+      usableBounds: bounds,
+    );
+    expect(v.kind, FloatingPinKind.video);
+    expect(v.persisted, isTrue);
+    // height = header + study bar + player(width * 9/16).
+    final expected =
+        floatingPinHeaderHeight + kVideoStudyBarHeight + 320 * 9 / 16;
+    expect(v.rect.height, closeTo(expected, 0.001));
+
+    fake.saved.clear();
+    controller.updateVideoPosition(v.id, 42);
+    expect(
+      (controller.value.single.payload as VideoPinPayload).lastPositionSeconds,
+      42,
+    );
+    expect(fake.saved.single.toMetadata()['videoId'], 'abc123');
+    expect(fake.saved.single.toMetadata()['t'], 42);
   });
 
   test('loadPersisted is idempotent and sits behind volatile snapshots', () async {

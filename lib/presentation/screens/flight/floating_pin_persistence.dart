@@ -113,7 +113,24 @@ FloatingPin? _pinFromRecord(FloatingPinRecord r, String noteDirPath) {
         collapsed: r.collapsed,
         title: r.metadata['title'] as String?,
       );
+    case 'video':
+      // Remote — no file on disk, so no existence check.
+      final videoId = r.metadata['videoId'];
+      if (videoId is! String || videoId.isEmpty) return null;
+      final t = (r.metadata['t'] as num?)?.toInt() ?? 0;
+      return FloatingPin(
+        id: 'db${r.id}',
+        dbId: r.id,
+        kind: FloatingPinKind.video,
+        payload: VideoPinPayload(
+          videoId: videoId,
+          lastPositionSeconds: t < 0 ? 0 : t,
+        ),
+        rect: r.rect,
+        collapsed: r.collapsed,
+        title: r.metadata['title'] as String?,
+      );
     default:
-      return null; // video lands in a later phase
+      return null;
   }
 }

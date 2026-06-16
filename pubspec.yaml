@@ -60,6 +60,9 @@ dependencies:
   # PDF rendering + file picking (floating PDF pins)
   pdfx: ^2.9.0
   file_picker: ^8.1.6
+
+  # YouTube playback (floating video pins) — online-only by nature
+  youtube_player_iframe: ^6.0.2
   lucide_icons_flutter: ^3.1.14+2
   sensors_plus: ^7.0.0
   audioplayers: ^6.7.1

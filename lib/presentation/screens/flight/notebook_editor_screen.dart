@@ -12,6 +12,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding, Ticker;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -60,6 +61,7 @@ import '../lab/lab_space_detail_screen.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'pinned_snapshots.dart';
+import 'video_pin_body.dart';
 import 'floating_pin_persistence.dart';
 import '../../../data/services/floating_pin_storage.dart';
 import 'notebook_constants.dart';
@@ -2657,6 +2659,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   String _pdfTitle(String filename) {
     final dot = filename.lastIndexOf('.');
     return dot > 0 ? filename.substring(0, dot) : filename;
+  }
+
+  /// Prompts for a YouTube link (+ optional title) and pins the video.
+  Future<void> _newVideoPin() async {
+    setState(() {
+      _morePopupOpen = false;
+      _addPinPopupOpen = false;
+    });
+    final entry = await promptYoutubeVideo(context);
+    if (entry == null) return;
+    final videoId = YoutubePlayerController.convertUrlToId(entry.url);
+    if (videoId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('LINK DE YOUTUBE NO VÁLIDO')),
+        );
+      }
+      return;
+    }
+    final bounds = _pinUsableBounds();
+    final width = (bounds.width * 0.5).clamp(240.0, 660.0).toDouble();
+    final left = bounds.left + (bounds.width - width) / 2;
+    final top = bounds.top + bounds.height * 0.08;
+    await _pinController.addVideo(
+      videoId: videoId,
+      rect: Rect.fromLTWH(left, top, width, 0),
+      usableBounds: bounds,
+      title: entry.title,
+    );
+    HapticFeedback.mediumImpact();
   }
 
   /// Copy a ready (compressed) file into the note's image folder and place it
@@ -8118,6 +8150,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             active: false,
             label: 'PDF',
             onTap: _newPdfPin,
+          ),
+          _toolBtn(
+            icon: YuLiIcons.circlePlay,
+            active: false,
+            label: 'VIDEO',
+            onTap: _newVideoPin,
           ),
         ],
       ),

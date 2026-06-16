@@ -7,8 +7,9 @@ import 'package:flutter/material.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import 'pdf_pin_body.dart';
+import 'video_pin_body.dart';
 
-enum FloatingPinKind { snapshot, image, pdf }
+enum FloatingPinKind { snapshot, image, pdf, video }
 
 /// Per-kind payload. Snapshot owns a volatile [ui.Image]; image references a
 /// file on disk decoded through Flutter's ImageCache. Sealed so adding a kind
@@ -20,6 +21,10 @@ sealed class FloatingPinPayload {
 
   /// Filename under `floating_pins/{noteId}/` for media kinds (null = none).
   String? get mediaFilename;
+
+  /// Fixed UI below an aspect-locked body (e.g. a video's study bar). The clamp
+  /// reserves it so width still drives the 16:9 player height beneath it.
+  double get bottomChromeHeight => 0;
 
   /// Kind-specific bits to persist in `metadata_json` (e.g. a PDF's page).
   Map<String, dynamic> metadataExtras() => const {};
@@ -83,6 +88,31 @@ class PdfPinPayload extends FloatingPinPayload {
   void dispose() {}
 }
 
+class VideoPinPayload extends FloatingPinPayload {
+  /// YouTube video id (online-only by nature; no file on disk).
+  final String videoId;
+
+  /// Last playback position (seconds), persisted so it resumes where you left.
+  int lastPositionSeconds;
+
+  VideoPinPayload({required this.videoId, this.lastPositionSeconds = 0});
+
+  @override
+  double get aspectRatio => 16 / 9; // the player; study bar is extra chrome
+  @override
+  bool get aspectLocked => true;
+  @override
+  double get bottomChromeHeight => kVideoStudyBarHeight;
+  @override
+  String? get mediaFilename => null; // remote — nothing for the file GC
+  @override
+  Map<String, dynamic> metadataExtras() =>
+      {'videoId': videoId, 't': lastPositionSeconds};
+  @override
+  // YoutubePlayerController is owned by the body widget's State.
+  void dispose() {}
+}
+
 class FloatingPin {
   final String id;
 
@@ -112,6 +142,7 @@ class FloatingPin {
         FloatingPinKind.snapshot => 'snapshot',
         FloatingPinKind.image => 'image',
         FloatingPinKind.pdf => 'pdf',
+        FloatingPinKind.video => 'video',
       };
 
   /// Header tag (uppercase per UI convention).
@@ -119,6 +150,7 @@ class FloatingPin {
         FloatingPinKind.snapshot => 'PIN',
         FloatingPinKind.image => 'IMAGEN',
         FloatingPinKind.pdf => 'PDF',
+        FloatingPinKind.video => 'VIDEO',
       };
 
   Map<String, dynamic> toMetadata() => {
@@ -214,6 +246,28 @@ class FloatingPinController {
     return pin;
   }
 
+  /// Adds a persisted YouTube video pin (online-only, no file on disk).
+  Future<FloatingPin> addVideo({
+    required String videoId,
+    required Rect rect,
+    required Rect usableBounds,
+    String? title,
+  }) async {
+    final payload = VideoPinPayload(videoId: videoId);
+    var pin = FloatingPin(
+      id: _newId(),
+      kind: FloatingPinKind.video,
+      payload: payload,
+      rect: clampPinRect(rect, payload: payload, usableBounds: usableBounds),
+      title: title,
+    );
+    final dbId = await persistence?.insert(pin);
+    pin = pin.copyWith(dbId: dbId);
+    _pins.value = List.unmodifiable([..._pins.value, pin]);
+    persistence?.reorder(_persistedOf(_pins.value));
+    return pin;
+  }
+
   /// Adds a persisted PDF pin (free-resize). File already copied by the caller.
   Future<FloatingPin> addPdf({
     required String filePath,
@@ -261,6 +315,20 @@ class FloatingPinController {
     final payload = pin.payload;
     if (payload is! PdfPinPayload || payload.page == page) return;
     payload.page = page;
+    if (pin.persisted) persistence?.save(pin);
+  }
+
+  /// Records the video's playback position so it resumes where the user left.
+  /// Mutates the payload in place + persists the row; no list rebuild.
+  void updateVideoPosition(String id, int seconds) {
+    final idx = _pins.value.indexWhere((p) => p.id == id);
+    if (idx < 0) return;
+    final pin = _pins.value[idx];
+    final payload = pin.payload;
+    if (payload is! VideoPinPayload || payload.lastPositionSeconds == seconds) {
+      return;
+    }
+    payload.lastPositionSeconds = seconds;
     if (pin.persisted) persistence?.save(pin);
   }
 
@@ -356,10 +424,10 @@ Rect clampPinRect(
 }) {
   if (usableBounds.width <= 0 || usableBounds.height <= 0) return rect;
   final aspect = payload.aspectRatio <= 0 ? 1.0 : payload.aspectRatio;
+  final chrome = floatingPinHeaderHeight + payload.bottomChromeHeight;
   final maxWidth = usableBounds.width;
-  final maxBodyHeight = usableBounds.height <= floatingPinHeaderHeight
-      ? 0.0
-      : usableBounds.height - floatingPinHeaderHeight;
+  final maxBodyHeight =
+      usableBounds.height <= chrome ? 0.0 : usableBounds.height - chrome;
 
   if (!payload.aspectLocked) {
     final width = rect.width.clamp(_kMinWidth, maxWidth).toDouble();
@@ -380,7 +448,7 @@ Rect clampPinRect(
   final minAllowedWidth =
       maxAllowedWidth < _kMinWidth ? maxAllowedWidth : _kMinWidth;
   final width = rect.width.clamp(minAllowedWidth, maxAllowedWidth).toDouble();
-  final height = floatingPinHeaderHeight + width / aspect;
+  final height = chrome + width / aspect;
   final left =
       rect.left.clamp(usableBounds.left, usableBounds.right - width).toDouble();
   final top =
@@ -392,10 +460,14 @@ class FloatingPinsLayer extends StatefulWidget {
   final FloatingPinController controller;
   final Rect usableBounds;
 
+  /// Note/folder accent — fills primary controls and the resize handle.
+  ///final Color accent;
+
   const FloatingPinsLayer({
     super.key,
     required this.controller,
     required this.usableBounds,
+  /// required this.accent,
   });
 
   @override
@@ -598,6 +670,15 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
           onPageChanged: (p) =>
               widget.controller.updatePdfPage(widget.pin.id, p),
         );
+      case VideoPinPayload():
+        return VideoPinBody(
+          videoId: payload.videoId,
+          startSeconds: payload.lastPositionSeconds,
+          // Collapsing pauses (the WebView stays mounted, just hidden).
+          active: !widget.pin.collapsed,
+          onPosition: (s) =>
+              widget.controller.updateVideoPosition(widget.pin.id, s),
+        );
     }
   }
 
@@ -646,58 +727,64 @@ class _FloatingPinWindowState extends State<_FloatingPinWindow>
                           widget.controller.toggleCollapsed(widget.pin.id),
                       onClose: () => widget.onRequestClose(widget.pin.id),
                     ),
-                    // Body stays MOUNTED even when fully collapsed (height 0,
-                    // clipped) so stateful bodies — a PDF's current page, later
-                    // a video — survive collapse/restore instead of resetting.
+                    // Body stays MOUNTED even when fully collapsed so stateful
+                    // bodies — PDF page, video player — survive collapse/restore
+                    // instead of resetting.  Offstage kicks in at 40% so the
+                    // WebView is hidden before ClipRect reaches zero, sidestepping
+                    // Android platform-view bleeding. At 40% the body is already
+                    // ~60% clipped — the transition is seamless.
                     if (bodyHeight > 0)
-                      ClipRect(
-                        child: SizedBox(
-                          width: double.infinity,
-                          height: bodyHeight * factor,
-                          child: OverflowBox(
-                            alignment: Alignment.topCenter,
-                            minHeight: bodyHeight,
-                            maxHeight: bodyHeight,
-                            child: Stack(
-                              children: [
-                                Positioned.fill(child: body),
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onPanDown: (d) =>
-                                        _prepareGesture(d.globalPosition),
-                                    onPanStart: (d) =>
-                                        _beginGesture(d.globalPosition),
-                                    onPanUpdate: _resize,
-                                    onPanEnd: (_) => _commitGesture(),
-                                    onPanCancel: _commitGesture,
-                                    child: Container(
-                                      width: _kHandle,
-                                      height: _kHandle,
-                                      decoration: const BoxDecoration(
-                                        color: yCream,
-                                        border: Border(
-                                          left: BorderSide(
-                                            color: yBorderStrong,
-                                            width: yLineThin,
-                                          ),
-                                          top: BorderSide(
-                                            color: yBorderStrong,
-                                            width: yLineThin,
+                      Offstage(
+                        offstage: _collapse.value > 0.4,
+                        child: ClipRect(
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: bodyHeight * factor,
+                            child: OverflowBox(
+                              alignment: Alignment.topCenter,
+                              minHeight: bodyHeight,
+                              maxHeight: bodyHeight,
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(child: body),
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPanDown: (d) =>
+                                          _prepareGesture(d.globalPosition),
+                                      onPanStart: (d) =>
+                                          _beginGesture(d.globalPosition),
+                                      onPanUpdate: _resize,
+                                      onPanEnd: (_) => _commitGesture(),
+                                      onPanCancel: _commitGesture,
+                                      child: Container(
+                                        width: _kHandle,
+                                        height: _kHandle,
+                                        decoration: const BoxDecoration(
+                                          color: yCream,
+                                          border: Border(
+                                            left: BorderSide(
+                                              color: yBorderStrong,
+                                              width: yLineThin,
+                                            ),
+                                            top: BorderSide(
+                                              color: yBorderStrong,
+                                              width: yLineThin,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      child: Icon(
-                                        YuLiIcons.maximize,
-                                        size: 11,
-                                        color: yInk,
+                                        child: Icon(
+                                          YuLiIcons.maximize,
+                                          size: 11,
+                                          color: yInk,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),

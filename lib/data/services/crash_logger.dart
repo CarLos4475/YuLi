@@ -22,7 +22,7 @@ class CrashLogger {
   // the synchronous print() per entry adds churn on hot paths (the whiteboard
   // logged a layer decision per frame). Flip to true to debug; the file stays the
   // durable, shareable record either way.
-  static const bool _mirrorToLogcat = false;
+  static const bool _mirrorToLogcat = true;
   void _logcat(String message) {
     // Flutter routes stdout to logcat (tag 'flutter') even in release, unlike
     // dart:developer.log (service-protocol only → invisible in release).
