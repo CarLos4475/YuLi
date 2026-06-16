@@ -5,10 +5,10 @@ import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../providers/navigation_provider.dart';
-import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/edit_item_dialog.dart';
+import '../../widgets/yuli_action_sheet.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
 import 'lab_space_detail_screen.dart';
@@ -127,20 +127,22 @@ class _LabScreenState extends ConsumerState<LabScreen> {
             ),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => showModeHelp(
-                context,
-                mode: 'LAB',
-                accent: yLab,
-                description: 'Gestiona proyectos con tableros kanban, calendario, '
-                    'horario, timeline y grafo de relaciones. Organiza espacios '
-                    'de trabajo con tarjetas, fechas y seguimiento visual.',
-                tips: [
-                  'Toca un space para abrir su tablero kanban',
-                  'Programa fechas en el calendario y horario',
-                  'Usa el grafo para ver conexiones entre notas y tareas',
-                  'Mantén presionado un space para opciones',
-                ],
-              ),
+              onTap:
+                  () => showModeHelp(
+                    context,
+                    mode: 'LAB',
+                    accent: yLab,
+                    description:
+                        'Gestiona proyectos con tableros kanban, calendario, '
+                        'horario, timeline y grafo de relaciones. Organiza espacios '
+                        'de trabajo con tarjetas, fechas y seguimiento visual.',
+                    tips: [
+                      'Toca un space para abrir su tablero kanban',
+                      'Programa fechas en el calendario y horario',
+                      'Usa el grafo para ver conexiones entre notas y tareas',
+                      'Mantén presionado un space para opciones',
+                    ],
+                  ),
               child: Container(
                 width: 38,
                 height: 38,
@@ -287,19 +289,6 @@ class _SpacesGrid extends ConsumerWidget {
   }
 }
 
-class _SheetOption {
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool destructive;
-  const _SheetOption(
-    this.label,
-    this.icon,
-    this.onTap, {
-    this.destructive = false,
-  });
-}
-
 // ─── Space card (dossier) ─────────────────────────────────────────────────
 
 class _SpaceCard extends ConsumerWidget {
@@ -365,49 +354,17 @@ class _SpaceCard extends ConsumerWidget {
     );
   }
 
-  void _showColorPicker(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder:
-          (ctx) => AlertDialog(
-            backgroundColor: yCream,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.zero,
-            ),
-            title: Text(
-              'Color del space',
-              style: ySans(size: 18, weight: FontWeight.w700),
-            ),
-            content: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children:
-                  folderPalette
-                      .map(
-                        (c) => GestureDetector(
-                          onTap: () async {
-                            await ref
-                                .read(labSpaceRepositoryProvider)
-                                .update(space.copyWith(accentColor: c));
-                            if (ctx.mounted) Navigator.pop(ctx);
-                          },
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: c,
-                              border: Border.all(
-                                color: yBorderStrong,
-                                width: space.accentColor == c ? 3 : yLineThin,
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-            ),
-          ),
+  Future<void> _showColorPicker(BuildContext context, WidgetRef ref) async {
+    final selected = await showLabSpaceColorDialog(
+      context,
+      title: 'Color del space',
+      spaceName: space.name,
+      initialColor: space.accentColor,
     );
+    if (selected == null) return;
+    await ref
+        .read(labSpaceRepositoryProvider)
+        .update(space.copyWith(accentColor: selected));
   }
 
   void _showOptions(BuildContext context, WidgetRef ref) {
@@ -418,163 +375,165 @@ class _SpaceCard extends ConsumerWidget {
       backgroundColor: yCream,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (ctx) {
-        final options = <_SheetOption>[];
+        final options = <Widget>[];
 
         options.add(
-          _SheetOption('Cambiar nombre', YuLiIcons.pen, () {
-            Navigator.pop(ctx);
-            _showRename(context, ref);
-          }),
+          YuLiActionTile(
+            icon: YuLiIcons.pen,
+            label: 'Cambiar nombre',
+            accent: space.accentColor,
+            useAccentFill: false,
+            onTap: () {
+              Navigator.pop(ctx);
+              _showRename(context, ref);
+            },
+          ),
         );
 
         options.add(
-          _SheetOption('Cambiar color', YuLiIcons.palette, () {
-            Navigator.pop(ctx);
-            _showColorPicker(context, ref);
-          }),
+          YuLiActionTile(
+            icon: YuLiIcons.palette,
+            label: 'Cambiar color',
+            accent: space.accentColor,
+            useAccentFill: false,
+            onTap: () {
+              Navigator.pop(ctx);
+              _showColorPicker(context, ref);
+            },
+          ),
         );
 
         if (space.status == LabSpaceStatus.paused) {
           options.add(
-            _SheetOption('Reanudar', YuLiIcons.play, () async {
-              Navigator.pop(ctx);
-              await repo.update(space.copyWith(status: LabSpaceStatus.active));
-            }),
+            YuLiActionTile(
+              icon: YuLiIcons.play,
+              label: 'Reanudar',
+              accent: space.accentColor,
+              useAccentFill: false,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await repo.update(
+                  space.copyWith(status: LabSpaceStatus.active),
+                );
+              },
+            ),
           );
         } else if (space.status == LabSpaceStatus.active) {
           options.add(
-            _SheetOption('Pausar', YuLiIcons.pause, () async {
-              Navigator.pop(ctx);
-              await repo.update(space.copyWith(status: LabSpaceStatus.paused));
-            }),
+            YuLiActionTile(
+              icon: YuLiIcons.pause,
+              label: 'Pausar',
+              accent: space.accentColor,
+              useAccentFill: false,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await repo.update(
+                  space.copyWith(status: LabSpaceStatus.paused),
+                );
+              },
+            ),
           );
         }
 
         if (space.status != LabSpaceStatus.completed) {
           options.add(
-            _SheetOption('Completar', YuLiIcons.circleCheck, () async {
-              Navigator.pop(ctx);
-              await repo.update(
-                space.copyWith(status: LabSpaceStatus.completed),
-              );
-            }),
+            YuLiActionTile(
+              icon: YuLiIcons.circleCheck,
+              label: 'Completar',
+              accent: space.accentColor,
+              useAccentFill: false,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await repo.update(
+                  space.copyWith(status: LabSpaceStatus.completed),
+                );
+              },
+            ),
           );
         }
 
         if (space.status != LabSpaceStatus.archived) {
           options.add(
-            _SheetOption('Archivar', YuLiIcons.archive, () async {
-              Navigator.pop(ctx);
-              await repo.update(
-                space.copyWith(status: LabSpaceStatus.archived),
-              );
-            }),
+            YuLiActionTile(
+              icon: YuLiIcons.archive,
+              label: 'Archivar',
+              accent: space.accentColor,
+              useAccentFill: false,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await repo.update(
+                  space.copyWith(status: LabSpaceStatus.archived),
+                );
+              },
+            ),
           );
         }
 
         if (space.status != LabSpaceStatus.active &&
             space.status != LabSpaceStatus.paused) {
           options.add(
-            _SheetOption('Reactivar', YuLiIcons.refresh, () async {
-              Navigator.pop(ctx);
-              await repo.update(space.copyWith(status: LabSpaceStatus.active));
-            }),
+            YuLiActionTile(
+              icon: YuLiIcons.refresh,
+              label: 'Reactivar',
+              accent: space.accentColor,
+              useAccentFill: false,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await repo.update(
+                  space.copyWith(status: LabSpaceStatus.active),
+                );
+              },
+            ),
           );
         }
 
         options.add(
-          _SheetOption('Eliminar', YuLiIcons.trash, () async {
-            Navigator.pop(ctx);
-            final ok = await showDialog<bool>(
-              context: context,
-              builder:
-                  (d) => AlertDialog(
-                    backgroundColor: yCream,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    title: Text(
-                      'Eliminar space',
-                      style: ySans(size: 18, weight: FontWeight.w700),
-                    ),
-                    content: Text(
-                      '¿Eliminar "${space.name}"? Se moverá a la papelera.',
-                      style: yBody(size: 14),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(d, false),
-                        child: const Text('Cancelar'),
+          YuLiActionTile(
+            icon: YuLiIcons.trash,
+            label: 'Eliminar',
+            accent: space.accentColor,
+            destructive: true,
+            onTap: () async {
+              Navigator.pop(ctx);
+              final ok = await showDialog<bool>(
+                context: context,
+                builder:
+                    (d) => AlertDialog(
+                      backgroundColor: yCream,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(d, true),
-                        child: const Text('Eliminar'),
+                      title: Text(
+                        'Eliminar space',
+                        style: ySans(size: 18, weight: FontWeight.w700),
                       ),
-                    ],
-                  ),
-            );
-            if (ok == true) await repo.softDelete(space.id);
-          }, destructive: true),
-        );
-
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  space.name.toUpperCase(),
-                  style: yMono(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  ),
-                ),
-              ),
-              for (final opt in options)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: opt.onTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        top: BorderSide(color: yBorderSoft, width: 0.5),
+                      content: Text(
+                        '¿Eliminar "${space.name}"? Se moverá a la papelera.',
+                        style: yBody(size: 14),
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          opt.icon,
-                          size: 18,
-                          color:
-                              opt.destructive ? const Color(0xFF8E2D4B) : yInk,
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(d, false),
+                          child: const Text('Cancelar'),
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          opt.label,
-                          style: ySans(
-                            size: 15,
-                            weight: FontWeight.w600,
-                            color:
-                                opt.destructive
-                                    ? const Color(0xFF8E2D4B)
-                                    : yInk,
-                          ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(d, true),
+                          child: const Text('Eliminar'),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              const SizedBox(height: 8),
-            ],
+              );
+              if (ok == true) await repo.softDelete(space.id);
+            },
           ),
+        );
+
+        return YuLiActionSheet(
+          title: space.name,
+          badge: 'SPACE',
+          badgeIcon: YuLiIcons.square,
+          accent: space.accentColor,
+          children: options,
         );
       },
     );

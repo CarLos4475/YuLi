@@ -8,9 +8,11 @@ import '../../providers/task_providers.dart';
 import '../../providers/task_propagation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../widgets/edit_item_dialog.dart';
+import '../../widgets/yuli_action_sheet.dart';
 import '../../theme/lab_icons.dart';
 
 import '../../../domain/models/folder.dart';
@@ -85,16 +87,17 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
   }
 
   Future<void> _createNote() async {
-    final kind = await showNewNotePicker(context);
-    if (kind == null || !mounted) return;
-    final details = await showNewNoteDetailsDialog(context, kind);
+    final details = await showNewNoteDialog(
+      context,
+      folderAccent: widget.folder.color,
+    );
     if (details == null || !mounted) return;
     final note = await ref
         .read(noteRepositoryProvider)
         .create(
           widget.folder.id,
           rawMarkdown: '',
-          kind: kind,
+          kind: details.kind,
           title: details.title,
           color: details.color,
         );
@@ -805,60 +808,111 @@ void _showNoteActions(
   bool pinned, {
   VoidCallback? onDelete,
 }) {
+  final accent = note.color ?? folder.color;
+  final meta = _kindMeta(note.kind);
   showModalBottomSheet(
     context: context,
     backgroundColor: yCream,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
     builder:
-        (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  note.displayTitle.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: yMono(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yMuted,
-                  ),
-                ),
-              ),
-              _NoteActionItem(
-                icon: YuLiIcons.star,
-                label: pinned ? 'Desfijar' : 'Fijar',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ref.read(pinnedNotesProvider.notifier).toggle(note.id);
-                },
-              ),
-              _NoteActionItem(
-                icon: YuLiIcons.pen,
-                label: 'Editar',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showEditNoteDialog(context, ref, note, folder);
-                },
-              ),
-              _NoteActionItem(
-                icon: YuLiIcons.trash,
-                label: 'Eliminar',
-                destructive: true,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  if (onDelete != null) {
-                    onDelete();
-                  } else {
-                    _confirmDeleteNote(context, ref, note);
-                  }
-                },
-              ),
-            ],
+        (ctx) => YuLiActionSheet(
+          title: note.displayTitle,
+          badge: meta.label,
+          badgeIcon: meta.icon,
+          accent: accent,
+          children: [
+            YuLiActionTile(
+              icon: YuLiIcons.star,
+              label: pinned ? 'Desfijar' : 'Fijar',
+              accent: accent,
+              onTap: () {
+                Navigator.pop(ctx);
+                ref.read(pinnedNotesProvider.notifier).toggle(note.id);
+              },
+            ),
+            YuLiActionTile(
+              icon: YuLiIcons.pen,
+              label: 'Editar',
+              accent: accent,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showEditNoteDialog(context, ref, note, folder);
+              },
+            ),
+            YuLiActionTile(
+              icon: YuLiIcons.palette,
+              label: 'Cambiar color',
+              accent: accent,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showNoteColorDialog(context, ref, note, folder);
+              },
+            ),
+            YuLiActionTile(
+              icon: YuLiIcons.trash,
+              label: 'Eliminar',
+              accent: accent,
+              destructive: true,
+              onTap: () {
+                Navigator.pop(ctx);
+                if (onDelete != null) {
+                  onDelete();
+                } else {
+                  _confirmDeleteNote(context, ref, note);
+                }
+              },
+            ),
+          ],
+        ),
+  );
+}
+
+void _showNoteColorDialog(
+  BuildContext context,
+  WidgetRef ref,
+  Note note,
+  Folder folder,
+) {
+  showDialog(
+    context: context,
+    builder:
+        (dCtx) => AlertDialog(
+          backgroundColor: yCream,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: Text(
+            'Color de nota',
+            style: ySans(size: 18, weight: FontWeight.w700),
+          ),
+          content: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children:
+                folderPalette
+                    .map(
+                      (c) => GestureDetector(
+                        onTap: () async {
+                          await ref
+                              .read(noteRepositoryProvider)
+                              .update(note.copyWith(color: c));
+                          if (dCtx.mounted) Navigator.pop(dCtx);
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: c,
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width:
+                                  (note.color ?? folder.color) == c
+                                      ? yLineMid
+                                      : yLineThin,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
         ),
   );
@@ -923,42 +977,6 @@ Future<void> _confirmDeleteNote(
   );
   if (confirmed == true) {
     await ref.read(noteRepositoryProvider).softDelete(note.id);
-  }
-}
-
-class _NoteActionItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool destructive;
-
-  const _NoteActionItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.destructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = destructive ? yFight : yInk;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: ySans(size: 15, weight: FontWeight.w600, color: color),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
