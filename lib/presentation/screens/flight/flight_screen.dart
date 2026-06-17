@@ -6,7 +6,6 @@ import '../../providers/folder_providers.dart';
 import '../../providers/flight_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/note_providers.dart';
-import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_action_sheet.dart';
 import '../../widgets/yuli_design.dart';
@@ -618,7 +617,8 @@ class _FolderCard extends ConsumerWidget {
               builder: (_) => FolderDetailScreen(folder: folder),
             ),
           ),
-      onLongPress: () => _showFolderContextMenu(context, ref, folder, pinned),
+      onLongPress:
+          () => _showFolderContextMenu(context, ref, folder, pinned, count),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -846,7 +846,7 @@ class _FolderListRow extends ConsumerWidget {
   });
 
   void _showFolderListMenu(BuildContext context, WidgetRef ref) {
-    _showFolderContextMenu(context, ref, folder, pinned);
+    _showFolderContextMenu(context, ref, folder, pinned, count);
   }
 
   @override
@@ -972,6 +972,7 @@ void _showFolderContextMenu(
   WidgetRef ref,
   Folder folder,
   bool pinned,
+  int noteCount,
 ) {
   final repo = ref.read(folderRepositoryProvider);
   showModalBottomSheet(
@@ -1014,53 +1015,18 @@ void _showFolderContextMenu(
               icon: YuLiIcons.palette,
               label: 'Cambiar color',
               accent: folder.color,
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(ctx);
-                showDialog(
-                  context: context,
-                  builder:
-                      (dCtx) => AlertDialog(
-                        backgroundColor: yCream,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.zero,
-                        ),
-                        title: Text(
-                          'Color de carpeta',
-                          style: ySans(size: 18, weight: FontWeight.w700),
-                        ),
-                        content: Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children:
-                              folderPalette
-                                  .map(
-                                    (c) => GestureDetector(
-                                      onTap: () async {
-                                        await repo.update(
-                                          folder.copyWith(color: c),
-                                        );
-                                        if (dCtx.mounted) Navigator.pop(dCtx);
-                                      },
-                                      child: Container(
-                                        width: 40,
-                                        height: 40,
-                                        decoration: BoxDecoration(
-                                          color: c,
-                                          border: Border.all(
-                                            color: yBorderStrong,
-                                            width:
-                                                folder.color == c
-                                                    ? yLineMid
-                                                    : yLineThin,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                        ),
-                      ),
+                final selected = await showFolderColorDialog(
+                  context,
+                  title: 'Cambiar color de carpeta',
+                  folderName: folder.name,
+                  noteCount: noteCount,
+                  initialColor: folder.color,
                 );
+                if (selected != null) {
+                  await repo.update(folder.copyWith(color: selected));
+                }
               },
             ),
             YuLiActionTile(

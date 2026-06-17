@@ -146,6 +146,8 @@ Lienzo virtual de 10000x10000px con pan + zoom (0.3x–4x). Disenado para pensam
 
 **Background:** patrones Blank, Lined, Grid, GridSmall, Dotted + color de papel (blanco, crema, gris, negro).
 
+**Pines flotantes (PiN):** ventanas ancladas a la pantalla que se quedan fijas mientras navegas el lienzo (no se mueven con scroll/zoom). Arrastrables, redimensionables, colapsables (con animacion). Tipos: snapshot de una seleccion con lasso (volatil), imagen, PDF (con navegacion de paginas que persiste) y video de YouTube (con barra de estudio; requiere conexion). Imagen/PDF/video se persisten por nota. Estilo accent de la nota.
+
 **Exportacion a PNG/PDF:** renderizado offline fiel del canvas completo o region seleccionada, con opcion de incluir bloques de tareas.
 
 ### Modo Cuaderno (Notebook)

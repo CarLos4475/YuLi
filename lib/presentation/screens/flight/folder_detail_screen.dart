@@ -8,7 +8,6 @@ import '../../providers/task_providers.dart';
 import '../../providers/task_propagation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
-import '../../theme/app_tokens.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../widgets/edit_item_dialog.dart';
@@ -20,6 +19,7 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../../domain/models/task.dart' as domain_task;
+import 'new_folder_dialog.dart';
 import 'note_editor_screen.dart';
 import 'new_note_picker.dart';
 import 'notebook_editor_screen.dart';
@@ -872,50 +872,31 @@ void _showNoteColorDialog(
   WidgetRef ref,
   Note note,
   Folder folder,
-) {
-  showDialog(
-    context: context,
-    builder:
-        (dCtx) => AlertDialog(
-          backgroundColor: yCream,
-          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-          title: Text(
-            'Color de nota',
-            style: ySans(size: 18, weight: FontWeight.w700),
-          ),
-          content: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children:
-                folderPalette
-                    .map(
-                      (c) => GestureDetector(
-                        onTap: () async {
-                          await ref
-                              .read(noteRepositoryProvider)
-                              .update(note.copyWith(color: c));
-                          if (dCtx.mounted) Navigator.pop(dCtx);
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: c,
-                            border: Border.all(
-                              color: yBorderStrong,
-                              width:
-                                  (note.color ?? folder.color) == c
-                                      ? yLineMid
-                                      : yLineThin,
-                            ),
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-          ),
-        ),
+) async {
+  final rawExcerpt = _cleanBlockText(note.rawMarkdown);
+  final excerpt =
+      rawExcerpt.isEmpty
+          ? switch (note.kind) {
+            NoteKind.whiteboard => 'Pizarra infinita / pan + zoom',
+            NoteKind.notebook => 'Cuaderno con paginas A4',
+            NoteKind.block => 'Sin contenido todavia',
+          }
+          : rawExcerpt.length > 120
+          ? '${rawExcerpt.substring(0, 120)}...'
+          : rawExcerpt;
+  final selected = await showNoteColorDialog(
+    context,
+    title: 'Cambiar color de nota',
+    noteName: note.displayTitle.isEmpty ? 'Sin titulo' : note.displayTitle,
+    kind: note.kind,
+    excerpt: excerpt,
+    initialColor: note.color ?? folder.color,
   );
+  if (selected != null) {
+    await ref
+        .read(noteRepositoryProvider)
+        .update(note.copyWith(color: selected));
+  }
 }
 
 void _showEditNoteDialog(
