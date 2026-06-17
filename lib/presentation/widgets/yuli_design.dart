@@ -28,6 +28,108 @@ const double yLineHeavy = 3.0;
 const double yLineMid = 2.5;
 const double yLineThin = 2.0;
 
+/// A tessellated TRIANGLE mosaic of [accent] subtones — each square cell is cut
+/// into four triangles meeting at its centre, and triangles are filled from a
+/// light→strong ramp of the accent (HSL), scattered deterministically. Used as a
+/// header background so the brand bar reads as a brutalist triangle mosaic
+/// instead of a flat slab. Cheap (one CustomPainter, no animation).
+class AccentMosaic extends StatelessWidget {
+  final Color accent;
+
+  /// Number of cell rows down the height. The cell is square (size = height /
+  /// rows), so the rows fill exactly — no partial row peeking at the bottom.
+  /// Fewer rows = bigger triangles.
+  final int rows;
+
+  const AccentMosaic({super.key, required this.accent, this.rows = 2});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: CustomPaint(
+        painter: _TriMosaicPainter(accent, rows),
+        size: Size.infinite,
+      ),
+    );
+  }
+}
+
+class _TriMosaicPainter extends CustomPainter {
+  final Color accent;
+  final int rows;
+  _TriMosaicPainter(this.accent, this.rows);
+
+  /// Number of subtones in the light→strong ramp.
+  static const int _n = 6;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Square cell sized so exactly [rows] fit the height (no bottom sliver).
+    final cell = size.height / rows;
+    final hsl = HSLColor.fromColor(accent);
+    // Ramp: lighter (base + 0.12) down to stronger (base - 0.16), with a touch
+    // more saturation as it darkens so the "fuertes" read richer.
+    final shades = [
+      for (var i = 0; i < _n; i++)
+        hsl
+            .withLightness(
+              (hsl.lightness + 0.12 - 0.28 * (i / (_n - 1))).clamp(0.0, 1.0),
+            )
+            .withSaturation(
+              (hsl.saturation + 0.06 * (i / (_n - 1))).clamp(0.0, 1.0),
+            )
+            .toColor(),
+    ];
+
+    // Solid base first so any hairline seams between triangles never flash.
+    final paint =
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = shades[_n ~/ 2];
+    canvas.drawRect(Offset.zero & size, paint);
+
+    final cols = (size.width / cell).ceil();
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        final x = c * cell, y = r * cell;
+        final tl = Offset(x, y);
+        final tr = Offset(x + cell, y);
+        final br = Offset(x + cell, y + cell);
+        final bl = Offset(x, y + cell);
+        final ctr = Offset(x + cell / 2, y + cell / 2);
+        final tris = [
+          [tl, tr, ctr],
+          [tr, br, ctr],
+          [br, bl, ctr],
+          [bl, tl, ctr],
+        ];
+        for (var t = 0; t < 4; t++) {
+          paint.color = shades[_shadeIndex(c, r, t)];
+          final tri = tris[t];
+          final path =
+              Path()
+                ..moveTo(tri[0].dx, tri[0].dy)
+                ..lineTo(tri[1].dx, tri[1].dy)
+                ..lineTo(tri[2].dx, tri[2].dy)
+                ..close();
+          canvas.drawPath(path, paint);
+        }
+      }
+    }
+  }
+
+  /// Deterministic scatter of a shade index from a cell+triangle position.
+  int _shadeIndex(int c, int r, int t) {
+    var h = (c * 73856093) ^ (r * 19349663) ^ (t * 83492791);
+    h &= 0x7fffffff;
+    return h % _n;
+  }
+
+  @override
+  bool shouldRepaint(covariant _TriMosaicPainter old) =>
+      old.accent != accent || old.rows != rows;
+}
+
 Color colorForMode(AppMode mode) {
   switch (mode) {
     case AppMode.fight:
@@ -528,11 +630,7 @@ class CapChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 12,
-              color: active ? yCream : color,
-            ),
+            Icon(icon, size: 12, color: active ? yCream : color),
             const SizedBox(width: 5),
             Text(
               kind.toUpperCase(),
@@ -889,7 +987,8 @@ Color parseHex(String hex) {
 }
 
 /// Shows a brutalist help dialog explaining what a mode does.
-void showModeHelp(BuildContext context, {
+void showModeHelp(
+  BuildContext context, {
   required String mode,
   required String description,
   required Color accent,
@@ -897,89 +996,91 @@ void showModeHelp(BuildContext context, {
 }) {
   showDialog(
     context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: yCream,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    builder:
+        (ctx) => AlertDialog(
+          backgroundColor: yCream,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 14,
-                height: 14,
-                color: accent,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                mode,
-                style: ySans(
-                  size: 20,
-                  weight: FontWeight.w700,
-                  letterSpacing: -0.5,
-                  color: yInk,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            description,
-            style: yBody(size: 14, color: yInk2),
-          ),
-          if (tips != null && tips.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              '> TIPS',
-              style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted),
-            ),
-            const SizedBox(height: 8),
-            for (final tip in tips) ...[
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 5),
-                    child: Icon(YuLiIcons.chevronRight, size: 10, color: yInk),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      tip,
-                      style: yBody(size: 13, color: yInk2),
+                  Container(width: 14, height: 14, color: accent),
+                  const SizedBox(width: 10),
+                  Text(
+                    mode,
+                    style: ySans(
+                      size: 20,
+                      weight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                      color: yInk,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-            ],
-          ],
-          const SizedBox(height: 18),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.pop(ctx),
-            child: Container(
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: accent,
-                border: Border.all(color: yInk, width: yLineMid),
-                boxShadow: const [BoxShadow(color: yInk, offset: Offset(3, 3))],
-              ),
-              child: Text(
-                'ENTENDIDO',
-                style: yMono(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yCream,
+              const SizedBox(height: 14),
+              Text(description, style: yBody(size: 14, color: yInk2)),
+              if (tips != null && tips.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  '> TIPS',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (final tip in tips) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 5),
+                        child: Icon(
+                          YuLiIcons.chevronRight,
+                          size: 10,
+                          color: yInk,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(tip, style: yBody(size: 13, color: yInk2)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                ],
+              ],
+              const SizedBox(height: 18),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.pop(ctx),
+                child: Container(
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    border: Border.all(color: yInk, width: yLineMid),
+                    boxShadow: const [
+                      BoxShadow(color: yInk, offset: Offset(3, 3)),
+                    ],
+                  ),
+                  child: Text(
+                    'ENTENDIDO',
+                    style: yMono(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yCream,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
-    ),
+        ),
   );
 }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,14 +10,20 @@ import '../../widgets/yuli_design.dart';
 import 'ai_modes.dart';
 import 'mode_builder.dart';
 
-/// Floating step-by-step dialog to create a custom chat mode. YuLi interviews
-/// the user (open-ended), proposes a persona in a parseable block, and on
-/// approval runs the safety sanitizer before saving. The persona authored here
-/// is only the HOW of the mode; the shared _rules ride on at runtime. Shown via
-/// showDialog — a centred card over a scrim, NOT a full screen.
+/// Floating step-by-step dialog to create OR edit ([editing]) a custom chat
+/// mode. YuLi interviews the user (open-ended), proposes a persona in a parseable
+/// block, and on approval runs the safety sanitizer before saving — editing rides
+/// the same sanitizer, so a benign mode can't be quietly degraded. The persona
+/// authored here is only the HOW of the mode; the shared _rules ride on at
+/// runtime. Shown via showDialog — a centred card over a scrim, NOT a full screen.
 class ModeBuilderDialog extends ConsumerStatefulWidget {
   final Color accent;
-  const ModeBuilderDialog({super.key, required this.accent});
+
+  /// When non-null, the dialog EDITS this mode (seeds the icon, hands YuLi the
+  /// current persona, and on save keeps the same id) instead of creating one.
+  final AiMode? editing;
+
+  const ModeBuilderDialog({super.key, required this.accent, this.editing});
 
   @override
   ConsumerState<ModeBuilderDialog> createState() => _ModeBuilderDialogState();
@@ -41,12 +49,17 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
   @override
   void initState() {
     super.initState();
-    // Kick off the interview: YuLi greets and asks its first question. The
-    // kickoff user turn is hidden from the transcript.
+    final ed = widget.editing;
+    if (ed != null && ed.iconKey.isNotEmpty) _iconKey = ed.iconKey;
+    // Kick off the interview: YuLi greets and asks its first question (for an
+    // edit, what to change). The kickoff user turn is hidden from the transcript.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _send(
-        'Quiero crear un modo de chat personalizado. Salúdame breve y hazme la '
-        'primera pregunta para diseñarlo.',
+        ed != null
+            ? 'Quiero editar el modo "${ed.name}". Salúdame muy breve y '
+                'pregúntame qué quiero cambiarle.'
+            : 'Quiero crear un modo de chat personalizado. Salúdame breve y '
+                'hazme la primera pregunta para diseñarlo.',
         hidden: true,
       );
     });
@@ -86,13 +99,20 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     });
     _input.clear();
 
-    final existing = kAllAiModes.map((m) => m.name).toSet().join(', ');
+    final ed = widget.editing;
+    final existing = kAllAiModes
+        .where((m) => m.id != ed?.id) // editing can keep its own name
+        .map((m) => m.name)
+        .toSet()
+        .join(', ');
+    final sys = StringBuffer(kModeBuilderPrompt);
+    if (ed != null) sys.write(modeEditSystemSuffix(ed.name, ed.persona));
+    sys.write(
+      '\n\nNOMBRES YA EN USO (no repitas ninguno; inventa uno distinto y con '
+      'personalidad): $existing.',
+    );
     final convo = <AiMessage>[
-      AiMessage(
-        AiRole.system,
-        '$kModeBuilderPrompt\n\nNOMBRES YA EN USO (no repitas ninguno; inventa '
-        'uno distinto y con personalidad): $existing.',
-      ),
+      AiMessage(AiRole.system, sys.toString()),
       for (final m in _messages) AiMessage(m.role, m.text),
     ];
     final reply = _BMsg(AiRole.assistant, '');
@@ -102,8 +122,10 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     await limiter.record();
     final assistant = ref.read(aiAssistantProvider);
     try {
-      await for (final tok
-          in assistant.streamReply(convo, model: AiModel.flash)) {
+      await for (final tok in assistant.streamReply(
+        convo,
+        model: AiModel.flash,
+      )) {
         setState(() => reply.text += tok);
         _scrollToEnd();
       }
@@ -164,7 +186,9 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     }
 
     final mode = AiMode(
-      id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+      id:
+          widget.editing?.id ??
+          'custom_${DateTime.now().millisecondsSinceEpoch}',
       name: draft.name,
       blurb: draft.blurb.isEmpty ? 'Modo personalizado.' : draft.blurb,
       sample: draft.sample,
@@ -213,12 +237,7 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
                   children: [
                     for (final m in _messages)
                       if (!m.hidden) _bubble(m),
-                    if (_busy && _draft == null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6, left: 4),
-                        child: Text('YuLi está escribiendo…',
-                            style: yBody(size: 12, color: yMuted)),
-                      ),
+                    if (_busy && _draft == null && _streamingEmpty()) _typing(),
                     if (_draft != null) _previewCard(_draft!),
                   ],
                 ),
@@ -232,41 +251,66 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     );
   }
 
+  /// YuLi-branded header: dark bar with the accent diamond mark, "YuLi" and a
+  /// contextual subtitle (NUEVO MODO / EDITANDO · NAME), plus the close X.
   Widget _header() {
+    final ed = widget.editing;
     return Container(
       decoration: const BoxDecoration(
-        color: yCream2,
-        border:
-            Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      child: Row(
+      child: Stack(
         children: [
-          Container(width: 4, height: 22, color: widget.accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'CREAR MODO',
-              style: yMono(
-                size: 14,
-                weight: FontWeight.w800,
-                tracking: 1.2,
-                color: yInk,
-              ),
-            ),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-              ),
-              child: const Icon(YuLiIcons.close, color: yInk, size: 16),
+          Positioned.fill(child: AccentMosaic(accent: widget.accent)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(
+              children: [
+                _mark(size: 34, onAccent: true),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'YuLi',
+                        style: ySans(
+                          size: 18,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                        ),
+                      ),
+                      Text(
+                        ed != null ? 'EDITANDO · ${ed.name}' : 'NUEVO MODO',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: yMono(
+                          size: 8,
+                          tracking: 1.6,
+                          color: yCream.withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).maybePop(),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: yCream, width: yLineMid),
+                    ),
+                    child: const Icon(YuLiIcons.close, color: yCream, size: 16),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -274,26 +318,151 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     );
   }
 
+  /// YuLi's signature: a rotated diamond mark. On cream (bubbles) it's an accent
+  /// square with a cream diamond; [onAccent] inverts it (cream square, accent
+  /// diamond) so it reads against the accent header bar.
+  Widget _mark({double size = 30, bool onAccent = false}) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: onAccent ? yCream : widget.accent,
+        border:
+            onAccent
+                ? null
+                : Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Transform.rotate(
+        angle: math.pi / 4,
+        child: Container(
+          width: size * 0.36,
+          height: size * 0.36,
+          color: onAccent ? widget.accent : yCream,
+        ),
+      ),
+    );
+  }
+
   Widget _bubble(_BMsg m) {
-    final isUser = m.role == AiRole.user;
-    final display = isUser ? m.text : stripProposalForDisplay(m.text);
+    if (m.role == AiRole.user) return _userBubble(m.text);
+    final display = stripProposalForDisplay(m.text);
     if (display.isEmpty) return const SizedBox.shrink();
+    return _yuliBubble(display);
+  }
+
+  /// YuLi's turn: diamond mark + "YULI" label + a bordered cream bubble with the
+  /// brutalist drop shadow (mirrors the main chat's assistant frame).
+  Widget _yuliBubble(String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment:
-            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-              decoration: BoxDecoration(
-                color: isUser ? widget.accent.withValues(alpha: 0.12) : yCream,
-                border: Border.all(color: yBorderStrong, width: yLineThin),
-              ),
-              child: Text(display, style: yBody(size: 14, color: yInk)),
+          _mark(),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, bottom: 5),
+                  child: Text(
+                    'YULI',
+                    style: yMono(
+                      size: 9,
+                      weight: FontWeight.w700,
+                      tracking: 1.6,
+                      color: yMuted,
+                    ),
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(14, 11, 14, 12),
+                  decoration: BoxDecoration(
+                    color: yCream,
+                    border: Border.all(color: yBorderStrong, width: yLineMid),
+                    boxShadow: const [
+                      BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+                    ],
+                  ),
+                  child: Text(text, style: yBody(size: 14, color: yInk)),
+                ),
+              ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// User's turn: right-aligned "TÚ" + accent bubble with drop shadow.
+  Widget _userBubble(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 2, bottom: 5),
+            child: Text(
+              'TÚ',
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.6,
+                color: yMuted,
+              ),
+            ),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
+              decoration: BoxDecoration(
+                color: widget.accent,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+                boxShadow: const [
+                  BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+                ],
+              ),
+              child: Text(
+                text,
+                style: yBody(size: 14, weight: FontWeight.w500, color: yCream),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// True while the latest assistant reply is still empty (just started), so the
+  /// typing bubble shows only before text begins streaming (no duplicate).
+  bool _streamingEmpty() {
+    if (_messages.isEmpty) return false;
+    final last = _messages.last;
+    return last.role == AiRole.assistant &&
+        stripProposalForDisplay(last.text).isEmpty;
+  }
+
+  /// Branded "thinking" state: the mark + a small bubble with an ellipsis.
+  Widget _typing() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _mark(),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
+            decoration: BoxDecoration(
+              color: yCream,
+              border: Border.all(color: yBorderStrong, width: yLineMid),
+            ),
+            child: Text('escribiendo…', style: yBody(size: 13, color: yMuted)),
           ),
         ],
       ),
@@ -307,17 +476,22 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
       decoration: BoxDecoration(
         color: yCream,
         border: Border.all(color: widget.accent, width: yLineMid),
-        boxShadow: const [BoxShadow(color: yBorderStrong, offset: Offset(3, 3))],
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('PROPUESTA',
-              style: yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 1.6,
-                  color: yMuted)),
+          Text(
+            'YULI PROPONE',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.6,
+              color: yMuted,
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -333,9 +507,10 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
               ),
               const SizedBox(width: 9),
               Expanded(
-                child: Text(d.name,
-                    style: yMono(
-                        size: 14, weight: FontWeight.w800, color: yInk)),
+                child: Text(
+                  d.name,
+                  style: yMono(size: 14, weight: FontWeight.w800, color: yInk),
+                ),
               ),
             ],
           ),
@@ -345,17 +520,24 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
           ],
           if (d.sample.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(d.sample,
-                style: yBody(size: 12, color: yMuted)
-                    .copyWith(fontStyle: FontStyle.italic)),
+            Text(
+              d.sample,
+              style: yBody(
+                size: 12,
+                color: yMuted,
+              ).copyWith(fontStyle: FontStyle.italic),
+            ),
           ],
           const SizedBox(height: 12),
-          Text('ÍCONO',
-              style: yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yMuted)),
+          Text(
+            'ÍCONO',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yMuted,
+            ),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
@@ -366,12 +548,15 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
             ],
           ),
           const SizedBox(height: 12),
-          Text('PERSONA',
-              style: yMono(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  tracking: 1.4,
-                  color: yMuted)),
+          Text(
+            'PERSONA',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.4,
+              color: yMuted,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(d.persona, style: yBody(size: 12, color: yInk)),
         ],
@@ -458,9 +643,10 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
         height: 48,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: disabled
-              ? yMuted
-              : filled
+          color:
+              disabled
+                  ? yMuted
+                  : filled
                   ? widget.accent
                   : yCream,
           border: Border.all(color: yBorderStrong, width: yLineMid),
@@ -502,11 +688,16 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
                 hintStyle: yBody(size: 15, color: yMuted),
                 filled: true,
                 fillColor: yCream,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
                 enabledBorder: const OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yBorderStrong, width: yLineThin),
+                  borderSide: BorderSide(
+                    color: yBorderStrong,
+                    width: yLineThin,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
@@ -514,7 +705,10 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
                 ),
                 disabledBorder: const OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yBorderStrong, width: yLineThin),
+                  borderSide: BorderSide(
+                    color: yBorderStrong,
+                    width: yLineThin,
+                  ),
                 ),
               ),
             ),

@@ -12,7 +12,6 @@ import 'ai_modes.dart';
 
 const _kAnchorMaxChars = 8000;
 
-
 /// Above this length the context is "largo" → the chat suggests compacting it.
 const kAnchorLongChars = 3000;
 
@@ -79,9 +78,10 @@ class AiChatSession extends ChangeNotifier {
 
   static const _kAnchorPrefix = 'ai_ctx_v1_';
 
-  String get _prefKey => scope == 'note'
-      ? '$_kAnchorPrefix$noteId'
-      : '$_kAnchorPrefix${scope}_$noteId';
+  String get _prefKey =>
+      scope == 'note'
+          ? '$_kAnchorPrefix$noteId'
+          : '$_kAnchorPrefix${scope}_$noteId';
 
   String? anchor; // context anchor; null until set
   final List<AiChatMsg> messages = [];
@@ -96,6 +96,7 @@ class AiChatSession extends ChangeNotifier {
   // auto-compacts; [_compactTried] avoids re-compacting on every send.
   String? _previousAnchor;
   bool _compactTried = false;
+
   /// Index in [messages] of the latest compaction notice (for showing UNDO on
   /// just that one).
   int? compactNoticeIndex;
@@ -129,9 +130,10 @@ class AiChatSession extends ChangeNotifier {
   }
 
   static const _kModePrefix = 'ai_mode_v1_';
-  String get _modeKey => scope == 'note'
-      ? '$_kModePrefix$noteId'
-      : '$_kModePrefix${scope}_$noteId';
+  String get _modeKey =>
+      scope == 'note'
+          ? '$_kModePrefix$noteId'
+          : '$_kModePrefix${scope}_$noteId';
 
   Future<void> _loadMode() async {
     final p = await SharedPreferences.getInstance();
@@ -154,6 +156,15 @@ class AiChatSession extends ChangeNotifier {
     notifyListeners();
     final p = SharedPreferences.getInstance();
     p.then((prefs) => prefs.setString(_modeKey, m.id));
+  }
+
+  /// Replace the active mode object in place after it was EDITED (same id, new
+  /// persona/name/icon). Unlike [setMode] there's no switch notice and no id
+  /// guard — it's the same mode with fresh content, applied from the next turn.
+  void refreshMode(AiMode m) {
+    if (m.id != mode.id) return;
+    mode = m;
+    notifyListeners();
   }
 
   void setAnchor(String value) {
@@ -183,8 +194,12 @@ class AiChatSession extends ChangeNotifier {
       _previousAnchor = null;
       compactNoticeIndex = null;
       if (next != null) {
-        messages.add(const AiChatMsg(
-            AiRole.system, '✦ Contexto actualizado — empecé de cero.'));
+        messages.add(
+          const AiChatMsg(
+            AiRole.system,
+            '✦ Contexto actualizado — empecé de cero.',
+          ),
+        );
       }
     }
     _saveAnchor();
@@ -232,7 +247,9 @@ class AiChatSession extends ChangeNotifier {
   String _anchorContent() {
     final ctx = anchor ?? '';
     final capped =
-        ctx.length > _kAnchorMaxChars ? ctx.substring(0, _kAnchorMaxChars) : ctx;
+        ctx.length > _kAnchorMaxChars
+            ? ctx.substring(0, _kAnchorMaxChars)
+            : ctx;
     return '<context_documents>\n$capped\n</context_documents>';
   }
 
@@ -251,7 +268,9 @@ class AiChatSession extends ChangeNotifier {
   /// facts) and posts a notice to the chat. Counts as one request. Best-effort:
   /// on failure or no real gain, keeps the original.
   Future<void> _autoCompact(
-      AiAssistant assistant, AiUsageLimiter limiter) async {
+    AiAssistant assistant,
+    AiUsageLimiter limiter,
+  ) async {
     _compactTried = true;
     final before = anchor;
     if (before == null) return;
@@ -273,11 +292,13 @@ class AiChatSession extends ChangeNotifier {
     _previousAnchor = before;
     anchor = compacted;
     _saveAnchor();
-    messages.add(AiChatMsg(
-      AiRole.system,
-      '✦ Compacté el contexto para ahorrar tokens '
-      '(${before.length} → ${compacted.length} caracteres).',
-    ));
+    messages.add(
+      AiChatMsg(
+        AiRole.system,
+        '✦ Compacté el contexto para ahorrar tokens '
+        '(${before.length} → ${compacted.length} caracteres).',
+      ),
+    );
     compactNoticeIndex = messages.length - 1;
     notifyListeners();
   }
@@ -287,14 +308,21 @@ class AiChatSession extends ChangeNotifier {
   /// [quickAction] skips chat history — used for one-shot operations like
   /// "Resumir" or "Extraer tareas" so the model focuses only on the anchor.
   Future<void> send(
-      AiAssistant assistant, AiUsageLimiter limiter, String text,
-      {bool quickAction = false}) async {
+    AiAssistant assistant,
+    AiUsageLimiter limiter,
+    String text, {
+    bool quickAction = false,
+  }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
 
     if (!await limiter.canSend()) {
-      messages.add(const AiChatMsg(AiRole.assistant,
-          '⚠️ Límite diario de IA alcanzado (150/día). Se reinicia mañana.'));
+      messages.add(
+        const AiChatMsg(
+          AiRole.assistant,
+          '⚠️ Límite diario de IA alcanzado (150/día). Se reinicia mañana.',
+        ),
+      );
       notifyListeners();
       return;
     }
@@ -347,31 +375,36 @@ class AiChatSession extends ChangeNotifier {
       }
 
       if (foreignCutoff > 0) {
-        final foreign = history
-            .sublist(0, foreignCutoff)
-            .where((m) => m.role != AiRole.system)
-            .toList();
+        final foreign =
+            history
+                .sublist(0, foreignCutoff)
+                .where((m) => m.role != AiRole.system)
+                .toList();
         final transcript = _foldTranscript(foreign);
         if (transcript.isNotEmpty) {
-          convo.add(AiMessage(
-            AiRole.system,
-            'Historial previo de esta conversación, escrito en OTRO modo de '
-            'YuLi. Úsalo SOLO como información (puedes referirte a lo que ya se '
-            'dijo), pero NO imites su estilo, su tono ni su formato: responde '
-            'según tu modo actual y NO comentes ni acuses el cambio de modo.\n\n'
-            '$transcript',
-          ));
+          convo.add(
+            AiMessage(
+              AiRole.system,
+              'Historial previo de esta conversación, escrito en OTRO modo de '
+              'YuLi. Úsalo SOLO como información (puedes referirte a lo que ya se '
+              'dijo), pero NO imites su estilo, su tono ni su formato: responde '
+              'según tu modo actual y NO comentes ni acuses el cambio de modo.\n\n'
+              '$transcript',
+            ),
+          );
         }
       }
 
-      final live = history
-          .sublist(foreignCutoff)
-          .where((m) => m.role != AiRole.system)
-          .toList();
+      final live =
+          history
+              .sublist(foreignCutoff)
+              .where((m) => m.role != AiRole.system)
+              .toList();
       final maxHistory = model == AiModel.flash ? 8 : 16;
-      final capped = live.length > maxHistory
-          ? live.sublist(live.length - maxHistory)
-          : live;
+      final capped =
+          live.length > maxHistory
+              ? live.sublist(live.length - maxHistory)
+              : live;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
     }
     convo.add(AiMessage(AiRole.user, t));
@@ -386,8 +419,11 @@ class AiChatSession extends ChangeNotifier {
       try {
         await for (final tok in assistant.streamReply(convo, model: model)) {
           yielded = true;
-          messages[idx] = AiChatMsg(AiRole.assistant, messages[idx].text + tok,
-              modeId: modeId);
+          messages[idx] = AiChatMsg(
+            AiRole.assistant,
+            messages[idx].text + tok,
+            modeId: modeId,
+          );
           notifyListeners();
         }
         break; // completed cleanly
@@ -396,8 +432,10 @@ class AiChatSession extends ChangeNotifier {
         if (!yielded && retryable && attempt < maxRetries) {
           attempt++;
           messages[idx] = AiChatMsg(
-              AiRole.assistant, '⟳ Reintentando… ($attempt)',
-              modeId: modeId);
+            AiRole.assistant,
+            '⟳ Reintentando… ($attempt)',
+            modeId: modeId,
+          );
           notifyListeners();
           await Future.delayed(Duration(milliseconds: 600 * attempt));
           messages[idx] = AiChatMsg(AiRole.assistant, '', modeId: modeId);
@@ -417,7 +455,10 @@ class AiChatSession extends ChangeNotifier {
   /// after, then re-send the user turn that produced it. (Regenerating an older
   /// reply discards the turns below it — it's an explicit "redo from here".)
   Future<void> regenerate(
-      int assistantIndex, AiAssistant assistant, AiUsageLimiter limiter) async {
+    int assistantIndex,
+    AiAssistant assistant,
+    AiUsageLimiter limiter,
+  ) async {
     if (streaming) return;
     if (assistantIndex < 0 || assistantIndex >= messages.length) return;
     if (messages[assistantIndex].role != AiRole.assistant) return;

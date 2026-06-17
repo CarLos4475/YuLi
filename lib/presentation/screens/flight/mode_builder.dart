@@ -38,6 +38,21 @@ const String kModeBuilderPrompt =
     'emojis: eso se agrega aparte. Si el usuario pide cambios después, ajusta y '
     'vuelve a soltar el bloque actualizado.';
 
+/// Extra system context appended to [kModeBuilderPrompt] when EDITING an
+/// existing mode (vs creating from scratch). Hands YuLi the current name +
+/// persona so it ADAPTS them from the user's plain feedback ("habla mucho",
+/// "hazlo mas formal") instead of starting over, then re-emits the proposal
+/// block with the change. The edited persona still rides the sanitizer on
+/// approval, so it can't be quietly turned into something unsafe.
+String modeEditSystemSuffix(String name, String persona) =>
+    '\n\nESTAS EDITANDO UN MODO QUE YA EXISTE. Estado actual:\n'
+    'NOMBRE: $name\nPERSONA: $persona\n'
+    'El usuario quiere AJUSTARLO con feedback en lenguaje natural (p. ej. '
+    '"habla mucho", "hazlo mas formal", "que pregunte menos"). Interpreta su '
+    'intencion, aplica el cambio MANTENIENDO lo que no se toca, y cuando este '
+    'listo vuelve a soltar el bloque yuli-persona ya actualizado. No rehagas la '
+    'persona desde cero salvo que te lo pidan explicitamente.';
+
 /// First line the sanitizer returns when it REJECTS a persona (followed by the
 /// reason on the next line(s)).
 const String kModeSanitizerSentinel = 'PERSONA_INVALIDA';
@@ -73,8 +88,10 @@ class AiModeDraft {
   });
 }
 
-final RegExp _kProposalBlock =
-    RegExp(r'```yuli-persona\s*([\s\S]*?)```', multiLine: true);
+final RegExp _kProposalBlock = RegExp(
+  r'```yuli-persona\s*([\s\S]*?)```',
+  multiLine: true,
+);
 
 /// Extracts the ```yuli-persona``` proposal from an assistant reply, or null if
 /// the reply is still a normal interview turn (no block yet → keep chatting).
@@ -120,8 +137,10 @@ AiModeDraft? parseModeProposal(String text) {
 String stripProposalBlock(String text) =>
     text.replaceAll(_kProposalBlock, '').trim();
 
-final RegExp _kProposalFromFence =
-    RegExp(r'```yuli-persona[\s\S]*$', multiLine: true);
+final RegExp _kProposalFromFence = RegExp(
+  r'```yuli-persona[\s\S]*$',
+  multiLine: true,
+);
 
 /// Strips the proposal block for DISPLAY, including an UNCLOSED one mid-stream
 /// (everything from the opening fence to the end). Without this, the raw
@@ -151,13 +170,16 @@ SanitizeResult interpretSanitizerOutput(String raw) {
   final out = raw.trim();
   if (out.isEmpty) {
     return const SanitizeResult.rejected(
-        'La persona quedó vacía. Afínala un poco más.');
+      'La persona quedó vacía. Afínala un poco más.',
+    );
   }
   if (out.toUpperCase().startsWith(kModeSanitizerSentinel)) {
     final reason = out.substring(kModeSanitizerSentinel.length).trim();
-    return SanitizeResult.rejected(reason.isEmpty
-        ? 'La persona choca con las reglas de YuLi. Ajústala.'
-        : reason);
+    return SanitizeResult.rejected(
+      reason.isEmpty
+          ? 'La persona choca con las reglas de YuLi. Ajústala.'
+          : reason,
+    );
   }
   return SanitizeResult.ok(out);
 }

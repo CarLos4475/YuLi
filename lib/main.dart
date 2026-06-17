@@ -30,11 +30,12 @@ void main() {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
-      // Edge-to-edge: the app paints behind the status & nav bars. Content stays
-      // put (every shell is wrapped in SafeArea); only the background colour
-      // floods into the system bars. The transparent bars + icon brightness are
-      // applied per-theme via the MaterialApp builder below.
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // Immersive full-screen: hide the status & nav bars entirely (swipe from an
+      // edge to peek them; "sticky" re-hides them automatically). This reclaims
+      // the whole screen and removes the status-bar strip that used to bleed a
+      // colour over the chat panel. Shells stay wrapped in SafeArea, so when the
+      // bars are revealed content isn't occluded.
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       await CrashLogger.instance.init();
 
       // Framework (build/layout/paint) errors.
@@ -92,7 +93,8 @@ class YuLiApp extends ConsumerWidget {
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
+            statusBarIconBrightness:
+                isLight ? Brightness.dark : Brightness.light,
             statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
             systemNavigationBarColor: Colors.transparent,
             systemNavigationBarIconBrightness:

@@ -347,15 +347,9 @@ class _AiChatDockState extends State<AiChatDock>
                             border: Border(
                               left: BorderSide(
                                 color: yBorderStrong,
-                                width: yLineMid,
+                                width: yLineThin,
                               ),
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: yBorderStrong,
-                                offset: Offset(-3, 0),
-                              ),
-                            ],
                           ),
                           child: _AiChatSheet(
                             session: widget.session,
@@ -644,9 +638,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   Widget build(BuildContext context) {
     if (widget.embedded) {
       // Docked panel: fill the dock with its OWN Material (TextFields need one
-      // outside a route). The top safe-area strip is painted ink so it blends
-      // with the dark header (instead of leaking the cream body). The bottom
-      // Padding lifts the input above the keyboard so you see what you type.
+      // outside a route). The top safe-area strip is painted accent so it blends
+      // with the accent header bar (instead of leaking the cream body or black).
+      // The bottom Padding lifts the input above the keyboard.
       final topInset = MediaQuery.of(context).padding.top;
       return Material(
         color: yCream,
@@ -656,7 +650,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           ),
           child: Column(
             children: [
-              Container(height: topInset, color: yInk),
+              Container(height: topInset, color: widget.accent),
               Expanded(
                 child: SafeArea(
                   top: false,
@@ -715,9 +709,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
-          child: _showContext
-              ? _contextBar()
-              : const SizedBox(width: double.infinity),
+          child:
+              _showContext
+                  ? _contextBar()
+                  : const SizedBox(width: double.infinity),
         ),
         Expanded(
           child: ListView(
@@ -1288,6 +1283,22 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     if (created != null && mounted) _s.setMode(created);
   }
 
+  /// Edits a custom mode: reuses the guided builder seeded with the current
+  /// persona/icon (YuLi adapts it from plain feedback), re-runs the sanitizer on
+  /// save, and keeps the same id. If the edited mode is the active one, refresh
+  /// it in place so the new persona applies without losing the thread.
+  Future<void> _editMode(AiMode m) async {
+    Navigator.of(context).pop(); // close the catalog
+    final updated = await showDialog<AiMode>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ModeBuilderDialog(accent: widget.accent, editing: m),
+    );
+    if (updated != null && mounted && _s.mode.id == updated.id) {
+      _s.refreshMode(updated);
+    }
+  }
+
   /// Deletes a custom mode (with confirm). If it's the active mode, falls back
   /// to the default so the session never points at a deleted mode.
   Future<void> _deleteMode(AiMode m) async {
@@ -1382,7 +1393,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 if (selected)
                   Icon(YuLiIcons.check, size: 16, color: widget.accent),
                 if (m.custom) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _editMode(m),
+                    child: const Icon(YuLiIcons.pen, size: 14, color: yMuted),
+                  ),
+                  const SizedBox(width: 10),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _deleteMode(m),
@@ -1513,158 +1530,170 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
     return Container(
       decoration: const BoxDecoration(
-        color: yInk,
         border: Border(
           bottom: BorderSide(color: yBorderStrong, width: yLineMid),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      child: Row(
+      child: Stack(
         children: [
-          // Mark: accent square with a cream diamond.
-          Container(
-            width: 32,
-            height: 32,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: widget.accent,
-              border: Border.all(color: yCream, width: yLineMid),
-            ),
-            child: Transform.rotate(
-              angle: math.pi / 4,
-              child: Container(width: 12, height: 12, color: yCream),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'YuLi · IA',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ySans(
-                    size: 18,
-                    weight: FontWeight.w700,
-                    color: yCream,
-                  ),
-                ),
-                Text(
-                  widget.isBoard
-                      ? 'ASISTENTE DE PROYECTO'
-                      : 'ASISTENTE DE NOTAS',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: yMono(
-                    size: 8,
-                    tracking: 1.6,
-                    color: yCream.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          // FLASH | PRO segmented control.
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: yCream, width: yLineMid),
-            ),
+          Positioned.fill(child: AccentMosaic(accent: widget.accent)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                _seg(
-                  'FLASH',
-                  _s.model == AiModel.flash,
-                  () => _s.setModel(AiModel.flash),
-                ),
-                Container(width: yLineThin, height: 24, color: yCream),
-                _seg(
-                  'PRO',
-                  _s.model == AiModel.pro,
-                  () => _s.setModel(AiModel.pro),
-                ),
-              ],
-            ),
-          ),
-          if (used != null) ...[
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 58,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '$used/$_kDailyCap',
-                    textAlign: TextAlign.right,
-                    style: yMono(size: 9, tracking: 0.6, color: yCream),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    height: 5,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: yCream, width: 1),
+                // Mark: cream square with an accent diamond (inverted for the
+                // accent bar so it reads against the mosaic).
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(color: yCream),
+                  child: Transform.rotate(
+                    angle: math.pi / 4,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      color: widget.accent,
                     ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
-                      child: Container(color: widget.accent),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'YuLi · IA',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ySans(
+                          size: 18,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                        ),
+                      ),
+                      Text(
+                        widget.isBoard
+                            ? 'ASISTENTE DE PROYECTO'
+                            : 'ASISTENTE DE NOTAS',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: yMono(
+                          size: 8,
+                          tracking: 1.6,
+                          color: yCream.withValues(alpha: 0.78),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // FLASH | PRO segmented control.
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: yCream, width: yLineMid),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _seg(
+                        'FLASH',
+                        _s.model == AiModel.flash,
+                        () => _s.setModel(AiModel.flash),
+                      ),
+                      Container(width: yLineThin, height: 24, color: yCream),
+                      _seg(
+                        'PRO',
+                        _s.model == AiModel.pro,
+                        () => _s.setModel(AiModel.pro),
+                      ),
+                    ],
+                  ),
+                ),
+                if (used != null) ...[
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 58,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '$used/$_kDailyCap',
+                          textAlign: TextAlign.right,
+                          style: yMono(size: 9, tracking: 0.6, color: yCream),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          height: 5,
+                          decoration: BoxDecoration(
+                            border: Border.all(color: yCream, width: 1),
+                          ),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
+                            child: Container(color: yCream),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
-          const SizedBox(width: 8),
-          // Context toggle: shows/hides the context bar; accent-filled when the
-          // chat has context backing it (board, anchor, or linked sources).
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _showContext = !_showContext),
-            child: Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _hasAnyContext() ? widget.accent : null,
-                border: Border.all(color: yCream, width: yLineMid),
-              ),
-              child: const Icon(YuLiIcons.link, size: 16, color: yCream),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _openChatMenu,
-            child: Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border.all(color: yCream, width: yLineMid),
-              ),
-              child: const Icon(
-                YuLiIcons.moreHorizontal,
-                size: 16,
-                color: yCream,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _dismiss,
-            child: Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border.all(color: yCream, width: yLineMid),
-              ),
-              child: const Icon(YuLiIcons.close, size: 16, color: yCream),
+                const SizedBox(width: 8),
+                // Context toggle: shows/hides the context bar; accent-filled when the
+                // chat has context backing it (board, anchor, or linked sources).
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _showContext = !_showContext),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _hasAnyContext() ? yCream : null,
+                      border: Border.all(color: yCream, width: yLineMid),
+                    ),
+                    child: Icon(
+                      YuLiIcons.link,
+                      size: 16,
+                      color: _hasAnyContext() ? widget.accent : yCream,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _openChatMenu,
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: yCream, width: yLineMid),
+                    ),
+                    child: const Icon(
+                      YuLiIcons.moreHorizontal,
+                      size: 16,
+                      color: yCream,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _dismiss,
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: yCream, width: yLineMid),
+                    ),
+                    child: const Icon(YuLiIcons.close, size: 16, color: yCream),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1678,14 +1707,14 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-        color: active ? widget.accent : Colors.transparent,
+        color: active ? yCream : Colors.transparent,
         child: Text(
           label,
           style: yMono(
             size: 10,
             weight: FontWeight.w700,
             tracking: 1.0,
-            color: yCream,
+            color: active ? widget.accent : yCream,
           ),
         ),
       ),
