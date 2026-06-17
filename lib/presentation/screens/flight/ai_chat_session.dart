@@ -3,44 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../data/services/ai_usage_limiter.dart';
 import '../../../domain/services/ai_assistant.dart';
+import 'ai_modes.dart';
 
-/// Default system prompt (fixed). Role, language, tone, format, anti-halluc.
-/// The context anchor is sent as a SEPARATE user message (not concatenated)
-/// so the model distinguishes instruction from content.
-const kAiSystemBase =
-    'Eres YuLi, el asistente personal del "segundo cerebro" del usuario (una '
-    'app de notas). Responde SIEMPRE en español, en tono directo pero amable, '
-    'tratando al usuario de tú. Sé conciso pero no seco: si la consulta es '
-    'breve, responde en 1-3 líneas. Ve al punto sin rodeos. Puedes empezar '
-    'con afirmaciones cortas '
-    'como "Claro", "Sí", "Entiendo". Tus respuestas se renderizan con '
-    'markdown: usa **negritas**, *cursiva*, listas, `código inline`, bloques '
-    'de código, **tablas** (formato GFM: encabezado, separador |---|---|, '
-    'columnas consistentes; mantenlas simples), blockquotes, checklists y '
-    'enlaces. NO insertes imágenes. Para matemáticas usa \$...\$ si la '
-    'expresión va dentro de un párrafo (inline), y usa SIEMPRE \$\$...\$\$ '
-    'cuando la ecuación ocupe su propia línea o varias líneas (bloque). '
-    'No intentes meter matemáticas en algo que no sea \$ o \$\$, no va a '
-    'funcionar. No mezcles los dos modos en la misma expresión. NUNCA uses '
-    'emojis ni '
-    'símbolos decorativos. No uses frases de relleno extensas. No termines tu '
-    'respuesta con una pregunta. Tu fuente de información PRINCIPAL es '
-    'el contexto proporcionado; responde basándote en él. Si algo no está en '
-    'el contexto, puedes usar tu conocimiento general, pero prioriza siempre '
-    'lo que el usuario te ha dado. No inventes enlaces, referencias '
-    'bibliográficas, citas, estadísticas o hechos históricos que no aparezcan '
-    'en el contexto. Mantén los nombres propios, términos técnicos, siglas y '
-    'acrónimos EXACTAMENTE como aparecen en el contexto; no los parafrasees '
-    'ni traduzcas. Si la pregunta es ambigua o incompleta, responde con la '
-    'interpretación más probable basada en el contexto; solo si falta por '
-    'completo, pide aclaración breve. Si falta información, dilo sin inventar. '
-    'Al extraer tareas, devuelve una por línea, accionables y breves, sin '
-    'numerar. No repitas la pregunta del usuario antes de responder; ve '
-    'directo a la respuesta. Si la pregunta es de sí/no, empieza con SÍ o NO '
-    'en la primera palabra, luego explica brevemente. No abuses de las '
-    'negritas: máximo una o dos por respuesta. Mantén los términos técnicos '
-    'en el idioma original del contexto; no los traduzcas al español si '
-    'aparecen en inglés.';
+// The active system prompt now comes from the selected [AiMode] (ai_modes.dart);
+// the chat sends mode.systemPrompt. The context anchor is sent as a SEPARATE
+// user message (not concatenated) so the model distinguishes instruction from
+// content, and is now OPTIONAL (modes work as pure dialogue without a note).
 
 const _kAnchorMaxChars = 8000;
 
@@ -80,7 +48,14 @@ const kSynthesizePrompt =
 class AiChatMsg {
   final AiRole role;
   final String text;
-  const AiChatMsg(this.role, this.text);
+
+  /// For assistant replies: the mode active when this reply was produced. Used
+  /// to drop OTHER-mode replies from the sent history so the model doesn't
+  /// imitate the old persona after a switch (the mode "trap"). null for user/
+  /// system turns and legacy messages.
+  final String? modeId;
+
+  const AiChatMsg(this.role, this.text, {this.modeId});
 }
 
 /// Per-note chat conversation. Lives in a (non-autoDispose) provider keyed by
@@ -99,6 +74,7 @@ class AiChatSession extends ChangeNotifier {
 
   AiChatSession(this.noteId, {this.scope = 'note'}) {
     _loadAnchor();
+    _loadMode();
   }
 
   static const _kAnchorPrefix = 'ai_ctx_v1_';
@@ -111,6 +87,10 @@ class AiChatSession extends ChangeNotifier {
   final List<AiChatMsg> messages = [];
   AiModel model = AiModel.flash;
   bool streaming = false;
+
+  /// Selected chat mode (skill). Persisted per session like the anchor; switching
+  /// keeps the thread — the new system prompt applies from the next turn on.
+  AiMode mode = defaultAiMode;
 
   // Token-shielding: previous anchor kept for a one-step undo after the AI
   // auto-compacts; [_compactTried] avoids re-compacting on every send.
@@ -146,6 +126,34 @@ class AiChatSession extends ChangeNotifier {
   void setModel(AiModel m) {
     model = m;
     notifyListeners();
+  }
+
+  static const _kModePrefix = 'ai_mode_v1_';
+  String get _modeKey => scope == 'note'
+      ? '$_kModePrefix$noteId'
+      : '$_kModePrefix${scope}_$noteId';
+
+  Future<void> _loadMode() async {
+    final p = await SharedPreferences.getInstance();
+    final id = p.getString(_modeKey);
+    // Guard the race: if the user already switched mode before this async load
+    // resolved, the mode is no longer the default — don't clobber their choice
+    // with the persisted id (same pattern as [_loadAnchor]'s `anchor == null`).
+    if (id != null && id != mode.id && mode.id == defaultAiMode.id) {
+      mode = aiModeById(id);
+      notifyListeners();
+    }
+  }
+
+  /// Switch the chat mode. Keeps the thread (the new prompt applies going
+  /// forward) and posts a clear notice so the user sees where the tone changed.
+  void setMode(AiMode m) {
+    if (m.id == mode.id) return;
+    mode = m;
+    messages.add(AiChatMsg(AiRole.system, '✦ Modo ${m.name} — ${m.blurb}'));
+    notifyListeners();
+    final p = SharedPreferences.getInstance();
+    p.then((prefs) => prefs.setString(_modeKey, m.id));
   }
 
   void setAnchor(String value) {
@@ -191,6 +199,31 @@ class AiChatSession extends ChangeNotifier {
     _compactTried = false;
     _saveAnchor();
     notifyListeners();
+  }
+
+  /// Renders foreign-mode [msgs] (user/assistant turns, system notices already
+  /// stripped by the caller) into a compact transcript for the mode-switch
+  /// reference block. Capped from the FRONT to a char budget so the most recent
+  /// foreign turns survive; the assistant is labelled "YuLi" (never the model).
+  static String _foldTranscript(List<AiChatMsg> msgs) {
+    const budget = 4000;
+    final lines = <String>[];
+    for (final m in msgs) {
+      final body = m.text.trim();
+      if (body.isEmpty) continue;
+      lines.add('${m.role == AiRole.assistant ? 'YuLi' : 'Usuario'}: $body');
+    }
+    // Keep the most recent turns within the budget, at WHOLE-line granularity —
+    // accumulating from the end never cuts a line (or a multi-byte char) mid-way.
+    final kept = <String>[];
+    var used = 0;
+    for (var i = lines.length - 1; i >= 0; i--) {
+      final cost = lines[i].length + 2; // + the '\n\n' separator
+      if (used + cost > budget && kept.isNotEmpty) break;
+      kept.add(lines[i]);
+      used += cost;
+    }
+    return kept.reversed.join('\n\n').trim();
   }
 
   /// The context anchor as a standalone user message (capped for token cost),
@@ -257,7 +290,7 @@ class AiChatSession extends ChangeNotifier {
       AiAssistant assistant, AiUsageLimiter limiter, String text,
       {bool quickAction = false}) async {
     final t = text.trim();
-    if (streaming || t.isEmpty || !hasAnchor) return;
+    if (streaming || t.isEmpty) return;
 
     if (!await limiter.canSend()) {
       messages.add(const AiChatMsg(AiRole.assistant,
@@ -277,23 +310,68 @@ class AiChatSession extends ChangeNotifier {
       await _autoCompact(assistant, limiter);
     }
 
+    final modeId = mode.id;
     final history = List<AiChatMsg>.from(messages);
     messages.add(AiChatMsg(AiRole.user, t));
-    messages.add(const AiChatMsg(AiRole.assistant, ''));
+    messages.add(AiChatMsg(AiRole.assistant, '', modeId: modeId));
     notifyListeners();
     await limiter.record();
 
     final idx = messages.length - 1;
     final convo = <AiMessage>[
-      const AiMessage(AiRole.system, kAiSystemBase),
-      AiMessage(AiRole.user, _anchorContent()),
+      AiMessage(AiRole.system, mode.systemPrompt),
+      if (hasAnchor) AiMessage(AiRole.user, _anchorContent()),
     ];
+
     if (!quickAction) {
-      final relevant = history.where((m) => m.role != AiRole.system).toList();
+      // Mode-bleed defense. The model imitates its OWN prior assistant replies
+      // (in-context few-shot) ABOVE the system prompt, so after a switch it
+      // stays "trapped" in the persona that wrote most of the visible history.
+      // A trailing system re-anchor wasn't enough (backends down-weight a system
+      // turn placed after the user turn). Fix: find the last reply written in a
+      // DIFFERENT mode — everything up to and including it is "foreign". Foreign
+      // turns are FOLDED into one reference block sent as SYSTEM context (not as
+      // assistant-role turns), so the model can still refer to what was said
+      // (prior answers, the user's short "ok"/"no entiendo") WITHOUT a foreign
+      // assistant *voice* left in the transcript to copy. Turns AFTER the cutoff
+      // were written in the current mode and stay as normal role messages.
+      var foreignCutoff = 0;
+      for (var i = history.length - 1; i >= 0; i--) {
+        final m = history[i];
+        if (m.role == AiRole.assistant &&
+            m.modeId != null &&
+            m.modeId != modeId) {
+          foreignCutoff = i + 1;
+          break;
+        }
+      }
+
+      if (foreignCutoff > 0) {
+        final foreign = history
+            .sublist(0, foreignCutoff)
+            .where((m) => m.role != AiRole.system)
+            .toList();
+        final transcript = _foldTranscript(foreign);
+        if (transcript.isNotEmpty) {
+          convo.add(AiMessage(
+            AiRole.system,
+            'Historial previo de esta conversación, escrito en OTRO modo de '
+            'YuLi. Úsalo SOLO como información (puedes referirte a lo que ya se '
+            'dijo), pero NO imites su estilo, su tono ni su formato: responde '
+            'según tu modo actual y NO comentes ni acuses el cambio de modo.\n\n'
+            '$transcript',
+          ));
+        }
+      }
+
+      final live = history
+          .sublist(foreignCutoff)
+          .where((m) => m.role != AiRole.system)
+          .toList();
       final maxHistory = model == AiModel.flash ? 8 : 16;
-      final capped = relevant.length > maxHistory
-          ? relevant.sublist(relevant.length - maxHistory)
-          : relevant;
+      final capped = live.length > maxHistory
+          ? live.sublist(live.length - maxHistory)
+          : live;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
     }
     convo.add(AiMessage(AiRole.user, t));
@@ -308,7 +386,8 @@ class AiChatSession extends ChangeNotifier {
       try {
         await for (final tok in assistant.streamReply(convo, model: model)) {
           yielded = true;
-          messages[idx] = AiChatMsg(AiRole.assistant, messages[idx].text + tok);
+          messages[idx] = AiChatMsg(AiRole.assistant, messages[idx].text + tok,
+              modeId: modeId);
           notifyListeners();
         }
         break; // completed cleanly
@@ -316,15 +395,16 @@ class AiChatSession extends ChangeNotifier {
         final retryable = e is AiException && e.retryable;
         if (!yielded && retryable && attempt < maxRetries) {
           attempt++;
-          messages[idx] =
-              AiChatMsg(AiRole.assistant, '⟳ Reintentando… ($attempt)');
+          messages[idx] = AiChatMsg(
+              AiRole.assistant, '⟳ Reintentando… ($attempt)',
+              modeId: modeId);
           notifyListeners();
           await Future.delayed(Duration(milliseconds: 600 * attempt));
-          messages[idx] = const AiChatMsg(AiRole.assistant, '');
+          messages[idx] = AiChatMsg(AiRole.assistant, '', modeId: modeId);
           notifyListeners();
           continue; // retry
         }
-        messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e');
+        messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e', modeId: modeId);
         notifyListeners();
         break;
       }

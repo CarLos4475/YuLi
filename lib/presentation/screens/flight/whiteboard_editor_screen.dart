@@ -21,7 +21,6 @@ import 'package:uuid/uuid.dart';
 import '../../../data/services/crash_logger.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
-import '../../widgets/ai_link_badge.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -358,6 +357,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   final Map<int, int> _loadedStrokePositions = {};
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
+
+  // YuLi AI 2 dock — a sliding side panel decoupled from the canvas (its own
+  // RepaintBoundary sibling; opening/streaming never repaints the ink).
+  final AiChatDockController _chatDock = AiChatDockController();
 
   // ─── Zoomed-out overview ──────────────────────────────────────────────────
   // At deep zoom-out the tiled layer re-rasterizes thousands of strokes every
@@ -1259,6 +1262,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _activeTick.dispose();
     _lassoGestureTick.dispose();
     _lassoPhaseTick.dispose();
+    _chatDock.dispose();
     super.dispose();
   }
 
@@ -6114,6 +6118,30 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     );
   }
 
+  /// Wraps the editor in the AI chat dock (a sliding side panel + edge handle).
+  /// The dock is a RepaintBoundary'd sibling above the canvas, so opening or
+  /// streaming the chat never repaints the ink; its transparent area passes
+  /// pointers through to the board.
+  Widget _wrapWithChatDock(Widget child, {required bool linked}) {
+    return AiChatDockScope(
+      controller: _chatDock,
+      child: Stack(
+        children: [
+          child,
+          Positioned.fill(
+            child: AiChatDock(
+              controller: _chatDock,
+              session: ref.read(aiSessionProvider(widget.note.id)),
+              accent: _accent,
+              linked: linked,
+              onSendToCanvas: _insertTextBlock,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
@@ -6122,7 +6150,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
-    final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
     final aiLinked =
         (ref
             .watch(canvasContextSourcesProvider(widget.note.id))
@@ -6130,7 +6157,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             ?.isNotEmpty) ??
         false;
 
-    return Scaffold(
+    return _wrapWithChatDock(linked: aiLinked, Scaffold(
       backgroundColor: yCream,
       body: StatusBarFlood(
         color: _headerCollapsed ? yCream2 : _accent,
@@ -6146,22 +6173,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                       folder: widget.folder,
                       spaces: spaces,
                       accent: _accent,
-                      hasAiKey: hasAiKey,
-                      aiLinked: aiLinked,
                       noteTitle: widget.note.title ?? '',
                       onExpand: () => setState(() => _headerCollapsed = false),
                       onReset: _resetView,
                       onZoomToFit: _zoomToFit,
                       onExport: _startExport,
                       onLink: () => _linkToLab(spaces),
-                      onAi:
-                          () => showAiChat(
-                            context,
-                            ref,
-                            noteId: widget.note.id,
-                            accent: _accent,
-                            onSendToCanvas: _insertTextBlock,
-                          ),
                     )
                   else ...[
                     Column(
@@ -6261,40 +6278,6 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                   YuLiIcons.infinity,
                                   color: yCream,
                                   size: 16,
-                                ),
-                              ),
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap:
-                                  hasAiKey
-                                      ? () => showAiChat(
-                                        context,
-                                        ref,
-                                        noteId: widget.note.id,
-                                        accent: _accent,
-                                        onSendToCanvas: _insertTextBlock,
-                                      )
-                                      : null,
-                              child: AiLinkBadge(
-                                active: aiLinked,
-                                color: _accent,
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: hasAiKey ? _accent : yMuted,
-                                    border: Border.all(
-                                      color: yBorderStrong,
-                                      width: yLineMid,
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    YuLiIcons.sparkles,
-                                    color: hasAiKey ? yCream : yCream2,
-                                    size: 16,
-                                  ),
                                 ),
                               ),
                             ),
@@ -6785,7 +6768,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           ),
         ),
       ),
-    );
+    ));
   }
 
   // ─── Export ────────────────────────────────────────────────────────────
@@ -7462,29 +7445,23 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
   final Folder folder;
   final List<LabSpace> spaces;
   final Color accent;
-  final bool hasAiKey;
-  final bool aiLinked;
   final String noteTitle;
   final VoidCallback onExpand;
   final VoidCallback onReset;
   final VoidCallback onZoomToFit;
   final VoidCallback onExport;
   final VoidCallback onLink;
-  final VoidCallback onAi;
 
   const _CollapsedWhiteboardHeader({
     required this.folder,
     required this.spaces,
     required this.accent,
-    required this.hasAiKey,
-    required this.aiLinked,
     required this.noteTitle,
     required this.onExpand,
     required this.onReset,
     required this.onZoomToFit,
     required this.onExport,
     required this.onLink,
-    required this.onAi,
   });
 
   @override
@@ -7590,29 +7567,6 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(YuLiIcons.infinity, color: yCream, size: 16),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: hasAiKey ? onAi : null,
-            child: AiLinkBadge(
-              active: aiLinked,
-              color: accent,
-              child: Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: hasAiKey ? accent : yMuted,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
-                ),
-                child: Icon(
-                  YuLiIcons.sparkles,
-                  color: hasAiKey ? yCream : yCream2,
-                  size: 16,
-                ),
-              ),
             ),
           ),
           const SizedBox(width: 6),

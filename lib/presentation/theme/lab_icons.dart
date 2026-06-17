@@ -107,6 +107,11 @@ class YuLiIcons {
   static const IconData info = LucideIcons.info;
   static const IconData helpCircle = LucideIcons.helpCircle;
   static const IconData bug = LucideIcons.bug;
+  // YuLi AI chat modes (skills).
+  static const IconData scale = LucideIcons.scale;
+  static const IconData graduationCap = LucideIcons.graduationCap;
+  static const IconData lightbulb = LucideIcons.lightbulb;
+  static const IconData brain = LucideIcons.brain;
 
   // ─── Misc ────────────────────────────────────────────────────
   static const IconData pin = LucideIcons.pin;

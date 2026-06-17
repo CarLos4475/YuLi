@@ -6,8 +6,16 @@ import '../../data/services/deepseek_assistant.dart';
 import '../../data/services/web_reader.dart';
 import '../../domain/services/ai_assistant.dart';
 import '../screens/flight/ai_chat_session.dart';
+import '../screens/flight/ai_modes.dart';
 
 final aiKeyStoreProvider = Provider<AiKeyStore>((ref) => AiKeyStore());
+
+/// Store for user-authored chat modes (custom personas). Reactive — the mode
+/// catalog watches it so adding/removing a mode rebuilds. The module-level
+/// mirror in ai_modes.dart is loaded at app start (so [aiModeById] resolves
+/// persisted custom ids even before this provider is first read).
+final customModesStoreProvider =
+    ChangeNotifierProvider<CustomModesStore>((ref) => CustomModesStore());
 
 /// Optional Jina Reader key + the URL→markdown reader (external context sources).
 final jinaKeyStoreProvider = Provider<JinaKeyStore>((ref) => JinaKeyStore());

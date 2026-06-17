@@ -28,7 +28,6 @@ import '../../../domain/repositories/drawing_stroke_repository.dart';
 import '../../../domain/repositories/note_block_repository.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
-import '../../widgets/ai_link_badge.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -229,6 +228,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final Map<int, DrawingData> _pageData = {};
   final List<int> _pageBlockIds = [];
   final Map<int, DrawingBlock> _pageShells = {};
+
+  // YuLi AI 2 dock — a sliding side panel decoupled from the canvas (its own
+  // RepaintBoundary sibling; opening/streaming never repaints the ink).
+  final AiChatDockController _chatDock = AiChatDockController();
   // Pages not yet decoded on a lazy open: queued here, swept in the background
   // (window-first via _livePageMargin, then nearest-first), never evicted once in.
   final Map<int, DrawingBlock> _pendingDecode = {};
@@ -663,6 +666,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _zoomGestureTick.dispose();
     _lassoGestureTick.dispose();
     _lassoPhaseTick.dispose();
+    _chatDock.dispose();
     super.dispose();
   }
 
@@ -5484,7 +5488,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _shapePopupOpen = false;
       _toolbarVisible = false;
     });
-    _appendWorldStrokeCache(_pageBlockIds[pageIdx], stroke);
+    _appendToPage(_pageBlockIds[pageIdx], stroke);
     // Flat index in world-space _allVisibleStrokes (new stroke is last in its
     // page; pages concatenate in order).
     int flat = 0;
@@ -7030,9 +7034,32 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
+  /// Wraps the editor in the AI chat dock (a sliding side panel + edge handle).
+  /// The dock is a RepaintBoundary'd sibling above the canvas, so opening or
+  /// streaming the chat never repaints the ink; its transparent area passes
+  /// pointers through to the pages.
+  Widget _wrapWithChatDock(Widget child, {required bool linked}) {
+    return AiChatDockScope(
+      controller: _chatDock,
+      child: Stack(
+        children: [
+          child,
+          Positioned.fill(
+            child: AiChatDock(
+              controller: _chatDock,
+              session: ref.read(aiSessionProvider(widget.note.id)),
+              accent: _accent,
+              linked: linked,
+              onSendToCanvas: _insertTextBlock,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
     final aiLinked =
         (ref
             .watch(canvasContextSourcesProvider(widget.note.id))
@@ -7045,7 +7072,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
-    return Scaffold(
+    return _wrapWithChatDock(linked: aiLinked, Scaffold(
       backgroundColor: yCream,
       body: StatusBarFlood(
         color: _headerCollapsed ? yCream2 : _accent,
@@ -7062,19 +7089,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                       pageCount: _pageBlockIds.length,
                       background: _currentBg,
                       accent: _accent,
-                      hasAiKey: hasAiKey,
-                      aiLinked: aiLinked,
                       noteTitle: widget.note.title ?? '',
                       onExpand: () => setState(() => _headerCollapsed = false),
                       onOpenPages: _togglePageDrawer,
-                      onAi:
-                          () => showAiChat(
-                            context,
-                            ref,
-                            noteId: widget.note.id,
-                            accent: _accent,
-                            onSendToCanvas: _insertTextBlock,
-                          ),
                     )
                   else ...[
                     ModeHeader(
@@ -7109,40 +7126,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                               YuLiIcons.bookOpen,
                               color: yInk,
                               size: 18,
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap:
-                              hasAiKey
-                                  ? () => showAiChat(
-                                    context,
-                                    ref,
-                                    noteId: widget.note.id,
-                                    accent: _accent,
-                                    onSendToCanvas: _insertTextBlock,
-                                  )
-                                  : null,
-                          child: AiLinkBadge(
-                            active: aiLinked,
-                            color: _accent,
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: hasAiKey ? _accent : yMuted,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
-                                ),
-                              ),
-                              child: Icon(
-                                YuLiIcons.sparkles,
-                                color: hasAiKey ? yCream : yCream2,
-                                size: 18,
-                              ),
                             ),
                           ),
                         ),
@@ -7822,7 +7805,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           ),
         ),
       ),
-    );
+    ));
   }
 
   // ─── Toolbar ───────────────────────────────────────────────────────────
@@ -8624,24 +8607,18 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final int pageCount;
   final PageBackground background;
   final Color accent;
-  final bool hasAiKey;
-  final bool aiLinked;
   final String noteTitle;
   final VoidCallback onExpand;
   final VoidCallback onOpenPages;
-  final VoidCallback onAi;
 
   const _CollapsedNotebookHeader({
     required this.folder,
     required this.pageCount,
     required this.background,
     required this.accent,
-    required this.hasAiKey,
-    required this.aiLinked,
     required this.noteTitle,
     required this.onExpand,
     required this.onOpenPages,
-    required this.onAi,
   });
 
   @override
@@ -8702,29 +8679,6 @@ class _CollapsedNotebookHeader extends StatelessWidget {
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(YuLiIcons.bookOpen, color: yInk, size: 16),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: hasAiKey ? onAi : null,
-            child: AiLinkBadge(
-              active: aiLinked,
-              color: accent,
-              child: Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: hasAiKey ? accent : yMuted,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
-                ),
-                child: Icon(
-                  YuLiIcons.sparkles,
-                  color: hasAiKey ? yCream : yCream2,
-                  size: 16,
-                ),
-              ),
             ),
           ),
           const SizedBox(width: 6),

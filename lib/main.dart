@@ -17,6 +17,7 @@ import 'presentation/widgets/app_banner.dart';
 import 'presentation/widgets/yuli_design.dart';
 import 'presentation/widgets/yuli_splash_screen.dart';
 import 'presentation/screens/fight/fight_screen.dart';
+import 'presentation/screens/flight/ai_modes.dart';
 import 'presentation/screens/flight/flight_screen.dart';
 import 'presentation/screens/lab/lab_screen.dart';
 import 'presentation/screens/home/home_screen.dart';
@@ -55,6 +56,10 @@ void main() {
         );
         return true;
       };
+
+      // Load user-authored chat modes into the module mirror BEFORE runApp so a
+      // session restoring a persisted custom mode id resolves it (best-effort).
+      await loadCustomModes();
 
       final themeOverride = await initThemeModeOverride();
       runApp(ProviderScope(overrides: [themeOverride], child: const YuLiApp()));

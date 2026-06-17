@@ -12,7 +12,6 @@ import '../../utils/pdf_export.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/status_bar_flood.dart';
-import '../../widgets/ai_link_badge.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/lab_space.dart';
@@ -51,6 +50,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   bool _isPreview = false;
   bool _scrollLocked = false;
   bool _headerCollapsed = true;
+  final AiChatDockController _chatDock = AiChatDockController();
 
   Color get _accent => widget.note.color ?? widget.folder.color;
 
@@ -66,6 +66,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     _titleSaveTimer?.cancel();
     _saveTitle();
     _titleCtrl.dispose();
+    _chatDock.dispose();
     super.dispose();
   }
 
@@ -85,91 +86,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final updated = widget.note.copyWith(title: newTitle);
     await ref.read(noteRepositoryProvider).update(updated);
     if (mounted) setState(() => _dirty = false);
-  }
-
-  /// Apply an AI-suggested title to the note's title field + persist.
-  void _applyAiTitle(String title) {
-    _titleCtrl.text = title;
-    _titleCtrl.selection = TextSelection.collapsed(
-      offset: _titleCtrl.text.length,
-    );
-    _saveTitle();
-  }
-
-  /// Open the AI chat for this note. The persisted anchor (if any) is loaded
-  /// automatically by [AiChatSession]; no new context is injected here.
-  void _openAiChat() {
-    showAiChat(
-      context,
-      ref,
-      noteId: widget.note.id,
-      accent: _accent,
-      onApplyTitle: _applyAiTitle,
-    );
-  }
-
-  /// Explicitly push the current note content as the AI context anchor.
-  /// If the note text is already contained in the persisted anchor, the
-  /// chat simply opens without prompting. Otherwise it asks Añadir/Reemplazar.
-  void _pushNoteContextToAi(List<NoteBlock> blocks) {
-    String? ctx;
-    try {
-      ctx = _noteContext(blocks);
-    } catch (_) {
-      // If reading blocks fails (e.g. a locked drawing cell), fall back to
-      // opening the chat without injecting new context.
-    }
-    if (ctx != null && ctx.isNotEmpty) {
-      final session = ref.read(aiSessionProvider(widget.note.id));
-      final anchor = session.anchor;
-      // If the note content is already present in the anchor (with normalised
-      // whitespace), skip injecting it again to avoid duplication.
-      if (anchor != null &&
-          anchor.isNotEmpty &&
-          _normalise(anchor).contains(_normalise(ctx))) {
-        showAiChat(
-          context,
-          ref,
-          noteId: widget.note.id,
-          accent: _accent,
-          onApplyTitle: _applyAiTitle,
-        );
-        return;
-      }
-    }
-    showAiChat(
-      context,
-      ref,
-      noteId: widget.note.id,
-      newContext: ctx,
-      accent: _accent,
-      onApplyTitle: _applyAiTitle,
-    );
-  }
-
-  String _normalise(String s) =>
-      s.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-
-  /// Flatten the note's textual cells into a plain-text context for the AI.
-  /// Skips tasks and drawings.
-  String _noteContext(List<NoteBlock> blocks) {
-    final buf = StringBuffer();
-    final title = _titleCtrl.text.trim();
-    if (title.isNotEmpty) buf.writeln('# $title\n');
-    for (final b in blocks) {
-      if (b is TextBlock) {
-        if (b.markdown.trim().isNotEmpty) buf.writeln('${b.markdown}\n');
-      } else if (b is BulletsBlock) {
-        for (final it in b.items) {
-          if (it.trim().isNotEmpty) buf.writeln('- $it');
-        }
-        buf.writeln();
-      } else if (b is MathBlock) {
-        if (b.latex.trim().isNotEmpty) buf.writeln('\$\$${b.latex}\$\$\n');
-      }
-      // TareasBlock and DrawingBlock are intentionally skipped.
-    }
-    return buf.toString().trim();
   }
 
   Future<void> _addBlock(NoteBlockType type) async {
@@ -360,6 +276,28 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     );
   }
 
+  /// Wraps the editor in the chat dock scope + the sliding panel (sibling of the
+  /// body, so opening/streaming never repaints the editor; its transparent area
+  /// passes pointers through to the note).
+  Widget _wrapWithChatDock(Widget child, {required bool linked}) {
+    return AiChatDockScope(
+      controller: _chatDock,
+      child: Stack(
+        children: [
+          child,
+          Positioned.fill(
+            child: AiChatDock(
+              controller: _chatDock,
+              session: ref.read(aiSessionProvider(widget.note.id)),
+              accent: _accent,
+              linked: linked,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final blocks =
@@ -378,7 +316,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     ?.isNotEmpty ??
                 false));
 
-    return Scaffold(
+    return _wrapWithChatDock(Scaffold(
       backgroundColor: yCream,
       body: StatusBarFlood(
         // Header is the note accent when expanded, cream2 when collapsed.
@@ -395,8 +333,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       titleCtrl: _titleCtrl,
                       dirty: _dirty,
                       isPreview: _isPreview,
-                      hasAiKey: hasAiKey,
-                      aiLinked: aiLinked,
                       accent: _accent,
                       onBack: () => Navigator.pop(context),
                       onSave: _saveTitle,
@@ -404,8 +340,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                           () => setState(() => _isPreview = !_isPreview),
                       onPdf: () => _exportPdf(blocks),
                       onExpand: () => setState(() => _headerCollapsed = false),
-                      onAi: () => _openAiChat(),
-                      onAiLongPress: () => _pushNoteContextToAi(blocks),
                     )
                   else ...[
                     ModeHeader(
@@ -415,8 +349,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                       color: _accent,
                       onBack: () => Navigator.pop(context),
                       headerRight: _buildExpandedHeaderRight(
-                        hasAiKey: hasAiKey,
-                        aiLinked: aiLinked,
                         dirty: _dirty,
                         isPreview: _isPreview,
                         onSave: _saveTitle,
@@ -529,7 +461,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           ),
         ),
       ),
-    );
+    ), linked: aiLinked);
   }
 
   Widget _buildPreview(List<NoteBlock> blocks) {
@@ -622,8 +554,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   /// Action icons rendered in the expanded [ModeHeader] headerRight, matching
   /// pizarra/cuaderno. Order: @carpeta, save, preview, link, PDF, AI, collapse.
   List<Widget> _buildExpandedHeaderRight({
-    required bool hasAiKey,
-    required bool aiLinked,
     required bool dirty,
     required bool isPreview,
     required VoidCallback onSave,
@@ -662,28 +592,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         color: yAmber,
         onTap: onPdf,
       ),
-      AiLinkBadge(
-        active: aiLinked,
-        color: _accent,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: hasAiKey ? _openAiChat : null,
-          child: Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: hasAiKey ? _accent : yMuted,
-              border: Border.all(color: yBorderStrong, width: yLineMid),
-            ),
-            child: Icon(
-              YuLiIcons.sparkles,
-              color: hasAiKey ? yCream : yCream2,
-              size: 18,
-            ),
-          ),
-        ),
-      ),
       GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onCollapse,
@@ -709,32 +617,24 @@ class _CollapsedHeader extends StatelessWidget {
   final TextEditingController titleCtrl;
   final bool dirty;
   final bool isPreview;
-  final bool hasAiKey;
-  final bool aiLinked;
   final Color accent;
   final VoidCallback onBack;
   final VoidCallback onSave;
   final VoidCallback onTogglePreview;
   final VoidCallback onPdf;
   final VoidCallback onExpand;
-  final VoidCallback onAi;
-  final VoidCallback? onAiLongPress;
 
   const _CollapsedHeader({
     required this.folder,
     required this.titleCtrl,
     required this.dirty,
     required this.isPreview,
-    required this.hasAiKey,
-    required this.aiLinked,
     required this.accent,
     required this.onBack,
     required this.onSave,
     required this.onTogglePreview,
     required this.onPdf,
     required this.onExpand,
-    required this.onAi,
-    this.onAiLongPress,
   });
 
   @override
@@ -781,18 +681,6 @@ class _CollapsedHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          AiLinkBadge(
-            active: aiLinked,
-            color: accent,
-            child: _HeaderIcon(
-              icon: YuLiIcons.sparkles,
-              fill: hasAiKey,
-              color: hasAiKey ? accent : yMuted,
-              onTap: hasAiKey ? onAi : null,
-              onLongPress: hasAiKey ? onAiLongPress : null,
-            ),
-          ),
-          const SizedBox(width: 6),
           _HeaderIcon(
             icon: YuLiIcons.check,
             fill: !dirty,
@@ -885,14 +773,12 @@ class _HeaderIcon extends StatelessWidget {
   final bool fill;
   final Color color;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
 
   const _HeaderIcon({
     required this.icon,
     this.fill = false,
     this.color = yCream,
     this.onTap,
-    this.onLongPress,
   });
 
   @override
@@ -900,7 +786,6 @@ class _HeaderIcon extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      onLongPress: onLongPress,
       child: Container(
         width: 38,
         height: 38,

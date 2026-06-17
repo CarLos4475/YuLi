@@ -6,9 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
+import '../../widgets/ai_link_badge.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
-import '../../widgets/ai_working_dialog.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import '../../../domain/services/ai_assistant.dart';
@@ -19,8 +19,9 @@ import '../../../domain/models/canvas_context_source.dart';
 import '../../../data/services/context_cache.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
 import 'ai_chat_session.dart';
+import 'ai_modes.dart';
+import 'mode_builder_screen.dart';
 import 'context_assembler.dart' as ctx;
-import 'ocr_send_to_note.dart' show sendTextToNote;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
 import 'note_block_widgets.dart' show NoteMarkdownPreview, fixMarkdownTables;
@@ -78,6 +79,13 @@ Future<void> showAiChat(
   }
 
   if (!context.mounted) return;
+  // A note editor mounts a docked panel (AiChatDockScope) → open it in place
+  // (note + YuLi side by side). Other contexts (no dock) fall back to the modal.
+  final dock = AiChatDockScope.maybeOf(context);
+  if (dock != null) {
+    dock.open();
+    return;
+  }
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -216,12 +224,221 @@ Widget _bigChoice(String label, Color accent, bool filled, VoidCallback onTap) {
   );
 }
 
+/// Open/closed state of a docked chat panel. A `ChangeNotifier` (not a setState)
+/// so toggling it NEVER rebuilds the host editor — only the [AiChatDock] listens
+/// (same decoupling as the floating pins / palettes).
+class AiChatDockController extends ChangeNotifier {
+  bool _open = false;
+  bool get isOpen => _open;
+
+  void open() {
+    if (_open) return;
+    _open = true;
+    notifyListeners();
+  }
+
+  void close() {
+    if (!_open) return;
+    _open = false;
+    notifyListeners();
+  }
+
+  void toggle() => _open ? close() : open();
+}
+
+/// Provides the [AiChatDockController] to descendants so [showAiChat] can find
+/// and open the mounted panel instead of a modal sheet.
+class AiChatDockScope extends InheritedWidget {
+  final AiChatDockController controller;
+
+  const AiChatDockScope({
+    super.key,
+    required this.controller,
+    required super.child,
+  });
+
+  static AiChatDockController? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<AiChatDockScope>()?.controller;
+
+  @override
+  bool updateShouldNotify(AiChatDockScope old) => controller != old.controller;
+}
+
+/// Edge-docked chat panel for the note editors: a handle on the right edge that
+/// slides the chat in/out. Mounted as a SIBLING of the canvas Listener (so a
+/// tap on it never leaks a stroke) and wrapped in a RepaintBoundary; the open
+/// state is a [ChangeNotifier], so opening/closing or streaming NEVER repaints
+/// the canvas. Its transparent area passes pointers through to the canvas, so
+/// the note stays interactive next to the chat.
+class AiChatDock extends StatefulWidget {
+  final AiChatDockController controller;
+  final AiChatSession session;
+  final Color accent;
+  final void Function(String markdown)? onSendToCanvas;
+
+  /// AI context is linked/synced → the handle hard-blinks (the indicator that
+  /// used to live on the header AI button now rides the tab).
+  final bool linked;
+
+  const AiChatDock({
+    super.key,
+    required this.controller,
+    required this.session,
+    required this.accent,
+    this.onSendToCanvas,
+    this.linked = false,
+  });
+
+  @override
+  State<AiChatDock> createState() => _AiChatDockState();
+}
+
+class _AiChatDockState extends State<AiChatDock>
+    with SingleTickerProviderStateMixin {
+  static const double _w = 480;
+  static const double _handleW = 30;
+  static const double _handleH = 96;
+
+  late final AnimationController _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+    value: widget.controller.isOpen ? 1 : 0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onToggle);
+  }
+
+  void _onToggle() =>
+      widget.controller.isOpen ? _anim.forward() : _anim.reverse();
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onToggle);
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (context, _) {
+          final t = Curves.easeOutCubic.transform(_anim.value);
+          final h = MediaQuery.of(context).size.height;
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // The panel, sliding from the right edge (off-screen at t=0).
+              Positioned(
+                top: 0,
+                bottom: 0,
+                width: _w,
+                right: _w * (t - 1),
+                child:
+                    t < 0.02
+                        ? const SizedBox.shrink()
+                        : Container(
+                          decoration: const BoxDecoration(
+                            color: yCream,
+                            border: Border(
+                              left: BorderSide(
+                                color: yBorderStrong,
+                                width: yLineMid,
+                              ),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: yBorderStrong,
+                                offset: Offset(-3, 0),
+                              ),
+                            ],
+                          ),
+                          child: _AiChatSheet(
+                            session: widget.session,
+                            accent: widget.accent,
+                            onSendToCanvas: widget.onSendToCanvas,
+                            embedded: true,
+                            onClose: widget.controller.close,
+                          ),
+                        ),
+              ),
+              // The handle rides the panel's left edge: at the screen edge when
+              // closed, at the panel edge when open. Carries the active mode's
+              // icon (rebuilds only this tiny widget on mode change / streaming).
+              Positioned(
+                top: h * 0.34,
+                right: _w * t,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.controller.toggle,
+                  child: AiLinkBadge(
+                    active: widget.linked,
+                    color: yCream,
+                    child: Container(
+                      width: _handleW,
+                      height: _handleH,
+                      decoration: BoxDecoration(
+                        color: widget.accent,
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: yBorderStrong,
+                            offset: Offset(-2, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedBuilder(
+                            animation: widget.session,
+                            builder:
+                                (_, _) => Icon(
+                                  widget.session.mode.icon,
+                                  size: 15,
+                                  color: yCream,
+                                ),
+                          ),
+                          const SizedBox(height: 5),
+                          Icon(
+                            t > 0.5
+                                ? YuLiIcons.chevronRight
+                                : YuLiIcons.chevronLeft,
+                            size: 13,
+                            color: yCream,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _AiChatSheet extends ConsumerStatefulWidget {
   final AiChatSession session;
   final Color accent;
   final String? prefillMessage;
   final void Function(String markdown)? onSendToCanvas;
   final void Function(String title)? onApplyTitle;
+
+  /// Docked-panel mode: fills the dock (no modal frame); the close button and
+  /// "Enviar a lienzo" call [onClose] instead of Navigator.pop.
+  final bool embedded;
+  final VoidCallback? onClose;
 
   /// Board mode (LAB): the context is a serialized Kanban board (not a note).
   /// Hides note-specific UI (sources/canvas/save-to-note/extract-tasks) and uses
@@ -236,6 +453,8 @@ class _AiChatSheet extends ConsumerStatefulWidget {
     this.prefillMessage,
     this.onSendToCanvas,
     this.onApplyTitle,
+    this.embedded = false,
+    this.onClose,
     this.isBoard = false,
     this.boardLabel,
     this.onResyncContext,
@@ -281,6 +500,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   // ─── Canvas context sources (notes + urls) — assembly & sync ──────────────
 
   DateTime? _syncedAt;
+
+  /// Whether the context bar is expanded. Collapsed by default so the chat gets
+  /// the vertical space; the header context button toggles it.
+  bool _showContext = false;
 
   /// Rebuild the anchor from ALL context sources. For **block notes** the
   /// note's own content is the primary source (implicit, no DB row) followed by
@@ -404,7 +627,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   void _send(String text, {bool quickAction = false}) {
-    if (text.trim().isEmpty || _s.streaming || !_s.hasAnchor) return;
+    // Anchor is OPTIONAL in v2 (modes work as pure dialogue), so DON'T gate on
+    // hasAnchor — that silently blocked sending on a canvas with no linked
+    // sources (pizarra/cuaderno), where the button looked dead.
+    if (text.trim().isEmpty || _s.streaming) return;
     if (!quickAction) _input.clear();
     _s.send(
       ref.read(aiAssistantProvider),
@@ -416,6 +642,35 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      // Docked panel: fill the dock with its OWN Material (TextFields need one
+      // outside a route). The top safe-area strip is painted ink so it blends
+      // with the dark header (instead of leaking the cream body). The bottom
+      // Padding lifts the input above the keyboard so you see what you type.
+      final topInset = MediaQuery.of(context).padding.top;
+      return Material(
+        color: yCream,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            children: [
+              Container(height: topInset, color: yInk),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: AnimatedBuilder(
+                    animation: _s,
+                    builder: (_, _) => _buildChat(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final insets = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: insets),
@@ -430,27 +685,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           ),
           child: SafeArea(
             top: false,
+            // Anchor is now OPTIONAL (modes work as pure dialogue) → always show
+            // the chat; the context bar offers to add context if the user wants.
             child: AnimatedBuilder(
               animation: _s,
-              builder: (_, _) {
-                // Board (LAB) mode: always the chat; context is the serialized
-                // board, no note/canvas providers involved.
-                if (widget.isBoard) return _buildChat();
-                final hostKind =
-                    ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
-                final isBlock = hostKind == NoteKind.block;
-                // Block notes: show the chat only when there's actual content
-                // (hasAnchor set by _resyncFromSources). Empty → gate.
-                final linked =
-                    (ref
-                        .watch(canvasContextSourcesProvider(_s.noteId))
-                        .valueOrNull
-                        ?.isNotEmpty) ??
-                    false;
-                final showChat =
-                    isBlock ? _s.hasAnchor : (_s.hasAnchor || linked);
-                return showChat ? _buildChat() : _buildAnchorGate(isBlock);
-              },
+              builder: (_, _) => _buildChat(),
             ),
           ),
         ),
@@ -458,215 +697,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  Widget _buildAnchorGate([bool isBlock = false]) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _header(),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (isBlock) ...[
-                Text(
-                  'ESTA NOTA ESTÁ VACÍA',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Importa otra nota o agrega un enlace para darle contexto a la IA.',
-                  style: yMono(size: 10, tracking: 0.4, color: yMuted),
-                ),
-              ] else ...[
-                Text(
-                  '¿DE QUÉ ES ESTO?',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Dale un punto de partida (ej. "Proceso de Markov"). Queda como '
-                  'contexto de la conversación; puedes editarlo luego.',
-                  style: yMono(size: 10, tracking: 0.4, color: yMuted),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _anchorInput,
-                  autofocus: true,
-                  maxLines: 3,
-                  minLines: 1,
-                  style: yBody(size: 15, color: yInk),
-                  onSubmitted: (v) => _s.setAnchor(v),
-                  decoration: _fieldDeco('¿Sobre qué quieres hablar?'),
-                ),
-                const SizedBox(height: 12),
-                _primaryButton(
-                  'EMPEZAR',
-                  () => _s.setAnchor(_anchorInput.text),
-                ),
-                const SizedBox(height: 10),
-              ],
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _showNotePicker,
-                child: Container(
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: yCream,
-                    border: Border.all(color: yBorderStrong, width: yLineMid),
-                  ),
-                  child: Text(
-                    'IMPORTAR NOTA',
-                    style: yMono(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _showSourcesSheet,
-                child: Container(
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: yCream,
-                    border: Border.all(color: widget.accent, width: yLineMid),
-                  ),
-                  child: Text(
-                    'FUENTES DE CONTEXTO',
-                    style: yMono(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   /// Open a bottom sheet listing the other notes in the same folder so the
   /// user can pick one to import as the chat anchor.
-  void _showNotePicker() async {
-    final noteAsync = ref.read(noteByIdProvider(_s.noteId));
-    final note = noteAsync.valueOrNull;
-    if (note == null) return;
-    final folderId = note.folderId;
-    if (!context.mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final notesAsync = ref.watch(notesByFolderProvider(folderId));
-        final notes = notesAsync.valueOrNull ?? [];
-        // Exclude the current note itself (pizarra / cuaderno / nota).
-        final others = notes.where((n) => n.id != _s.noteId).toList();
-
-        return Container(
-          decoration: const BoxDecoration(
-            color: yCream,
-            border: Border(
-              top: BorderSide(color: yBorderStrong, width: yLineMid),
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'IMPORTAR NOTA',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (others.isEmpty)
-                  Text(
-                    'No hay otras notas en esta carpeta.',
-                    style: yBody(size: 13, color: yMuted),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: others.length,
-                      itemBuilder: (_, i) {
-                        final n = others[i];
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () async {
-                            Navigator.of(ctx).pop();
-                            final blocksAsync = await ref.read(
-                              noteBlocksProvider(n.id).future,
-                            );
-                            final ctxText = _extractNoteContext(blocksAsync);
-                            if (ctxText.isNotEmpty) {
-                              _s.setAnchor(ctxText);
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: const BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: yBorderStrong,
-                                  width: yLineThin,
-                                ),
-                              ),
-                            ),
-                            child: Text(
-                              (n.title?.isEmpty ?? true)
-                                  ? 'Sin título'
-                                  : n.title!,
-                              style: ySans(
-                                size: 14,
-                                weight: FontWeight.w700,
-                                color: yInk,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   /// Extract a plain-text context from a note's blocks (same rules as the
   /// note editor: text + bullets + math; skip tasks & drawings).
   String _extractNoteContext(List<NoteBlock> blocks) =>
@@ -676,7 +708,17 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Column(
       children: [
         _header(),
-        _contextBar(),
+        _modeBar(),
+        // Context bar slides in/out (grows/collapses from the top) instead of
+        // popping, so toggling it reads smooth.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _showContext
+              ? _contextBar()
+              : const SizedBox(width: double.infinity),
+        ),
         Expanded(
           child: ListView(
             controller: _scroll,
@@ -689,10 +731,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ],
           ),
         ),
-        _quickActions(),
         _inputBar(),
       ],
     );
+  }
+
+  /// Whether there's any context backing the chat (board, anchor, or linked
+  /// sources). Drives the header context button's accent state. Reads providers
+  /// — call during build only.
+  bool _hasAnyContext() {
+    if (widget.isBoard) return true;
+    if (_s.hasAnchor) return true;
+    final sources =
+        ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
+        const [];
+    return sources.isNotEmpty;
   }
 
   /// Branches: block notes get the implicit "NOTA COMO CONTEXTO" bar; canvases
@@ -836,7 +889,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           const SizedBox(width: 6),
           _ghostIcon(YuLiIcons.pen, 'Editar contexto', _editContext),
           const SizedBox(width: 6),
-          _ghostIcon(YuLiIcons.close, 'Quitar contexto', () => _s.setAnchor('')),
+          _ghostIcon(
+            YuLiIcons.close,
+            'Quitar contexto',
+            () => _s.setAnchor(''),
+          ),
         ],
       ),
     );
@@ -883,9 +940,17 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           const SizedBox(width: 8),
           // Re-reads local notes only; urls are refreshed per-source from the
           // Fuentes sheet (no surprise network).
-          _ghostIcon(YuLiIcons.refresh, 'Re-sincronizar notas', _resyncFromSources),
+          _ghostIcon(
+            YuLiIcons.refresh,
+            'Re-sincronizar notas',
+            _resyncFromSources,
+          ),
           const SizedBox(width: 6),
-          _ghostIcon(YuLiIcons.slidersHorizontal, 'Gestionar fuentes', _showSourcesSheet),
+          _ghostIcon(
+            YuLiIcons.slidersHorizontal,
+            'Gestionar fuentes',
+            _showSourcesSheet,
+          ),
         ],
       ),
     );
@@ -919,13 +984,523 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// UI-only greeting bubble shown when the conversation is empty.
-  Widget _greeting() => _aiMsgFrame(
-    const Text(
-      'Hola. Tengo tu contexto cargado, ¿qué hacemos con él?',
-      style: TextStyle(fontSize: 15, height: 1.5, color: yInk),
-    ),
-  );
+  /// The hero bar under the header: the active mode (the feature's protagonist).
+  /// Tap → mode catalog. Lives in both note and board chats (modes are universal).
+  Widget _modeBar() {
+    final m = _s.mode;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _openModeCatalog,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: yCream2,
+          border: Border(
+            bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: widget.accent,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Icon(m.icon, size: 16, color: yCream),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'MODO ',
+                        style: yMono(size: 9, tracking: 1.4, color: yMuted),
+                      ),
+                      Text(
+                        m.name,
+                        style: yMono(
+                          size: 11,
+                          weight: FontWeight.w800,
+                          tracking: 1.2,
+                          color: yInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    m.blurb,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yBody(size: 11, color: yMuted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'CAMBIAR',
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                tracking: 1.0,
+                color: widget.accent,
+              ),
+            ),
+            Icon(YuLiIcons.chevronDown, size: 16, color: widget.accent),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openModeCatalog() {
+    showDialog<void>(context: context, builder: (_) => _modeCatalogContent());
+  }
+
+  /// Conversation-level actions menu (the ⋯). Quiz lands here in v2.1.
+  void _openChatMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final canSummarize = _s.messages.any((m) => m.role != AiRole.system);
+        return Container(
+          decoration: const BoxDecoration(
+            color: yCream,
+            border: Border(
+              top: BorderSide(color: yBorderStrong, width: yLineMid),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'CONVERSACIÓN',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap:
+                      !canSummarize || _s.streaming
+                          ? null
+                          : () {
+                            Navigator.pop(sheetCtx);
+                            _send(
+                              'Resume nuestra conversación hasta ahora en 3-4 '
+                              'puntos clave.',
+                            );
+                          },
+                  child: Container(
+                    height: 46,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: yCream,
+                      border: Border.all(
+                        color: canSummarize ? yBorderStrong : yBorderSoft,
+                        width: yLineMid,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          YuLiIcons.textQuote,
+                          size: 16,
+                          color: canSummarize ? widget.accent : yMuted,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'RESUMIR EL CHAT',
+                          style: yMono(
+                            size: 12,
+                            weight: FontWeight.w700,
+                            tracking: 1.0,
+                            color: canSummarize ? yInk : yMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Gallery of modes (cards) — pick one to switch. A floating centred dialog
+  /// (not a full-height sheet): fixed header, the cards scroll, and the "CREAR
+  /// MODO" button stays pinned at the bottom. Wrapped in a Consumer so adding/
+  /// deleting a custom mode rebuilds it (it's a separate route — the host State's
+  /// rebuild wouldn't reach it).
+  Widget _modeCatalogContent() {
+    return Consumer(
+      builder: (context, ref, _) {
+        final store = ref.watch(customModesStoreProvider);
+        final modes = [...kAiModes, ...store.modes];
+        final size = MediaQuery.of(context).size;
+        final maxH = size.height * 0.8 < 620 ? size.height * 0.8 : 620.0;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 570, maxHeight: maxH),
+            child: Container(
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+                boxShadow: const [
+                  BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header (fixed).
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ELEGIR MODO',
+                          style: yMono(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            tracking: 1.6,
+                            color: yInk,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'El modo es CÓMO te ayuda YuLi; el contexto es SOBRE QUÉ.',
+                          style: yBody(size: 12, color: yMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Cards (scroll). Card width is derived from the real inner
+                  // width (LayoutBuilder) so it's always exactly two columns with
+                  // no dead space, robust to the dialog border eating a few px.
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      child: LayoutBuilder(
+                        builder: (context, c) {
+                          final cardW = (c.maxWidth - 10) / 2;
+                          return Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              for (final m in modes) _modeCard(m, cardW),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  // "CREAR MODO" (fixed footer).
+                  Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: yBorderStrong, width: yLineMid),
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                    child: _createModeButton(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// "+ CREAR MODO" — launches the guided builder dialog. On save it returns the
+  /// new mode; we switch to it right away.
+  Widget _createModeButton() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _openModeBuilder,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(YuLiIcons.plus, size: 16, color: widget.accent),
+            const SizedBox(width: 8),
+            Text(
+              'CREAR MODO',
+              style: yMono(
+                size: 11,
+                weight: FontWeight.w800,
+                tracking: 1.4,
+                color: yInk,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Opens the guided builder as a floating dialog (over a scrim, not a full
+  /// screen). The catalog sheet closes first; on save we switch to the new mode.
+  Future<void> _openModeBuilder() async {
+    Navigator.of(context).pop(); // close the catalog sheet
+    final created = await showDialog<AiMode>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ModeBuilderDialog(accent: widget.accent),
+    );
+    if (created != null && mounted) _s.setMode(created);
+  }
+
+  /// Deletes a custom mode (with confirm). If it's the active mode, falls back
+  /// to the default so the session never points at a deleted mode.
+  Future<void> _deleteMode(AiMode m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(),
+            title: Text(
+              'BORRAR MODO',
+              style: yMono(size: 13, weight: FontWeight.w800, color: yInk),
+            ),
+            content: Text(
+              '¿Borrar el modo "${m.name}"? No se puede deshacer.',
+              style: yBody(size: 14, color: yInk),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: Text('CANCELAR', style: yMono(size: 11, color: yMuted)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: Text(
+                  'BORRAR',
+                  style: yMono(size: 11, weight: FontWeight.w800, color: yInk),
+                ),
+              ),
+            ],
+          ),
+    );
+    if (ok != true) return;
+    if (_s.mode.id == m.id) _s.setMode(defaultAiMode);
+    await ref.read(customModesStoreProvider).remove(m.id);
+  }
+
+  Widget _modeCard(AiMode m, double width) {
+    final selected = m.id == _s.mode.id;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        Navigator.of(context).pop();
+        _s.setMode(m);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) {
+            _scroll.jumpTo(_scroll.position.maxScrollExtent);
+          }
+        });
+      },
+      child: Container(
+        width: width,
+        height: 140,
+        decoration: BoxDecoration(
+          color: selected ? widget.accent.withValues(alpha: 0.10) : yCream,
+          border: Border.all(
+            color: selected ? widget.accent : yBorderStrong,
+            width: selected ? yLineMid : yLineThin,
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.accent,
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
+                  ),
+                  child: Icon(m.icon, size: 16, color: yCream),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    m.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yMono(
+                      size: 12,
+                      weight: FontWeight.w800,
+                      tracking: 1.1,
+                      color: yInk,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(YuLiIcons.check, size: 16, color: widget.accent),
+                if (m.custom) ...[
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _deleteMode(m),
+                    child: const Icon(YuLiIcons.trash, size: 15, color: yMuted),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              m.blurb,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: yBody(size: 12, color: yInk),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              m.sample,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: yBody(
+                size: 11,
+                color: yMuted,
+              ).copyWith(fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Mode-aware empty-state hero shown when the thread is empty: the active mode
+  /// presents itself + an invitation that depends on the mode and whether
+  /// there's context.
+  Widget _greeting() {
+    final m = _s.mode;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: widget.accent,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Icon(m.icon, size: 22, color: yCream),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'MODO ${m.name}',
+                      style: yMono(
+                        size: 10,
+                        weight: FontWeight.w800,
+                        tracking: 1.4,
+                        color: yMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(m.blurb, style: yBody(size: 12, color: yMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _greetingLine(m.id, _s.hasAnchor),
+            style: const TextStyle(
+              fontSize: 16,
+              height: 1.45,
+              color: yInk,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _greetingLine(String modeId, bool hasCtx) {
+    switch (modeId) {
+      case 'tutor':
+        return hasCtx
+            ? 'Listo para guiarte sobre esto. ¿Por dónde empezamos?'
+            : '¿Qué quieres aprender? Te guío — la respuesta la encuentras tú.';
+      case 'socratic':
+        return hasCtx
+            ? 'Dame tu postura sobre esto y la ponemos a prueba.'
+            : 'Tírame una afirmación y la ponemos a prueba.';
+      case 'clarity':
+        return hasCtx
+            ? '¿Qué parte de esto quieres que te explique simple?'
+            : '¿Qué quieres que te explique desde cero?';
+      case 'examiner':
+        return hasCtx
+            ? 'Cuando digas, te empiezo a examinar sobre esto.'
+            : 'Dime el tema y te empiezo a preguntar.';
+      case 'expert':
+        return hasCtx
+            ? 'Contexto cargado. ¿Qué quieres profundizar?'
+            : '¿Sobre qué vamos a fondo?';
+      default:
+        return hasCtx
+            ? 'Tengo tu contexto cargado. ¿Qué hacemos con él?'
+            : '¿En qué te ayudo?';
+    }
+  }
 
   static const _kDailyCap = 150;
 
@@ -1044,9 +1619,44 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ),
           ],
           const SizedBox(width: 8),
+          // Context toggle: shows/hides the context bar; accent-filled when the
+          // chat has context backing it (board, anchor, or linked sources).
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).pop(),
+            onTap: () => setState(() => _showContext = !_showContext),
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _hasAnyContext() ? widget.accent : null,
+                border: Border.all(color: yCream, width: yLineMid),
+              ),
+              child: const Icon(YuLiIcons.link, size: 16, color: yCream),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _openChatMenu,
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border.all(color: yCream, width: yLineMid),
+              ),
+              child: const Icon(
+                YuLiIcons.moreHorizontal,
+                size: 16,
+                color: yCream,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _dismiss,
             child: Container(
               width: 34,
               height: 34,
@@ -1217,58 +1827,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     if (send == null) return;
     send(text.trim());
     HapticFeedback.selectionClick();
-    Navigator.of(context).pop();
+    _dismiss();
   }
 
-  String _cleanTaskLine(String s) =>
-      s.replaceAll('**', '').replaceAll('`', '').trim();
-
-  /// Pull candidate task lines from an assistant reply. Prefers bulleted /
-  /// numbered / checkbox lines; if there are none, falls back to all lines.
-  List<String> _parseTaskLines(String text) {
-    final bulletRe = RegExp(r'^\s*([-*•·]|\d+[.)]|\[[ xX]?\])\s+(.*)$');
-    final bulleted = <String>[];
-    final all = <String>[];
-    for (final line in text.split('\n')) {
-      if (line.trim().isEmpty) continue;
-      final m = bulletRe.firstMatch(line);
-      if (m != null) {
-        final c = _cleanTaskLine(m.group(2)!);
-        if (c.isNotEmpty) bulleted.add(c);
-      }
-      final a = _cleanTaskLine(line);
-      if (a.isNotEmpty) all.add(a);
+  /// Close the chat: in the docked panel slide it shut; as a modal, pop.
+  void _dismiss() {
+    if (widget.onClose != null) {
+      widget.onClose!();
+    } else {
+      Navigator.of(context).pop();
     }
-    final src = bulleted.isNotEmpty ? bulleted : all;
-    return src.map((s) => s.length > 280 ? s.substring(0, 280) : s).toList();
-  }
-
-  /// Extract tasks from [text] → review checklist → create them in FIGHT,
-  /// linked to the host note.
-  Future<void> _extractTasks(String text) async {
-    final candidates = _parseTaskLines(text);
-    if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No encontré tareas en esa respuesta'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    final note = ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder:
-          (_) => _TaskReviewSheet(
-            candidates: candidates,
-            noteId: _s.noteId,
-            folderId: note?.folderId,
-            accent: widget.accent,
-          ),
-    );
   }
 
   Widget _bubble(AiChatMsg m, int i) {
@@ -1282,26 +1850,32 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ? Text('…', style: yBody(size: 14, color: yInk))
             : streaming
             ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
-            : NoteMarkdownPreview(data: fixMarkdownTables(m.text), accent: widget.accent);
+            : NoteMarkdownPreview(
+              data: fixMarkdownTables(m.text),
+              accent: widget.accent,
+            );
+    final isLast = i == _s.messages.length - 1;
     final actions =
         (!streaming && m.text.isNotEmpty)
             ? <Widget>[
-              _msgActionBtn('Copiar', () => _copy(m.text)),
-              // Note-specific actions are hidden in board (LAB) mode.
-              if (!widget.isBoard)
-                _msgActionBtn('Guardar en nota', () {
-                  final note =
-                      ref.read(noteByIdProvider(_s.noteId)).valueOrNull;
-                  sendTextToNote(
-                    context,
-                    ref,
-                    m.text,
-                    defaultFolderId: note?.folderId,
-                    accent: widget.accent,
-                  );
-                }),
+              // Mode-flavored follow-ups: only on the latest reply (where
+              // "profundiza/ejemplo" unambiguously refers to it). The active
+              // mode colors how they're answered — no per-action prompt needed.
+              if (isLast) ...[
+                _msgActionBtn('Profundiza', () => _send('Profundiza en eso.')),
+                _msgActionBtn(
+                  'Más simple',
+                  () => _send('Explícalo más simple.'),
+                ),
+                _msgActionBtn(
+                  'Ejemplo',
+                  () => _send('Dame un ejemplo concreto de eso.'),
+                ),
+              ],
+              // Pin to the canvas as a text block (whiteboard/notebook only).
               if (widget.onSendToCanvas != null)
                 _msgActionBtn('Enviar a lienzo', () => _sendToCanvas(m.text)),
+              _msgActionBtn('Copiar', () => _copy(m.text)),
               _msgActionBtn(
                 'Rehacer',
                 () => _s.regenerate(
@@ -1310,8 +1884,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   ref.read(aiUsageLimiterProvider),
                 ),
               ),
-              if (!widget.isBoard)
-                _msgActionBtn('Extraer tareas', () => _extractTasks(m.text)),
             ]
             : null;
     return _aiMsgFrame(content, actions: actions);
@@ -1394,233 +1966,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 ),
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// One-shot: ask for 3 short titles, show a pick+edit popup, apply the chosen
-  /// one via [widget.onApplyTitle]. Doesn't touch the chat thread.
-  Future<void> _suggestTitle() async {
-    final apply = widget.onApplyTitle;
-    if (apply == null) return;
-    if (!_s.hasAnchor) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay contexto para titular.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    final limiter = ref.read(aiUsageLimiterProvider);
-    if (!await limiter.canSend()) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Límite diario de IA alcanzado.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (_) =>
-              aiWorkingDialog(accent: widget.accent, label: 'Generando título'),
-    );
-    await limiter.record();
-    final buf = StringBuffer();
-    String? err;
-    try {
-      await for (final tok in ref.read(aiAssistantProvider).streamReply([
-        const AiMessage(
-          AiRole.system,
-          'Sugiere títulos cortos. Responde SOLO con 3 títulos, uno por '
-          'línea, máximo 6 palabras cada uno, sin numerar, sin comillas, '
-          'sin explicación.',
-        ),
-        AiMessage(
-          AiRole.user,
-          '<context_documents>\n${_s.anchor}\n</context_documents>',
-        ),
-        const AiMessage(AiRole.user, 'Dame 3 títulos para este contenido.'),
-      ], model: AiModel.flash)) {
-        buf.write(tok);
-      }
-    } catch (e) {
-      err = '$e';
-    }
-    if (!mounted) return;
-    final navigator = Navigator.of(context);
-    if (navigator.canPop()) navigator.pop(); // close spinner
-    if (err != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err), duration: const Duration(seconds: 3)),
-      );
-      return;
-    }
-    final options = _parseTitles(buf.toString());
-    if (options.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No pude sugerir títulos.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    final chosen = await showDialog<String>(
-      context: context,
-      builder:
-          (_) => _TitlePickerDialog(options: options, accent: widget.accent),
-    );
-    if (chosen == null || chosen.trim().isEmpty) return;
-    apply(chosen.trim());
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Título aplicado'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  List<String> _parseTitles(String raw) {
-    final out = <String>[];
-    for (final line in raw.split('\n')) {
-      var s = line.trim();
-      if (s.isEmpty) continue;
-      s = s.replaceFirst(RegExp(r'^\s*([-*•]|\d+[.)])\s*'), '');
-      s = s.replaceAll(RegExp('^["“”\']+|["“”\']+\$'), '').trim();
-      if (s.isEmpty) continue;
-      out.add(s);
-      if (out.length >= 3) break;
-    }
-    return out;
-  }
-
-  Widget _quickActions() {
-    // (glyph, label, prompt, sendWithHistory)
-    final items = <(IconData, String, String, bool)>[
-      (YuLiIcons.listChecks, 'Resumir', 'Resume el contexto en pocas líneas.', false),
-      (
-        YuLiIcons.squareCheck,
-        'Extraer tareas',
-        'Lista las tareas accionables del contexto, una por línea, sin numerar.',
-        false,
-      ),
-      (YuLiIcons.type, 'Título', 'Sugiere 3 títulos cortos para el contexto.', false),
-      (YuLiIcons.arrowRight, 'Traducir', 'Traduce el contexto al inglés.', false),
-      (
-        YuLiIcons.eraser,
-        'Limpiar',
-        'Reescribe y limpia el contexto: corrige ortografía y redacción, '
-            'mantén el significado.',
-        false,
-      ),
-      // Uses full chat history (not a one-shot quick action).
-      (
-        YuLiIcons.textQuote,
-        'Resumir chat',
-        'Resume nuestra conversación hasta ahora en 3-4 puntos clave.',
-        true,
-      ),
-    ];
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream2,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _hair(
-            widget.isBoard
-                ? '> ACCIONES SOBRE EL TABLERO'
-                : '> ACCIONES SOBRE LA NOTA',
-          ),
-          const SizedBox(height: 9),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final it in items)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 7),
-                    child: _qaChip(it.$1, it.$2, it.$3, withHistory: it.$4),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _hair(String label) {
-    return Row(
-      children: [
-        Text(
-          label,
-          style: yMono(
-            size: 10,
-            weight: FontWeight.w700,
-            tracking: 1.6,
-            color: yMuted,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(height: 2, color: yInk.withValues(alpha: 0.14)),
-        ),
-      ],
-    );
-  }
-
-  Widget _qaChip(
-    IconData icon,
-    String label,
-    String prompt, {
-    required bool withHistory,
-  }) {
-    // "Título" with an apply target → suggest+pick popup; otherwise the normal
-    // one-shot that streams the answer into the chat.
-    final isTitleApply = label == 'Título' && widget.onApplyTitle != null;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap:
-          _s.streaming
-              ? null
-              : isTitleApply
-              ? _suggestTitle
-              : () => _send(prompt, quickAction: !withHistory),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-        decoration: BoxDecoration(
-          color: _s.streaming ? yCream2 : yCream,
-          border: Border.all(color: yBorderStrong, width: yLineMid),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: widget.accent),
-            const SizedBox(width: 7),
-            Text(
-              label.toUpperCase(),
-              style: yMono(
-                size: 10,
-                weight: FontWeight.w700,
-                tracking: 0.8,
-                color: yInk,
-              ),
-            ),
           ],
         ),
       ),
@@ -2576,9 +2921,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: _addBtn(YuLiIcons.fileText, 'Nota', _addNote),
-                ),
+                Expanded(child: _addBtn(YuLiIcons.fileText, 'Nota', _addNote)),
                 const SizedBox(width: 8),
                 Expanded(child: _addBtn(YuLiIcons.link, 'Enlace', _addUrl)),
               ],
@@ -2724,7 +3067,11 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
               ),
             ],
             const SizedBox(width: 4),
-            _iconBtn(YuLiIcons.close, 'Quitar', _busy ? null : () => _remove(s)),
+            _iconBtn(
+              YuLiIcons.close,
+              'Quitar',
+              _busy ? null : () => _remove(s),
+            ),
           ],
         ),
       ),
@@ -3088,7 +3435,10 @@ class _SourceViewDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    NoteMarkdownPreview(data: fixMarkdownTables(content), accent: accent),
+                    NoteMarkdownPreview(
+                      data: fixMarkdownTables(content),
+                      accent: accent,
+                    ),
                   ],
                 ),
               ),
