@@ -296,7 +296,7 @@ class _AiChatDockState extends State<AiChatDock>
     with SingleTickerProviderStateMixin {
   static const double _w = 480;
   static const double _handleW = 30;
-  static const double _handleH = 96;
+  static const double _handleH = 56;
 
   late final AnimationController _anim = AnimationController(
     vsync: this,
@@ -363,7 +363,7 @@ class _AiChatDockState extends State<AiChatDock>
               // closed, at the panel edge when open. Carries the active mode's
               // icon (rebuilds only this tiny widget on mode change / streaming).
               Positioned(
-                top: h * 0.34,
+                top: h * 0.30,
                 right: _w * t,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
