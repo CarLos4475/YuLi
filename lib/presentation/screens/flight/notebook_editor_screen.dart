@@ -299,6 +299,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   List<List<double>>? _snapBasePoints;
   Offset? _snapCenter;
   Offset? _snapAnchor;
+  Offset? _snapPointerStart;
+  Offset? _snapOpposite;
   double _snapRefDist = 1;
   final List<_NotebookHistoryEntry> _undoStack = [];
   final List<_NotebookHistoryEntry> _redoStack = [];
@@ -3750,8 +3752,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return dist2 / diag2 <= 0.09;
   }
 
-  /// Replace the freehand stroke with clean geometry and enter live-adjust
-  /// (resize closed shapes around their centre / move the end of lines/arrows).
   void _enterShapeAdjust(RecognizedShape shape, DrawingStroke src) {
     _holdTimer?.cancel();
     _holdAnchor = null;
@@ -3761,9 +3761,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _snapAnchor = Offset(pts.first[0], pts.first[1]);
       _snapBasePoints = null;
       _snapCenter = null;
+    } else if (shape.kind == ShapeKind.rectangle) {
+      final anchor = Offset(src.points.firstX, src.points.firstY);
+      _snapAnchor = anchor;
+      _snapPointerStart = Offset(src.points.lastX, src.points.lastY);
+      _snapOpposite = _oppositeCornerForAnchor(pts, anchor);
+      _snapBasePoints = null;
+      _snapCenter = null;
     } else {
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
+      _snapAnchor = null;
+      _snapPointerStart = null;
+      _snapOpposite = null;
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
       _snapRefDist = (Offset(src.points.lastX, src.points.lastY) - _snapCenter!)
           .distance
@@ -3788,6 +3798,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       pts = buildLineShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
     } else if (_snapKind == ShapeKind.arrow) {
       pts = buildArrowShape(_snapAnchor!.dx, _snapAnchor!.dy, p.dx, p.dy);
+    } else if (_snapKind == ShapeKind.rectangle) {
+      final pointer = _snapAnchor! + (p - _snapPointerStart!);
+      pts = _buildAnchoredShape(_snapKind!, _snapOpposite!, pointer);
     } else {
       final ratio = ((p - _snapCenter!).distance / _snapRefDist).clamp(
         0.05,
@@ -3810,6 +3823,39 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         points: StrokePoints.fromNested(pts),
       );
     });
+  }
+
+  List<List<double>> _buildAnchoredShape(
+    ShapeKind kind,
+    Offset anchor,
+    Offset pointer,
+  ) {
+    final w = pointer.dx - anchor.dx;
+    final h = pointer.dy - anchor.dy;
+    final center = Offset(anchor.dx + w / 2, anchor.dy + h / 2);
+    return buildShape(kind, center.dx, center.dy, w, h);
+  }
+
+  Offset _oppositeCornerForAnchor(List<List<double>> pts, Offset anchor) {
+    var minX = pts.first[0], maxX = pts.first[0];
+    var minY = pts.first[1], maxY = pts.first[1];
+    for (final p in pts) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    final corners = [
+      Offset(minX, minY),
+      Offset(maxX, minY),
+      Offset(maxX, maxY),
+      Offset(minX, maxY),
+    ];
+    corners.sort(
+      (a, b) =>
+          (b - anchor).distanceSquared.compareTo((a - anchor).distanceSquared),
+    );
+    return corners.first;
   }
 
   void _commitShapeAdjust() {
@@ -3857,6 +3903,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _snapBasePoints = null;
     _snapCenter = null;
     _snapAnchor = null;
+    _snapPointerStart = null;
+    _snapOpposite = null;
   }
 
   void _startHoldTimer(Offset worldPos) {
