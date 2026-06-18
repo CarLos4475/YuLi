@@ -29,6 +29,13 @@ class CrashLogger {
   /// crash log. Real errors ([record]) persist regardless of this flag.
   static const bool perfLogging = false;
 
+  /// Narrow probe switch for the cuaderno chunk-ring "missing tile-shaped chunk"
+  /// bug. Separate from [perfLogging] so we can collect just this data without
+  /// turning on the whole PERF firehose. [diag] only fires on the rare anomalous
+  /// event (a blank tile over an inked/decoding page, or an inked page with no
+  /// base image), so volume stays low. Set false once the bug is closed.
+  static const bool chunkDiag = false;
+
   // When perf is being measured, also mirror [record] errors to logcat. Errors
   // always hit the durable file either way.
   static const bool _mirrorToLogcat = false;
@@ -78,6 +85,16 @@ class CrashLogger {
     // ignore: avoid_print
     print('YULILOG $message');
     _appendRaw('[${DateTime.now().toIso8601String()}] $message\n');
+  }
+
+  /// Like [note] but gated by [chunkDiag] instead of [perfLogging], and it always
+  /// persists to the durable file (the probe must survive even with perf off).
+  /// Fire-and-forget, never throws.
+  void diag(String message) {
+    if (!chunkDiag) return;
+    // ignore: avoid_print
+    print('YULILOG CHUNKDIAG $message');
+    _appendRaw('[${DateTime.now().toIso8601String()}] CHUNKDIAG $message\n');
   }
 
   Future<void> _appendRaw(String text) {

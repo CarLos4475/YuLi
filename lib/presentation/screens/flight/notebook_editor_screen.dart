@@ -92,6 +92,11 @@ class _ViewportRasterTile {
   final int bucket;
   final int version;
   final ui.Image image;
+  // No overlapping inked page existed at bake time → the image is a 1×1
+  // transparent placeholder. A blank tile MUST NOT occlude the base (it would
+  // clip the base's ink away and show nothing → the "missing tile-shaped
+  // chunk" bug). Kept in the map only so the pump doesn't re-queue the cell.
+  final bool blank;
 
   const _ViewportRasterTile({
     required this.key,
@@ -99,6 +104,7 @@ class _ViewportRasterTile {
     required this.bucket,
     required this.version,
     required this.image,
+    this.blank = false,
   });
 }
 
@@ -392,6 +398,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   double _chunkTileWorld = 0; // cell side in world units (viewport fraction)
   int _chunkVersion = 0; // bumped on ink edit → stale tiles discarded
   bool _chunkPumpScheduled = false;
+  // DIAG (chunk-ring ink-loss probe, paired with CrashLogger.chunkDiag): how many
+  // blank placeholders were baked over a page that was still decoding (the bug's
+  // dangerous tile), and how many times the painter had to suppress a blank tile
+  // that overlapped an inked page (the fix actually firing) or fell back because
+  // a visible inked page had no base image. Reset on app restart only.
+  int _chunkBlankOverUndecoded = 0;
+  int _chunkBlankSuppressed = 0;
+  int _chunkMissingBase = 0;
+  int _chunkDiagLastReport = 0;
   // Draw-burst: true between committed strokes of a writing burst. While set, the
   // per-page overview re-bake AND chunk pump are deferred (the page tile index +
   // overview delta show the un-baked strokes meanwhile); both flush once at the
@@ -402,6 +417,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   static const int _kDrawBakeDebounceMs = 700;
   static const int _kDrawDeltaCap = 40;
   final bool _tilesEnabled = true; // master switch (A/B revert: flip + rebuild)
+  // PERF chunk-pump probe (TEMPORAL, gated by perfLogging): why the pump never
+  // settles at rest in the cuaderno (it does in the pizarra). 1s summary.
+  int _pumpRuns = 0, _pumpBakeOk = 0, _pumpBakeEarly = 0, _pumpScaleChanged = 0;
+  int _pumpReportMs = 0;
+  // True once the ring is fully baked AND nothing is pending. While set, the build
+  // STOPS scheduling the pump every frame — that per-frame scheduling was keeping a
+  // 60fps loop alive at rest (pump ran ~60×/s baking nothing), and since overview
+  // is off at working zoom the display is the dense vector layer → re-raster every
+  // frame → ~160% CPU sitting still. Cleared by motion / re-anchor / ink edits so
+  // the ring still follows pans and re-bakes after edits.
+  bool _chunkRingSettled = false;
   static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
   static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
   static const int _kChunkMaxTiles = 36;
@@ -419,6 +445,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Ticker? _settleTicker;
   Matrix4? _lastSettleMatrix;
   int _settleStillFrames = 0;
+  // PERF settle probe (TEMPORAL, gated by perfLogging): why the settle ticker
+  // keeps pumping frames on a dense page at "rest". Per-tick we accumulate the
+  // matrix drift and reset reasons, then report a 500ms summary so we can tell
+  // (a) settle never fires (constant sub-pixel drift, gesture/pointer all clear)
+  // from (b) gesture/pointer never clearing. Quitar tras cerrar el calor de idle.
+  int _settleTicks = 0;
+  int _settleResetGesture = 0, _settleResetPointer = 0, _settleResetDraw = 0;
+  double _settleMaxDrift = 0;
+  int _settleNonZeroDrift = 0;
+  Matrix4? _settleProbePrev;
+  int _settleProbeReportMs = 0;
   // Generous: the fling's sub-pixel tail can repeat the matrix for a few frames
   // before fully stopping; requiring a longer identical streak guarantees the
   // bake lands in true stillness (cost is only a slightly later crisp swap).
@@ -438,6 +475,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _viewMoved = false;
   bool _overviewStickyThisGesture = false;
   bool _overviewActive = false;
+  // PERF frames-cuaderno: mirror of the pizarra's _onFrameTimings so the blit-heat
+  // measurement can compare the two screens at the same zoom/board. Gated by
+  // perfLogging (wired only when on); zero cost in prod. Temporal — quitar tras
+  // medir el blit.
+  int _slowFrames = 0;
+  double _worstFrameMs = 0, _worstBuildMs = 0, _worstRasterMs = 0;
+  DateTime _lastFrameLog = DateTime.fromMillisecondsSinceEpoch(0);
   // Frozen full-detail snapshot of the surroundings (selection excluded) baked at
   // lasso grab and blitted during the drag, so the non-selected ink doesn't
   // decimate to rough LOD-1 tiles while moving below kLodFullDetailScale (mirrors
@@ -612,10 +656,18 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         // _scheduleViewportRasterBake();
       });
     });
+    // Per-frame timings exist only to log slow frames (blit-heat measurement) —
+    // skip entirely in prod so there's no per-frame work.
+    if (CrashLogger.perfLogging) {
+      SchedulerBinding.instance.addTimingsCallback(_onFrameTimings);
+    }
   }
 
   @override
   void dispose() {
+    if (CrashLogger.perfLogging) {
+      SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
+    }
     _eyedropImg?.dispose();
     _reconcileImageFiles();
     _holdTimer?.cancel();
@@ -1921,14 +1973,68 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   void _beginSettleWatch() {
     _settleStillFrames = 0;
     _lastSettleMatrix = null;
+    if (CrashLogger.perfLogging && !(_settleTicker?.isActive ?? false)) {
+      CrashLogger.instance.note(
+        'PERF settle-cuaderno: START zoom ${_viewScale.toStringAsFixed(2)}, '
+        'gesture ${_viewGestureActive ? 'SI' : 'no'}, '
+        'pointers ${_activePointers.length}',
+      );
+      _settleProbePrev = null;
+      _settleProbeReportMs = DateTime.now().millisecondsSinceEpoch;
+    }
     _settleTicker ??= createTicker(_onSettleTick);
     if (!_settleTicker!.isActive) _settleTicker!.start();
   }
 
   void _stopSettleWatch() {
+    if ((_settleTicker?.isActive ?? false) && CrashLogger.perfLogging) {
+      CrashLogger.instance.note(
+        'PERF settle-cuaderno: STOP tras $_settleTicks ticks, '
+        'maxDrift ${_settleMaxDrift.toStringAsFixed(4)}, '
+        'driftTicks $_settleNonZeroDrift, '
+        'resets g$_settleResetGesture/p$_settleResetPointer/d$_settleResetDraw',
+      );
+      _settleTicks = 0;
+      _settleMaxDrift = 0;
+      _settleNonZeroDrift = 0;
+      _settleResetGesture = 0;
+      _settleResetPointer = 0;
+      _settleResetDraw = 0;
+    }
     if (_settleTicker?.isActive ?? false) _settleTicker!.stop();
     _settleStillFrames = 0;
     _lastSettleMatrix = null;
+  }
+
+  // PERF settle probe: per-tick matrix drift + a 500ms rolling summary. A nonzero
+  // drift every tick while gesture/pointer are clear ⇒ cause (a): InteractiveViewer
+  // leaves a sub-pixel fling tail that never goes byte-identical, so settle never
+  // fires and the ticker pumps the dense re-raster forever.
+  void _settleProbeTick() {
+    _settleTicks++;
+    final m = _viewCtrl.value;
+    if (_settleProbePrev != null) {
+      var drift = 0.0;
+      for (int i = 0; i < 16; i++) {
+        drift += (m.storage[i] - _settleProbePrev!.storage[i]).abs();
+      }
+      if (drift > 0) _settleNonZeroDrift++;
+      if (drift > _settleMaxDrift) _settleMaxDrift = drift;
+    }
+    _settleProbePrev = m.clone();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _settleProbeReportMs >= 500) {
+      _settleProbeReportMs = now;
+      CrashLogger.instance.note(
+        'PERF settle-cuaderno: TICKING $_settleTicks ticks, '
+        'driftTicks $_settleNonZeroDrift, maxDrift ${_settleMaxDrift.toStringAsFixed(4)}, '
+        'still $_settleStillFrames, '
+        'resets g$_settleResetGesture/p$_settleResetPointer/d$_settleResetDraw, '
+        'zoom ${_viewScale.toStringAsFixed(2)}, '
+        'linger ${_overviewLinger ? 'SI' : 'no'}, '
+        'overview ${_overviewActive ? 'SI' : 'no'}',
+      );
+    }
   }
 
   void _onSettleTick(Duration _) {
@@ -1936,8 +2042,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _stopSettleWatch();
       return;
     }
+    if (CrashLogger.perfLogging) _settleProbeTick();
     // A finger is down or we're drawing → not settled; keep watching, reset.
     if (_viewGestureActive || _activePointers.isNotEmpty || _isDrawing) {
+      if (CrashLogger.perfLogging) {
+        if (_viewGestureActive) _settleResetGesture++;
+        if (_activePointers.isNotEmpty) _settleResetPointer++;
+        if (_isDrawing) _settleResetDraw++;
+      }
       _settleStillFrames = 0;
       _lastSettleMatrix = null;
       return;
@@ -2125,6 +2237,84 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   String _chunkKey(int gx, int gy) => '$gx:$gy';
 
+  // DIAG: does this world-space cell overlap any decoded page that actually has
+  // strokes? A suppressed blank tile here is one that USED to hide real ink.
+  bool _tileOverlapsInkedPage(Rect cell) {
+    for (int i = 0; i < _pageBlockIds.length; i++) {
+      final top = _pageOffsetY(i);
+      final pageRect = Rect.fromLTWH(
+        0,
+        top,
+        kNotebookPageWidth,
+        kNotebookPageHeight,
+      );
+      if (!pageRect.overlaps(cell)) continue;
+      final data = _pageData[_pageBlockIds[i]];
+      if (data != null && data.strokes.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  // PERF frames-cuaderno: same slow-frame collector as the pizarra, so the blit
+  // heat of zoom-in pinch can be compared screen-to-screen. The cuaderno's blit
+  // (per-page A4 overviews) should be much cheaper than the pizarra's giant-
+  // overview upscale — this confirms the delta with a number.
+  void _onFrameTimings(List<ui.FrameTiming> timings) {
+    for (final t in timings) {
+      final b = t.buildDuration.inMicroseconds / 1000.0;
+      final r = t.rasterDuration.inMicroseconds / 1000.0;
+      final tot = b + r;
+      if (tot <= 24) continue; // ignore frames that hit the budget
+      _slowFrames++;
+      if (tot > _worstFrameMs) {
+        _worstFrameMs = tot;
+        _worstBuildMs = b;
+        _worstRasterMs = r;
+      }
+    }
+    final now = DateTime.now();
+    if (_slowFrames > 0 && now.difference(_lastFrameLog).inMilliseconds > 700) {
+      _lastFrameLog = now;
+      var trazos = 0;
+      for (final d in _pageData.values) {
+        trazos += d.strokes.length;
+      }
+      CrashLogger.instance.note(
+        'PERF frames-cuaderno: $_slowFrames lentos, peor ${_worstFrameMs.round()}ms '
+        '(build ${_worstBuildMs.round()} + raster ${_worstRasterMs.round()}), '
+        'zoom ${_viewScale.toStringAsFixed(2)}, '
+        'overview ${_overviewActive ? 'SI' : 'no'}, '
+        'chunk ${_chunkEngaged ? 'SI' : 'no'}, '
+        'tiles ${_chunkTiles.length}, trazos $trazos',
+      );
+      _slowFrames = 0;
+      _worstFrameMs = 0;
+      _worstBuildMs = 0;
+      _worstRasterMs = 0;
+    }
+  }
+
+  // DIAG: throttled one-line summary of the chunk-ring ink-loss probe so the log
+  // stays bounded even if a counter ticks every frame. Off unless chunkDiag.
+  void _reportChunkDiag() {
+    if (!CrashLogger.chunkDiag) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _chunkDiagLastReport < 1500) return;
+    if (_chunkBlankSuppressed == 0 &&
+        _chunkMissingBase == 0 &&
+        _chunkBlankOverUndecoded == 0) {
+      return;
+    }
+    _chunkDiagLastReport = now;
+    CrashLogger.instance.diag(
+      'cuaderno chunk-probe scale=${_viewScale.toStringAsFixed(2)} '
+      'blankOverUndecoded=$_chunkBlankOverUndecoded '
+      'blankSuppressed=$_chunkBlankSuppressed '
+      'missingBase=$_chunkMissingBase '
+      'tiles=${_chunkTiles.length}',
+    );
+  }
+
   /// Cells whose world rect overlaps viewport + ring, nearest-first, capped.
   List<(int, int, Rect)> _wantedChunks(double tileWorld) {
     final visible = _visibleRectFor(_viewport);
@@ -2163,6 +2353,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
     _chunkTiles.clear();
     _chunkTileWorld = 0;
+    _chunkRingSettled = false; // re-engage must re-bake from scratch
   }
 
   /// Drop ONLY the ring cells overlapping [world] (world coords) instead of
@@ -2172,13 +2363,19 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// editing one page no longer softens every other page.
   void _invalidateChunkRegion(Rect world) {
     if (_chunkTiles.isEmpty) return;
+    var freed = false;
     for (final key in _chunkTiles.keys.toList()) {
       final t = _chunkTiles[key];
       if (t != null && t.worldRect.overlaps(world)) {
         _chunkTiles.remove(key);
+        freed = true;
         final img = t.image;
         WidgetsBinding.instance.addPostFrameCallback((_) => img.dispose());
       }
+    }
+    if (freed) {
+      _chunkRingSettled = false; // freed cells must re-bake
+      _scheduleChunkPump();
     }
   }
 
@@ -2208,6 +2405,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _disposeAllChunks();
       return;
     }
+    if (CrashLogger.perfLogging) _pumpRuns++;
     final visible = _visibleRectFor(_viewport);
     final scaleChanged =
         _chunkTileWorld <= 0 ||
@@ -2216,6 +2414,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       // During an active zoom gesture the scale changes every frame; re-anchoring
       // per frame would thrash. Defer to settle — the pyramid covers the gap.
       if (_viewGestureActive) return;
+      if (CrashLogger.perfLogging) _pumpScaleChanged++;
+      _chunkRingSettled = false; // new grid → ring must re-bake
       _chunkGridScale = _viewScale;
       _chunkTileWorld = visible.longestSide / _kChunkTilesAcross;
       _chunkVersion++;
@@ -2244,7 +2444,40 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final t = _chunkTiles[_chunkKey(c.$1, c.$2)];
       return t == null || t.version != _chunkVersion;
     });
-    if (hasPending && _chunkEngaged) _scheduleChunkPump();
+    if (CrashLogger.perfLogging) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _pumpReportMs >= 1000) {
+        _pumpReportMs = now;
+        var current = 0, missing = 0, staleVer = 0;
+        for (final c in wanted) {
+          final t = _chunkTiles[_chunkKey(c.$1, c.$2)];
+          if (t == null) {
+            missing++;
+          } else if (t.version != _chunkVersion) {
+            staleVer++;
+          } else {
+            current++;
+          }
+        }
+        CrashLogger.instance.note(
+          'PERF pump-cuaderno: runs $_pumpRuns, scaleChanged $_pumpScaleChanged, '
+          'bakeOk $_pumpBakeOk, bakeEarly $_pumpBakeEarly, '
+          'wanted ${wanted.length} (cur $current/miss $missing/stale $staleVer), '
+          'pending ${hasPending ? 'SI' : 'no'}, ver $_chunkVersion, '
+          'grid ${_chunkGridScale.toStringAsFixed(3)} view ${_viewScale.toStringAsFixed(3)}, '
+          'overview ${_overviewActive ? 'SI' : 'no'}',
+        );
+        _pumpRuns = 0;
+        _pumpScaleChanged = 0;
+        _pumpBakeOk = 0;
+        _pumpBakeEarly = 0;
+      }
+    }
+    if (hasPending && _chunkEngaged) {
+      _scheduleChunkPump();
+    } else {
+      _chunkRingSettled = true; // ring full → build can stop the per-frame pump
+    }
   }
 
   /// Bake one cell at the EXACT anchored zoom (1:1 with the screen → zero blur),
@@ -2257,7 +2490,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final dpr = MediaQuery.of(context).devicePixelRatio;
     final imgScale = _chunkGridScale * dpr;
     final px = (tileWorld * imgScale).round();
-    if (px <= 0 || px > 4096) return; // texture-limit guard (shouldn't hit by design)
+    if (px <= 0 || px > 4096) {
+      if (CrashLogger.perfLogging) _pumpBakeEarly++;
+      return; // texture-limit guard (shouldn't hit by design)
+    }
     _chunkBaking.add(key);
     try {
       final recorder = ui.PictureRecorder();
@@ -2266,6 +2502,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       canvas.translate(-cell.left, -cell.top); // world → cell-local
       canvas.clipRect(cell);
       var hadInk = false;
+      var overlappedUndecoded = false; // page overlaps cell but not hydrated yet
       for (int i = 0; i < _pageBlockIds.length; i++) {
         final top = _pageOffsetY(i);
         final pageRect = Rect.fromLTWH(
@@ -2276,6 +2513,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         );
         if (!pageRect.overlaps(cell)) continue;
         final data = _pageData[_pageBlockIds[i]];
+        if (data == null) overlappedUndecoded = true;
         if (data == null || data.strokes.isEmpty) continue;
         hadInk = true;
         canvas.save();
@@ -2310,7 +2548,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         bucket: 0,
         version: version,
         image: image,
+        blank: !hadInk,
       );
+      // DIAG: a blank placeholder baked OVER a not-yet-decoded page is the exact
+      // tile that used to clip the base away once that page hydrated with ink
+      // (the "missing tile-shaped chunk" bug). Counting these tells us how often
+      // the dangerous condition fires even after the occlusion fix.
+      if (!hadInk && overlappedUndecoded) {
+        _chunkBlankOverUndecoded++;
+        CrashLogger.instance.diag(
+          'cuaderno blank-tile-over-undecoded key=$key cell=$cell '
+          'scale=${_chunkGridScale.toStringAsFixed(2)} '
+          'total=$_chunkBlankOverUndecoded',
+        );
+      }
+      if (CrashLogger.perfLogging) _pumpBakeOk++;
       setState(() {});
     } catch (e, st) {
       CrashLogger.instance.record(e, st, context: 'bakeChunk cuaderno');
@@ -6260,9 +6512,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             // yields to the path below until the ring re-bakes. Stale pages also
             // fall through (the path below handles them). Dormant ≤ ~2.4x.
             if (_chunkEngaged) {
-              _scheduleChunkPump(); // fill/follow the ring (also pre-loads at rest)
+              // Only pump when there's actually work or the view is moving. At true
+              // rest with a full ring this used to fire every frame → 60fps churn
+              // (the pump ran ~60×/s baking nothing, re-rastering the dense vector
+              // layer) → ~160% CPU idle. Motion / re-anchor / ink edits clear the
+              // settled flag so the ring still follows pans and re-bakes after edits.
+              if (!_chunkRingSettled ||
+                  _viewGestureActive ||
+                  _viewMoved ||
+                  _overviewLinger) {
+                _scheduleChunkPump();
+              }
               if (_overviewActive) {
                 var anyStale = false;
+                var missingBaseThisFrame = false; // DIAG: inked page w/o base img
                 final pageImage = <int, ui.Image>{};
                 final pageBaked = <int, int>{};
                 for (int i = 0; i < _pageBlockIds.length; i++) {
@@ -6287,16 +6550,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                         focusImg != null
                             ? (_overviewFocusBakedCountByPage[bid] ?? 0)
                             : (_overviewBakedCountByPage[bid] ?? 0);
+                  } else if (_pageData[bid]?.strokes.isNotEmpty ?? false) {
+                    // Inked page, no base image yet: its holes render blank → a
+                    // second possible source of tile-shaped gaps. Tracked apart.
+                    missingBaseThisFrame = true;
                   }
                 }
                 if (!anyStale) {
                   final curTiles = <(Rect, ui.Image)>[];
                   for (final t in _chunkTiles.values) {
-                    if (t.version == _chunkVersion &&
-                        t.worldRect.overlaps(visible)) {
-                      curTiles.add((t.worldRect, t.image));
+                    if (t.version != _chunkVersion ||
+                        !t.worldRect.overlaps(visible)) {
+                      continue;
                     }
+                    if (t.blank) {
+                      // FIX: a blank placeholder must NOT occlude the base — excl-
+                      // uding it from curTiles means the painter carves no hole for
+                      // this cell, so the base (or its not-yet-baked ink) shows
+                      // through instead of a transparent tile-shaped gap.
+                      if (CrashLogger.chunkDiag &&
+                          _tileOverlapsInkedPage(t.worldRect)) {
+                        _chunkBlankSuppressed++;
+                      }
+                      continue;
+                    }
+                    curTiles.add((t.worldRect, t.image));
                   }
+                  if (CrashLogger.chunkDiag && missingBaseThisFrame) {
+                    _chunkMissingBase++;
+                  }
+                  _reportChunkDiag();
                   if (curTiles.isNotEmpty) {
                     return RepaintBoundary(
                       child: CustomPaint(

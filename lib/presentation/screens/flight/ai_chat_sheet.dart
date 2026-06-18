@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
-import '../../widgets/ai_link_badge.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
@@ -369,47 +368,43 @@ class _AiChatDockState extends State<AiChatDock>
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: widget.controller.toggle,
-                  child: AiLinkBadge(
-                    active: widget.linked,
-                    color: yCream,
-                    child: Container(
-                      width: _handleW,
-                      height: _handleH,
-                      decoration: BoxDecoration(
-                        color: widget.accent,
-                        border: Border.all(
+                  child: Container(
+                    width: _handleW,
+                    height: _handleH,
+                    decoration: BoxDecoration(
+                      color: widget.accent,
+                      border: Border.all(
+                        color: yBorderStrong,
+                        width: yLineMid,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
                           color: yBorderStrong,
-                          width: yLineMid,
+                          offset: Offset(-2, 2),
                         ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: yBorderStrong,
-                            offset: Offset(-2, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          AnimatedBuilder(
-                            animation: widget.session,
-                            builder:
-                                (_, _) => Icon(
-                                  widget.session.mode.icon,
-                                  size: 15,
-                                  color: yCream,
-                                ),
-                          ),
-                          const SizedBox(height: 5),
-                          Icon(
-                            t > 0.5
-                                ? YuLiIcons.chevronRight
-                                : YuLiIcons.chevronLeft,
-                            size: 13,
-                            color: yCream,
-                          ),
-                        ],
-                      ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedBuilder(
+                          animation: widget.session,
+                          builder:
+                              (_, _) => Icon(
+                                widget.session.mode.icon,
+                                size: 15,
+                                color: yCream,
+                              ),
+                        ),
+                        const SizedBox(height: 5),
+                        Icon(
+                          t > 0.5
+                              ? YuLiIcons.chevronRight
+                              : YuLiIcons.chevronLeft,
+                          size: 13,
+                          color: yCream,
+                        ),
+                      ],
                     ),
                   ),
                 ),
