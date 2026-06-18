@@ -485,18 +485,23 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   List<DrawingStroke> _chunkHandoffStrokes = const [];
   bool _chunkHandoffOverTiles = false;
   final bool _tilesEnabled = true; // master switch (A/B revert: flip + rebuild)
-  static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
-  static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
+  static const int _kChunkTilesAcross =
+      3; // tiles spanning the viewport long side
+  static const double _kChunkRingFactor =
+      0.5; // overscan ring = half a viewport
   static const int _kChunkMaxTiles = 36;
-  static const int _kChunkPerFrame = 1; // bakes/frame (budgeted, runs during pan)
+  static const int _kChunkPerFrame =
+      1; // bakes/frame (budgeted, runs during pan)
   // Hard ceilings so the ring can't OOM the process (Android's LMK kills with
   // signal 9 — confirmed on a 110k-stroke board). At high zoom a 1:1 screen-
   // density cell is ~3500px → ~48MB EACH; a full 36-tile ring is >1GB of GPU
   // texture. The focus tile already covers the exact viewport at full res, so the
   // ring only needs enough density/extent for pan headroom: cap each cell's pixel
   // side AND cap the total ring bytes (count derived from the per-cell size).
-  static const int _kChunkMaxTilePx = 1536; // per-cell density ceiling (~9MB/tile)
-  static const int _kChunkMemBudgetBytes = 180 * 1024 * 1024; // total ring ceiling
+  static const int _kChunkMaxTilePx =
+      1536; // per-cell density ceiling (~9MB/tile)
+  static const int _kChunkMemBudgetBytes =
+      180 * 1024 * 1024; // total ring ceiling
   // Above this many strokes in one overview bake, render decimated + uncached
   // (the path-cache balloon is what OOMs the open of an ultra-dense board).
   static const int _kOverviewFrugalThreshold = 60000;
@@ -757,12 +762,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   bool _lockBeforeEyedropper = false;
   // Eyedropper loupe: a raster snapshot of the visible canvas is sampled per
   // pixel (anything: paper, strokes, images, text), not stroke hit-testing.
+  final GlobalKey _overlayKey = GlobalKey();
   final GlobalKey _canvasBoundaryKey = GlobalKey();
 
-  late final FloatingPinController _pinController =
-      FloatingPinControllerStore.instance.forNote(
-    widget.note.id,
-  );
+  late final FloatingPinController _pinController = FloatingPinControllerStore
+      .instance
+      .forNote(widget.note.id);
 
   ui.Image? _eyedropImg;
   ByteData? _eyedropBytes;
@@ -1058,8 +1063,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       if (iw <= 0 || ih <= 0) return;
 
       final filename = '${const Uuid().v4()}.jpg';
-      final dest =
-          await copyIntoFloatingPins(noteId: widget.note.id, src: f, filename: filename);
+      final dest = await copyIntoFloatingPins(
+        noteId: widget.note.id,
+        src: f,
+        filename: filename,
+      );
 
       final bounds = _pinUsableBounds();
       final width = (bounds.width * 0.42).clamp(140.0, 560.0).toDouble();
@@ -1344,9 +1352,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
-      _snapRefDist =
-          (Offset(src.points.lastX, src.points.lastY) - _snapCenter!).distance
-              .clamp(1.0, 1e9);
+      _snapRefDist = (Offset(src.points.lastX, src.points.lastY) - _snapCenter!)
+          .distance
+          .clamp(1.0, 1e9);
     }
     setState(() {
       _active = DrawingStroke(
@@ -1700,7 +1708,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           // with a fresh id. (The board-doubling bug was a different cause — open
           // wiping _persistedStrokeIds — and is fixed at the source; persisted is
           // now accurate, so this branch only fires for genuine resurrection.)
-          if (stroke.dbId != null && _persistedStrokeIds.contains(stroke.dbId)) {
+          if (stroke.dbId != null &&
+              _persistedStrokeIds.contains(stroke.dbId)) {
             continue;
           }
           stroke.dbId = null;
@@ -1908,7 +1917,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           await PinRecents.removePdf(pick.path);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('PDF NO ENCONTRADO EN EL DISPOSITIVO')),
+              const SnackBar(
+                content: Text('PDF NO ENCONTRADO EN EL DISPOSITIVO'),
+              ),
             );
           }
           return;
@@ -2463,7 +2474,50 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       _viewCtrl.value,
       Offset(bb.center.dx, bb.top),
     );
-    return Rect.fromLTWH(screenTop.dx - 110, screenTop.dy - 148, 220, 100);
+    final hasExtraMenu = _selectionHasWriting;
+    final mainWidth = LassoMiniToolbar.mainWidth(
+      hasCrop: _singleImageSelected,
+      hasPin: true,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final placement = _placeLassoToolbar(
+      anchor: _canvasOffsetToOverlay(screenTop),
+      mainWidth: mainWidth,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final menuTotal = hasExtraMenu ? LassoMiniToolbar.extraMenuTotalWidth : 0.0;
+    final unionHeight =
+        hasExtraMenu
+            ? math.max(
+              LassoMiniToolbar.mainHeight,
+              LassoMiniToolbar.extraMenuHeight,
+            )
+            : LassoMiniToolbar.mainHeight;
+    final overlayRect = Rect.fromLTWH(
+      placement.left,
+      placement.top,
+      mainWidth + menuTotal,
+      unionHeight,
+    );
+    final canvasBox =
+        _canvasBoundaryKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlayBox =
+        _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    if (canvasBox == null || overlayBox == null) {
+      return Rect.fromLTWH(
+        screenTop.dx - mainWidth / 2,
+        screenTop.dy - 48 - LassoMiniToolbar.mainHeight,
+        mainWidth,
+        LassoMiniToolbar.mainHeight,
+      );
+    }
+    final tl = canvasBox.globalToLocal(
+      overlayBox.localToGlobal(overlayRect.topLeft),
+    );
+    final br = canvasBox.globalToLocal(
+      overlayBox.localToGlobal(overlayRect.bottomRight),
+    );
+    return Rect.fromPoints(tl, br);
   }
 
   void _onDown(PointerDownEvent e) {
@@ -2632,8 +2686,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
           colorValue: _color.toARGB32(),
           strokeWidth: _strokeW,
           isFountainPen: true,
-          points: StrokePoints(comps: 4)
-            ..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
+          points: StrokePoints(
+            comps: 4,
+          )..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
         );
       });
       return;
@@ -3109,7 +3164,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     _commitStrokeAdd(addedStroke);
     historySw.stop();
     final persistSw = Stopwatch()..start();
-    final region = strokeBounds(addedStroke).inflate(addedStroke.strokeWidth + 4);
+    final region = strokeBounds(
+      addedStroke,
+    ).inflate(addedStroke.strokeWidth + 4);
     _appendStrokeCaches(addedStroke, region);
     _persist();
     persistSw.stop();
@@ -3464,8 +3521,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       // at the new one until the board is re-entered. Incremental: re-file only
       // the moved strokes + patch only the edited overview region (not the whole
       // board) — the pen-up hitch/crash fix on dense boards.
-      final hadStrokes = _preEditStrokes.isNotEmpty ||
-          _lassoCtrl.selectedIndices.isNotEmpty;
+      final hadStrokes =
+          _preEditStrokes.isNotEmpty || _lassoCtrl.selectedIndices.isNotEmpty;
       final after = _lassoCtrl.boundingBox;
       // Image/block-only moves don't change ink → leave the ring/overview alone
       // (the moved item lives in its own live layer). Snapshot still carries the
@@ -3754,20 +3811,97 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return out;
   }
 
+  Offset _canvasOffsetToOverlay(Offset p) {
+    final canvasBox =
+        _canvasBoundaryKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlayBox =
+        _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    if (canvasBox == null || overlayBox == null) return p;
+    return overlayBox.globalToLocal(canvasBox.localToGlobal(p));
+  }
+
+  Size _overlaySize() {
+    final box = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size ?? MediaQuery.sizeOf(context);
+  }
+
+  ({double left, double top, LassoExtraMenuSide side}) _placeLassoToolbar({
+    required Offset anchor,
+    required double mainWidth,
+    required bool hasExtraMenu,
+  }) {
+    const margin = 8.0;
+    const gapAboveSelection = 48.0;
+    final size = _overlaySize();
+    final menuTotal = hasExtraMenu ? LassoMiniToolbar.extraMenuTotalWidth : 0.0;
+    final unionHeight =
+        hasExtraMenu
+            ? math.max(
+              LassoMiniToolbar.mainHeight,
+              LassoMiniToolbar.extraMenuHeight,
+            )
+            : LassoMiniToolbar.mainHeight;
+    var mainLeft =
+        (anchor.dx - mainWidth / 2)
+            .clamp(margin, math.max(margin, size.width - mainWidth - margin))
+            .toDouble();
+    var side = LassoExtraMenuSide.right;
+    if (hasExtraMenu) {
+      final rightSpace = size.width - (mainLeft + mainWidth) - margin;
+      final leftSpace = mainLeft - margin;
+      if (rightSpace < menuTotal && leftSpace > rightSpace) {
+        side = LassoExtraMenuSide.left;
+      }
+      final unionLeft =
+          side == LassoExtraMenuSide.left ? mainLeft - menuTotal : mainLeft;
+      final unionRight =
+          side == LassoExtraMenuSide.right
+              ? mainLeft + mainWidth + menuTotal
+              : mainLeft + mainWidth;
+      if (unionLeft < margin) mainLeft += margin - unionLeft;
+      if (unionRight > size.width - margin) {
+        mainLeft -= unionRight - (size.width - margin);
+      }
+      mainLeft =
+          mainLeft
+              .clamp(margin, math.max(margin, size.width - mainWidth - margin))
+              .toDouble();
+    }
+    final top =
+        (anchor.dy - gapAboveSelection - LassoMiniToolbar.mainHeight)
+            .clamp(margin, math.max(margin, size.height - unionHeight - margin))
+            .toDouble();
+    final left =
+        side == LassoExtraMenuSide.left ? mainLeft - menuTotal : mainLeft;
+    return (left: left, top: top, side: side);
+  }
+
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop = MatrixUtils.transformPoint(
+    final canvasTop = MatrixUtils.transformPoint(
       _viewCtrl.value,
       Offset(bb.center.dx, bb.top),
     );
-    // Anchor the toolbar's BOTTOM a fixed screen gap above the selection top
-    // (clearing the rotation handle), growing upward. A world-space offset
-    // shrank on screen when zoomed out and the toolbar then covered the top
-    // handles / top of the object, making them dead.
+    final anchor = _canvasOffsetToOverlay(canvasTop);
+    final hasCrop = _singleImageSelected;
+    const hasPin = true;
+    final hasExtraMenu = _selectionHasWriting;
+    final mainWidth = LassoMiniToolbar.mainWidth(
+      hasCrop: hasCrop,
+      hasPin: hasPin,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final placement = _placeLassoToolbar(
+      anchor: anchor,
+      mainWidth: mainWidth,
+      hasExtraMenu: hasExtraMenu,
+    );
     return Positioned(
-      left: screenTop.dx - 80,
-      bottom: _viewport.height - screenTop.dy + 48,
+      left: placement.left,
+      top: placement.top,
       child: LassoMiniToolbar(
+        accent: _accent,
+        extraMenuSide: placement.side,
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
         onPin: () {
@@ -4317,7 +4451,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     final dirtyBefore = _dirtyStrokeIds.length;
     final nullIdsBefore = _data.strokes.where((s) => s.dbId == null).length;
     _cloneSelectedStrokesInPlace();
-    final preEdit = _preEditStrokes; // originals (still in the index at OLD tiles)
+    final preEdit =
+        _preEditStrokes; // originals (still in the index at OLD tiles)
     // Clones that replaced the selection in-place (same geometry, kept dbId).
     // After the op they're the "kept" strokes for color/width/flip/duplicate; for
     // delete/cut the op drops them from _data.strokes (filtered out via liveSet).
@@ -4979,7 +5114,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   /// Per-tile, clipped to the tile rect, in insertion (= global z) order, so the
   /// z-order is correct and disjoint tiles never double-blend. Returns the draw
   /// count (logged by the focus bake).
-  int _drawRegionCulled(Canvas canvas, Rect region, {Set<DrawingStroke>? skip}) {
+  int _drawRegionCulled(
+    Canvas canvas,
+    Rect region, {
+    Set<DrawingStroke>? skip,
+  }) {
     final ts = _strokeTiles.tileSize;
     var drawn = 0;
     for (final key in _strokeTiles.tilesInRect(region)) {
@@ -5101,7 +5240,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       return false; // base overview is crisp
     }
     final dpr = _dpr;
-    final regionLongest = _visibleRectFor(_viewport).longestSide * 2; // focus overscan
+    final regionLongest =
+        _visibleRectFor(_viewport).longestSide * 2; // focus overscan
     final cap = _focusMaxDim / regionLongest; // focus density ceiling
     return _viewScale * dpr > cap * 1.03; // focus can't reach screen density
   }
@@ -6157,618 +6297,629 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             ?.isNotEmpty) ??
         false;
 
-    return _wrapWithChatDock(linked: aiLinked, Scaffold(
-      backgroundColor: yCream,
-      body: StatusBarFlood(
-        color: _headerCollapsed ? yCream2 : _accent,
-        child: SafeArea(
-          top: false,
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_headerCollapsed)
-                    _CollapsedWhiteboardHeader(
-                      folder: widget.folder,
-                      spaces: spaces,
-                      accent: _accent,
-                      noteTitle: widget.note.title ?? '',
-                      onExpand: () => setState(() => _headerCollapsed = false),
-                      onReset: _resetView,
-                      onZoomToFit: _zoomToFit,
-                      onExport: _startExport,
-                      onLink: () => _linkToLab(spaces),
-                    )
-                  else ...[
-                    Column(
-                      children: [
-                        ModeHeader(
-                          mode: 'PIZARRA',
-                          subtitle:
-                              (widget.note.title?.trim().isNotEmpty == true)
-                                  ? 'INFINITA · CANVAS · PAN + ZOOM · ${widget.note.title!.trim()}'
-                                  : 'INFINITA · CANVAS · PAN + ZOOM',
-                          color: _accent,
-                          onBack: () => Navigator.pop(context),
-                          headerRight: [
-                            YBadge(
-                              label: '@${widget.folder.name}',
-                              bg: widget.folder.color,
-                              fg: yCream,
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _resetView,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: yCream,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: yLineMid,
+    return _wrapWithChatDock(
+      linked: aiLinked,
+      Scaffold(
+        backgroundColor: yCream,
+        body: StatusBarFlood(
+          color: _headerCollapsed ? yCream2 : _accent,
+          child: SafeArea(
+            top: false,
+            child: Stack(
+              key: _overlayKey,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_headerCollapsed)
+                      _CollapsedWhiteboardHeader(
+                        folder: widget.folder,
+                        spaces: spaces,
+                        accent: _accent,
+                        noteTitle: widget.note.title ?? '',
+                        onExpand:
+                            () => setState(() => _headerCollapsed = false),
+                        onReset: _resetView,
+                        onZoomToFit: _zoomToFit,
+                        onExport: _startExport,
+                        onLink: () => _linkToLab(spaces),
+                      )
+                    else ...[
+                      Column(
+                        children: [
+                          ModeHeader(
+                            mode: 'PIZARRA',
+                            subtitle:
+                                (widget.note.title?.trim().isNotEmpty == true)
+                                    ? 'INFINITA · CANVAS · PAN + ZOOM · ${widget.note.title!.trim()}'
+                                    : 'INFINITA · CANVAS · PAN + ZOOM',
+                            color: _accent,
+                            onBack: () => Navigator.pop(context),
+                            headerRight: [
+                              YBadge(
+                                label: '@${widget.folder.name}',
+                                bg: widget.folder.color,
+                                fg: yCream,
+                              ),
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: _resetView,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: yCream,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.scan,
+                                    color: yInk,
+                                    size: 16,
                                   ),
                                 ),
-                                child: const Icon(
-                                  YuLiIcons.scan,
-                                  color: yInk,
-                                  size: 16,
-                                ),
                               ),
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _zoomToFit,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: yCream,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: yLineMid,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: _zoomToFit,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: yCream,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.discAlbum,
+                                    color: yInk,
+                                    size: 16,
                                   ),
                                 ),
-                                child: const Icon(
-                                  YuLiIcons.discAlbum,
-                                  color: yInk,
-                                  size: 16,
-                                ),
                               ),
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _startExport,
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: yCream,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: yLineMid,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: _startExport,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: yCream,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.share,
+                                    color: yInk,
+                                    size: 16,
                                   ),
                                 ),
-                                child: const Icon(
-                                  YuLiIcons.share,
-                                  color: yInk,
-                                  size: 16,
-                                ),
                               ),
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => _linkToLab(spaces),
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: yLab,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: yLineMid,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => _linkToLab(spaces),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: yLab,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.infinity,
+                                    color: yCream,
+                                    size: 16,
                                   ),
                                 ),
-                                child: const Icon(
-                                  YuLiIcons.infinity,
-                                  color: yCream,
-                                  size: 16,
-                                ),
                               ),
-                            ),
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap:
-                                  () => setState(() => _headerCollapsed = true),
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: yCream,
-                                  border: Border.all(
-                                    color: yBorderStrong,
-                                    width: yLineMid,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap:
+                                    () =>
+                                        setState(() => _headerCollapsed = true),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: yCream,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.chevronUp,
+                                    color: yInk,
+                                    size: 18,
                                   ),
                                 ),
-                                child: const Icon(
-                                  YuLiIcons.chevronUp,
-                                  color: yInk,
-                                  size: 18,
-                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        if (linkedSpaces.isNotEmpty)
-                          _LinkedSpacesBar(spaces: linkedSpaces),
-                      ],
-                    ),
-                  ],
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (ctx, c) {
-                        _viewport = Size(c.maxWidth, c.maxHeight);
-                        _maybeInitView();
-                        final viewport = Size(c.maxWidth, c.maxHeight);
-                        final textBlockOverlays = _buildTextBlockOverlays();
-                        final taskBlockOverlays = _buildTaskBlockOverlays();
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            RepaintBoundary(
-                              key: _canvasBoundaryKey,
-                              child: ClipRect(
-                                child: RawGestureDetector(
-                                  // A stylus must NEVER pan the InteractiveViewer.
-                                  // This Eager recognizer (stylus-only) wins the gesture
-                                  // arena the instant a pen touches, so the IV's pan
-                                  // recognizer is rejected and never fights the stroke.
-                                  // Fingers are unaffected (it ignores touch).
-                                  gestures: <Type, GestureRecognizerFactory>{
-                                    TapGestureRecognizer:
-                                        GestureRecognizerFactoryWithHandlers<
-                                          TapGestureRecognizer
-                                        >(
-                                          () => TapGestureRecognizer(),
-                                          (i) => i.onTapUp = _onLassoTap,
-                                        ),
-                                    EagerGestureRecognizer:
-                                        GestureRecognizerFactoryWithHandlers<
-                                          EagerGestureRecognizer
-                                        >(
-                                          () => EagerGestureRecognizer(
-                                            supportedDevices: const {
-                                              PointerDeviceKind.stylus,
-                                              PointerDeviceKind.invertedStylus,
-                                            },
+                            ],
+                          ),
+                          if (linkedSpaces.isNotEmpty)
+                            _LinkedSpacesBar(spaces: linkedSpaces),
+                        ],
+                      ),
+                    ],
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (ctx, c) {
+                          _viewport = Size(c.maxWidth, c.maxHeight);
+                          _maybeInitView();
+                          final viewport = Size(c.maxWidth, c.maxHeight);
+                          final textBlockOverlays = _buildTextBlockOverlays();
+                          final taskBlockOverlays = _buildTaskBlockOverlays();
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              RepaintBoundary(
+                                key: _canvasBoundaryKey,
+                                child: ClipRect(
+                                  child: RawGestureDetector(
+                                    // A stylus must NEVER pan the InteractiveViewer.
+                                    // This Eager recognizer (stylus-only) wins the gesture
+                                    // arena the instant a pen touches, so the IV's pan
+                                    // recognizer is rejected and never fights the stroke.
+                                    // Fingers are unaffected (it ignores touch).
+                                    gestures: <Type, GestureRecognizerFactory>{
+                                      TapGestureRecognizer:
+                                          GestureRecognizerFactoryWithHandlers<
+                                            TapGestureRecognizer
+                                          >(
+                                            () => TapGestureRecognizer(),
+                                            (i) => i.onTapUp = _onLassoTap,
                                           ),
-                                          (i) {},
-                                        ),
-                                  },
-                                  child: Listener(
-                                    behavior: HitTestBehavior.opaque,
-                                    onPointerDown: _onDown,
-                                    onPointerMove: _onMove,
-                                    onPointerUp: _onUp,
-                                    onPointerCancel: _onCancel,
-                                    child: InteractiveViewer(
-                                      transformationController: _viewCtrl,
-                                      minScale: 0.5,
-                                      maxScale: 4.0,
-                                      onInteractionStart: (details) {
-                                        _viewGestureActive = true;
-                                        _viewMoved = false;
-                                        _zoomGestureActive = false;
-                                        _zoomGestureSeen = false;
-                                        _zoomGestureScale = 1;
-                                        // New gesture interrupts the prior fling's
-                                        // settle watch (re-armed on its end) and its
-                                        // linger-drop grace; the overview stays up
-                                        // across the whole burst of pans.
-                                        _stopSettleWatch();
-                                        _overviewLingerTimer?.cancel();
-                                      },
-                                      onInteractionUpdate: (details) {
-                                        final zooming =
-                                            (details.scale - 1.0).abs() > 0.01;
-                                        if (zooming) _pingZoomLabel();
-                                        if (!_viewMoved &&
-                                            (zooming ||
-                                                details
-                                                        .focalPointDelta
-                                                        .distance >
-                                                    0.5)) {
-                                          // First real pan/zoom frame → swap to
-                                          // the overview (not a bare touch).
-                                          _viewMoved = true;
-                                          if (mounted) setState(() {});
-                                        }
-                                        _zoomGestureScale = details.scale;
-                                        if (zooming && !_zoomGestureSeen) {
-                                          _zoomGestureSeen = true;
-                                          _zoomGestureActive = true;
-                                          _zoomGestureScale = 1;
-                                          if (mounted) setState(() {});
-                                        } else if (_zoomGestureActive) {
-                                          if (mounted) setState(() {});
-                                        }
-                                      },
-                                      onInteractionEnd: (_) {
-                                        _viewGestureActive = false;
-                                        _viewMoved = false;
-                                        _zoomGestureActive = false;
-                                        _zoomGestureSeen = false;
-                                        _zoomGestureScale = 1;
-                                        // Keep the overview up through the whole
-                                        // fling; the settle Ticker drops it back to
-                                        // crisp tiles + bakes the focus only once the
-                                        // view truly stops (swap lands in stillness).
-                                        _overviewLinger = true;
-                                        _beginSettleWatch();
-                                        if (mounted) setState(() {});
-                                        // After a 2-finger pan/zoom the snapshot is
-                                        // stale → recapture so the loupe keeps sampling
-                                        // the right pixels (keeps its position).
-                                        if (_eyedropperMode &&
-                                            _eyedropCaptureMatrix != null &&
-                                            _viewCtrl.value !=
-                                                _eyedropCaptureMatrix) {
-                                          _captureEyedropSnapshot(
-                                            resetPos: false,
-                                          );
-                                        }
-                                      },
-                                      boundaryMargin: EdgeInsets.symmetric(
-                                        horizontal: c.maxWidth,
-                                        vertical: c.maxHeight,
-                                      ),
-                                      // Text mode: 1-finger drag is reserved for moving
-                                      // a box (its GestureDetector), so disable pan;
-                                      // 2-finger still zooms/navigates.
-                                      panEnabled:
-                                          _eyedropperMode
-                                              ? _activePointers.length >= 2
-                                              : _exportMarquee
-                                              ? false
-                                              : _tool == DrawTool.text
-                                              ? false
-                                              : _tool == DrawTool.task
-                                              ? false
-                                              : _tool == DrawTool.lasso
-                                              ? (_lassoCtrl.phase ==
-                                                      LassoPhase.idle &&
-                                                  !_isDrawing)
-                                              : _palmRejection
-                                              ? !_stylusActive
-                                              : !_isDrawing,
-                                      scaleEnabled:
-                                          _eyedropperMode
-                                              ? _activePointers.length >= 2
-                                              : _exportMarquee
-                                              ? true
-                                              : _tool == DrawTool.text
-                                              ? true
-                                              : _tool == DrawTool.task
-                                              ? true
-                                              : _tool == DrawTool.lasso
-                                              ? (_lassoCtrl.phase ==
-                                                      LassoPhase.idle &&
-                                                  !_isDrawing)
-                                              : !_stylusActive && !_locked,
-                                      constrained: false,
-                                      child: SizedBox(
-                                        width: _kCanvasW,
-                                        height: _kCanvasH,
-                                        child: Stack(
-                                          children: [
-                                            _buildWhiteboardBackgroundLayer(
-                                              viewport,
-                                            ),
-                                            ...textBlockOverlays,
-                                            _buildWhiteboardStrokeLayer(
-                                              viewport,
-                                            ),
-                                            AnimatedBuilder(
-                                              animation: _activeTick,
-                                              builder: (_, _) {
-                                                final activeRect =
-                                                    _activeStrokeRect();
-                                                if (activeRect == Rect.zero) {
-                                                  return const SizedBox.shrink();
-                                                }
-                                                return Positioned.fromRect(
-                                                  rect: activeRect,
-                                                  child: IgnorePointer(
-                                                    child: RepaintBoundary(
-                                                      child: CustomPaint(
-                                                        painter:
-                                                            _ActiveStrokePainter(
-                                                              active: _active,
-                                                              tick:
-                                                                  _activeTick
-                                                                      .value,
-                                                              viewScale:
-                                                                  _viewScale,
-                                                              origin:
-                                                                  activeRect
-                                                                      .topLeft,
-                                                            ),
-                                                        size: activeRect.size,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                );
+                                      EagerGestureRecognizer:
+                                          GestureRecognizerFactoryWithHandlers<
+                                            EagerGestureRecognizer
+                                          >(
+                                            () => EagerGestureRecognizer(
+                                              supportedDevices: const {
+                                                PointerDeviceKind.stylus,
+                                                PointerDeviceKind
+                                                    .invertedStylus,
                                               },
                                             ),
-                                            ...taskBlockOverlays,
-                                            _buildWhiteboardLassoLayer(
-                                              viewport,
+                                            (i) {},
+                                          ),
+                                    },
+                                    child: Listener(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPointerDown: _onDown,
+                                      onPointerMove: _onMove,
+                                      onPointerUp: _onUp,
+                                      onPointerCancel: _onCancel,
+                                      child: InteractiveViewer(
+                                        transformationController: _viewCtrl,
+                                        minScale: 0.5,
+                                        maxScale: 4.0,
+                                        onInteractionStart: (details) {
+                                          _viewGestureActive = true;
+                                          _viewMoved = false;
+                                          _zoomGestureActive = false;
+                                          _zoomGestureSeen = false;
+                                          _zoomGestureScale = 1;
+                                          // New gesture interrupts the prior fling's
+                                          // settle watch (re-armed on its end) and its
+                                          // linger-drop grace; the overview stays up
+                                          // across the whole burst of pans.
+                                          _stopSettleWatch();
+                                          _overviewLingerTimer?.cancel();
+                                        },
+                                        onInteractionUpdate: (details) {
+                                          final zooming =
+                                              (details.scale - 1.0).abs() >
+                                              0.01;
+                                          if (zooming) _pingZoomLabel();
+                                          if (!_viewMoved &&
+                                              (zooming ||
+                                                  details
+                                                          .focalPointDelta
+                                                          .distance >
+                                                      0.5)) {
+                                            // First real pan/zoom frame → swap to
+                                            // the overview (not a bare touch).
+                                            _viewMoved = true;
+                                            if (mounted) setState(() {});
+                                          }
+                                          _zoomGestureScale = details.scale;
+                                          if (zooming && !_zoomGestureSeen) {
+                                            _zoomGestureSeen = true;
+                                            _zoomGestureActive = true;
+                                            _zoomGestureScale = 1;
+                                            if (mounted) setState(() {});
+                                          } else if (_zoomGestureActive) {
+                                            if (mounted) setState(() {});
+                                          }
+                                        },
+                                        onInteractionEnd: (_) {
+                                          _viewGestureActive = false;
+                                          _viewMoved = false;
+                                          _zoomGestureActive = false;
+                                          _zoomGestureSeen = false;
+                                          _zoomGestureScale = 1;
+                                          // Keep the overview up through the whole
+                                          // fling; the settle Ticker drops it back to
+                                          // crisp tiles + bakes the focus only once the
+                                          // view truly stops (swap lands in stillness).
+                                          _overviewLinger = true;
+                                          _beginSettleWatch();
+                                          if (mounted) setState(() {});
+                                          // After a 2-finger pan/zoom the snapshot is
+                                          // stale → recapture so the loupe keeps sampling
+                                          // the right pixels (keeps its position).
+                                          if (_eyedropperMode &&
+                                              _eyedropCaptureMatrix != null &&
+                                              _viewCtrl.value !=
+                                                  _eyedropCaptureMatrix) {
+                                            _captureEyedropSnapshot(
+                                              resetPos: false,
+                                            );
+                                          }
+                                        },
+                                        boundaryMargin: EdgeInsets.symmetric(
+                                          horizontal: c.maxWidth,
+                                          vertical: c.maxHeight,
+                                        ),
+                                        // Text mode: 1-finger drag is reserved for moving
+                                        // a box (its GestureDetector), so disable pan;
+                                        // 2-finger still zooms/navigates.
+                                        panEnabled:
+                                            _eyedropperMode
+                                                ? _activePointers.length >= 2
+                                                : _exportMarquee
+                                                ? false
+                                                : _tool == DrawTool.text
+                                                ? false
+                                                : _tool == DrawTool.task
+                                                ? false
+                                                : _tool == DrawTool.lasso
+                                                ? (_lassoCtrl.phase ==
+                                                        LassoPhase.idle &&
+                                                    !_isDrawing)
+                                                : _palmRejection
+                                                ? !_stylusActive
+                                                : !_isDrawing,
+                                        scaleEnabled:
+                                            _eyedropperMode
+                                                ? _activePointers.length >= 2
+                                                : _exportMarquee
+                                                ? true
+                                                : _tool == DrawTool.text
+                                                ? true
+                                                : _tool == DrawTool.task
+                                                ? true
+                                                : _tool == DrawTool.lasso
+                                                ? (_lassoCtrl.phase ==
+                                                        LassoPhase.idle &&
+                                                    !_isDrawing)
+                                                : !_stylusActive && !_locked,
+                                        constrained: false,
+                                        child: SizedBox(
+                                          width: _kCanvasW,
+                                          height: _kCanvasH,
+                                          child: Stack(
+                                            children: [
+                                              _buildWhiteboardBackgroundLayer(
+                                                viewport,
+                                              ),
+                                              ...textBlockOverlays,
+                                              _buildWhiteboardStrokeLayer(
+                                                viewport,
+                                              ),
+                                              AnimatedBuilder(
+                                                animation: _activeTick,
+                                                builder: (_, _) {
+                                                  final activeRect =
+                                                      _activeStrokeRect();
+                                                  if (activeRect == Rect.zero) {
+                                                    return const SizedBox.shrink();
+                                                  }
+                                                  return Positioned.fromRect(
+                                                    rect: activeRect,
+                                                    child: IgnorePointer(
+                                                      child: RepaintBoundary(
+                                                        child: CustomPaint(
+                                                          painter:
+                                                              _ActiveStrokePainter(
+                                                                active: _active,
+                                                                tick:
+                                                                    _activeTick
+                                                                        .value,
+                                                                viewScale:
+                                                                    _viewScale,
+                                                                origin:
+                                                                    activeRect
+                                                                        .topLeft,
+                                                              ),
+                                                          size: activeRect.size,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                              ...taskBlockOverlays,
+                                              _buildWhiteboardLassoLayer(
+                                                viewport,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              _buildZoomSnapshotLayer(viewport),
+                              // Floating palettes — sibling of the canvas Listener so
+                              // touching a palette never leaks a pointer into a stroke.
+                              // They slide off toward their edge during the eyedropper.
+                              if (_palettes != null)
+                                Positioned.fill(
+                                  child: AnimatedBuilder(
+                                    animation: _palettes!,
+                                    builder:
+                                        (_, _) => FloatingPalettesLayer(
+                                          controller: _palettes!,
+                                          accent: _accent,
+                                          activeColor: _color,
+                                          activeWidth: _strokeW,
+                                          hidden: _eyedropperMode,
+                                          onPickColor: _commitColor,
+                                          onPickWidth: _commitWidth,
+                                          onInsertShape: _insertShape,
+                                          onUndo: _undo,
+                                          onRedo: _redo,
+                                          canUndo: _undoStack.isNotEmpty,
+                                          canRedo: _redoStack.isNotEmpty,
+                                          onEyedropper:
+                                              () => _enterEyedropper(
+                                                onPick:
+                                                    (c) =>
+                                                        _palettes?.addColor(c),
+                                              ),
+                                        ),
+                                  ),
+                                ),
+                              Positioned.fill(
+                                child: FloatingPinsLayer(
+                                  controller: _pinController,
+                                  usableBounds: _pinUsableBounds(),
+                                  accent: _accent,
+                                ),
+                              ),
+                              if (_showPasteAt != null) _buildPasteButton(),
+                              if (_tool == DrawTool.eraser &&
+                                  _eraserCursor != null)
+                                Positioned(
+                                  left: _eraserCursor!.dx - _eraserScreenRadius,
+                                  top: _eraserCursor!.dy - _eraserScreenRadius,
+                                  child: const EraserCursor(
+                                    radius: _eraserScreenRadius,
+                                  ),
+                                ),
+                              // Eyedropper loupe (viewport-space, like the palettes).
+                              if (_eyedropImg != null)
+                                ..._buildLoupeOverlay(viewport),
+                              // Lives INSIDE the canvas Stack so the painter shares the
+                              // InteractiveViewer's viewport space — the same space as
+                              // `e.localPosition` used for handle hit-testing. In the
+                              // outer Stack it was offset by the header height, so the
+                              // visible handles sat above their hit area and dragging
+                              // them started a fresh marquee instead of resizing.
+                              if (_exportMarquee)
+                                Positioned.fill(
+                                  child: _ExportMarqueeOverlay(
+                                    accent: _accent,
+                                    viewCtrl: _viewCtrl,
+                                    worldRect: _marqueeWorld,
+                                    onConfirm: _confirmMarquee,
+                                    onCancel: _cancelMarquee,
+                                  ),
+                                ),
+                              // Zoom-% readout: centred just above the toolbar, only
+                              // while pinch-zooming (fades out shortly after).
+                              if (_zoomLabelVisible)
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 14,
+                                  child: IgnorePointer(
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: yCream,
+                                          border: Border.all(
+                                            color: yBorderStrong,
+                                            width: yLineMid,
+                                          ),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: yBorderStrong,
+                                              offset: Offset(2, 2),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            _buildZoomSnapshotLayer(viewport),
-                            // Floating palettes — sibling of the canvas Listener so
-                            // touching a palette never leaks a pointer into a stroke.
-                            // They slide off toward their edge during the eyedropper.
-                            if (_palettes != null)
-                              Positioned.fill(
-                                child: AnimatedBuilder(
-                                  animation: _palettes!,
-                                  builder:
-                                      (_, _) => FloatingPalettesLayer(
-                                        controller: _palettes!,
-                                        accent: _accent,
-                                        activeColor: _color,
-                                        activeWidth: _strokeW,
-                                        hidden: _eyedropperMode,
-                                        onPickColor: _commitColor,
-                                        onPickWidth: _commitWidth,
-                                        onInsertShape: _insertShape,
-                                        onUndo: _undo,
-                                        onRedo: _redo,
-                                        canUndo: _undoStack.isNotEmpty,
-                                        canRedo: _redoStack.isNotEmpty,
-                                        onEyedropper:
-                                            () => _enterEyedropper(
-                                              onPick:
-                                                  (c) => _palettes?.addColor(c),
-                                            ),
-                                      ),
-                                ),
-                              ),
-                            Positioned.fill(
-                              child: FloatingPinsLayer(
-                                controller: _pinController,
-                                usableBounds: _pinUsableBounds(),
-                                accent: _accent,
-                              ),
-                            ),
-                            // Reactive to _lassoPhaseTick so a grab/release
-                            // hides/shows it without a full-tree setState.
-                            ValueListenableBuilder<int>(
-                              valueListenable: _lassoPhaseTick,
-                              builder: (_, _, _) {
-                                if (_lassoCtrl.phase == LassoPhase.selected &&
-                                    _toolbarVisible) {
-                                  return _buildLassoMiniToolbar();
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                            if (_showPasteAt != null) _buildPasteButton(),
-                            if (_tool == DrawTool.eraser &&
-                                _eraserCursor != null)
-                              Positioned(
-                                left: _eraserCursor!.dx - _eraserScreenRadius,
-                                top: _eraserCursor!.dy - _eraserScreenRadius,
-                                child: const EraserCursor(
-                                  radius: _eraserScreenRadius,
-                                ),
-                              ),
-                            // Eyedropper loupe (viewport-space, like the palettes).
-                            if (_eyedropImg != null)
-                              ..._buildLoupeOverlay(viewport),
-                            // Lives INSIDE the canvas Stack so the painter shares the
-                            // InteractiveViewer's viewport space — the same space as
-                            // `e.localPosition` used for handle hit-testing. In the
-                            // outer Stack it was offset by the header height, so the
-                            // visible handles sat above their hit area and dragging
-                            // them started a fresh marquee instead of resizing.
-                            if (_exportMarquee)
-                              Positioned.fill(
-                                child: _ExportMarqueeOverlay(
-                                  accent: _accent,
-                                  viewCtrl: _viewCtrl,
-                                  worldRect: _marqueeWorld,
-                                  onConfirm: _confirmMarquee,
-                                  onCancel: _cancelMarquee,
-                                ),
-                              ),
-                            // Zoom-% readout: centred just above the toolbar, only
-                            // while pinch-zooming (fades out shortly after).
-                            if (_zoomLabelVisible)
-                              Positioned(
-                                left: 0,
-                                right: 0,
-                                bottom: 14,
-                                child: IgnorePointer(
-                                  child: Center(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: yCream,
-                                        border: Border.all(
-                                          color: yBorderStrong,
-                                          width: yLineMid,
-                                        ),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: yBorderStrong,
-                                            offset: Offset(2, 2),
+                                        child: Text(
+                                          '[ ${(_viewScale * 100).round()} % ]',
+                                          style: yMono(
+                                            size: 11,
+                                            weight: FontWeight.w700,
+                                            tracking: 1.5,
+                                            color: yInk,
                                           ),
-                                        ],
-                                      ),
-                                      child: Text(
-                                        '[ ${(_viewScale * 100).round()} % ]',
-                                        style: yMono(
-                                          size: 11,
-                                          weight: FontWeight.w700,
-                                          tracking: 1.5,
-                                          color: yInk,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        );
-                      },
+                            ],
+                          );
+                        },
+                      ),
                     ),
+                    _toolbar(),
+                  ],
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-image'),
+                  open: _imagePanelOpen,
+                  onDismiss: _toggleImagePanel,
+                  child: ImageInsertPanel(
+                    accent: _accent,
+                    onPick: (file) {
+                      final forPin = _imagePanelForPin;
+                      _toggleImagePanel();
+                      if (forPin) {
+                        _addImagePin(file);
+                      } else {
+                        _insertImageFile(file);
+                      }
+                    },
+                    onClose: _toggleImagePanel,
                   ),
-                  _toolbar(),
-                ],
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-image'),
-                open: _imagePanelOpen,
-                onDismiss: _toggleImagePanel,
-                child: ImageInsertPanel(
-                  accent: _accent,
-                  onPick: (file) {
-                    final forPin = _imagePanelForPin;
-                    _toggleImagePanel();
-                    if (forPin) {
-                      _addImagePin(file);
-                    } else {
-                      _insertImageFile(file);
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-bg'),
+                  open: _bgPopupOpen,
+                  onDismiss: _toggleBgPopup,
+                  child: BackgroundPopup(
+                    pattern: _data.background,
+                    color: bgPaper(_data.bgColorValue, yCream),
+                    showScope: false,
+                    allPages: false,
+                    accent: _accent,
+                    onPattern: _setBgPattern,
+                    onColor: _setBgColor,
+                    onMoreColors:
+                        () => setState(() {
+                          _bgColorPickerOpen = true;
+                          _bgPopupOpen = false;
+                        }),
+                    onScope: (_) {},
+                    onClose: _toggleBgPopup,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-bgcolor'),
+                  open: _bgColorPickerOpen,
+                  onDismiss: () => setState(() => _bgColorPickerOpen = false),
+                  child: ColorPickerPopup(
+                    currentColor: bgPaper(_data.bgColorValue, yCream),
+                    recentColors: const [],
+                    savedColors: _bgSavedColors,
+                    quickColors: _bgSavedColors,
+                    quickLabel: 'FAVORITOS',
+                    onPreview:
+                        (c) =>
+                            setState(() => _data.bgColorValue = c.toARGB32()),
+                    onCommit: _setBgColor,
+                    onStar: _starBgColor,
+                    onEyedropper: () {},
+                    onClose:
+                        () => setState(() {
+                          _bgColorPickerOpen = false;
+                          _bgPopupOpen = true;
+                        }),
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-eraser'),
+                  open: _eraserPopupOpen,
+                  onDismiss: () => setState(() => _eraserPopupOpen = false),
+                  child: _eraserModePopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-shape'),
+                  open: _shapePopupOpen,
+                  onDismiss: () => setState(() => _shapePopupOpen = false),
+                  child: ShapePickerPopup(
+                    accent: _accent,
+                    onPick: _insertShape,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-more'),
+                  open: _morePopupOpen,
+                  onDismiss: () => setState(() => _morePopupOpen = false),
+                  child: _buildMorePopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-add-pin'),
+                  open: _addPinPopupOpen,
+                  onDismiss: () => setState(() => _addPinPopupOpen = false),
+                  child: _buildAddPinPopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-floating-toolbars'),
+                  open: _floatingToolbarsPopupOpen,
+                  onDismiss:
+                      () => setState(() => _floatingToolbarsPopupOpen = false),
+                  child: _buildFloatingToolbarsPopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-width'),
+                  open: _widthPickerOpen,
+                  onDismiss: _toggleWidthPicker,
+                  child: StrokeWidthPopup(
+                    currentWidth: _strokeW,
+                    recentWidths: _recentWidths,
+                    accentColor: _accent,
+                    onPreview: (v) => setState(() => _strokeW = v),
+                    onCommit: _commitWidth,
+                    onClose: _toggleWidthPicker,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-color'),
+                  open: _colorPickerOpen,
+                  onDismiss: _toggleColorPicker,
+                  child: ColorPickerPopup(
+                    currentColor: _color,
+                    recentColors: _recentColors,
+                    savedColors: _savedColors,
+                    onPreview: (c) => setState(() => _color = c),
+                    onCommit: _commitColor,
+                    onStar: _starColor,
+                    onEyedropper: () => _enterEyedropper(),
+                    onClose: _toggleColorPicker,
+                  ),
+                ),
+                AnimatedBuilder(
+                  animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
+                  builder: (_, _) {
+                    if (_lassoCtrl.phase == LassoPhase.selected &&
+                        _toolbarVisible) {
+                      return _buildLassoMiniToolbar();
                     }
+                    return const SizedBox.shrink();
                   },
-                  onClose: _toggleImagePanel,
                 ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-bg'),
-                open: _bgPopupOpen,
-                onDismiss: _toggleBgPopup,
-                child: BackgroundPopup(
-                  pattern: _data.background,
-                  color: bgPaper(_data.bgColorValue, yCream),
-                  showScope: false,
-                  allPages: false,
-                  accent: _accent,
-                  onPattern: _setBgPattern,
-                  onColor: _setBgColor,
-                  onMoreColors:
-                      () => setState(() {
-                        _bgColorPickerOpen = true;
-                        _bgPopupOpen = false;
-                      }),
-                  onScope: (_) {},
-                  onClose: _toggleBgPopup,
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-bgcolor'),
-                open: _bgColorPickerOpen,
-                onDismiss: () => setState(() => _bgColorPickerOpen = false),
-                child: ColorPickerPopup(
-                  currentColor: bgPaper(_data.bgColorValue, yCream),
-                  recentColors: const [],
-                  savedColors: _bgSavedColors,
-                  quickColors: _bgSavedColors,
-                  quickLabel: 'FAVORITOS',
-                  onPreview:
-                      (c) => setState(() => _data.bgColorValue = c.toARGB32()),
-                  onCommit: _setBgColor,
-                  onStar: _starBgColor,
-                  onEyedropper: () {},
-                  onClose:
-                      () => setState(() {
-                        _bgColorPickerOpen = false;
-                        _bgPopupOpen = true;
-                      }),
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-eraser'),
-                open: _eraserPopupOpen,
-                onDismiss: () => setState(() => _eraserPopupOpen = false),
-                child: _eraserModePopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-shape'),
-                open: _shapePopupOpen,
-                onDismiss: () => setState(() => _shapePopupOpen = false),
-                child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-more'),
-                open: _morePopupOpen,
-                onDismiss: () => setState(() => _morePopupOpen = false),
-                child: _buildMorePopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-add-pin'),
-                open: _addPinPopupOpen,
-                onDismiss: () => setState(() => _addPinPopupOpen = false),
-                child: _buildAddPinPopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-floating-toolbars'),
-                open: _floatingToolbarsPopupOpen,
-                onDismiss:
-                    () => setState(() => _floatingToolbarsPopupOpen = false),
-                child: _buildFloatingToolbarsPopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-width'),
-                open: _widthPickerOpen,
-                onDismiss: _toggleWidthPicker,
-                child: StrokeWidthPopup(
-                  currentWidth: _strokeW,
-                  recentWidths: _recentWidths,
-                  accentColor: _accent,
-                  onPreview: (v) => setState(() => _strokeW = v),
-                  onCommit: _commitWidth,
-                  onClose: _toggleWidthPicker,
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-color'),
-                open: _colorPickerOpen,
-                onDismiss: _toggleColorPicker,
-                child: ColorPickerPopup(
-                  currentColor: _color,
-                  recentColors: _recentColors,
-                  savedColors: _savedColors,
-                  onPreview: (c) => setState(() => _color = c),
-                  onCommit: _commitColor,
-                  onStar: _starColor,
-                  onEyedropper: () => _enterEyedropper(),
-                  onClose: _toggleColorPicker,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ));
+    );
   }
 
   // ─── Export ────────────────────────────────────────────────────────────
@@ -7323,10 +7474,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
             icon: YuLiIcons.pin,
             active: _addPinPopupOpen,
             label: 'AGREGAR PIN',
-            onTap: () => setState(() {
-              _morePopupOpen = false;
-              _addPinPopupOpen = true;
-            }),
+            onTap:
+                () => setState(() {
+                  _morePopupOpen = false;
+                  _addPinPopupOpen = true;
+                }),
           ),
           _toolBtn(
             icon: YuLiIcons.trash,
@@ -7434,10 +7586,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       ),
     );
     if (palettes == null) return content();
-    return AnimatedBuilder(
-      animation: palettes,
-      builder: (_, _) => content(),
-    );
+    return AnimatedBuilder(animation: palettes, builder: (_, _) => content());
   }
 }
 

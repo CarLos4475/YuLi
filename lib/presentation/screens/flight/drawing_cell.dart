@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -550,6 +552,61 @@ class _DrawingCellState extends State<DrawingCell>
     return false;
   }
 
+  ({double left, double top, LassoExtraMenuSide side}) _placeLassoToolbar(
+    Rect bb,
+    Size size, {
+    required bool hasExtraMenu,
+  }) {
+    const margin = 8.0;
+    const gapAboveSelection = 38.0;
+    final mainWidth = LassoMiniToolbar.mainWidth(
+      hasCrop: false,
+      hasPin: false,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final menuTotal = hasExtraMenu ? LassoMiniToolbar.extraMenuTotalWidth : 0.0;
+    final unionHeight =
+        hasExtraMenu
+            ? math.max(
+              LassoMiniToolbar.mainHeight,
+              LassoMiniToolbar.extraMenuHeight,
+            )
+            : LassoMiniToolbar.mainHeight;
+    var mainLeft =
+        (bb.center.dx - mainWidth / 2)
+            .clamp(margin, math.max(margin, size.width - mainWidth - margin))
+            .toDouble();
+    var side = LassoExtraMenuSide.right;
+    if (hasExtraMenu) {
+      final rightSpace = size.width - (mainLeft + mainWidth) - margin;
+      final leftSpace = mainLeft - margin;
+      if (rightSpace < menuTotal && leftSpace > rightSpace) {
+        side = LassoExtraMenuSide.left;
+      }
+      final unionLeft =
+          side == LassoExtraMenuSide.left ? mainLeft - menuTotal : mainLeft;
+      final unionRight =
+          side == LassoExtraMenuSide.right
+              ? mainLeft + mainWidth + menuTotal
+              : mainLeft + mainWidth;
+      if (unionLeft < margin) mainLeft += margin - unionLeft;
+      if (unionRight > size.width - margin) {
+        mainLeft -= unionRight - (size.width - margin);
+      }
+      mainLeft =
+          mainLeft
+              .clamp(margin, math.max(margin, size.width - mainWidth - margin))
+              .toDouble();
+    }
+    final top =
+        (bb.top - gapAboveSelection - LassoMiniToolbar.mainHeight)
+            .clamp(margin, math.max(margin, size.height - unionHeight - margin))
+            .toDouble();
+    final left =
+        side == LassoExtraMenuSide.left ? mainLeft - menuTotal : mainLeft;
+    return (left: left, top: top, side: side);
+  }
+
   List<List<Offset>> _selectedWritingStrokes() {
     final strokes = <List<Offset>>[];
     for (final i in _lassoCtrl.selectedIndices) {
@@ -1045,21 +1102,22 @@ class _DrawingCellState extends State<DrawingCell>
                   colorValue: _color.toARGB32(),
                   strokeWidth: _strokeW,
                   isFountainPen: true,
-                  points: StrokePoints(comps: 4)
-                    ..add(
-                      p.dx,
-                      p.dy,
-                      pressure,
-                      e.timeStamp.inMilliseconds.toDouble(),
-                    ),
+                  points: StrokePoints(comps: 4)..add(
+                    p.dx,
+                    p.dy,
+                    pressure,
+                    e.timeStamp.inMilliseconds.toDouble(),
+                  ),
                 );
               });
               widget.onDrawStart();
               return;
             }
 
-            _start(e.localPosition,
-                pressure: e.pressure.isFinite ? e.pressure : 0.5);
+            _start(
+              e.localPosition,
+              pressure: e.pressure.isFinite ? e.pressure : 0.5,
+            );
           },
           onPointerMove: (e) {
             if (_ignoreForScroll(e.kind)) return;
@@ -1092,8 +1150,10 @@ class _DrawingCellState extends State<DrawingCell>
               return;
             }
             if (_active == null && _tool == DrawTool.pen) return;
-            _move(e.localPosition,
-                pressure: e.pressure.isFinite ? e.pressure : 0.5);
+            _move(
+              e.localPosition,
+              pressure: e.pressure.isFinite ? e.pressure : 0.5,
+            );
           },
           onPointerUp: (e) {
             if (_ignoreForScroll(e.kind)) return;
@@ -1165,62 +1225,80 @@ class _DrawingCellState extends State<DrawingCell>
         ),
         if (_lassoCtrl.phase == LassoPhase.selected &&
             _lassoCtrl.boundingBox != null)
-          Positioned(
-            left: _lassoCtrl.boundingBox!.center.dx - 80,
-            top: _lassoCtrl.boundingBox!.top - 64,
-            child: LassoMiniToolbar(
-              onDelete: _lassoDelete,
-              onDuplicate: _lassoDuplicate,
-              onRecognizeText:
-                  (widget.onRecognizeText != null && _selectionHasWriting)
-                      ? _recognizeSelection
-                      : null,
-              onSendToYuli:
-                  (widget.onSendToYuli != null && _selectionHasWriting)
-                      ? _sendSelectionToYuli
-                      : null,
-              onSendMathToYuli:
-                  (widget.onSendMathToYuli != null && _selectionHasWriting)
-                      ? _sendMathSelectionToYuli
-                      : null,
-              palette: _palette,
-              onColorChange:
-                  (c) => _lassoMutate(
-                    () => _lassoCtrl.changeColor(_data.strokes, c.toARGB32()),
-                  ),
-              onWidthChange:
-                  (w) => _lassoMutate(
-                    () => _lassoCtrl.changeWidth(_data.strokes, w),
-                  ),
-              onFlipH:
-                  () => _lassoMutate(
-                    () => _lassoCtrl.flipHorizontal(_data.strokes),
-                  ),
-              onFlipV:
-                  () => _lassoMutate(
-                    () => _lassoCtrl.flipVertical(_data.strokes),
-                  ),
-              onCopy: () {
-                _lassoCtrl.copySelected(_data.strokes);
-                HapticFeedback.lightImpact();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('COPIADO'),
-                    duration: Duration(milliseconds: 800),
-                  ),
-                );
-              },
-              onCut: () {
-                _lassoMutate(() => _lassoCtrl.cutSelected(_data.strokes));
-                HapticFeedback.lightImpact();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('CORTADO'),
-                    duration: Duration(milliseconds: 800),
-                  ),
-                );
-              },
-            ),
+          Builder(
+            builder: (context) {
+              final bb = _lassoCtrl.boundingBox!;
+              final hasExtraMenu =
+                  _selectionHasWriting &&
+                  (widget.onRecognizeText != null ||
+                      widget.onSendToYuli != null ||
+                      widget.onSendMathToYuli != null);
+              final placement = _placeLassoToolbar(
+                bb,
+                Size(MediaQuery.sizeOf(context).width, _data.height),
+                hasExtraMenu: hasExtraMenu,
+              );
+              return Positioned(
+                left: placement.left,
+                top: placement.top,
+                child: LassoMiniToolbar(
+                  accent: widget.accent ?? yFlight,
+                  extraMenuSide: placement.side,
+                  onDelete: _lassoDelete,
+                  onDuplicate: _lassoDuplicate,
+                  onRecognizeText:
+                      (widget.onRecognizeText != null && _selectionHasWriting)
+                          ? _recognizeSelection
+                          : null,
+                  onSendToYuli:
+                      (widget.onSendToYuli != null && _selectionHasWriting)
+                          ? _sendSelectionToYuli
+                          : null,
+                  onSendMathToYuli:
+                      (widget.onSendMathToYuli != null && _selectionHasWriting)
+                          ? _sendMathSelectionToYuli
+                          : null,
+                  palette: _palette,
+                  onColorChange:
+                      (c) => _lassoMutate(
+                        () =>
+                            _lassoCtrl.changeColor(_data.strokes, c.toARGB32()),
+                      ),
+                  onWidthChange:
+                      (w) => _lassoMutate(
+                        () => _lassoCtrl.changeWidth(_data.strokes, w),
+                      ),
+                  onFlipH:
+                      () => _lassoMutate(
+                        () => _lassoCtrl.flipHorizontal(_data.strokes),
+                      ),
+                  onFlipV:
+                      () => _lassoMutate(
+                        () => _lassoCtrl.flipVertical(_data.strokes),
+                      ),
+                  onCopy: () {
+                    _lassoCtrl.copySelected(_data.strokes);
+                    HapticFeedback.lightImpact();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('COPIADO'),
+                        duration: Duration(milliseconds: 800),
+                      ),
+                    );
+                  },
+                  onCut: () {
+                    _lassoMutate(() => _lassoCtrl.cutSelected(_data.strokes));
+                    HapticFeedback.lightImpact();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('CORTADO'),
+                        duration: Duration(milliseconds: 800),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
           ),
         if (_showPasteAt != null)
           Positioned(
@@ -1369,9 +1447,13 @@ class _DrawingCellState extends State<DrawingCell>
       final currInside = pts.y(i) <= h;
       final dy = pts.y(i) - pts.y(i - 1);
       if (prevInside && !currInside) {
-        if (dy.abs() > 0.001) result.add(crossing(i - 1, i, (h - pts.y(i - 1)) / dy));
+        if (dy.abs() > 0.001) {
+          result.add(crossing(i - 1, i, (h - pts.y(i - 1)) / dy));
+        }
       } else if (!prevInside && currInside) {
-        if (dy.abs() > 0.001) result.add(crossing(i - 1, i, (h - pts.y(i - 1)) / dy));
+        if (dy.abs() > 0.001) {
+          result.add(crossing(i - 1, i, (h - pts.y(i - 1)) / dy));
+        }
         result.add(at(i));
       } else if (currInside) {
         result.add(at(i));

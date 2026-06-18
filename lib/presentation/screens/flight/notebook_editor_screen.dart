@@ -118,7 +118,8 @@ class _NotebookChunkOverlayPainter extends CustomPainter {
   final Map<int, DrawingData> pageData;
   final Map<int, ui.Image> pageImage; // chosen base/focus per visible page
   final Map<int, int> pageBaked; // baked stroke count → delta = the rest
-  final List<(Rect, ui.Image)> tiles; // current-version tiles (worldRect, image)
+  final List<(Rect, ui.Image)>
+  tiles; // current-version tiles (worldRect, image)
   final Rect visibleWorld;
 
   const _NotebookChunkOverlayPainter({
@@ -165,7 +166,8 @@ class _NotebookChunkOverlayPainter extends CustomPainter {
       }
       final data = pageData[bid];
       if (data != null) {
-        final baked = (pageBaked[bid] ?? 0).clamp(0, data.strokes.length).toInt();
+        final baked =
+            (pageBaked[bid] ?? 0).clamp(0, data.strokes.length).toInt();
         if (baked < data.strokes.length) {
           canvas.save();
           canvas.translate(0, top);
@@ -428,10 +430,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   // frame → ~160% CPU sitting still. Cleared by motion / re-anchor / ink edits so
   // the ring still follows pans and re-bakes after edits.
   bool _chunkRingSettled = false;
-  static const int _kChunkTilesAcross = 3; // tiles spanning the viewport long side
-  static const double _kChunkRingFactor = 0.5; // overscan ring = half a viewport
+  static const int _kChunkTilesAcross =
+      3; // tiles spanning the viewport long side
+  static const double _kChunkRingFactor =
+      0.5; // overscan ring = half a viewport
   static const int _kChunkMaxTiles = 36;
-  static const int _kChunkPerFrame = 1; // bakes/frame (budgeted, runs during pan)
+  static const int _kChunkPerFrame =
+      1; // bakes/frame (budgeted, runs during pan)
   // Above this many strokes in one page-overview bake, render decimated + uncached
   // (avoids the path-cache balloon on a dense page).
   static const int _kOverviewFrugalThreshold = 60000;
@@ -546,12 +551,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _eyedropperMode = false;
   // Eyedropper loupe: per-pixel sampling of a raster snapshot (anything on the
   // canvas), not stroke hit-testing. See whiteboard editor for details.
+  final GlobalKey _overlayKey = GlobalKey();
   final GlobalKey _canvasBoundaryKey = GlobalKey();
 
-  late final FloatingPinController _pinController =
-      FloatingPinControllerStore.instance.forNote(
-    widget.note.id,
-  );
+  late final FloatingPinController _pinController = FloatingPinControllerStore
+      .instance
+      .forNote(widget.note.id);
 
   ui.Image? _eyedropImg;
   ByteData? _eyedropBytes;
@@ -940,9 +945,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // current page first, so a lazy-opened notebook fully decodes in the
     // background — not only what happens to be on screen.
     final current = _currentVisiblePage;
-    final all =
-        [for (int i = 0; i < _pageBlockIds.length; i++) i]
-          ..sort((a, b) => (a - current).abs().compareTo((b - current).abs()));
+    final all = [for (int i = 0; i < _pageBlockIds.length; i++) i]
+      ..sort((a, b) => (a - current).abs().compareTo((b - current).abs()));
     for (final pageIndex in all) {
       final blockId = _pageBlockIds[pageIndex];
       if (_pendingDecode.containsKey(blockId) &&
@@ -1788,7 +1792,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Future<void> _patchPageOverviewRegion(int blockId, Rect region) async {
     final base = _overviewByPage[blockId];
     final data = _pageData[blockId];
-    if (base == null || data == null || _overviewBakingPages.contains(blockId)) {
+    if (base == null ||
+        data == null ||
+        _overviewBakingPages.contains(blockId)) {
       _overviewStalePages.add(blockId);
       _scheduleOverviewBake(blockId);
       return;
@@ -1812,7 +1818,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final imgScale = base.width / kNotebookPageWidth;
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      canvas.scale(imgScale); // strokes are page-local — no translate (as in bake)
+      canvas.scale(
+        imgScale,
+      ); // strokes are page-local — no translate (as in bake)
       canvas.drawImageRect(
         base,
         Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
@@ -2341,7 +2349,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         (b.$3.center - center).distanceSquared,
       ),
     );
-    if (out.length > _kChunkMaxTiles) out.removeRange(_kChunkMaxTiles, out.length);
+    if (out.length > _kChunkMaxTiles) {
+      out.removeRange(_kChunkMaxTiles, out.length);
+    }
     return out;
   }
 
@@ -2502,7 +2512,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       canvas.translate(-cell.left, -cell.top); // world → cell-local
       canvas.clipRect(cell);
       var hadInk = false;
-      var overlappedUndecoded = false; // page overlaps cell but not hydrated yet
+      var overlappedUndecoded =
+          false; // page overlaps cell but not hydrated yet
       for (int i = 0; i < _pageBlockIds.length; i++) {
         final top = _pageOffsetY(i);
         final pageRect = Rect.fromLTWH(
@@ -2901,7 +2912,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           await PinRecents.removePdf(pick.path);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('PDF NO ENCONTRADO EN EL DISPOSITIVO')),
+              const SnackBar(
+                content: Text('PDF NO ENCONTRADO EN EL DISPOSITIVO'),
+              ),
             );
           }
           return;
@@ -3752,9 +3765,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final c = shapeCentroid(pts);
       _snapCenter = Offset(c[0], c[1]);
       _snapBasePoints = pts.map((p) => [p[0], p[1]]).toList();
-      _snapRefDist =
-          (Offset(src.points.lastX, src.points.lastY) - _snapCenter!).distance
-              .clamp(1.0, 1e9);
+      _snapRefDist = (Offset(src.points.lastX, src.points.lastY) - _snapCenter!)
+          .distance
+          .clamp(1.0, 1e9);
     }
     setState(() {
       _active = DrawingStroke(
@@ -3865,11 +3878,54 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       return null;
     }
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop = MatrixUtils.transformPoint(
+    final canvasTop = MatrixUtils.transformPoint(
       _viewCtrl.value,
       Offset(bb.center.dx, bb.top),
     );
-    return Rect.fromLTWH(screenTop.dx - 110, screenTop.dy - 148, 220, 100);
+    final hasExtraMenu = _selectionHasWriting;
+    final mainWidth = LassoMiniToolbar.mainWidth(
+      hasCrop: _singleImageSelected,
+      hasPin: true,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final placement = _placeLassoToolbar(
+      anchor: _canvasOffsetToOverlay(canvasTop),
+      mainWidth: mainWidth,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final menuTotal = hasExtraMenu ? LassoMiniToolbar.extraMenuTotalWidth : 0.0;
+    final unionHeight =
+        hasExtraMenu
+            ? math.max(
+              LassoMiniToolbar.mainHeight,
+              LassoMiniToolbar.extraMenuHeight,
+            )
+            : LassoMiniToolbar.mainHeight;
+    final overlayRect = Rect.fromLTWH(
+      placement.left,
+      placement.top,
+      mainWidth + menuTotal,
+      unionHeight,
+    );
+    final canvasBox =
+        _canvasBoundaryKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlayBox =
+        _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    if (canvasBox == null || overlayBox == null) {
+      return Rect.fromLTWH(
+        canvasTop.dx - mainWidth / 2,
+        canvasTop.dy - 48 - LassoMiniToolbar.mainHeight,
+        mainWidth,
+        LassoMiniToolbar.mainHeight,
+      );
+    }
+    final tl = canvasBox.globalToLocal(
+      overlayBox.localToGlobal(overlayRect.topLeft),
+    );
+    final br = canvasBox.globalToLocal(
+      overlayBox.localToGlobal(overlayRect.bottomRight),
+    );
+    return Rect.fromPoints(tl, br);
   }
 
   void _onDown(PointerDownEvent e) {
@@ -4020,8 +4076,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           colorValue: _color.toARGB32(),
           strokeWidth: _strokeW,
           isFountainPen: true,
-          points: StrokePoints(comps: 4)
-            ..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
+          points: StrokePoints(
+            comps: 4,
+          )..add(sp.dx, sp.dy, pressure, e.timeStamp.inMilliseconds.toDouble()),
         );
       });
       return;
@@ -5336,7 +5393,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final sw = Stopwatch()..start();
     if (affected.isEmpty) {
       setState(() {});
-//PERF-LOG CrashLogger.instance.note('PERF lasso-sync-cuaderno: 0 paginas, 0ms');
+      //PERF-LOG CrashLogger.instance.note('PERF lasso-sync-cuaderno: 0 paginas, 0ms');
       return;
     }
     if (lengthStable) {
@@ -6525,7 +6582,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               }
               if (_overviewActive) {
                 var anyStale = false;
-                var missingBaseThisFrame = false; // DIAG: inked page w/o base img
+                var missingBaseThisFrame =
+                    false; // DIAG: inked page w/o base img
                 final pageImage = <int, ui.Image>{};
                 final pageBaked = <int, int>{};
                 for (int i = 0; i < _pageBlockIds.length; i++) {
@@ -7194,19 +7252,100 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Build ─────────────────────────────────────────────────────────────
 
+  Offset _canvasOffsetToOverlay(Offset p) {
+    final canvasBox =
+        _canvasBoundaryKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlayBox =
+        _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    if (canvasBox == null || overlayBox == null) return p;
+    return overlayBox.globalToLocal(canvasBox.localToGlobal(p));
+  }
+
+  Size _overlaySize() {
+    final box = _overlayKey.currentContext?.findRenderObject() as RenderBox?;
+    return box?.size ?? MediaQuery.sizeOf(context);
+  }
+
+  ({double left, double top, LassoExtraMenuSide side}) _placeLassoToolbar({
+    required Offset anchor,
+    required double mainWidth,
+    required bool hasExtraMenu,
+  }) {
+    const margin = 8.0;
+    const gapAboveSelection = 48.0;
+    final size = _overlaySize();
+    final menuTotal = hasExtraMenu ? LassoMiniToolbar.extraMenuTotalWidth : 0.0;
+    final unionHeight =
+        hasExtraMenu
+            ? math.max(
+              LassoMiniToolbar.mainHeight,
+              LassoMiniToolbar.extraMenuHeight,
+            )
+            : LassoMiniToolbar.mainHeight;
+    var mainLeft =
+        (anchor.dx - mainWidth / 2)
+            .clamp(margin, math.max(margin, size.width - mainWidth - margin))
+            .toDouble();
+    var side = LassoExtraMenuSide.right;
+    if (hasExtraMenu) {
+      final rightSpace = size.width - (mainLeft + mainWidth) - margin;
+      final leftSpace = mainLeft - margin;
+      if (rightSpace < menuTotal && leftSpace > rightSpace) {
+        side = LassoExtraMenuSide.left;
+      }
+      final unionLeft =
+          side == LassoExtraMenuSide.left ? mainLeft - menuTotal : mainLeft;
+      final unionRight =
+          side == LassoExtraMenuSide.right
+              ? mainLeft + mainWidth + menuTotal
+              : mainLeft + mainWidth;
+      if (unionLeft < margin) mainLeft += margin - unionLeft;
+      if (unionRight > size.width - margin) {
+        mainLeft -= unionRight - (size.width - margin);
+      }
+      mainLeft =
+          mainLeft
+              .clamp(margin, math.max(margin, size.width - mainWidth - margin))
+              .toDouble();
+    }
+    final top =
+        (anchor.dy - gapAboveSelection - LassoMiniToolbar.mainHeight)
+            .clamp(margin, math.max(margin, size.height - unionHeight - margin))
+            .toDouble();
+    final left =
+        side == LassoExtraMenuSide.left ? mainLeft - menuTotal : mainLeft;
+    return (left: left, top: top, side: side);
+  }
+
   Widget _buildLassoMiniToolbar() {
     final bb = _lassoCtrl.boundingBox!;
-    final screenTop = MatrixUtils.transformPoint(
+    final canvasTop = MatrixUtils.transformPoint(
       _viewCtrl.value,
       Offset(bb.center.dx, bb.top),
+    );
+    final anchor = _canvasOffsetToOverlay(canvasTop);
+    final hasCrop = _singleImageSelected;
+    const hasPin = true;
+    final hasExtraMenu = _selectionHasWriting;
+    final mainWidth = LassoMiniToolbar.mainWidth(
+      hasCrop: hasCrop,
+      hasPin: hasPin,
+      hasExtraMenu: hasExtraMenu,
+    );
+    final placement = _placeLassoToolbar(
+      anchor: anchor,
+      mainWidth: mainWidth,
+      hasExtraMenu: hasExtraMenu,
     );
     // Anchor the toolbar's bottom a fixed screen gap above the selection top
     // (clearing the rotation handle), growing upward — never overlaps the top
     // handles even when zoomed out.
     return Positioned(
-      left: screenTop.dx - 80,
-      bottom: _viewport.height - screenTop.dy + 48,
+      left: placement.left,
+      top: placement.top,
       child: LassoMiniToolbar(
+        accent: _accent,
+        extraMenuSide: placement.side,
         onDelete: _lassoDelete,
         onDuplicate: _lassoDuplicate,
         onPin: () {
@@ -7355,740 +7494,779 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
     final linkedSpaces =
         spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
-    return _wrapWithChatDock(linked: aiLinked, Scaffold(
-      backgroundColor: yCream,
-      body: StatusBarFlood(
-        color: _headerCollapsed ? yCream2 : _accent,
-        child: SafeArea(
-          top: false,
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_headerCollapsed)
-                    _CollapsedNotebookHeader(
-                      folder: widget.folder,
-                      pageCount: _pageBlockIds.length,
-                      background: _currentBg,
-                      accent: _accent,
-                      noteTitle: widget.note.title ?? '',
-                      onExpand: () => setState(() => _headerCollapsed = false),
-                      onOpenPages: _togglePageDrawer,
-                    )
-                  else ...[
-                    ModeHeader(
-                      mode: 'CUADERNO',
-                      subtitle:
-                          (widget.note.title?.trim().isNotEmpty == true)
-                              ? 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label} · ${widget.note.title!.trim()}'
-                              : 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
-                      color: _accent,
-                      onBack: () => Navigator.pop(context),
-                      headerRight: [
-                        YBadge(
-                          label: '@${widget.folder.name}',
-                          bg: widget.folder.color,
-                          fg: yCream,
-                        ),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _togglePageDrawer,
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: yCream,
-                              border: Border.all(
-                                color: yBorderStrong,
-                                width: yLineMid,
+    return _wrapWithChatDock(
+      linked: aiLinked,
+      Scaffold(
+        backgroundColor: yCream,
+        body: StatusBarFlood(
+          color: _headerCollapsed ? yCream2 : _accent,
+          child: SafeArea(
+            top: false,
+            child: Stack(
+              key: _overlayKey,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_headerCollapsed)
+                      _CollapsedNotebookHeader(
+                        folder: widget.folder,
+                        pageCount: _pageBlockIds.length,
+                        background: _currentBg,
+                        accent: _accent,
+                        noteTitle: widget.note.title ?? '',
+                        onExpand:
+                            () => setState(() => _headerCollapsed = false),
+                        onOpenPages: _togglePageDrawer,
+                      )
+                    else ...[
+                      ModeHeader(
+                        mode: 'CUADERNO',
+                        subtitle:
+                            (widget.note.title?.trim().isNotEmpty == true)
+                                ? 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label} · ${widget.note.title!.trim()}'
+                                : 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
+                        color: _accent,
+                        onBack: () => Navigator.pop(context),
+                        headerRight: [
+                          YBadge(
+                            label: '@${widget.folder.name}',
+                            bg: widget.folder.color,
+                            fg: yCream,
+                          ),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _togglePageDrawer,
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: yCream,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: const Icon(
+                                YuLiIcons.bookOpen,
+                                color: yInk,
+                                size: 18,
                               ),
                             ),
-                            child: const Icon(
-                              YuLiIcons.bookOpen,
-                              color: yInk,
-                              size: 18,
-                            ),
                           ),
-                        ),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _linkToLab(spaces),
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: yLab,
-                              border: Border.all(
-                                color: yBorderStrong,
-                                width: yLineMid,
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => _linkToLab(spaces),
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: yLab,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: const Icon(
+                                YuLiIcons.infinity,
+                                color: yCream,
+                                size: 18,
                               ),
                             ),
-                            child: const Icon(
-                              YuLiIcons.infinity,
-                              color: yCream,
-                              size: 18,
-                            ),
                           ),
-                        ),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => setState(() => _headerCollapsed = true),
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: yCream,
-                              border: Border.all(
-                                color: yBorderStrong,
-                                width: yLineMid,
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap:
+                                () => setState(() => _headerCollapsed = true),
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: yCream,
+                                border: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineMid,
+                                ),
+                              ),
+                              child: const Icon(
+                                YuLiIcons.chevronUp,
+                                color: yInk,
+                                size: 18,
                               ),
                             ),
-                            child: const Icon(
-                              YuLiIcons.chevronUp,
-                              color: yInk,
-                              size: 18,
-                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    if (linkedSpaces.isNotEmpty)
-                      _LinkedSpacesBar(spaces: linkedSpaces),
-                  ],
-                  Expanded(
-                    child:
-                        _pageBlockIds.isEmpty
-                            ? const Center(child: CircularProgressIndicator())
-                            : LayoutBuilder(
-                              builder: (ctx, c) {
-                                final viewport = Size(c.maxWidth, c.maxHeight);
-                                _viewport = viewport;
-                                final showingZoomSnapshot =
-                                    _zoomGestureActive &&
-                                    _zoomSnapshotImage != null;
-                                final textBlockOverlays =
-                                    showingZoomSnapshot
-                                        ? const <Widget>[]
-                                        : _buildTextBlockOverlays();
-                                final taskBlockOverlays =
-                                    showingZoomSnapshot
-                                        ? const <Widget>[]
-                                        : _buildTaskBlockOverlays();
-                                final lassoActive =
-                                    !showingZoomSnapshot &&
-                                    _lassoCtrl.phase != LassoPhase.idle;
-                                final lassoStrokes =
-                                    lassoActive
-                                        ? _allVisibleStrokes
-                                        : const <DrawingStroke>[];
-                                final lassoImages =
-                                    lassoActive
-                                        ? _allVisibleImages
-                                        : const <CanvasImage>[];
-                                // The canvas subtree below is built ONCE per build()
-                                // — NOT wrapped in an AnimatedBuilder(_viewCtrl), so
-                                // panning no longer reconstructs the InteractiveViewer
-                                // + every layer each frame. Pan-driven repaints happen
-                                // inside each layer's own AnimatedBuilder (render-rect
-                                // hysteresis) and the isolated pull indicator.
-                                final lastPageBottom =
-                                    _pageBlockIds.isNotEmpty
-                                        ? (_pageBlockIds.length - 1) *
-                                                (kNotebookPageHeight +
-                                                    kNotebookPageGap) +
-                                            kNotebookPageHeight
-                                        : 0.0;
-                                return Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    RepaintBoundary(
-                                      key: _canvasBoundaryKey,
-                                      child: ClipRect(
-                                        child: RawGestureDetector(
-                                          // A stylus must NEVER pan the canvas: this
-                                          // Eager recognizer (stylus-only) wins the
-                                          // gesture arena the instant a pen touches, so
-                                          // the InteractiveViewer's pan recognizer is
-                                          // rejected and never fights the stroke. Fingers
-                                          // are unaffected (it ignores touch).
-                                          gestures: <
-                                            Type,
-                                            GestureRecognizerFactory
-                                          >{
-                                            TapGestureRecognizer:
-                                                GestureRecognizerFactoryWithHandlers<
-                                                  TapGestureRecognizer
-                                                >(
-                                                  () => TapGestureRecognizer(),
-                                                  (i) =>
-                                                      i.onTapUp = _onLassoTap,
-                                                ),
-                                            EagerGestureRecognizer:
-                                                GestureRecognizerFactoryWithHandlers<
-                                                  EagerGestureRecognizer
-                                                >(
-                                                  () => EagerGestureRecognizer(
-                                                    supportedDevices: const {
-                                                      PointerDeviceKind.stylus,
-                                                      PointerDeviceKind
-                                                          .invertedStylus,
-                                                    },
+                        ],
+                      ),
+                      if (linkedSpaces.isNotEmpty)
+                        _LinkedSpacesBar(spaces: linkedSpaces),
+                    ],
+                    Expanded(
+                      child:
+                          _pageBlockIds.isEmpty
+                              ? const Center(child: CircularProgressIndicator())
+                              : LayoutBuilder(
+                                builder: (ctx, c) {
+                                  final viewport = Size(
+                                    c.maxWidth,
+                                    c.maxHeight,
+                                  );
+                                  _viewport = viewport;
+                                  final showingZoomSnapshot =
+                                      _zoomGestureActive &&
+                                      _zoomSnapshotImage != null;
+                                  final textBlockOverlays =
+                                      showingZoomSnapshot
+                                          ? const <Widget>[]
+                                          : _buildTextBlockOverlays();
+                                  final taskBlockOverlays =
+                                      showingZoomSnapshot
+                                          ? const <Widget>[]
+                                          : _buildTaskBlockOverlays();
+                                  final lassoActive =
+                                      !showingZoomSnapshot &&
+                                      _lassoCtrl.phase != LassoPhase.idle;
+                                  final lassoStrokes =
+                                      lassoActive
+                                          ? _allVisibleStrokes
+                                          : const <DrawingStroke>[];
+                                  final lassoImages =
+                                      lassoActive
+                                          ? _allVisibleImages
+                                          : const <CanvasImage>[];
+                                  // The canvas subtree below is built ONCE per build()
+                                  // — NOT wrapped in an AnimatedBuilder(_viewCtrl), so
+                                  // panning no longer reconstructs the InteractiveViewer
+                                  // + every layer each frame. Pan-driven repaints happen
+                                  // inside each layer's own AnimatedBuilder (render-rect
+                                  // hysteresis) and the isolated pull indicator.
+                                  final lastPageBottom =
+                                      _pageBlockIds.isNotEmpty
+                                          ? (_pageBlockIds.length - 1) *
+                                                  (kNotebookPageHeight +
+                                                      kNotebookPageGap) +
+                                              kNotebookPageHeight
+                                          : 0.0;
+                                  return Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      RepaintBoundary(
+                                        key: _canvasBoundaryKey,
+                                        child: ClipRect(
+                                          child: RawGestureDetector(
+                                            // A stylus must NEVER pan the canvas: this
+                                            // Eager recognizer (stylus-only) wins the
+                                            // gesture arena the instant a pen touches, so
+                                            // the InteractiveViewer's pan recognizer is
+                                            // rejected and never fights the stroke. Fingers
+                                            // are unaffected (it ignores touch).
+                                            gestures: <
+                                              Type,
+                                              GestureRecognizerFactory
+                                            >{
+                                              TapGestureRecognizer:
+                                                  GestureRecognizerFactoryWithHandlers<
+                                                    TapGestureRecognizer
+                                                  >(
+                                                    () =>
+                                                        TapGestureRecognizer(),
+                                                    (i) =>
+                                                        i.onTapUp = _onLassoTap,
                                                   ),
-                                                  (i) {},
-                                                ),
-                                          },
-                                          child: Listener(
-                                            behavior: HitTestBehavior.opaque,
-                                            onPointerDown: _onDown,
-                                            onPointerMove: _onMove,
-                                            onPointerUp: _onUp,
-                                            onPointerCancel: _onCancel,
-                                            child: InteractiveViewer(
-                                              transformationController:
-                                                  _viewCtrl,
-                                              minScale: 0.3,
-                                              maxScale: 4.0,
-                                              onInteractionStart: (details) {
-                                                // Pin the overview for the whole
-                                                // gesture if it's showing, so
-                                                // zooming in doesn't swap to tiles
-                                                // mid-pinch.
-                                                _zoomSnapshotTimer?.cancel();
-                                                // A new gesture interrupts the prior
-                                                // fling's settle watch (re-armed on this
-                                                // gesture's end). The overview stays up
-                                                // (_overviewLinger untouched) across the
-                                                // chain so flick-pans never flash vector.
-                                                _stopSettleWatch();
-                                                _viewGestureActive = true;
-                                                _viewMoved = false;
-                                                _zoomGestureActive = false;
-                                                _zoomGestureSeen = false;
-                                                _zoomGestureScale = 1;
-                                                _zoomGestureStartFocal =
-                                                    details.localFocalPoint;
-                                                _zoomGestureCurrentFocal =
-                                                    details.localFocalPoint;
-                                                _overviewStickyThisGesture =
-                                                    _overviewActive;
-                                                if (_activePointers.length >=
-                                                        2 &&
-                                                    _viewportRasterTiles
-                                                        .isNotEmpty) {
-                                                  if (mounted) setState(() {});
-                                                } else if (_activePointers
-                                                            .length >=
-                                                        2 &&
-                                                    _zoomSnapshotImage !=
-                                                        null &&
-                                                    _overviewByPage.isEmpty) {
-                                                  _zoomGestureActive = true;
-                                                  _zoomGestureSeen = true;
-                                                  _zoomGestureTick.value++;
-                                                  if (mounted) setState(() {});
-                                                }
-                                              },
-                                              onInteractionUpdate: (details) {
-                                                final zooming =
-                                                    (details.scale - 1.0)
-                                                        .abs() >
-                                                    0.01;
-                                                if (zooming) _pingZoomLabel();
-                                                if (!_viewMoved &&
-                                                    (zooming ||
-                                                        details
-                                                                .focalPointDelta
-                                                                .distance >
-                                                            0.5)) {
-                                                  // First real pan/zoom frame:
-                                                  // swap vectors for the overview
-                                                  // raster (not a mere tap).
-                                                  _viewMoved = true;
-                                                  if (mounted) setState(() {});
-                                                }
-                                                final useSnapshot =
-                                                    _zoomSnapshotImage !=
-                                                        null &&
-                                                    _viewportRasterTiles
-                                                        .isEmpty &&
-                                                    _overviewByPage.isEmpty &&
-                                                    (_activePointers.length >=
-                                                            2 ||
-                                                        zooming);
-                                                _zoomGestureScale =
-                                                    details.scale;
-                                                _zoomGestureCurrentFocal =
-                                                    details.localFocalPoint;
-                                                if (useSnapshot &&
-                                                    !_zoomGestureSeen) {
-                                                  _zoomGestureSeen = true;
-                                                  _zoomGestureActive = true;
-                                                  _zoomGestureTick.value++;
-                                                  if (mounted) setState(() {});
-                                                } else if (_zoomGestureActive) {
-                                                  _zoomGestureTick.value++;
-                                                }
-                                              },
-                                              onInteractionEnd: (_) {
-                                                _viewGestureActive = false;
-                                                _viewMoved = false;
-                                                _zoomGestureActive = false;
-                                                _zoomGestureSeen = false;
-                                                _zoomGestureScale = 1;
-                                                // Keep the overview up through the
-                                                // ENTIRE fling — the settle Ticker drops
-                                                // it back to crisp vector only when the
-                                                // view truly stops (so the tile re-raster
-                                                // never lands mid-motion) and bakes the
-                                                // focus then too. Pyramid L0.
-                                                _overviewLinger = true;
-                                                _beginSettleWatch();
-                                                if (mounted) setState(() {});
-                                                if (_eyedropperMode &&
-                                                    _eyedropCaptureMatrix !=
-                                                        null &&
-                                                    _viewCtrl.value !=
-                                                        _eyedropCaptureMatrix) {
-                                                  _captureEyedropSnapshot(
-                                                    resetPos: false,
-                                                  );
-                                                }
-                                                _scheduleDeferredDecode();
-                                              },
-                                              boundaryMargin:
-                                                  EdgeInsets.symmetric(
-                                                    horizontal: c.maxWidth,
-                                                    vertical:
-                                                        _totalCanvasHeight *
-                                                        0.3,
+                                              EagerGestureRecognizer:
+                                                  GestureRecognizerFactoryWithHandlers<
+                                                    EagerGestureRecognizer
+                                                  >(
+                                                    () => EagerGestureRecognizer(
+                                                      supportedDevices: const {
+                                                        PointerDeviceKind
+                                                            .stylus,
+                                                        PointerDeviceKind
+                                                            .invertedStylus,
+                                                      },
+                                                    ),
+                                                    (i) {},
                                                   ),
-                                              // Text mode: 1-finger drag moves a box (its
-                                              // GestureDetector), so disable pan; 2-finger
-                                              // still navigates.
-                                              panEnabled:
-                                                  _eyedropperMode
-                                                      ? _activePointers
+                                            },
+                                            child: Listener(
+                                              behavior: HitTestBehavior.opaque,
+                                              onPointerDown: _onDown,
+                                              onPointerMove: _onMove,
+                                              onPointerUp: _onUp,
+                                              onPointerCancel: _onCancel,
+                                              child: InteractiveViewer(
+                                                transformationController:
+                                                    _viewCtrl,
+                                                minScale: 0.3,
+                                                maxScale: 4.0,
+                                                onInteractionStart: (details) {
+                                                  // Pin the overview for the whole
+                                                  // gesture if it's showing, so
+                                                  // zooming in doesn't swap to tiles
+                                                  // mid-pinch.
+                                                  _zoomSnapshotTimer?.cancel();
+                                                  // A new gesture interrupts the prior
+                                                  // fling's settle watch (re-armed on this
+                                                  // gesture's end). The overview stays up
+                                                  // (_overviewLinger untouched) across the
+                                                  // chain so flick-pans never flash vector.
+                                                  _stopSettleWatch();
+                                                  _viewGestureActive = true;
+                                                  _viewMoved = false;
+                                                  _zoomGestureActive = false;
+                                                  _zoomGestureSeen = false;
+                                                  _zoomGestureScale = 1;
+                                                  _zoomGestureStartFocal =
+                                                      details.localFocalPoint;
+                                                  _zoomGestureCurrentFocal =
+                                                      details.localFocalPoint;
+                                                  _overviewStickyThisGesture =
+                                                      _overviewActive;
+                                                  if (_activePointers.length >=
+                                                          2 &&
+                                                      _viewportRasterTiles
+                                                          .isNotEmpty) {
+                                                    if (mounted) {
+                                                      setState(() {});
+                                                    }
+                                                  } else if (_activePointers
                                                               .length >=
-                                                          2
-                                                      : _tool == DrawTool.text
-                                                      ? false
-                                                      : _tool == DrawTool.task
-                                                      ? false
-                                                      : _tool == DrawTool.lasso
-                                                      ? (_lassoCtrl.phase ==
-                                                              LassoPhase.idle &&
-                                                          !_isDrawing)
-                                                      : _palmRejection
-                                                      ? !_stylusActive
-                                                      : !_isDrawing,
-                                              scaleEnabled:
-                                                  _eyedropperMode
-                                                      ? _activePointers
-                                                              .length >=
-                                                          2
-                                                      : _tool == DrawTool.text
-                                                      ? true
-                                                      : _tool == DrawTool.task
-                                                      ? true
-                                                      : _tool == DrawTool.lasso
-                                                      ? (_lassoCtrl.phase ==
-                                                              LassoPhase.idle &&
-                                                          !_isDrawing)
-                                                      : !_stylusActive,
-                                              constrained: false,
-                                              child: SizedBox(
-                                                width: kNotebookPageWidth,
-                                                height: _totalCanvasHeight,
-                                                child: Stack(
-                                                  children: [
-                                                    _buildNotebookBackgroundLayer(
-                                                      viewport,
-                                                      Size(
-                                                        kNotebookPageWidth,
-                                                        _totalCanvasHeight,
-                                                      ),
+                                                          2 &&
+                                                      _zoomSnapshotImage !=
+                                                          null &&
+                                                      _overviewByPage.isEmpty) {
+                                                    _zoomGestureActive = true;
+                                                    _zoomGestureSeen = true;
+                                                    _zoomGestureTick.value++;
+                                                    if (mounted) {
+                                                      setState(() {});
+                                                    }
+                                                  }
+                                                },
+                                                onInteractionUpdate: (details) {
+                                                  final zooming =
+                                                      (details.scale - 1.0)
+                                                          .abs() >
+                                                      0.01;
+                                                  if (zooming) _pingZoomLabel();
+                                                  if (!_viewMoved &&
+                                                      (zooming ||
+                                                          details
+                                                                  .focalPointDelta
+                                                                  .distance >
+                                                              0.5)) {
+                                                    // First real pan/zoom frame:
+                                                    // swap vectors for the overview
+                                                    // raster (not a mere tap).
+                                                    _viewMoved = true;
+                                                    if (mounted) {
+                                                      setState(() {});
+                                                    }
+                                                  }
+                                                  final useSnapshot =
+                                                      _zoomSnapshotImage !=
+                                                          null &&
+                                                      _viewportRasterTiles
+                                                          .isEmpty &&
+                                                      _overviewByPage.isEmpty &&
+                                                      (_activePointers.length >=
+                                                              2 ||
+                                                          zooming);
+                                                  _zoomGestureScale =
+                                                      details.scale;
+                                                  _zoomGestureCurrentFocal =
+                                                      details.localFocalPoint;
+                                                  if (useSnapshot &&
+                                                      !_zoomGestureSeen) {
+                                                    _zoomGestureSeen = true;
+                                                    _zoomGestureActive = true;
+                                                    _zoomGestureTick.value++;
+                                                    if (mounted) {
+                                                      setState(() {});
+                                                    }
+                                                  } else if (_zoomGestureActive) {
+                                                    _zoomGestureTick.value++;
+                                                  }
+                                                },
+                                                onInteractionEnd: (_) {
+                                                  _viewGestureActive = false;
+                                                  _viewMoved = false;
+                                                  _zoomGestureActive = false;
+                                                  _zoomGestureSeen = false;
+                                                  _zoomGestureScale = 1;
+                                                  // Keep the overview up through the
+                                                  // ENTIRE fling — the settle Ticker drops
+                                                  // it back to crisp vector only when the
+                                                  // view truly stops (so the tile re-raster
+                                                  // never lands mid-motion) and bakes the
+                                                  // focus then too. Pyramid L0.
+                                                  _overviewLinger = true;
+                                                  _beginSettleWatch();
+                                                  if (mounted) setState(() {});
+                                                  if (_eyedropperMode &&
+                                                      _eyedropCaptureMatrix !=
+                                                          null &&
+                                                      _viewCtrl.value !=
+                                                          _eyedropCaptureMatrix) {
+                                                    _captureEyedropSnapshot(
+                                                      resetPos: false,
+                                                    );
+                                                  }
+                                                  _scheduleDeferredDecode();
+                                                },
+                                                boundaryMargin:
+                                                    EdgeInsets.symmetric(
+                                                      horizontal: c.maxWidth,
+                                                      vertical:
+                                                          _totalCanvasHeight *
+                                                          0.3,
                                                     ),
-                                                    // Text blocks BELOW the ink.
-                                                    if (!showingZoomSnapshot)
-                                                      ...textBlockOverlays,
-                                                    _buildNotebookStrokeLayer(
-                                                      viewport,
-                                                      Size(
-                                                        kNotebookPageWidth,
-                                                        _totalCanvasHeight,
-                                                      ),
-                                                    ),
-                                                    _buildViewportRasterLayer(),
-                                                    if (!showingZoomSnapshot)
-                                                      IgnorePointer(
-                                                        child: RepaintBoundary(
-                                                          child: AnimatedBuilder(
-                                                            animation:
-                                                                _activeTick,
-                                                            builder:
-                                                                (
-                                                                  _,
-                                                                  _,
-                                                                ) => CustomPaint(
-                                                                  painter: _ActiveStrokePainter(
-                                                                    active:
-                                                                        _active,
-                                                                    tick:
-                                                                        _activeTick
-                                                                            .value,
-                                                                    pageTop:
-                                                                        _activePageIndex !=
-                                                                                null
-                                                                            ? _activePageIndex! *
-                                                                                (kNotebookPageHeight +
-                                                                                    kNotebookPageGap)
-                                                                            : 0.0,
-                                                                    viewScale:
-                                                                        _viewScale,
-                                                                  ),
-                                                                  size: Size(
-                                                                    kNotebookPageWidth,
-                                                                    _totalCanvasHeight,
-                                                                  ),
-                                                                ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    // Task blocks above the ink.
-                                                    if (!showingZoomSnapshot)
-                                                      ...taskBlockOverlays,
-                                                    if (!showingZoomSnapshot)
-                                                      _buildNotebookLassoLayer(
+                                                // Text mode: 1-finger drag moves a box (its
+                                                // GestureDetector), so disable pan; 2-finger
+                                                // still navigates.
+                                                panEnabled:
+                                                    _eyedropperMode
+                                                        ? _activePointers
+                                                                .length >=
+                                                            2
+                                                        : _tool == DrawTool.text
+                                                        ? false
+                                                        : _tool == DrawTool.task
+                                                        ? false
+                                                        : _tool ==
+                                                            DrawTool.lasso
+                                                        ? (_lassoCtrl.phase ==
+                                                                LassoPhase
+                                                                    .idle &&
+                                                            !_isDrawing)
+                                                        : _palmRejection
+                                                        ? !_stylusActive
+                                                        : !_isDrawing,
+                                                scaleEnabled:
+                                                    _eyedropperMode
+                                                        ? _activePointers
+                                                                .length >=
+                                                            2
+                                                        : _tool == DrawTool.text
+                                                        ? true
+                                                        : _tool == DrawTool.task
+                                                        ? true
+                                                        : _tool ==
+                                                            DrawTool.lasso
+                                                        ? (_lassoCtrl.phase ==
+                                                                LassoPhase
+                                                                    .idle &&
+                                                            !_isDrawing)
+                                                        : !_stylusActive,
+                                                constrained: false,
+                                                child: SizedBox(
+                                                  width: kNotebookPageWidth,
+                                                  height: _totalCanvasHeight,
+                                                  child: Stack(
+                                                    children: [
+                                                      _buildNotebookBackgroundLayer(
                                                         viewport,
                                                         Size(
                                                           kNotebookPageWidth,
                                                           _totalCanvasHeight,
                                                         ),
-                                                        lassoStrokes,
-                                                        lassoImages,
                                                       ),
-                                                    if (!showingZoomSnapshot)
-                                                      _buildPullIndicator(
+                                                      // Text blocks BELOW the ink.
+                                                      if (!showingZoomSnapshot)
+                                                        ...textBlockOverlays,
+                                                      _buildNotebookStrokeLayer(
                                                         viewport,
-                                                        lastPageBottom,
+                                                        Size(
+                                                          kNotebookPageWidth,
+                                                          _totalCanvasHeight,
+                                                        ),
                                                       ),
-                                                  ],
+                                                      _buildViewportRasterLayer(),
+                                                      if (!showingZoomSnapshot)
+                                                        IgnorePointer(
+                                                          child: RepaintBoundary(
+                                                            child: AnimatedBuilder(
+                                                              animation:
+                                                                  _activeTick,
+                                                              builder:
+                                                                  (
+                                                                    _,
+                                                                    _,
+                                                                  ) => CustomPaint(
+                                                                    painter: _ActiveStrokePainter(
+                                                                      active:
+                                                                          _active,
+                                                                      tick:
+                                                                          _activeTick
+                                                                              .value,
+                                                                      pageTop:
+                                                                          _activePageIndex !=
+                                                                                  null
+                                                                              ? _activePageIndex! *
+                                                                                  (kNotebookPageHeight +
+                                                                                      kNotebookPageGap)
+                                                                              : 0.0,
+                                                                      viewScale:
+                                                                          _viewScale,
+                                                                    ),
+                                                                    size: Size(
+                                                                      kNotebookPageWidth,
+                                                                      _totalCanvasHeight,
+                                                                    ),
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      // Task blocks above the ink.
+                                                      if (!showingZoomSnapshot)
+                                                        ...taskBlockOverlays,
+                                                      if (!showingZoomSnapshot)
+                                                        _buildNotebookLassoLayer(
+                                                          viewport,
+                                                          Size(
+                                                            kNotebookPageWidth,
+                                                            _totalCanvasHeight,
+                                                          ),
+                                                          lassoStrokes,
+                                                          lassoImages,
+                                                        ),
+                                                      if (!showingZoomSnapshot)
+                                                        _buildPullIndicator(
+                                                          viewport,
+                                                          lastPageBottom,
+                                                        ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    // Floating palettes — sibling of the canvas
-                                    // Listener (no pointer leak) and OUTSIDE the
-                                    // _viewCtrl AnimatedBuilder so they stay pinned
-                                    // to the screen. They slide off toward their edge
-                                    // during the eyedropper.
-                                    AnimatedBuilder(
-                                      animation: _zoomGestureTick,
-                                      builder:
-                                          (_, _) =>
-                                              _buildZoomSnapshotLayer(viewport),
-                                    ),
-                                    if (_palettes != null)
+                                      // Floating palettes — sibling of the canvas
+                                      // Listener (no pointer leak) and OUTSIDE the
+                                      // _viewCtrl AnimatedBuilder so they stay pinned
+                                      // to the screen. They slide off toward their edge
+                                      // during the eyedropper.
+                                      AnimatedBuilder(
+                                        animation: _zoomGestureTick,
+                                        builder:
+                                            (_, _) => _buildZoomSnapshotLayer(
+                                              viewport,
+                                            ),
+                                      ),
+                                      if (_palettes != null)
+                                        Positioned.fill(
+                                          child: AnimatedBuilder(
+                                            animation: _palettes!,
+                                            builder:
+                                                (_, _) => FloatingPalettesLayer(
+                                                  controller: _palettes!,
+                                                  accent: _accent,
+                                                  activeColor: _color,
+                                                  activeWidth: _strokeW,
+                                                  hidden: _eyedropperMode,
+                                                  onPickColor: _commitColor,
+                                                  onPickWidth: _commitWidth,
+                                                  onInsertShape: _insertShape,
+                                                  onUndo: _undo,
+                                                  onRedo: _redo,
+                                                  canUndo:
+                                                      _undoStack.isNotEmpty,
+                                                  canRedo:
+                                                      _redoStack.isNotEmpty,
+                                                  onEyedropper:
+                                                      () => _enterEyedropper(
+                                                        onPick:
+                                                            (c) => _palettes
+                                                                ?.addColor(c),
+                                                      ),
+                                                ),
+                                          ),
+                                        ),
                                       Positioned.fill(
-                                        child: AnimatedBuilder(
-                                          animation: _palettes!,
-                                          builder:
-                                              (_, _) => FloatingPalettesLayer(
-                                                controller: _palettes!,
-                                                accent: _accent,
-                                                activeColor: _color,
-                                                activeWidth: _strokeW,
-                                                hidden: _eyedropperMode,
-                                                onPickColor: _commitColor,
-                                                onPickWidth: _commitWidth,
-                                                onInsertShape: _insertShape,
-                                                onUndo: _undo,
-                                                onRedo: _redo,
-                                                canUndo: _undoStack.isNotEmpty,
-                                                canRedo: _redoStack.isNotEmpty,
-                                                onEyedropper:
-                                                    () => _enterEyedropper(
-                                                      onPick:
-                                                          (c) => _palettes
-                                                              ?.addColor(c),
-                                                    ),
-                                              ),
+                                        child: FloatingPinsLayer(
+                                          controller: _pinController,
+                                          usableBounds: _pinUsableBounds(),
+                                          accent: _accent,
                                         ),
                                       ),
-                                    Positioned.fill(
-                                      child: FloatingPinsLayer(
-                                        controller: _pinController,
-                                        usableBounds: _pinUsableBounds(),
-                                        accent: _accent,
-                                      ),
-                                    ),
-                                    // Eyedropper loupe (viewport-space, pinned).
-                                    if (_eyedropImg != null)
-                                      ..._buildLoupeOverlay(viewport),
-                                    // Screen-space overlays that track the view
-                                    // transform — their own tiny AnimatedBuilder
-                                    // so they still follow pan, without dragging
-                                    // the heavy canvas subtree into a rebuild.
-                                    Positioned.fill(
-                                      child: AnimatedBuilder(
-                                        animation: Listenable.merge([
-                                          _viewCtrl,
-                                          _lassoPhaseTick,
-                                        ]),
-                                        builder:
-                                            (_, _) => Stack(
-                                              clipBehavior: Clip.none,
-                                              children: [
-                                                if (_lassoCtrl.phase ==
-                                                        LassoPhase.selected &&
-                                                    _toolbarVisible)
-                                                  _buildLassoMiniToolbar(),
-                                                if (_showPasteAt != null)
-                                                  _buildPasteButton(),
-                                                if (_tool == DrawTool.eraser &&
-                                                    _eraserCursor != null)
-                                                  Positioned(
-                                                    left:
-                                                        _eraserCursor!.dx -
-                                                        _eraserScreenRadius,
-                                                    top:
-                                                        _eraserCursor!.dy -
-                                                        _eraserScreenRadius,
-                                                    child: const EraserCursor(
-                                                      radius:
+                                      // Eyedropper loupe (viewport-space, pinned).
+                                      if (_eyedropImg != null)
+                                        ..._buildLoupeOverlay(viewport),
+                                      // Screen-space overlays that track the view
+                                      // transform — their own tiny AnimatedBuilder
+                                      // so they still follow pan, without dragging
+                                      // the heavy canvas subtree into a rebuild.
+                                      Positioned.fill(
+                                        child: AnimatedBuilder(
+                                          animation: Listenable.merge([
+                                            _viewCtrl,
+                                            _lassoPhaseTick,
+                                          ]),
+                                          builder:
+                                              (_, _) => Stack(
+                                                clipBehavior: Clip.none,
+                                                children: [
+                                                  if (_showPasteAt != null)
+                                                    _buildPasteButton(),
+                                                  if (_tool ==
+                                                          DrawTool.eraser &&
+                                                      _eraserCursor != null)
+                                                    Positioned(
+                                                      left:
+                                                          _eraserCursor!.dx -
                                                           _eraserScreenRadius,
+                                                      top:
+                                                          _eraserCursor!.dy -
+                                                          _eraserScreenRadius,
+                                                      child: const EraserCursor(
+                                                        radius:
+                                                            _eraserScreenRadius,
+                                                      ),
                                                     ),
-                                                  ),
-                                                if (_zoomLabelVisible)
-                                                  Positioned(
-                                                    left: 0,
-                                                    right: 0,
-                                                    bottom: 14,
-                                                    child: IgnorePointer(
-                                                      child: Center(
-                                                        child: Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 12,
-                                                                vertical: 5,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color: yCream,
-                                                            border: Border.all(
-                                                              color:
-                                                                  yBorderStrong,
-                                                              width: yLineMid,
-                                                            ),
-                                                            boxShadow: const [
-                                                              BoxShadow(
+                                                  if (_zoomLabelVisible)
+                                                    Positioned(
+                                                      left: 0,
+                                                      right: 0,
+                                                      bottom: 14,
+                                                      child: IgnorePointer(
+                                                        child: Center(
+                                                          child: Container(
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal:
+                                                                      12,
+                                                                  vertical: 5,
+                                                                ),
+                                                            decoration: BoxDecoration(
+                                                              color: yCream,
+                                                              border: Border.all(
                                                                 color:
                                                                     yBorderStrong,
-                                                                offset: Offset(
-                                                                  2,
-                                                                  2,
-                                                                ),
+                                                                width: yLineMid,
                                                               ),
-                                                            ],
-                                                          ),
-                                                          child: Text(
-                                                            '[ ${(_viewScale * 100).round()} % ]',
-                                                            style: yMono(
-                                                              size: 11,
-                                                              weight:
-                                                                  FontWeight.w700,
-                                                              tracking: 1.5,
-                                                              color: yInk,
+                                                              boxShadow: const [
+                                                                BoxShadow(
+                                                                  color:
+                                                                      yBorderStrong,
+                                                                  offset:
+                                                                      Offset(
+                                                                        2,
+                                                                        2,
+                                                                      ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            child: Text(
+                                                              '[ ${(_viewScale * 100).round()} % ]',
+                                                              style: yMono(
+                                                                size: 11,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                                tracking: 1.5,
+                                                                color: yInk,
+                                                              ),
                                                             ),
                                                           ),
                                                         ),
                                                       ),
                                                     ),
-                                                  ),
-                                              ],
-                                            ),
+                                                ],
+                                              ),
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                  ),
-                  _toolbar(),
-                ],
-              ),
-              if (_pageDrawerOpen)
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _togglePageDrawer,
-                    child: FadeTransition(
-                      opacity: _drawerAnimCtrl,
-                      child: Container(color: yInk.withValues(alpha: 0.35)),
+                                    ],
+                                  );
+                                },
+                              ),
+                    ),
+                    _toolbar(),
+                  ],
+                ),
+                if (_pageDrawerOpen)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _togglePageDrawer,
+                      child: FadeTransition(
+                        opacity: _drawerAnimCtrl,
+                        child: Container(color: yInk.withValues(alpha: 0.35)),
+                      ),
                     ),
                   ),
-                ),
-              if (_pageDrawerOpen)
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  right: 0,
-                  width: MediaQuery.of(context).size.width * 0.40,
-                  child: SlideTransition(
-                    position: _drawerSlide,
-                    child: NotebookPageDrawer(
-                      pageBlockIds: _pageBlockIds,
-                      pageData: _pageData,
-                      starredBlockIds: _starredBlockIds,
-                      accentColor: _accent,
-                      imageCache: _imgCache,
-                      currentPageIndex: _drawerSnapshotPage,
-                      onNavigate: _navigateToPage,
-                      onToggleStar: _toggleStarred,
-                      onDelete: _deletePage,
-                      onReorder: _reorderPages,
-                      onClose: _togglePageDrawer,
-                      onAddPage: () {
-                        _addPageAtEnd();
-                        HapticFeedback.lightImpact();
-                      },
-                      onExport: (indices) {
-                        _togglePageDrawer();
-                        _exportPages(indices);
-                      },
+                if (_pageDrawerOpen)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: 0,
+                    width: MediaQuery.of(context).size.width * 0.40,
+                    child: SlideTransition(
+                      position: _drawerSlide,
+                      child: NotebookPageDrawer(
+                        pageBlockIds: _pageBlockIds,
+                        pageData: _pageData,
+                        starredBlockIds: _starredBlockIds,
+                        accentColor: _accent,
+                        imageCache: _imgCache,
+                        currentPageIndex: _drawerSnapshotPage,
+                        onNavigate: _navigateToPage,
+                        onToggleStar: _toggleStarred,
+                        onDelete: _deletePage,
+                        onReorder: _reorderPages,
+                        onClose: _togglePageDrawer,
+                        onAddPage: () {
+                          _addPageAtEnd();
+                          HapticFeedback.lightImpact();
+                        },
+                        onExport: (indices) {
+                          _togglePageDrawer();
+                          _exportPages(indices);
+                        },
+                      ),
                     ),
                   ),
+                RevealPopup(
+                  key: const ValueKey('rp-shape'),
+                  open: _shapePopupOpen,
+                  onDismiss: () => setState(() => _shapePopupOpen = false),
+                  child: ShapePickerPopup(
+                    accent: _accent,
+                    onPick: _insertShape,
+                  ),
                 ),
-              RevealPopup(
-                key: const ValueKey('rp-shape'),
-                open: _shapePopupOpen,
-                onDismiss: () => setState(() => _shapePopupOpen = false),
-                child: ShapePickerPopup(accent: _accent, onPick: _insertShape),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-more'),
-                open: _morePopupOpen,
-                onDismiss: () => setState(() => _morePopupOpen = false),
-                child: _buildMorePopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-add-pin'),
-                open: _addPinPopupOpen,
-                onDismiss: () => setState(() => _addPinPopupOpen = false),
-                child: _buildAddPinPopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-floating-toolbars'),
-                open: _floatingToolbarsPopupOpen,
-                onDismiss:
-                    () => setState(() => _floatingToolbarsPopupOpen = false),
-                child: _buildFloatingToolbarsPopup(),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-image'),
-                open: _imagePanelOpen,
-                onDismiss: _toggleImagePanel,
-                child: ImageInsertPanel(
-                  accent: _accent,
-                  onPick: (file) {
-                    final forPin = _imagePanelForPin;
-                    _toggleImagePanel();
-                    if (forPin) {
-                      _addImagePin(file);
-                    } else {
-                      _insertImageFile(file);
+                RevealPopup(
+                  key: const ValueKey('rp-more'),
+                  open: _morePopupOpen,
+                  onDismiss: () => setState(() => _morePopupOpen = false),
+                  child: _buildMorePopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-add-pin'),
+                  open: _addPinPopupOpen,
+                  onDismiss: () => setState(() => _addPinPopupOpen = false),
+                  child: _buildAddPinPopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-floating-toolbars'),
+                  open: _floatingToolbarsPopupOpen,
+                  onDismiss:
+                      () => setState(() => _floatingToolbarsPopupOpen = false),
+                  child: _buildFloatingToolbarsPopup(),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-image'),
+                  open: _imagePanelOpen,
+                  onDismiss: _toggleImagePanel,
+                  child: ImageInsertPanel(
+                    accent: _accent,
+                    onPick: (file) {
+                      final forPin = _imagePanelForPin;
+                      _toggleImagePanel();
+                      if (forPin) {
+                        _addImagePin(file);
+                      } else {
+                        _insertImageFile(file);
+                      }
+                    },
+                    onClose: _toggleImagePanel,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-bg'),
+                  open: _bgPopupOpen,
+                  onDismiss: _toggleBgPopup,
+                  child: BackgroundPopup(
+                    pattern: _currentBg,
+                    color: _currentBgColor,
+                    showScope: true,
+                    allPages: _bgAllPages,
+                    accent: _accent,
+                    onPattern: _applyBgPattern,
+                    onColor: _applyBgColor,
+                    onMoreColors:
+                        () => setState(() {
+                          _bgColorPickerOpen = true;
+                          _bgPopupOpen = false;
+                        }),
+                    onScope: (all) => setState(() => _bgAllPages = all),
+                    onClose: _toggleBgPopup,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-bgcolor'),
+                  open: _bgColorPickerOpen,
+                  onDismiss: () => setState(() => _bgColorPickerOpen = false),
+                  child: ColorPickerPopup(
+                    currentColor: _currentBgColor,
+                    recentColors: const [],
+                    savedColors: _bgSavedColors,
+                    quickColors: _bgSavedColors,
+                    quickLabel: 'FAVORITOS',
+                    onPreview: _applyBgColor,
+                    onCommit: _applyBgColor,
+                    onStar: _starBgColor,
+                    onEyedropper: () {},
+                    onClose:
+                        () => setState(() {
+                          _bgColorPickerOpen = false;
+                          _bgPopupOpen = true;
+                        }),
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-width'),
+                  open: _widthPickerOpen,
+                  onDismiss: _toggleWidthPicker,
+                  child: StrokeWidthPopup(
+                    currentWidth: _strokeW,
+                    recentWidths: _recentWidths,
+                    accentColor: _accent,
+                    onPreview: (v) => setState(() => _strokeW = v),
+                    onCommit: _commitWidth,
+                    onClose: _toggleWidthPicker,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-color'),
+                  open: _colorPickerOpen,
+                  onDismiss: _toggleColorPicker,
+                  child: ColorPickerPopup(
+                    currentColor: _color,
+                    recentColors: _recentColors,
+                    savedColors: _savedColors,
+                    onPreview: (c) => setState(() => _color = c),
+                    onCommit: _commitColor,
+                    onStar: _starColor,
+                    onEyedropper: () => _enterEyedropper(),
+                    onClose: _toggleColorPicker,
+                  ),
+                ),
+                RevealPopup(
+                  key: const ValueKey('rp-eraser'),
+                  open: _eraserPopupOpen,
+                  onDismiss: () => setState(() => _eraserPopupOpen = false),
+                  child: _eraserModePopup(),
+                ),
+                AnimatedBuilder(
+                  animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
+                  builder: (_, _) {
+                    if (_lassoCtrl.phase == LassoPhase.selected &&
+                        _toolbarVisible) {
+                      return _buildLassoMiniToolbar();
                     }
+                    return const SizedBox.shrink();
                   },
-                  onClose: _toggleImagePanel,
                 ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-bg'),
-                open: _bgPopupOpen,
-                onDismiss: _toggleBgPopup,
-                child: BackgroundPopup(
-                  pattern: _currentBg,
-                  color: _currentBgColor,
-                  showScope: true,
-                  allPages: _bgAllPages,
-                  accent: _accent,
-                  onPattern: _applyBgPattern,
-                  onColor: _applyBgColor,
-                  onMoreColors:
-                      () => setState(() {
-                        _bgColorPickerOpen = true;
-                        _bgPopupOpen = false;
-                      }),
-                  onScope: (all) => setState(() => _bgAllPages = all),
-                  onClose: _toggleBgPopup,
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-bgcolor'),
-                open: _bgColorPickerOpen,
-                onDismiss: () => setState(() => _bgColorPickerOpen = false),
-                child: ColorPickerPopup(
-                  currentColor: _currentBgColor,
-                  recentColors: const [],
-                  savedColors: _bgSavedColors,
-                  quickColors: _bgSavedColors,
-                  quickLabel: 'FAVORITOS',
-                  onPreview: _applyBgColor,
-                  onCommit: _applyBgColor,
-                  onStar: _starBgColor,
-                  onEyedropper: () {},
-                  onClose:
-                      () => setState(() {
-                        _bgColorPickerOpen = false;
-                        _bgPopupOpen = true;
-                      }),
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-width'),
-                open: _widthPickerOpen,
-                onDismiss: _toggleWidthPicker,
-                child: StrokeWidthPopup(
-                  currentWidth: _strokeW,
-                  recentWidths: _recentWidths,
-                  accentColor: _accent,
-                  onPreview: (v) => setState(() => _strokeW = v),
-                  onCommit: _commitWidth,
-                  onClose: _toggleWidthPicker,
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-color'),
-                open: _colorPickerOpen,
-                onDismiss: _toggleColorPicker,
-                child: ColorPickerPopup(
-                  currentColor: _color,
-                  recentColors: _recentColors,
-                  savedColors: _savedColors,
-                  onPreview: (c) => setState(() => _color = c),
-                  onCommit: _commitColor,
-                  onStar: _starColor,
-                  onEyedropper: () => _enterEyedropper(),
-                  onClose: _toggleColorPicker,
-                ),
-              ),
-              RevealPopup(
-                key: const ValueKey('rp-eraser'),
-                open: _eraserPopupOpen,
-                onDismiss: () => setState(() => _eraserPopupOpen = false),
-                child: _eraserModePopup(),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ));
+    );
   }
 
   // ─── Toolbar ───────────────────────────────────────────────────────────
@@ -8564,10 +8742,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             icon: YuLiIcons.pin,
             active: _addPinPopupOpen,
             label: 'AGREGAR PIN',
-            onTap: () => setState(() {
-              _morePopupOpen = false;
-              _addPinPopupOpen = true;
-            }),
+            onTap:
+                () => setState(() {
+                  _morePopupOpen = false;
+                  _addPinPopupOpen = true;
+                }),
           ),
         ],
       ),
@@ -8620,10 +8799,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       ),
     );
     if (palettes == null) return content();
-    return AnimatedBuilder(
-      animation: palettes,
-      builder: (_, _) => content(),
-    );
+    return AnimatedBuilder(animation: palettes, builder: (_, _) => content());
   }
 
   Widget _divider() => Container(
