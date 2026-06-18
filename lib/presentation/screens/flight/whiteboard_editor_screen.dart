@@ -4581,7 +4581,11 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         _markCanvasDirty();
         _redoStack.add(_WhiteboardStrokeAddEntry(removed.clone()));
         final region = strokeBounds(removed).inflate(removed.strokeWidth + 4);
-        _strokeTiles.invalidateRegion(region, _data.strokes);
+        // Inverse of the draw/redo append (O(tiles the stroke spans), by identity),
+        // NOT invalidateRegion (O(all strokes) → it re-scanned the whole board on a
+        // pen-stroke undo = the undo lag). `removed` is the same instance the index
+        // holds, so identity removal lands cleanly.
+        _strokeTiles.removeStrokes([removed]);
         _invalidateStrokeCaches(region);
         CrashLogger.instance.note(
           'PERF undo-pizarra: stroke-add undo, strokes ${_data.strokes.length}, '
@@ -6597,17 +6601,31 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                           }
                                         },
                                         onInteractionEnd: (_) {
+                                          final moved = _viewMoved;
                                           _viewGestureActive = false;
                                           _viewMoved = false;
                                           _zoomGestureActive = false;
                                           _zoomGestureSeen = false;
                                           _zoomGestureScale = 1;
-                                          // Keep the overview up through the whole
-                                          // fling; the settle Ticker drops it back to
-                                          // crisp tiles + bakes the focus only once the
-                                          // view truly stops (swap lands in stillness).
-                                          _overviewLinger = true;
-                                          _beginSettleWatch();
+                                          // Only engage the overview when the view
+                                          // actually moved. A stationary multi-finger
+                                          // TAP ends here too — that's the 2-finger
+                                          // undo / 3-finger redo gesture. Lingering the
+                                          // overview on it flipped the crisp vector
+                                          // tiles to the softer overview raster for the
+                                          // grace window → the "destello que se afila"
+                                          // on a GESTURE undo/redo (the button path
+                                          // never touches the canvas, so it stayed
+                                          // crisp). No movement = nothing to fling or
+                                          // re-bake → keep the crisp tiles.
+                                          if (moved) {
+                                            // Keep the overview up through the whole
+                                            // fling; the settle Ticker drops it back to
+                                            // crisp tiles + bakes the focus only once
+                                            // the view truly stops (swap in stillness).
+                                            _overviewLinger = true;
+                                            _beginSettleWatch();
+                                          }
                                           if (mounted) setState(() {});
                                           // After a 2-finger pan/zoom the snapshot is
                                           // stale → recapture so the loupe keeps sampling
