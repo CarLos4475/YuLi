@@ -110,8 +110,18 @@ class _YuliAiFabState extends State<YuliAiFab>
 class YuliCubeMark extends StatelessWidget {
   final Color color;
   final double size;
+  final double yaw;
+  final double pitch;
+  final double roll;
 
-  const YuliCubeMark({super.key, required this.color, this.size = 30});
+  const YuliCubeMark({
+    super.key,
+    required this.color,
+    this.size = 30,
+    this.yaw = 0.62,
+    this.pitch = 0.6,
+    this.roll = -0.05,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -121,9 +131,9 @@ class YuliCubeMark extends StatelessWidget {
       child: CustomPaint(
         painter: _FabCubePainter(
           accent: color,
-          yaw: 0.62,
-          pitch: 0.6,
-          roll: -0.05,
+          yaw: yaw,
+          pitch: pitch,
+          roll: roll,
           glow: 0,
         ),
       ),

@@ -24,6 +24,8 @@ import 'context_assembler.dart' as ctx;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
 import 'note_block_widgets.dart' show NoteMarkdownPreview, fixMarkdownTables;
+import '../yuli_ai/yuli_ai_tools.dart'
+    show yuliToolDefs, flightToolSystem, runYuliTool, ConsultingIndicator;
 
 /// Open the AI chat for a note view. The conversation is the per-note
 /// [AiChatSession] (persists while you're in the view; the sheet is a window).
@@ -254,7 +256,7 @@ class AiChatDock extends StatefulWidget {
 
 class _AiChatDockState extends State<AiChatDock>
     with SingleTickerProviderStateMixin {
-  static const double _w = 480;
+  static const double _w = 420;
   static const double _handleW = 30;
   static const double _handleH = 56;
 
@@ -571,6 +573,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       ref.read(aiUsageLimiterProvider),
       text,
       quickAction: quickAction,
+      // Same DB tools as YuLi AI, but the note chat only reaches for them when
+      // the user EXPLICITLY asks (strict guidance). Off for one-shot actions.
+      tools: quickAction ? const [] : yuliToolDefs,
+      toolGuidance: quickAction ? null : flightToolSystem(),
+      onToolCall: (c) => runYuliTool(ref, c),
     );
   }
 
@@ -1413,7 +1420,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ? null
             : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
     return Container(
-      height: 76,
+      height: 68,
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(color: yBorderStrong, width: yLineMid),
@@ -1425,43 +1432,55 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             child: AccentMosaic(accent: widget.accent, animateWave: true),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
-                  width: 42,
+                  width: 34,
                   alignment: Alignment.center,
                   child: const Icon(YuLiIcons.box, size: 34, color: yCream),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'YuLi · AI',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ySans(
-                          size: 28,
-                          weight: FontWeight.w700,
-                          color: yCream,
-                          height: 1.0,
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'YuLi · AI',
+                            maxLines: 1,
+                            style: ySans(
+                              size: 28,
+                              weight: FontWeight.w700,
+                              color: yCream,
+                              height: 1.0,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 1),
-                      Text(
-                        'ASISTENTE DE NOTAS',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ySans(
-                          size: 10,
-                          weight: FontWeight.w500,
-                          letterSpacing: 0.7,
-                          color: yCream.withValues(alpha: 0.92),
-                          height: 1.0,
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'ASISTENTE DE NOTAS',
+                            maxLines: 1,
+                            style: ySans(
+                              size: 10,
+                              weight: FontWeight.w500,
+                              letterSpacing: 0.7,
+                              color: yCream.withValues(alpha: 0.92),
+                              height: 1.0,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -1471,9 +1490,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   const SizedBox(width: 10),
                   _headerUsage(used),
                 ],
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 _modeLabels(),
-                const SizedBox(width: 8),
+                const Spacer(),
                 // Context toggle: shows/hides the context bar; accent-filled when the
                 // chat has context backing it (board, anchor, or linked sources).
                 _headerActionButton(
@@ -1498,7 +1517,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   Widget _headerUsage(int used) {
     return ConstrainedBox(
-      constraints: const BoxConstraints.tightFor(width: 74),
+      constraints: const BoxConstraints.tightFor(width: 56),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1507,9 +1526,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             '$used/$_kDailyCap',
             textAlign: TextAlign.center,
             style: yMono(
-              size: 8,
+              size: 6.5,
               weight: FontWeight.w700,
-              tracking: 0.3,
+              tracking: 0.0,
               color: yCream,
             ),
           ),
@@ -1533,9 +1552,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             'LIMITE USO',
             textAlign: TextAlign.center,
             style: yMono(
-              size: 7,
+              size: 5.5,
               weight: FontWeight.w500,
-              tracking: 0.8,
+              tracking: 0.3,
               color: yCream.withValues(alpha: 0.92),
             ),
           ),
@@ -1590,9 +1609,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         label,
         textAlign: TextAlign.center,
         style: ySans(
-          size: 11,
+          size: 9,
           weight: active ? FontWeight.w700 : FontWeight.w500,
-          letterSpacing: 0.2,
+          letterSpacing: 0.1,
           color: yCream,
           height: 1.0,
         ),
@@ -1753,15 +1772,20 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
     // Assistant.
     final streaming = _s.streaming && i == _s.messages.length - 1;
-    final Widget content =
-        (m.text.isEmpty && streaming)
-            ? Text('…', style: yBody(size: 14, color: yInk))
-            : streaming
-            ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
-            : NoteMarkdownPreview(
-              data: fixMarkdownTables(m.text),
-              accent: widget.accent,
-            );
+    final Widget content;
+
+    if (m.text == kConsultingLabel) {
+      content = ConsultingIndicator(accent: widget.accent);
+    } else if (m.text.isEmpty && streaming) {
+      content = Text('…', style: yBody(size: 14, color: yInk));
+    } else if (streaming) {
+      content = SelectableText(m.text, style: yBody(size: 14, color: yInk));
+    } else {
+      content = NoteMarkdownPreview(
+        data: fixMarkdownTables(m.text),
+        accent: widget.accent,
+      );
+    }
     final isLast = i == _s.messages.length - 1;
     final actions =
         (!streaming && m.text.isNotEmpty)

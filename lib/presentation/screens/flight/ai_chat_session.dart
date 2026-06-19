@@ -12,6 +12,10 @@ import 'ai_modes.dart';
 
 const _kAnchorMaxChars = 8000;
 
+/// Message text marker for the tool-call indicator bubble. Chat UIs check for
+/// this and render a spinning icon + "Consultando…" instead of plain text.
+const kConsultingLabel = '⛏ CONSULTING_MARKER';
+
 /// Above this length the context is "largo" → the chat suggests compacting it.
 const kAnchorLongChars = 3000;
 
@@ -312,6 +316,9 @@ class AiChatSession extends ChangeNotifier {
     AiUsageLimiter limiter,
     String text, {
     bool quickAction = false,
+    List<AiToolDef> tools = const [],
+    Future<String> Function(AiToolCall)? onToolCall,
+    String? toolGuidance,
   }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
@@ -348,6 +355,7 @@ class AiChatSession extends ChangeNotifier {
     final idx = messages.length - 1;
     final convo = <AiMessage>[
       AiMessage(AiRole.system, mode.systemPrompt),
+      if (toolGuidance != null) AiMessage(AiRole.system, toolGuidance),
       if (hasAnchor) AiMessage(AiRole.user, _anchorContent()),
     ];
 
@@ -409,6 +417,23 @@ class AiChatSession extends ChangeNotifier {
     }
     convo.add(AiMessage(AiRole.user, t));
 
+    if (tools.isNotEmpty && onToolCall != null) {
+      await _streamWithTools(assistant, convo, idx, modeId, tools, onToolCall);
+    } else {
+      await _streamPlain(assistant, convo, idx, modeId);
+    }
+    streaming = false;
+    notifyListeners();
+  }
+
+  /// Plain streamed reply with transient-failure retry/backoff (the original
+  /// path; used by the note chat without tools).
+  Future<void> _streamPlain(
+    AiAssistant assistant,
+    List<AiMessage> convo,
+    int idx,
+    String modeId,
+  ) async {
     // Retry transient failures (network / 429 / 5xx) with backoff, but ONLY
     // before any token has streamed in this attempt — once text starts flowing
     // a retry would duplicate it. Shows a "Reintentando…" hint between tries.
@@ -447,8 +472,78 @@ class AiChatSession extends ChangeNotifier {
         break;
       }
     }
-    streaming = false;
-    notifyListeners();
+  }
+
+  /// Function-calling loop: stream the turn; if the model requests tools, run
+  /// them ([onToolCall]), append the results, and loop until it answers with
+  /// text (or the iteration cap is hit). [convo] is mutated with the tool
+  /// round-trip messages (which are NOT shown as chat bubbles).
+  Future<void> _streamWithTools(
+    AiAssistant assistant,
+    List<AiMessage> convo,
+    int idx,
+    String modeId,
+    List<AiToolDef> tools,
+    Future<String> Function(AiToolCall) onToolCall,
+  ) async {
+    const maxIters = 4;
+    for (var iter = 0; iter < maxIters; iter++) {
+      final calls = <AiToolCall>[];
+      try {
+        await for (final ev in assistant.streamReplyWithTools(
+          convo,
+          tools: tools,
+          model: model,
+        )) {
+          if (ev is AiTextDelta) {
+            messages[idx] = AiChatMsg(
+              AiRole.assistant,
+              messages[idx].text + ev.text,
+              modeId: modeId,
+            );
+            notifyListeners();
+          } else if (ev is AiToolCallRequest) {
+            calls.addAll(ev.calls);
+          }
+        }
+      } catch (e) {
+        messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e', modeId: modeId);
+        notifyListeners();
+        return;
+      }
+
+      if (calls.isEmpty) return; // model answered with text → done
+
+      // Surface the lookup, then run the tools and feed results back.
+      messages[idx] = AiChatMsg(
+        AiRole.assistant,
+        kConsultingLabel,
+        modeId: modeId,
+      );
+      notifyListeners();
+      // Ensure the indicator paints at least one frame before we run tools
+      // (SQLite queries are near-instant and would otherwise flash invisible).
+      await Future.delayed(const Duration(milliseconds: 400));
+      convo.add(AiMessage(AiRole.assistant, '', toolCalls: calls));
+      for (final c in calls) {
+        final result = await onToolCall(c);
+        convo.add(
+          AiMessage(AiRole.tool, result, toolCallId: c.id, name: c.name),
+        );
+      }
+      // Clear the placeholder for the next streamed turn.
+      messages[idx] = AiChatMsg(AiRole.assistant, '', modeId: modeId);
+      notifyListeners();
+    }
+    // Iteration cap hit without a final text answer.
+    if (messages[idx].text.trim().isEmpty || messages[idx].text == kConsultingLabel) {
+      messages[idx] = AiChatMsg(
+        AiRole.assistant,
+        '⚠️ No pude completar la consulta.',
+        modeId: modeId,
+      );
+      notifyListeners();
+    }
   }
 
   /// Regenerate the assistant reply at [assistantIndex]: drop it and everything

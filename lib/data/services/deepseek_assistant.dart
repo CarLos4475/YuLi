@@ -24,6 +24,34 @@ class DeepseekAssistant implements AiAssistant {
         AiModel.pro => 'deepseek-v4-pro',
       };
 
+  /// OpenAI-compatible message JSON, including tool-calling fields. A plain
+  /// chat turn is just role+content; an assistant turn that requested tools
+  /// carries `tool_calls`; a `tool` turn carries its `tool_call_id`.
+  Map<String, dynamic> _msgJson(AiMessage m) {
+    if (m.role == AiRole.tool) {
+      return {
+        'role': 'tool',
+        'tool_call_id': m.toolCallId ?? '',
+        'content': m.content,
+      };
+    }
+    if (m.toolCalls != null && m.toolCalls!.isNotEmpty) {
+      return {
+        'role': 'assistant',
+        'content': m.content.isEmpty ? null : m.content,
+        'tool_calls': [
+          for (final c in m.toolCalls!)
+            {
+              'id': c.id,
+              'type': 'function',
+              'function': {'name': c.name, 'arguments': c.arguments},
+            },
+        ],
+      };
+    }
+    return {'role': m.role.name, 'content': m.content};
+  }
+
   @override
   Stream<String> streamReply(List<AiMessage> messages,
       {AiModel model = AiModel.flash, int maxTokens = 2048,
@@ -43,9 +71,7 @@ class DeepseekAssistant implements AiAssistant {
         // Lower temperature → more deterministic (good for summarize/clean/
         // extract-tasks, less drift).
         'temperature': temperature,
-        'messages': messages
-            .map((m) => {'role': m.role.name, 'content': m.content})
-            .toList(),
+        'messages': messages.map(_msgJson).toList(),
       });
 
     http.StreamedResponse resp;
@@ -83,10 +109,103 @@ class DeepseekAssistant implements AiAssistant {
     }
   }
 
+  @override
+  Stream<AiStreamEvent> streamReplyWithTools(
+    List<AiMessage> messages, {
+    required List<AiToolDef> tools,
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  }) async* {
+    final key = (await keyStore.read())?.trim();
+    if (key == null || key.isEmpty) {
+      throw const AiException('Falta la API key (configúrala en Ajustes).');
+    }
+
+    final req = http.Request('POST', Uri.parse('$_base/chat/completions'))
+      ..headers['Authorization'] = 'Bearer $key'
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({
+        'model': _modelId(model),
+        'stream': true,
+        'max_tokens': maxTokens,
+        'temperature': temperature,
+        'messages': messages.map(_msgJson).toList(),
+        'tools': tools.map((t) => t.toJson()).toList(),
+        'tool_choice': 'auto',
+      });
+
+    http.StreamedResponse resp;
+    try {
+      resp = await _client.send(req);
+    } catch (_) {
+      throw const AiException('Sin conexión o error de red.', retryable: true);
+    }
+    if (resp.statusCode != 200) {
+      await resp.stream.drain<void>();
+      final retryable = resp.statusCode == 429 || resp.statusCode >= 500;
+      throw AiException(_friendlyError(resp.statusCode), retryable: retryable);
+    }
+
+    // tool_calls stream in fragments keyed by `index`; assemble per index.
+    final partial = <int, _PartialCall>{};
+    await for (final line in resp.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (!line.startsWith('data:')) continue;
+      final data = line.substring(5).trim();
+      if (data.isEmpty) continue;
+      if (data == '[DONE]') break;
+      try {
+        final json = jsonDecode(data) as Map<String, dynamic>;
+        final choices = json['choices'] as List?;
+        if (choices == null || choices.isEmpty) continue;
+        final delta = (choices.first as Map)['delta'] as Map?;
+        final content = delta?['content'];
+        if (content is String && content.isNotEmpty) yield AiTextDelta(content);
+        final tcs = delta?['tool_calls'] as List?;
+        if (tcs != null) {
+          for (final tc in tcs) {
+            final m = tc as Map;
+            final idx = (m['index'] as num?)?.toInt() ?? 0;
+            final p = partial.putIfAbsent(idx, () => _PartialCall());
+            if (m['id'] != null) p.id = m['id'] as String;
+            final fn = m['function'] as Map?;
+            if (fn != null) {
+              if (fn['name'] != null) p.name = fn['name'] as String;
+              if (fn['arguments'] != null) p.args.write(fn['arguments']);
+            }
+          }
+        }
+      } catch (_) {
+        // Ignore keep-alive / malformed lines.
+      }
+    }
+
+    if (partial.isNotEmpty) {
+      final keys = partial.keys.toList()..sort();
+      yield AiToolCallRequest([
+        for (final k in keys)
+          AiToolCall(
+            id: partial[k]!.id ?? 'call_$k',
+            name: partial[k]!.name ?? '',
+            arguments: partial[k]!.args.toString(),
+          ),
+      ]);
+    }
+  }
+
   String _friendlyError(int code) => switch (code) {
         401 => 'API key inválida (revísala en Ajustes).',
         402 => 'Sin saldo en la cuenta de DeepSeek.',
         429 => 'Límite de uso alcanzado, intenta más tarde.',
         _ => 'Error de la API ($code).',
       };
+}
+
+/// Accumulator for one tool call streamed across SSE fragments.
+class _PartialCall {
+  String? id;
+  String? name;
+  final StringBuffer args = StringBuffer();
 }

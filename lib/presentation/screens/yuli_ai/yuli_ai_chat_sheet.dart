@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,9 +8,10 @@ import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_ai_fab.dart' show YuliCubeMark;
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
-import '../flight/ai_chat_session.dart' show AiChatMsg, AiChatSession;
+import '../flight/ai_chat_session.dart' show AiChatMsg, AiChatSession, kConsultingLabel;
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
+import 'yuli_ai_tools.dart';
 
 /// YuLi AI chat (YuLi AI 2). Opened from the floating cube FAB across Fight /
 /// Lab / Flight-general / folder-detail. [accent] is the view's colour so the
@@ -39,6 +42,384 @@ Future<void> showYuliAiChat(
     backgroundColor: Colors.transparent,
     builder: (_) => _YuliAiChat(accent: accent),
   );
+}
+
+class _YuliAiPatchwork extends StatelessWidget {
+  final Color accent;
+
+  const _YuliAiPatchwork({required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _YuliAiPatchworkPainter(accent),
+          size: Size.infinite,
+        ),
+      ),
+    );
+  }
+}
+
+class _YuliAssistantBubbleMark extends StatelessWidget {
+  final Color accent;
+
+  const _YuliAssistantBubbleMark({required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 58,
+      height: 60,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Stack(
+              children: [
+                Center(
+                  child: YuliCubeMark(
+                    color: accent,
+                    size: 42,
+                    yaw: 0.53,
+                    pitch: 0.44,
+                    roll: -0.02,
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(painter: _PixelEyePainter(accent: accent)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PixelEyePainter extends CustomPainter {
+  final Color accent;
+
+  const _PixelEyePainter({required this.accent});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final eyePaint =
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = yInk.withValues(alpha: 0.88);
+
+    final face = Rect.fromLTWH(
+      size.width * 0.345,
+      size.height * 0.28,
+      size.width * 0.27,
+      size.height * 0.28,
+    );
+
+    void eye(double x, double y) {
+      final w = face.width * 0.09;
+      final h = face.height * 0.30;
+      final r = Radius.circular(w * 0.12);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(x, y, w, h), r),
+        eyePaint,
+      );
+    }
+
+    final eyeTop = face.top + face.height * 0.33;
+    eye(face.left + face.width * 0.27, eyeTop);
+    eye(face.left + face.width * 0.61, eyeTop);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PixelEyePainter oldDelegate) =>
+      oldDelegate.accent != accent;
+}
+
+class _YuliAiPatchworkPainter extends CustomPainter {
+  final Color accent;
+
+  const _YuliAiPatchworkPainter(this.accent);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    const rows = 2;
+    final cell = size.height / rows;
+    final cols = (size.width / cell).ceil();
+    canvas.drawRect(Offset.zero & size, Paint()..color = accent);
+
+    final accentHsl = HSLColor.fromColor(accent);
+    final palette = <Color>[
+      accentHsl
+          .withLightness((accentHsl.lightness - 0.08).clamp(0.0, 1.0))
+          .withSaturation((accentHsl.saturation - 0.02).clamp(0.0, 1.0))
+          .toColor(),
+      accentHsl
+          .withLightness((accentHsl.lightness + 0.12).clamp(0.0, 1.0))
+          .withSaturation((accentHsl.saturation + 0.04).clamp(0.0, 1.0))
+          .toColor(),
+      const Color(0xFFE85E55),
+      const Color(0xFFF3B648),
+      const Color(0xFF53BDC1),
+      const Color(0xFF413B8A),
+      yCream,
+      accent,
+    ];
+
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        final rect = Rect.fromLTWH(col * cell, row * cell, cell, cell);
+        _paintTile(canvas, rect, row, col, palette);
+      }
+    }
+    final calmBand =
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              yInk.withValues(alpha: 0.10),
+              yCream.withValues(alpha: 0.16),
+              yCream.withValues(alpha: 0.16),
+              yInk.withValues(alpha: 0.10),
+            ],
+            stops: const [0.0, 0.18, 0.82, 1.0],
+          ).createShader(
+            Rect.fromLTWH(0, size.height * 0.18, size.width, size.height * 0.64),
+          );
+    canvas.drawRect(
+      Rect.fromLTWH(0, size.height * 0.18, size.width, size.height * 0.64),
+      calmBand,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.06, size.height * 0.22, size.width * 0.40, size.height * 0.56),
+      Paint()..color = yInk.withValues(alpha: 0.16),
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.69, size.height * 0.24, size.width * 0.14, size.height * 0.52),
+      Paint()..color = yInk.withValues(alpha: 0.12),
+    );
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = accent.withValues(alpha: 0.08),
+    );
+    canvas.restore();
+  }
+
+  void _paintTile(
+    Canvas canvas,
+    Rect rect,
+    int row,
+    int col,
+    List<Color> palette,
+  ) {
+    final seed = row * 17 + col * 7;
+    final bgColor = palette[seed % palette.length];
+    final fgColor = palette[(seed * 3 + 2) % palette.length];
+    final accentColor = palette[(seed * 5 + 1) % palette.length];
+    canvas.drawRect(rect, Paint()..color = bgColor);
+    final inner = rect.deflate(rect.width * 0.04);
+    switch ((row + col) % 8) {
+      case 0:
+        _circles(canvas, inner, fgColor, accentColor);
+        break;
+      case 1:
+        _triangles(canvas, inner, fgColor, accentColor);
+        break;
+      case 2:
+        _diamond(canvas, inner, fgColor, accentColor);
+        break;
+      case 3:
+        _petals(canvas, inner, fgColor);
+        break;
+      case 4:
+        _sun(canvas, inner, fgColor, accentColor);
+        break;
+      case 5:
+        _stripes(canvas, inner, fgColor);
+        break;
+      case 6:
+        _arcs(canvas, inner, fgColor);
+        break;
+      default:
+        _leaves(canvas, inner, fgColor);
+        break;
+    }
+  }
+
+  void _circles(Canvas canvas, Rect rect, Color a, Color b) {
+    final r = rect.width * 0.34;
+    canvas.drawCircle(rect.center, r, Paint()..color = a);
+    canvas.drawCircle(rect.center, r * 0.42, Paint()..color = b);
+  }
+
+  void _triangles(Canvas canvas, Rect rect, Color a, Color b) {
+    final p1 =
+        Path()
+          ..moveTo(rect.left, rect.top)
+          ..lineTo(rect.right, rect.top)
+          ..lineTo(rect.left, rect.bottom)
+          ..close();
+    final p2 =
+        Path()
+          ..moveTo(rect.right, rect.top)
+          ..lineTo(rect.right, rect.bottom)
+          ..lineTo(rect.left, rect.bottom)
+          ..close();
+    canvas.drawPath(p1, Paint()..color = a);
+    canvas.drawPath(p2, Paint()..color = b);
+  }
+
+  void _diamond(Canvas canvas, Rect rect, Color a, Color b) {
+    final d =
+        Path()
+          ..moveTo(rect.center.dx, rect.top + rect.height * 0.12)
+          ..lineTo(rect.right - rect.width * 0.12, rect.center.dy)
+          ..lineTo(rect.center.dx, rect.bottom - rect.height * 0.12)
+          ..lineTo(rect.left + rect.width * 0.12, rect.center.dy)
+          ..close();
+    canvas.drawPath(d, Paint()..color = a);
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: rect.center,
+        width: rect.width * 0.24,
+        height: rect.height * 0.24,
+      ),
+      Paint()..color = b,
+    );
+  }
+
+  void _petals(Canvas canvas, Rect rect, Color color) {
+    final p = Paint()..color = color;
+    final rx = rect.width * 0.24;
+    final ry = rect.height * 0.24;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(rect.center.dx, rect.top + rect.height * 0.30),
+        width: rx,
+        height: ry * 1.4,
+      ),
+      p,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(rect.center.dx, rect.bottom - rect.height * 0.30),
+        width: rx,
+        height: ry * 1.4,
+      ),
+      p,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(rect.left + rect.width * 0.30, rect.center.dy),
+        width: rx * 1.4,
+        height: ry,
+      ),
+      p,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(rect.right - rect.width * 0.30, rect.center.dy),
+        width: rx * 1.4,
+        height: ry,
+      ),
+      p,
+    );
+  }
+
+  void _sun(Canvas canvas, Rect rect, Color a, Color b) {
+    final path = Path();
+    final c = rect.center;
+    final outer = rect.width * 0.34;
+    final inner = rect.width * 0.17;
+    for (var i = 0; i < 16; i++) {
+      final ang = (math.pi * 2 * i) / 16;
+      final r = i.isEven ? outer : inner;
+      final x = c.dx + r * math.cos(ang);
+      final y = c.dy + r * math.sin(ang);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, Paint()..color = a);
+    canvas.drawCircle(c, rect.width * 0.10, Paint()..color = b);
+  }
+
+  void _stripes(Canvas canvas, Rect rect, Color a) {
+    final p = Paint()..color = a;
+    final stripe = rect.width / 6;
+    for (var i = 0; i < 6; i++) {
+      if (i.isEven) {
+        canvas.drawRect(
+          Rect.fromLTWH(rect.left + stripe * i, rect.top, stripe, rect.height),
+          p,
+        );
+      }
+    }
+  }
+
+  void _arcs(Canvas canvas, Rect rect, Color a) {
+    final p = Paint()..color = a;
+    final radius = rect.width * 0.42;
+    canvas.drawArc(
+      Rect.fromCircle(center: rect.topLeft, radius: radius),
+      0,
+      math.pi / 2,
+      true,
+      p,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: rect.bottomRight, radius: radius),
+      math.pi,
+      math.pi / 2,
+      true,
+      p,
+    );
+  }
+
+  void _leaves(Canvas canvas, Rect rect, Color a) {
+    final p = Paint()
+      ..color = a
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    final stemX = rect.center.dx;
+    canvas.drawLine(
+      Offset(stemX, rect.top + rect.height * 0.15),
+      Offset(stemX, rect.bottom - rect.height * 0.15),
+      p,
+    );
+    for (var i = 0; i < 3; i++) {
+      final y = rect.top + rect.height * (0.28 + i * 0.22);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(stemX - rect.width * 0.12, y),
+          width: rect.width * 0.24,
+          height: rect.height * 0.16,
+        ),
+        Paint()..color = a,
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(stemX + rect.width * 0.12, y),
+          width: rect.width * 0.24,
+          height: rect.height * 0.16,
+        ),
+        Paint()..color = a,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _YuliAiPatchworkPainter oldDelegate) =>
+      oldDelegate.accent != accent;
 }
 
 class _YuliAiChat extends ConsumerStatefulWidget {
@@ -107,6 +488,9 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
       ref.read(aiAssistantProvider),
       ref.read(aiUsageLimiterProvider),
       text,
+      tools: yuliToolDefs,
+      toolGuidance: yuliToolSystem(),
+      onToolCall: (c) => runYuliTool(ref, c),
     );
   }
 
@@ -138,7 +522,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
     );
   }
 
-  // ─── Header (brutalist accent band: framed cube + wordmark + usage) ───────
+  // ─── Header ──────────────────────────────────────────────────────────────
 
   Widget _header() {
     final used =
@@ -146,117 +530,116 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
             ? null
             : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
     return Container(
-      color: widget.accent,
-      child: SafeArea(
-        bottom: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
-          // Hard near-black baseline: the brutalist edge between band and body.
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: yBorderStrong, width: 3)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  border: Border.all(color: yCream, width: 2),
-                ),
-                child: YuliCubeMark(color: yCream, size: 28),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'YuLi · AI',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ySans(
-                        size: 27,
-                        weight: FontWeight.w800,
-                        color: yCream,
-                        height: 1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _tag('FLASH'),
-                        const SizedBox(width: 6),
-                        _tag('BASE'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (used != null) ...[
-                _headerUsage(used),
-                const SizedBox(width: 10),
-              ],
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: yCream, width: 2),
-                  ),
-                  child: const Icon(YuLiIcons.close, color: yCream, size: 18),
-                ),
-              ),
-            ],
-          ),
+      height: 76,
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
         ),
       ),
-    );
-  }
-
-  Widget _tag(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(border: Border.all(color: yCream, width: 1.5)),
-      child: Text(
-        label,
-        style: yMono(
-          size: 8,
-          weight: FontWeight.w700,
-          tracking: 1.2,
-          color: yCream,
-        ),
+      child: Stack(
+        children: [
+          Positioned.fill(child: _YuliAiPatchwork(accent: widget.accent)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+                    decoration: BoxDecoration(
+                      color: yInk.withValues(alpha: 0.30),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(YuLiIcons.box, size: 34, color: yCream),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'YuLi AI',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: ySans(
+                                  size: 28,
+                                  weight: FontWeight.w700,
+                                  color: yCream,
+                                  height: 1.0,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'ASISTENTE · SEGUNDO CEREBRO',
+                                    maxLines: 1,
+                                    style: ySans(
+                                      size: 10,
+                                      weight: FontWeight.w500,
+                                      letterSpacing: 1.2,
+                                      color: yCream.withValues(alpha: 0.92),
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (used != null) ...[
+                  const SizedBox(width: 10),
+                  _headerUsage(used),
+                ],
+                const Spacer(),
+                _headerActionButton(
+                  icon: YuLiIcons.close,
+                  onTap: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _headerUsage(int used) {
     return Container(
-      width: 80,
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
-      decoration: BoxDecoration(border: Border.all(color: yCream, width: 2)),
+      width: 118,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: yInk.withValues(alpha: 0.24),
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             '$used/$_kDailyCap',
             textAlign: TextAlign.center,
             style: yMono(
-              size: 12,
+              size: 9,
               weight: FontWeight.w700,
-              tracking: 0.3,
+              tracking: 0.2,
               color: yCream,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Container(
-            height: 8,
+            height: 12,
+            padding: const EdgeInsets.all(1),
             decoration: BoxDecoration(
-              border: Border.all(color: yCream, width: 1.5),
+              border: Border.all(color: yCream, width: yLineThin),
             ),
             child: Align(
               alignment: Alignment.centerLeft,
@@ -266,18 +649,38 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
-            'USOS HOY',
+            'LIMITE USO',
             textAlign: TextAlign.center,
             style: yMono(
-              size: 7,
-              weight: FontWeight.w700,
+              size: 6.5,
+              weight: FontWeight.w500,
               tracking: 0.8,
-              color: yCream,
+              color: yCream.withValues(alpha: 0.92),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _headerActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: yInk.withValues(alpha: 0.24),
+          border: Border.all(color: yCream.withValues(alpha: 0.65), width: yLineMid),
+        ),
+        child: Icon(icon, size: 14, color: yCream),
       ),
     );
   }
@@ -286,21 +689,107 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
 
   Widget _empty() {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          YuliCubeMark(color: widget.accent, size: 72),
-          const SizedBox(height: 18),
-          Text(
-            'Pregúntale a YuLi',
-            style: ySans(size: 18, weight: FontWeight.w700, color: yInk),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Escribe abajo para empezar.',
-            style: yBody(size: 13, color: yMuted),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+                boxShadow: const [
+                  BoxShadow(color: yBorderStrong, offset: Offset(5, 5)),
+                ],
+              ),
+              child: YuliCubeMark(color: widget.accent, size: 72),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'PREGÚNTALE A',
+              style: yMono(
+                size: 11,
+                weight: FontWeight.w700,
+                tracking: 2.0,
+                color: yMuted,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'YuLi',
+              style: ySans(
+                size: 42,
+                weight: FontWeight.w800,
+                color: yInk,
+                height: 0.9,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(width: 64, height: 3, color: widget.accent),
+            const SizedBox(height: 18),
+            Text(
+              'Tu segundo cerebro. Consulta tareas, proyectos y más.',
+              textAlign: TextAlign.center,
+              style: yBody(size: 15, color: yMuted),
+            ),
+            const SizedBox(height: 28),
+            Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              alignment: WrapAlignment.center,
+              children: [
+                _quickPromptCard(
+                  icon: YuLiIcons.squareCheck,
+                  label: 'Qué tengo pendiente hoy?',
+                  prompt: 'Qué tengo pendiente hoy?',
+                ),
+                _quickPromptCard(
+                  icon: YuLiIcons.folder,
+                  label: 'Resume mis proyectos',
+                  prompt: 'Resume mis proyectos y dime en qué debería enfocarme.',
+                ),
+                _quickPromptCard(
+                  icon: YuLiIcons.sparkles,
+                  label: 'Dame ideas para ser más productivo',
+                  prompt: 'Dame ideas para ser más productivo con lo que ya tengo en YuLi.',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickPromptCard({
+    required IconData icon,
+    required String label,
+    required String prompt,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _send(prompt),
+      child: Container(
+        width: 210,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icon, size: 22, color: yInk),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: yBody(size: 15, weight: FontWeight.w600, color: yInk),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -319,26 +808,31 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
     if (m.role == AiRole.user) return _userBubble(m.text);
 
     final streaming = _s.streaming && i == _s.messages.length - 1;
-    final Widget content =
-        (m.text.isEmpty && streaming)
-            ? Text('…', style: yBody(size: 14, color: yInk))
-            : streaming
-            ? SelectableText(m.text, style: yBody(size: 14, color: yInk))
-            : NoteMarkdownPreview(
-              data: fixMarkdownTables(m.text),
-              accent: widget.accent,
-            );
+    final Widget content;
+
+    if (m.text == kConsultingLabel) {
+      content = ConsultingIndicator(accent: widget.accent);
+    } else if (m.text.isEmpty && streaming) {
+      content = Text('…', style: yBody(size: 14, color: yInk));
+    } else if (streaming) {
+      content = SelectableText(m.text, style: yBody(size: 14, color: yInk));
+    } else {
+      content = NoteMarkdownPreview(
+        data: fixMarkdownTables(m.text),
+        accent: widget.accent,
+      );
+    }
     return _aiMsgFrame(content);
   }
 
   Widget _aiMsgFrame(Widget content) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 22),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          YuliCubeMark(color: widget.accent, size: 30),
-          const SizedBox(width: 10),
+          _YuliAssistantBubbleMark(accent: widget.accent),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,7 +840,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                 Padding(
                   padding: const EdgeInsets.only(left: 2, bottom: 6),
                   child: Text(
-                    'YULI · IA',
+                    'YULI',
                     style: yMono(
                       size: 9,
                       weight: FontWeight.w700,
@@ -357,12 +851,15 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                 ),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 15),
                   decoration: BoxDecoration(
                     color: yCream,
-                    border: Border.all(color: yBorderStrong, width: yLineMid),
+                    border: Border.all(
+                      color: yBorderStrong,
+                      width: yLineHeavy,
+                    ),
                     boxShadow: const [
-                      BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+                      BoxShadow(color: yBorderStrong, offset: Offset(5, 5)),
                     ],
                   ),
                   child: content,
@@ -377,7 +874,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
 
   Widget _userBubble(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -398,17 +895,17 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
               maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
+              padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
               decoration: BoxDecoration(
                 color: widget.accent,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
+                border: Border.all(color: yBorderStrong, width: yLineHeavy),
                 boxShadow: const [
-                  BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+                  BoxShadow(color: yBorderStrong, offset: Offset(5, 5)),
                 ],
               ),
               child: SelectableText(
                 text,
-                style: yBody(size: 15, weight: FontWeight.w500, color: yCream),
+                style: yBody(size: 14, weight: FontWeight.w600, color: yCream),
               ),
             ),
           ),
@@ -419,16 +916,22 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
 
   Widget _systemNotice(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 22),
       child: Center(
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: yMono(
-            size: 10,
-            tracking: 0.5,
-            color: yMuted,
-          ).copyWith(fontStyle: FontStyle.italic),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: yBorderStrong, width: 1.5),
+          ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: yMono(
+              size: 10,
+              tracking: 0.5,
+              color: yMuted,
+            ).copyWith(fontStyle: FontStyle.italic),
+          ),
         ),
       ),
     );
@@ -440,9 +943,11 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
     return Container(
       decoration: const BoxDecoration(
         color: yCream,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+        border: Border(
+          top: BorderSide(color: yBorderStrong, width: yLineHeavy),
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       child: SafeArea(
         top: false,
         child: Row(
@@ -454,14 +959,14 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                 minLines: 1,
                 maxLines: 4,
                 enabled: !_s.streaming,
-                style: yBody(size: 15, color: yInk),
+                style: yBody(size: 16, color: yInk),
                 onSubmitted: _s.streaming ? null : _send,
                 textInputAction: TextInputAction.send,
                 decoration: InputDecoration(
                   isDense: true,
                   contentPadding: const EdgeInsets.all(10),
-                  hintText: 'Escribe a YuLi…',
-                  hintStyle: yBody(size: 14, color: yMuted),
+                  hintText: 'Escribe…',
+                  hintStyle: yBody(size: 15, color: yMuted),
                   border: const OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
                     borderSide: BorderSide(
@@ -486,24 +991,24 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _s.streaming ? null : () => _send(_input.text),
               child: Container(
-                width: 52,
-                height: 52,
+                width: 54,
+                height: 54,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: _s.streaming ? yMuted : widget.accent,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                  border: Border.all(color: yBorderStrong, width: yLineHeavy),
                   boxShadow:
                       _s.streaming
                           ? null
                           : const [
                             BoxShadow(
                               color: yBorderStrong,
-                              offset: Offset(3, 3),
+                              offset: Offset(4, 4),
                             ),
                           ],
                 ),
@@ -513,16 +1018,16 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 3,
                             color: yCream,
                           ),
                         )
                         : const Icon(
                           YuLiIcons.arrowUp,
                           color: yCream,
-                          size: 22,
+                          size: 24,
                         ),
-              ),
+                ),
             ),
           ],
         ),
