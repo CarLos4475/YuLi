@@ -2,6 +2,8 @@
 // Shared tokens + chrome widgets (ModeHeader, BottomNav, brutal atoms)
 // used by Home/Fight/Flight/Lab screens.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/lab_icons.dart';
@@ -33,22 +35,82 @@ const double yLineThin = 2.0;
 /// light→strong ramp of the accent (HSL), scattered deterministically. Used as a
 /// header background so the brand bar reads as a brutalist triangle mosaic
 /// instead of a flat slab. Cheap (one CustomPainter, no animation).
-class AccentMosaic extends StatelessWidget {
+class AccentMosaic extends StatefulWidget {
   final Color accent;
 
   /// Number of cell rows down the height. The cell is square (size = height /
   /// rows), so the rows fill exactly — no partial row peeking at the bottom.
   /// Fewer rows = bigger triangles.
   final int rows;
+  final bool animateWave;
+  final Duration waveDuration;
 
-  const AccentMosaic({super.key, required this.accent, this.rows = 2});
+  const AccentMosaic({
+    super.key,
+    required this.accent,
+    this.rows = 2,
+    this.animateWave = false,
+    this.waveDuration = const Duration(milliseconds: 2800),
+  });
+
+  @override
+  State<AccentMosaic> createState() => _AccentMosaicState();
+}
+
+class _AccentMosaicState extends State<AccentMosaic>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _waveCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncWave();
+  }
+
+  @override
+  void didUpdateWidget(covariant AccentMosaic oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.animateWave != widget.animateWave ||
+        oldWidget.waveDuration != widget.waveDuration) {
+      _syncWave();
+    }
+  }
+
+  void _syncWave() {
+    if (!widget.animateWave) {
+      _waveCtrl?.dispose();
+      _waveCtrl = null;
+      return;
+    }
+    final ctrl =
+        _waveCtrl ??
+        AnimationController(vsync: this, duration: widget.waveDuration);
+    _waveCtrl ??= ctrl;
+    ctrl.duration = widget.waveDuration;
+    if (!ctrl.isAnimating) ctrl.repeat();
+  }
+
+  @override
+  void dispose() {
+    _waveCtrl?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final wave = widget.animateWave && !disableAnimations ? _waveCtrl : null;
     return ClipRect(
-      child: CustomPaint(
-        painter: _TriMosaicPainter(accent, rows),
-        size: Size.infinite,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _TriMosaicPainter(
+            widget.accent,
+            widget.rows,
+            wavePhase: wave,
+          ),
+          size: Size.infinite,
+        ),
       ),
     );
   }
@@ -57,7 +119,10 @@ class AccentMosaic extends StatelessWidget {
 class _TriMosaicPainter extends CustomPainter {
   final Color accent;
   final int rows;
-  _TriMosaicPainter(this.accent, this.rows);
+  final Animation<double>? wavePhase;
+
+  _TriMosaicPainter(this.accent, this.rows, {this.wavePhase})
+    : super(repaint: wavePhase);
 
   /// Number of subtones in the light→strong ramp.
   static const int _n = 6;
@@ -67,6 +132,7 @@ class _TriMosaicPainter extends CustomPainter {
     // Square cell sized so exactly [rows] fit the height (no bottom sliver).
     final cell = size.height / rows;
     final hsl = HSLColor.fromColor(accent);
+    final waveT = wavePhase?.value;
     // Ramp: lighter (base + 0.12) down to stronger (base - 0.16), with a touch
     // more saturation as it darkens so the "fuertes" read richer.
     final shades = [
@@ -104,8 +170,19 @@ class _TriMosaicPainter extends CustomPainter {
           [bl, tl, ctr],
         ];
         for (var t = 0; t < 4; t++) {
-          paint.color = shades[_shadeIndex(c, r, t)];
           final tri = tris[t];
+          if (waveT == null) {
+            paint.color = shades[_shadeIndex(c, r, t)];
+          } else {
+            final centerX = (tri[0].dx + tri[1].dx + tri[2].dx) / 3;
+            paint.color = _applyWave(
+              shades[_shadeIndex(c, r, t)],
+              centerX / size.width,
+              waveT,
+              r,
+              t,
+            );
+          }
           final path =
               Path()
                 ..moveTo(tri[0].dx, tri[0].dy)
@@ -125,9 +202,31 @@ class _TriMosaicPainter extends CustomPainter {
     return h % _n;
   }
 
+  Color _applyWave(Color base, double x, double waveT, int r, int t) {
+    const width = 0.24;
+    final center = -width + (1 + width * 2) * waveT;
+    final offset = ((r * 0.07) + (t * 0.035)) % 1;
+    final shiftedX = (x + offset * 0.12).clamp(0.0, 1.12);
+    final dist = (shiftedX - center).abs();
+    if (dist >= width) return base;
+    final influence = 1 - dist / width;
+    final eased = influence * influence * (3 - 2 * influence);
+    final shimmer =
+        0.06 * math.sin((x * 10.5 - waveT * math.pi * 2) + r * 0.85);
+    final hsl = HSLColor.fromColor(base);
+    return hsl
+        .withLightness(
+          (hsl.lightness + 0.15 * eased + shimmer).clamp(0.0, 1.0),
+        )
+        .withSaturation((hsl.saturation + 0.05 * eased).clamp(0.0, 1.0))
+        .toColor();
+  }
+
   @override
   bool shouldRepaint(covariant _TriMosaicPainter old) =>
-      old.accent != accent || old.rows != rows;
+      old.accent != accent ||
+      old.rows != rows ||
+      old.wavePhase != wavePhase;
 }
 
 Color colorForMode(AppMode mode) {

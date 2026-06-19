@@ -75,6 +75,7 @@ class YuLiIcons {
   static const IconData camera = LucideIcons.camera;
   static const IconData fileText = LucideIcons.fileText;
   static const IconData textInitial = LucideIcons.textInitial;
+  static const IconData box = LucideIcons.box;
 
   // ─── Lab / Kanban ────────────────────────────────────────────
   static const IconData calendar = LucideIcons.calendar;

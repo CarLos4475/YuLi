@@ -726,18 +726,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// Whether there's any context backing the chat (board, anchor, or linked
-  /// sources). Drives the header context button's accent state. Reads providers
-  /// — call during build only.
-  bool _hasAnyContext() {
-    if (widget.isBoard) return true;
-    if (_s.hasAnchor) return true;
-    final sources =
-        ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
-        const [];
-    return sources.isNotEmpty;
-  }
-
   /// Branches: block notes get the implicit "NOTA COMO CONTEXTO" bar; canvases
   /// show the SINCRONIZADA / CONTEXTO bar as before.
   Widget _contextBar() {
@@ -1524,6 +1512,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ? null
             : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
     return Container(
+      height: 76,
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(color: yBorderStrong, width: yLineMid),
@@ -1531,163 +1520,75 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       ),
       child: Stack(
         children: [
-          Positioned.fill(child: AccentMosaic(accent: widget.accent)),
+          Positioned.fill(
+            child: AccentMosaic(accent: widget.accent, animateWave: true),
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Mark: cream square with an accent diamond (inverted for the
-                // accent bar so it reads against the mosaic).
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 42,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(color: yCream),
-                  child: Transform.rotate(
-                    angle: math.pi / 4,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      color: widget.accent,
-                    ),
-                  ),
+                  child: const Icon(YuLiIcons.box, size: 34, color: yCream),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'YuLi · IA',
+                        'YuLi · AI',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: ySans(
-                          size: 18,
+                          size: 28,
                           weight: FontWeight.w700,
                           color: yCream,
+                          height: 1.0,
                         ),
                       ),
+                      const SizedBox(height: 1),
                       Text(
                         widget.isBoard
                             ? 'ASISTENTE DE PROYECTO'
                             : 'ASISTENTE DE NOTAS',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: yMono(
-                          size: 8,
-                          tracking: 1.6,
-                          color: yCream.withValues(alpha: 0.78),
+                        style: ySans(
+                          size: 10,
+                          weight: FontWeight.w500,
+                          letterSpacing: 0.7,
+                          color: yCream.withValues(alpha: 0.92),
+                          height: 1.0,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                // FLASH | PRO segmented control.
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: yCream, width: yLineMid),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _seg(
-                        'FLASH',
-                        _s.model == AiModel.flash,
-                        () => _s.setModel(AiModel.flash),
-                      ),
-                      Container(width: yLineThin, height: 24, color: yCream),
-                      _seg(
-                        'PRO',
-                        _s.model == AiModel.pro,
-                        () => _s.setModel(AiModel.pro),
                       ),
                     ],
                   ),
                 ),
                 if (used != null) ...[
                   const SizedBox(width: 10),
-                  SizedBox(
-                    width: 58,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          '$used/$_kDailyCap',
-                          textAlign: TextAlign.right,
-                          style: yMono(size: 9, tracking: 0.6, color: yCream),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          height: 5,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: yCream, width: 1),
-                          ),
-                          child: FractionallySizedBox(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
-                            child: Container(color: yCream),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _headerUsage(used),
                 ],
+                const SizedBox(width: 8),
+                _modeLabels(),
                 const SizedBox(width: 8),
                 // Context toggle: shows/hides the context bar; accent-filled when the
                 // chat has context backing it (board, anchor, or linked sources).
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                _headerActionButton(
+                  icon: YuLiIcons.link,
+                  filled: true,
                   onTap: () => setState(() => _showContext = !_showContext),
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _hasAnyContext() ? yCream : null,
-                      border: Border.all(color: yCream, width: yLineMid),
-                    ),
-                    child: Icon(
-                      YuLiIcons.link,
-                      size: 16,
-                      color: _hasAnyContext() ? widget.accent : yCream,
-                    ),
-                  ),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                const SizedBox(width: 4),
+                _headerActionButton(
+                  icon: YuLiIcons.moreHorizontal,
                   onTap: _openChatMenu,
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: yCream, width: yLineMid),
-                    ),
-                    child: const Icon(
-                      YuLiIcons.moreHorizontal,
-                      size: 16,
-                      color: yCream,
-                    ),
-                  ),
                 ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _dismiss,
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: yCream, width: yLineMid),
-                    ),
-                    child: const Icon(YuLiIcons.close, size: 16, color: yCream),
-                  ),
-                ),
+                const SizedBox(width: 4),
+                _headerActionButton(icon: YuLiIcons.close, onTap: _dismiss),
               ],
             ),
           ),
@@ -1696,21 +1597,105 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  Widget _seg(String label, bool active, VoidCallback onTap) {
+  Widget _headerUsage(int used) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints.tightFor(width: 74),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$used/$_kDailyCap',
+            textAlign: TextAlign.center,
+            style: yMono(
+              size: 8,
+              weight: FontWeight.w700,
+              tracking: 0.3,
+              color: yCream,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Container(
+            height: 10,
+            padding: const EdgeInsets.all(1),
+            decoration: BoxDecoration(
+              border: Border.all(color: yCream, width: yLineThin),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
+                child: Container(color: yCream),
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'LIMITE USO',
+            textAlign: TextAlign.center,
+            style: yMono(
+              size: 7,
+              weight: FontWeight.w500,
+              tracking: 0.8,
+              color: yCream.withValues(alpha: 0.92),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeLabels() {
+    final flash = _s.model == AiModel.flash;
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _seg('FLASH', flash, () => _s.setModel(AiModel.flash)),
+        const SizedBox(height: 5),
+        _seg('PRO', !flash, () => _s.setModel(AiModel.pro)),
+      ],
+    );
+  }
+
+  Widget _headerActionButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    bool filled = false,
+  }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-        color: active ? yCream : Colors.transparent,
-        child: Text(
-          label,
-          style: yMono(
-            size: 10,
-            weight: FontWeight.w700,
-            tracking: 1.0,
-            color: active ? widget.accent : yCream,
-          ),
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: filled ? yCream : null,
+          border: Border.all(color: yCream, width: yLineMid),
+        ),
+        child: Icon(
+          icon,
+          size: 14,
+          color: filled ? widget.accent : yCream,
+        ),
+      ),
+    );
+  }
+
+  Widget _seg(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: ySans(
+          size: 11,
+          weight: active ? FontWeight.w700 : FontWeight.w500,
+          letterSpacing: 0.2,
+          color: yCream,
+          height: 1.0,
         ),
       ),
     );
