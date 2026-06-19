@@ -27,10 +27,9 @@ class _YuliAiFabState extends State<YuliAiFab>
     with SingleTickerProviderStateMixin {
   // One slow cycle drives everything; the per-effect frequencies are whole
   // multiples of it so nothing jumps when the controller wraps 1→0.
-  static const _cycleMs = 18000;
-  static const _spins = 1; // full yaw rotations per cycle (very slow)
+  static const _cycleMs = 30000;
   static const _bobs = 3; // up/down bobs per cycle (calm)
-  static const _pulses = 6; // glow blinks per cycle (~3s each, graph-like)
+  static const _pulses = 6; // glow blinks per cycle (~5s each, graph-like)
 
   late final AnimationController _ctrl;
   bool _pressed = false;
@@ -69,11 +68,18 @@ class _YuliAiFabState extends State<YuliAiFab>
           child: AnimatedBuilder(
             animation: _ctrl,
             builder: (_, _) {
-              final t = _ctrl.value;
-              final yaw = t * _spins * 2 * math.pi;
-              final roll = math.sin(t * 2 * math.pi) * 0.06;
-              // Fixed isometric tilt + a faint breathing wobble.
-              final pitch = 0.62 + math.sin(t * 2 * math.pi) * 0.05;
+              // Phase anchored to wall-clock time (not the controller's 0→1),
+              // so the cube resists view changes: a freshly-built FAB picks up
+              // the same continuous phase instead of restarting from zero. The
+              // controller only ticks to schedule repaints.
+              final t =
+                  (DateTime.now().millisecondsSinceEpoch % _cycleMs) / _cycleMs;
+              // Diagonal tumble: horizontal (yaw) + vertical (pitch) spin at
+              // once, one slow revolution per cycle, so it rolls on a diagonal
+              // axis instead of just spinning flat.
+              final yaw = t * 2 * math.pi;
+              final pitch = t * 2 * math.pi;
+              final roll = math.sin(t * 2 * math.pi) * 0.05;
               final bob = math.sin(t * _bobs * 2 * math.pi) * size * 0.06;
               // Triangle-wave glow, eased like the graph alert pulse.
               final raw = (t * _pulses) % 1.0;
@@ -192,8 +198,8 @@ class _FabCubePainter extends CustomPainter {
     final paint =
         Paint()
           ..style = PaintingStyle.fill
-          ..color = accent.withValues(alpha: 0.16 + 0.36 * glow)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6 + 6 * glow);
+          ..color = accent.withValues(alpha: 0.06 + 0.14 * glow)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 5 + 5 * glow);
     canvas.drawPath(path, paint);
   }
 

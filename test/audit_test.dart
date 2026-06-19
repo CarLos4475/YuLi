@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, Variable;
 import 'package:drift/native.dart' show NativeDatabase;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -295,6 +295,63 @@ void main() {
           overdueAfter.columnId,
           vencido.id,
           reason: 'la vencida no-hecha sí va a Vencido',
+        );
+      },
+    );
+
+    test(
+      'sin due: descansa un día en VENCIDAS antes de la papelera',
+      () async {
+        // 2 días de antigüedad, en AYER → debe pasar a VENCIDAS
+        // (archived_failed) y NO saltar directo a la papelera.
+        final twoDaysAgo = DateTime.now().subtract(const Duration(days: 2));
+        final id2 = await db
+            .into(db.tasks)
+            .insert(
+              TasksCompanion.insert(
+                content: 'dos dias',
+                status: 'yesterday',
+                expiresAt: twoDaysAgo,
+                createdAt: Value(twoDaysAgo),
+              ),
+            );
+        // 3 días de antigüedad, ya en VENCIDAS → ahora sí a la papelera.
+        final threeDaysAgo = DateTime.now().subtract(const Duration(days: 3));
+        final id3 = await db
+            .into(db.tasks)
+            .insert(
+              TasksCompanion.insert(
+                content: 'tres dias',
+                status: 'archived_failed',
+                expiresAt: threeDaysAgo,
+                createdAt: Value(threeDaysAgo),
+              ),
+            );
+
+        await db.runExpiryQueries();
+
+        // Leer solo `status` (no la fila entera): una tarea auto-expirada a la
+        // papelera tiene trashed_at escrito como texto por el SQL del expiry y
+        // mapear el DateTime crashearía (cuestión aparte, no de este flujo).
+        Future<String> statusOf(int id) async {
+          final row = await db
+              .customSelect(
+                'SELECT status FROM tasks WHERE id = ?',
+                variables: [Variable.withInt(id)],
+              )
+              .getSingle();
+          return row.read<String>('status');
+        }
+
+        expect(
+          await statusOf(id2),
+          'archived_failed',
+          reason: 'a los 2 días descansa en VENCIDAS, no salta a papelera',
+        );
+        expect(
+          await statusOf(id3),
+          'trash',
+          reason: 'a los 3 días sí cae a la papelera',
         );
       },
     );

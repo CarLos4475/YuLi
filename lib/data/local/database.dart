@@ -284,16 +284,16 @@ class AppDatabase extends _$AppDatabase {
       );
 
       // 3. archived_failed → trash + notificar
-      //    Grace period: 24h after entering archived_failed (= 2 days past
+      //    Grace period: 24h after entering archived_failed (= 3 days past
       //    created_at without due_date, or 2 days past due_date) so the
-      //    FIGHT view can render them in the VENCIDAS bucket with a
+      //    FIGHT view can render them in the VENCIDAS bucket for a day with a
       //    countdown before final move to trash.
       final toTrashRows =
           await customSelect(
             "SELECT content FROM tasks "
             "WHERE status = 'archived_failed' AND ("
             "  (due_date IS NULL AND "
-            "    date(created_at, 'unixepoch') <= date('now', '-2 days')) OR "
+            "    date(created_at, 'unixepoch') <= date('now', '-3 days')) OR "
             "  (due_date IS NOT NULL AND "
             "    datetime(due_date, 'unixepoch') <= datetime('now', '-2 days'))"
             ")",
@@ -332,7 +332,7 @@ class AppDatabase extends _$AppDatabase {
           "UPDATE tasks SET status = 'trash', trashed_at = datetime('now') "
           "WHERE status = 'archived_failed' AND ("
           "  (due_date IS NULL AND "
-          "    date(created_at, 'unixepoch') <= date('now', '-2 days')) OR "
+          "    date(created_at, 'unixepoch') <= date('now', '-3 days')) OR "
           "  (due_date IS NOT NULL AND "
           "    datetime(due_date, 'unixepoch') <= datetime('now', '-2 days'))"
           ")",

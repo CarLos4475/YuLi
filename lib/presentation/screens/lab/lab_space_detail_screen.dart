@@ -41,12 +41,22 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
   final Set<int> _selectedCardIds = {};
   bool _selectionActive = false;
 
+  // True while a kanban card is being dragged — slides the AI FAB off-screen so
+  // it doesn't cover the drag-to-delete trash bin (same bottom-right corner).
+  final ValueNotifier<bool> _cardDragging = ValueNotifier(false);
+
   bool get _selectionMode => _selectionActive || _selectedCardIds.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingCard());
+  }
+
+  @override
+  void dispose() {
+    _cardDragging.dispose();
+    super.dispose();
   }
 
   Future<void> _openPendingCard() async {
@@ -206,6 +216,7 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                 selectedCardIds: _selectedCardIds,
                 onToggleSelection: _toggleSelection,
                 selectionMode: _selectionMode,
+                onDragChanged: (v) => _cardDragging.value = v,
               ),
         );
       case 'Calendario':
@@ -248,14 +259,24 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
       floatingActionButton:
           _selectionMode
               ? null
-              : YuliAiFab(
-                accent: widget.space.accentColor,
-                onTap:
-                    () => showYuliAiChat(
-                      context,
-                      ref,
-                      accent: widget.space.accentColor,
+              : ValueListenableBuilder<bool>(
+                valueListenable: _cardDragging,
+                builder:
+                    (_, dragging, child) => AnimatedSlide(
+                      offset: dragging ? const Offset(1.8, 0) : Offset.zero,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeInOut,
+                      child: child,
                     ),
+                child: YuliAiFab(
+                  accent: widget.space.accentColor,
+                  onTap:
+                      () => showYuliAiChat(
+                        context,
+                        ref,
+                        accent: widget.space.accentColor,
+                      ),
+                ),
               ),
       body: SafeArea(
         child: Column(
@@ -908,6 +929,7 @@ class _KanbanBoard extends ConsumerStatefulWidget {
   final Set<int> selectedCardIds;
   final void Function(int) onToggleSelection;
   final bool selectionMode;
+  final void Function(bool) onDragChanged;
 
   const _KanbanBoard({
     required this.space,
@@ -915,6 +937,7 @@ class _KanbanBoard extends ConsumerStatefulWidget {
     required this.selectedCardIds,
     required this.onToggleSelection,
     required this.selectionMode,
+    required this.onDragChanged,
   });
 
   @override
@@ -1118,8 +1141,14 @@ class _KanbanBoardState extends ConsumerState<_KanbanBoard>
                         selectedCardIds: widget.selectedCardIds,
                         onToggleSelection: widget.onToggleSelection,
                         selectionMode: widget.selectionMode,
-                        onDragStart: () => _dragging.value = true,
-                        onDragEnd: () => _dragging.value = false,
+                        onDragStart: () {
+                          _dragging.value = true;
+                          widget.onDragChanged(true);
+                        },
+                        onDragEnd: () {
+                          _dragging.value = false;
+                          widget.onDragChanged(false);
+                        },
                         luckyCardId: _luckyCardId,
                         luckyKey: _luckyKey,
                       );
