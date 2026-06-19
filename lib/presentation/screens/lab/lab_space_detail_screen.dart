@@ -12,7 +12,9 @@ import '../../providers/database_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../widgets/yuli_design.dart' as y;
+import '../../widgets/yuli_ai_fab.dart';
 import '../../widgets/confetti_burst.dart';
+import '../yuli_ai/yuli_ai_chat_sheet.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/kanban_card.dart';
@@ -226,8 +228,9 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
         return GraphTab(
           space: widget.space,
           onOpenCard: (cardId) async {
-            final card =
-                await ref.read(kanbanCardRepositoryProvider).getById(cardId);
+            final card = await ref
+                .read(kanbanCardRepositoryProvider)
+                .getById(cardId);
             if (card != null && mounted) _showCardDetail(card);
           },
         );
@@ -242,6 +245,18 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
 
     return Scaffold(
       backgroundColor: paperColor(context),
+      floatingActionButton:
+          _selectionMode
+              ? null
+              : YuliAiFab(
+                accent: widget.space.accentColor,
+                onTap:
+                    () => showYuliAiChat(
+                      context,
+                      ref,
+                      accent: widget.space.accentColor,
+                    ),
+              ),
       body: SafeArea(
         child: Column(
           children: [
@@ -491,7 +506,7 @@ class _TabButton extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(2),
                   child: Icon(
-                                YuLiIcons.close,
+                    YuLiIcons.close,
                     size: 12,
                     color: isActive ? y.yInk : y.yMuted,
                   ),
@@ -664,7 +679,7 @@ class _KanbanHeader extends ConsumerWidget {
                             GestureDetector(
                               onTap: () => Navigator.pop(ctx),
                               child: Icon(
-                    YuLiIcons.close,
+                                YuLiIcons.close,
                                 size: 18,
                                 color: inkGray,
                               ),
@@ -1089,75 +1104,73 @@ class _KanbanBoardState extends ConsumerState<_KanbanBoard>
               return Transform.translate(offset: Offset(dx, 0), child: child);
             },
             child: Stack(
-            children: [
-              ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
-                itemCount: columns.length + 1,
-                separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (_, i) {
-                  if (i < columns.length) {
-                    return _KanbanColumn(
-                      space: space,
-                      column: columns[i],
-                      selectedCardIds: widget.selectedCardIds,
-                      onToggleSelection: widget.onToggleSelection,
-                      selectionMode: widget.selectionMode,
-                      onDragStart: () => _dragging.value = true,
-                      onDragEnd: () => _dragging.value = false,
-                      luckyCardId: _luckyCardId,
-                      luckyKey: _luckyKey,
-                    );
-                  }
-                  return _AddColumnButton(spaceId: space.id);
-                },
-              ),
-              // Tablet: show overflow indicator when more columns exist
-              if (columns.length > 3)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: Container(
-                      width: 48,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            paperColor(context).withAlpha(0),
-                            paperColor(context),
-                          ],
+              children: [
+                ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 24),
+                  itemCount: columns.length + 1,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (_, i) {
+                    if (i < columns.length) {
+                      return _KanbanColumn(
+                        space: space,
+                        column: columns[i],
+                        selectedCardIds: widget.selectedCardIds,
+                        onToggleSelection: widget.onToggleSelection,
+                        selectionMode: widget.selectionMode,
+                        onDragStart: () => _dragging.value = true,
+                        onDragEnd: () => _dragging.value = false,
+                        luckyCardId: _luckyCardId,
+                        luckyKey: _luckyKey,
+                      );
+                    }
+                    return _AddColumnButton(spaceId: space.id);
+                  },
+                ),
+                // Tablet: show overflow indicator when more columns exist
+                if (columns.length > 3)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 48,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              paperColor(context).withAlpha(0),
+                              paperColor(context),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Text(
-                            'más →',
-                            style: labelBold.copyWith(color: inkGray),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Text(
+                              'más →',
+                              style: labelBold.copyWith(color: inkGray),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
+                // Drag-to-delete: physical trash bin, only while dragging a card
+                Positioned(
+                  right: 24,
+                  bottom: 24,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _dragging,
+                    builder:
+                        (_, dragging, _) =>
+                            _TrashBin(visible: dragging, onDelete: _deleteCard),
+                  ),
                 ),
-              // Drag-to-delete: physical trash bin, only while dragging a card
-              Positioned(
-                right: 24,
-                bottom: 24,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _dragging,
-                  builder:
-                      (_, dragging, _) => _TrashBin(
-                        visible: dragging,
-                        onDelete: _deleteCard,
-                      ),
-                ),
-              ),
-            ],
+              ],
             ),
           ),
         ),
@@ -1474,7 +1487,8 @@ class _KanbanColumn extends ConsumerWidget {
                                           card: cards[i],
                                           accentColor: space.accentColor,
                                           onTap:
-                                              () => _openCard(context, cards[i]),
+                                              () =>
+                                                  _openCard(context, cards[i]),
                                           inExpiredColumn: column.isExpired,
                                         ),
                                       ),
@@ -1681,11 +1695,7 @@ class _KanbanColumn extends ConsumerWidget {
       await _moveCardToColumn(ref, data, position);
     }
     if (celebrate && ctx.mounted) {
-      burstConfetti(
-        ctx,
-        at + const Offset(130, 18),
-        accent: space.accentColor,
-      );
+      burstConfetti(ctx, at + const Offset(130, 18), accent: space.accentColor);
     }
   }
 
@@ -2098,7 +2108,10 @@ class _DiceHighlightState extends State<_DiceHighlight>
 
   late final Animation<double> _scale = TweenSequence<double>([
     TweenSequenceItem(
-      tween: Tween(begin: 1.0, end: 1.12).chain(CurveTween(curve: Curves.easeOut)),
+      tween: Tween(
+        begin: 1.0,
+        end: 1.12,
+      ).chain(CurveTween(curve: Curves.easeOut)),
       weight: 35,
     ),
     TweenSequenceItem(
@@ -2129,7 +2142,8 @@ class _DiceHighlightState extends State<_DiceHighlight>
           child: Container(
             decoration: BoxDecoration(
               border: Border.all(
-                color: Color.lerp(widget.accent.withAlpha(60), widget.accent, t)!,
+                color:
+                    Color.lerp(widget.accent.withAlpha(60), widget.accent, t)!,
                 width: 3,
               ),
               boxShadow: [
@@ -2484,11 +2498,7 @@ class _ColumnManagePopover extends StatelessWidget {
               ),
             ),
             Container(height: 2, color: y.yBorderStrong),
-            _PopRow(
-              icon: YuLiIcons.pen,
-              label: 'Renombrar',
-              onTap: onRename,
-            ),
+            _PopRow(icon: YuLiIcons.pen, label: 'Renombrar', onTap: onRename),
             _PopRow(
               icon: YuLiIcons.chevronLeft,
               label: 'Mover a la izquierda',
@@ -2501,9 +2511,7 @@ class _ColumnManagePopover extends StatelessWidget {
             ),
             _PopRow(
               icon:
-                  column.isTerminal
-                      ? YuLiIcons.squareCheck
-                      : YuLiIcons.square,
+                  column.isTerminal ? YuLiIcons.squareCheck : YuLiIcons.square,
               label: column.isTerminal ? 'Quitar DONE' : 'Marcar como DONE',
               onTap: onToggleDone,
             ),

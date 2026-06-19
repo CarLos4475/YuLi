@@ -7,8 +7,10 @@ import '../../providers/lab_tab_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/yuli_ai_fab.dart';
 import '../../widgets/edit_item_dialog.dart';
 import '../../widgets/yuli_action_sheet.dart';
+import '../yuli_ai/yuli_ai_chat_sheet.dart';
 import '../../../domain/models/kanban_column.dart';
 import '../../../domain/models/lab_space.dart';
 import 'lab_space_detail_screen.dart';
@@ -80,97 +82,122 @@ class _LabScreenState extends ConsumerState<LabScreen> {
       return ad.compareTo(bd);
     });
 
-    return Column(
+    return Stack(
       children: [
-        ModeHeader(
-          mode: 'LAB',
-          subtitle: 'MODO PROYECTOS · ${activos.length} SPACES ACTIVOS',
-          color: yLab,
-          onBack:
-              () => ref.read(currentModeProvider.notifier).state = AppMode.home,
-          headerRight: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap:
-                  () => showDialog(
-                    context: context,
-                    builder: (_) => const NewLabSpaceDialog(),
-                  ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: yCream,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '+',
-                      style: TextStyle(fontSize: 18, color: yInk, height: 1.0),
+        Column(
+          children: [
+            ModeHeader(
+              mode: 'LAB',
+              subtitle: 'MODO PROYECTOS · ${activos.length} SPACES ACTIVOS',
+              color: yLab,
+              onBack:
+                  () =>
+                      ref.read(currentModeProvider.notifier).state =
+                          AppMode.home,
+              headerRight: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap:
+                      () => showDialog(
+                        context: context,
+                        builder: (_) => const NewLabSpaceDialog(),
+                      ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'NUEVO SPACE',
-                      style: yBody(
-                        size: 13,
+                    decoration: BoxDecoration(
+                      color: yCream,
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '+',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: yInk,
+                            height: 1.0,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'NUEVO SPACE',
+                          style: yBody(
+                            size: 13,
+                            weight: FontWeight.w700,
+                            color: yInk,
+                          ).copyWith(letterSpacing: 1.2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap:
+                      () => showModeHelp(
+                        context,
+                        mode: 'LAB',
+                        accent: yLab,
+                        description:
+                            'Gestiona proyectos con tableros kanban, calendario, '
+                            'horario, timeline y grafo de relaciones. Organiza espacios '
+                            'de trabajo con tarjetas, fechas y seguimiento visual.',
+                        tips: [
+                          'Toca un space para abrir su tablero kanban',
+                          'Programa fechas en el calendario y horario',
+                          'Usa el grafo para ver conexiones entre notas y tareas',
+                          'Mantén presionado un space para opciones',
+                        ],
+                      ),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: yCream,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    ),
+                    child: Text(
+                      '?',
+                      style: yMono(
+                        size: 16,
                         weight: FontWeight.w700,
                         color: yInk,
-                      ).copyWith(letterSpacing: 1.2),
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap:
-                  () => showModeHelp(
-                    context,
-                    mode: 'LAB',
-                    accent: yLab,
-                    description:
-                        'Gestiona proyectos con tableros kanban, calendario, '
-                        'horario, timeline y grafo de relaciones. Organiza espacios '
-                        'de trabajo con tarjetas, fechas y seguimiento visual.',
-                    tips: [
-                      'Toca un space para abrir su tablero kanban',
-                      'Programa fechas en el calendario y horario',
-                      'Usa el grafo para ver conexiones entre notas y tareas',
-                      'Mantén presionado un space para opciones',
-                    ],
                   ),
+                ),
+              ],
+            ),
+            _LabToolbar(
+              counts: {
+                LabTab.todos: allSpaces.length,
+                LabTab.activos: activos.length,
+                LabTab.pausados: pausados.length,
+                LabTab.completados: completados.length,
+                LabTab.archivo: archivo.length,
+              },
+            ),
+            Expanded(
               child: Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: yCream,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
-                ),
-                child: Text(
-                  '?',
-                  style: yMono(size: 16, weight: FontWeight.w700, color: yInk),
-                ),
+                color: yCream,
+                child: _SpacesGrid(spaces: shown),
               ),
             ),
           ],
         ),
-        _LabToolbar(
-          counts: {
-            LabTab.todos: allSpaces.length,
-            LabTab.activos: activos.length,
-            LabTab.pausados: pausados.length,
-            LabTab.completados: completados.length,
-            LabTab.archivo: archivo.length,
-          },
-        ),
-        Expanded(
-          child: Container(color: yCream, child: _SpacesGrid(spaces: shown)),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: YuliAiFab(
+            accent: yLab,
+            onTap: () => showYuliAiChat(context, ref, accent: yLab),
+          ),
         ),
       ],
     );

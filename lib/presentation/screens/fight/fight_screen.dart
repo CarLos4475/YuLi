@@ -11,7 +11,9 @@ import '../../providers/lab_space_providers.dart';
 import '../../providers/task_propagation_provider.dart';
 import '../../widgets/reminder_picker.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/yuli_ai_fab.dart';
 import '../../theme/lab_icons.dart';
+import '../yuli_ai/yuli_ai_chat_sheet.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import '../../../domain/models/lab_space.dart';
@@ -28,77 +30,97 @@ class FightScreen extends ConsumerWidget {
     final ayer = ref.watch(yesterdayTasksProvider).valueOrNull ?? [];
     final vencidas = ref.watch(vencidasTasksProvider).valueOrNull ?? [];
 
-    return Column(
+    return Stack(
       children: [
-        ModeHeader(
-          mode: 'FIGHT',
-          subtitle:
-              'MODO CAPTURA · @ ETIQUETA CARPETA · MANTÉN-PRESIONADA → LAB',
-          color: yFight,
-          onBack:
-              () => ref.read(currentModeProvider.notifier).state = AppMode.home,
-          headerRight: [
-            YBadge(label: '${hoy.length} HOY', bg: yCream, fg: yInk),
-            YBadge(label: '${ayer.length} AYER', bg: yAmber, fg: yCream),
-            YBadge(
-              label: '${vencidas.length} VENCIDAS',
-              bg: Color(0xFF8E2D4B),
-              fg: yCream,
+        Column(
+          children: [
+            ModeHeader(
+              mode: 'FIGHT',
+              subtitle:
+                  'MODO CAPTURA · @ ETIQUETA CARPETA · MANTÉN-PRESIONADA → LAB',
+              color: yFight,
+              onBack:
+                  () =>
+                      ref.read(currentModeProvider.notifier).state =
+                          AppMode.home,
+              headerRight: [
+                YBadge(label: '${hoy.length} HOY', bg: yCream, fg: yInk),
+                YBadge(label: '${ayer.length} AYER', bg: yAmber, fg: yCream),
+                YBadge(
+                  label: '${vencidas.length} VENCIDAS',
+                  bg: Color(0xFF8E2D4B),
+                  fg: yCream,
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap:
+                      () => showModeHelp(
+                        context,
+                        mode: 'FIGHT',
+                        accent: yFight,
+                        description:
+                            'Captura tareas rápido con @etiquetas. '
+                            'Swipe derecha = hecha, izquierda = descartar. '
+                            'Programa recordatorios y vencimientos.',
+                        tips: [
+                          'Usa @nombre-carpeta para vincular una tarea',
+                          'Mantén presionado para enviar al kanban de Lab',
+                          'Toca el reloj para asignar fecha límite',
+                          'Las tareas vencidas se resaltan automáticamente',
+                        ],
+                      ),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: yCream,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    ),
+                    child: Text(
+                      '?',
+                      style: yMono(
+                        size: 16,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => showModeHelp(
-                context,
-                mode: 'FIGHT',
-                accent: yFight,
-                description: 'Captura tareas rápido con @etiquetas. '
-                    'Swipe derecha = hecha, izquierda = descartar. '
-                    'Programa recordatorios y vencimientos.',
-                tips: [
-                  'Usa @nombre-carpeta para vincular una tarea',
-                  'Mantén presionado para enviar al kanban de Lab',
-                  'Toca el reloj para asignar fecha límite',
-                  'Las tareas vencidas se resaltan automáticamente',
-                ],
-              ),
-              child: Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: yCream,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
-                ),
-                child: Text(
-                  '?',
-                  style: yMono(size: 16, weight: FontWeight.w700, color: yInk),
-                ),
+            const _CapturaBar(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (ctx, c) {
+                  final isWide = c.maxWidth >= 900;
+                  if (isWide) {
+                    return _ThreeBuckets(
+                      hoy: hoy,
+                      hechas: hechas,
+                      ayer: ayer,
+                      vencidas: vencidas,
+                    );
+                  }
+                  return _StackedBuckets(
+                    hoy: hoy,
+                    hechas: hechas,
+                    ayer: ayer,
+                    vencidas: vencidas,
+                  );
+                },
               ),
             ),
           ],
         ),
-        const _CapturaBar(),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (ctx, c) {
-              final isWide = c.maxWidth >= 900;
-              if (isWide) {
-                return _ThreeBuckets(
-                  hoy: hoy,
-                  hechas: hechas,
-                  ayer: ayer,
-                  vencidas: vencidas,
-                );
-              }
-              return _StackedBuckets(
-                hoy: hoy,
-                hechas: hechas,
-                ayer: ayer,
-                vencidas: vencidas,
-              );
-            },
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: YuliAiFab(
+            accent: yFight,
+            onTap: () => showYuliAiChat(context, ref, accent: yFight),
           ),
         ),
       ],
@@ -1108,9 +1130,7 @@ class _TaskCardBody extends ConsumerWidget {
               if (!done && !expiring) ...[
                 _TinyTaskAction(
                   icon:
-                      task.dueDate != null
-                          ? YuLiIcons.timer
-                          : YuLiIcons.clock,
+                      task.dueDate != null ? YuLiIcons.timer : YuLiIcons.clock,
                   active: task.dueDate != null,
                   onTap: () => _pickDueDate(context, ref),
                 ),

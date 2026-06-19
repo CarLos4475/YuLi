@@ -9,6 +9,8 @@ import '../../providers/note_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_action_sheet.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/yuli_ai_fab.dart';
+import '../yuli_ai/yuli_ai_chat_sheet.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
 import 'folder_detail_screen.dart';
@@ -95,61 +97,79 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
     final filtered = _filterFolders(folders, counts, pinned, toolbar.filter);
     final sorted = _sortFolders(filtered, counts, pinned, toolbar.sort);
 
-    return Column(
+    return Stack(
       children: [
-        ModeHeader(
-          mode: 'FLIGHT',
-          subtitle:
-              'MODO NOTAS · ${folders.length} CARPETAS · $totalNotes NOTAS',
-          color: yFlight,
-          onBack:
-              () => ref.read(currentModeProvider.notifier).state = AppMode.home,
-          headerRight: [
-            _SearchBar(totalNotes: totalNotes),
-            const SizedBox(width: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap:
-                  () => showModeHelp(
-                    context,
-                    mode: 'FLIGHT',
-                    accent: yFlight,
-                    description:
-                        'Organiza tus notas en carpetas con colores. '
-                        'Crea notas de texto con bloques, cuadernos con páginas '
-                        'o pizarras infinitas para dibujo con stylus.',
-                    tips: [
-                      'Crea carpetas para agrupar notas por tema',
-                      'Usa notas bloque para texto, math y listas',
-                      'Los cuadernos tienen páginas A4 con dibujo',
-                      'Las pizarras son lienzos infinitos con zoom',
-                    ],
+        Column(
+          children: [
+            ModeHeader(
+              mode: 'FLIGHT',
+              subtitle:
+                  'MODO NOTAS · ${folders.length} CARPETAS · $totalNotes NOTAS',
+              color: yFlight,
+              onBack:
+                  () =>
+                      ref.read(currentModeProvider.notifier).state =
+                          AppMode.home,
+              headerRight: [
+                _SearchBar(totalNotes: totalNotes),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap:
+                      () => showModeHelp(
+                        context,
+                        mode: 'FLIGHT',
+                        accent: yFlight,
+                        description:
+                            'Organiza tus notas en carpetas con colores. '
+                            'Crea notas de texto con bloques, cuadernos con páginas '
+                            'o pizarras infinitas para dibujo con stylus.',
+                        tips: [
+                          'Crea carpetas para agrupar notas por tema',
+                          'Usa notas bloque para texto, math y listas',
+                          'Los cuadernos tienen páginas A4 con dibujo',
+                          'Las pizarras son lienzos infinitos con zoom',
+                        ],
+                      ),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: yCream,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
+                    ),
+                    child: Text(
+                      '?',
+                      style: yMono(
+                        size: 16,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ),
+                    ),
                   ),
+                ),
+              ],
+            ),
+            const _Toolbar(),
+            Expanded(
               child: Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: yCream,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
-                ),
-                child: Text(
-                  '?',
-                  style: yMono(size: 16, weight: FontWeight.w700, color: yInk),
-                ),
+                color: yCream,
+                child:
+                    sorted.isEmpty
+                        ? _Empty()
+                        : _FolderGrid(folders: sorted, counts: counts),
               ),
             ),
           ],
         ),
-        const _Toolbar(),
-        Expanded(
-          child: Container(
-            color: yCream,
-            child:
-                sorted.isEmpty
-                    ? _Empty()
-                    : _FolderGrid(folders: sorted, counts: counts),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: YuliAiFab(
+            accent: yFlight,
+            onTap: () => showYuliAiChat(context, ref, accent: yFlight),
           ),
         ),
       ],

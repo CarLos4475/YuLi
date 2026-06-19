@@ -9,10 +9,12 @@ import '../../providers/task_propagation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../widgets/yuli_design.dart';
+import '../../widgets/yuli_ai_fab.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../widgets/edit_item_dialog.dart';
 import '../../widgets/yuli_action_sheet.dart';
 import '../../theme/lab_icons.dart';
+import '../yuli_ai/yuli_ai_chat_sheet.dart';
 
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
@@ -142,6 +144,10 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
 
     return Scaffold(
       backgroundColor: yCream,
+      floatingActionButton: YuliAiFab(
+        accent: widget.folder.color,
+        onTap: () => showYuliAiChat(context, ref, accent: widget.folder.color),
+      ),
       body: StatusBarFlood(
         color: yCream2, // matches the _FolderHero header
         leadingColor: widget.folder.color, // continue its left accent stripe
