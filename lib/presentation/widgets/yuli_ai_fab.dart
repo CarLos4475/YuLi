@@ -105,6 +105,32 @@ class _YuliAiFabState extends State<YuliAiFab>
   }
 }
 
+/// Static cube mark (no glow, no motion) — YuLi's avatar in the chat. Same 3D
+/// cube as the FAB, frozen at a pleasant 3-face angle.
+class YuliCubeMark extends StatelessWidget {
+  final Color color;
+  final double size;
+
+  const YuliCubeMark({super.key, required this.color, this.size = 30});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _FabCubePainter(
+          accent: color,
+          yaw: 0.62,
+          pitch: 0.6,
+          roll: -0.05,
+          glow: 0,
+        ),
+      ),
+    );
+  }
+}
+
 class _FabCubePainter extends CustomPainter {
   final Color accent;
   final double yaw;

@@ -40,6 +40,16 @@ final aiSessionProvider =
   return session;
 });
 
+/// Single global YuLi AI conversation (YuLi AI 2). Always base mode + flash, no
+/// note context (function-calling will inject context later). Non-autoDispose →
+/// persists for the whole app run like the note sessions. Opened from the cube
+/// FAB across Fight / Lab / Flight-general / folder-detail.
+final yuliAiSessionProvider = Provider<AiChatSession>((ref) {
+  final session = AiChatSession(0, scope: 'yuli');
+  ref.onDispose(session.dispose);
+  return session;
+});
+
 /// Local daily request cap (150/day). See [AiUsageLimiter].
 final aiUsageLimiterProvider =
     Provider<AiUsageLimiter>((ref) => const AiUsageLimiter(dailyLimit: 150));

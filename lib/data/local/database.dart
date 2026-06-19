@@ -329,7 +329,12 @@ class AppDatabase extends _$AppDatabase {
           updateKind: UpdateKind.update,
         );
         archivedCount = await customUpdate(
-          "UPDATE tasks SET status = 'trash', trashed_at = datetime('now') "
+          // trashed_at MUST be the integer unix-epoch (drift stores DateTime as
+          // seconds); writing datetime('now') as text both crashed the trash
+          // view on read AND made step 4 misread the 7-day grace. cast keeps the
+          // INTEGER affinity explicit.
+          "UPDATE tasks SET status = 'trash', "
+          "trashed_at = cast(strftime('%s','now') as integer) "
           "WHERE status = 'archived_failed' AND ("
           "  (due_date IS NULL AND "
           "    date(created_at, 'unixepoch') <= date('now', '-3 days')) OR "
