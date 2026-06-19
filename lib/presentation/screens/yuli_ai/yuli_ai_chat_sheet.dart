@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ai_providers.dart';
@@ -329,24 +328,10 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
               data: fixMarkdownTables(m.text),
               accent: widget.accent,
             );
-    final actions =
-        (!streaming && m.text.isNotEmpty)
-            ? <Widget>[
-              _actionBtn('Copiar', () => _copy(m.text)),
-              _actionBtn(
-                'Rehacer',
-                () => _s.regenerate(
-                  i,
-                  ref.read(aiAssistantProvider),
-                  ref.read(aiUsageLimiterProvider),
-                ),
-              ),
-            ]
-            : null;
-    return _aiMsgFrame(content, actions: actions);
+    return _aiMsgFrame(content);
   }
 
-  Widget _aiMsgFrame(Widget content, {List<Widget>? actions}) {
+  Widget _aiMsgFrame(Widget content) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Row(
@@ -380,22 +365,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                       BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
                     ],
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      content,
-                      if (actions != null && actions.isNotEmpty) ...[
-                        const SizedBox(height: 11),
-                        Container(
-                          height: yLineThin,
-                          color: yInk.withValues(alpha: 0.25),
-                        ),
-                        const SizedBox(height: 11),
-                        Wrap(spacing: 6, runSpacing: 6, children: actions),
-                      ],
-                    ],
-                  ),
+                  child: content,
                 ),
               ],
             ),
@@ -460,39 +430,6 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
             color: yMuted,
           ).copyWith(fontStyle: FontStyle.italic),
         ),
-      ),
-    );
-  }
-
-  Widget _actionBtn(String label, VoidCallback onTap) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(
-          border: Border.all(color: yBorderStrong, width: yLineThin),
-        ),
-        child: Text(
-          label.toUpperCase(),
-          style: yMono(
-            size: 9,
-            weight: FontWeight.w700,
-            tracking: 0.8,
-            color: yInk,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _copy(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Copiado'),
-        duration: Duration(milliseconds: 700),
       ),
     );
   }
