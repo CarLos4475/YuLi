@@ -24,6 +24,8 @@ import 'context_assembler.dart' as ctx;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
 import 'note_block_widgets.dart' show NoteMarkdownPreview, fixMarkdownTables;
+import '../yuli_ai/ai_widget_contracts.dart';
+import '../yuli_ai/ai_widget_renderer.dart';
 import '../yuli_ai/yuli_ai_tools.dart'
     show yuliToolDefs, flightToolSystem, runYuliTool, ConsultingIndicator;
 
@@ -335,15 +337,9 @@ class _AiChatDockState extends State<AiChatDock>
                     height: _handleH,
                     decoration: BoxDecoration(
                       color: widget.accent,
-                      border: Border.all(
-                        color: yBorderStrong,
-                        width: yLineMid,
-                      ),
+                      border: Border.all(color: yBorderStrong, width: yLineMid),
                       boxShadow: const [
-                        BoxShadow(
-                          color: yBorderStrong,
-                          offset: Offset(-2, 2),
-                        ),
+                        BoxShadow(color: yBorderStrong, offset: Offset(-2, 2)),
                       ],
                     ),
                     child: Column(
@@ -568,6 +564,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming) return;
     if (!quickAction) _input.clear();
+    final widgetSpecs =
+        quickAction
+            ? const <AiWidgetSpec>[]
+            : ref
+                .read(aiWidgetRetrieverProvider)
+                .retrieve(text, surface: AiWidgetSurface.flight);
+    final widgetPrompt = aiWidgetPrompt(
+      widgetSpecs,
+      surface: AiWidgetSurface.flight,
+    );
     _s.send(
       ref.read(aiAssistantProvider),
       ref.read(aiUsageLimiterProvider),
@@ -578,6 +584,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       tools: quickAction ? const [] : yuliToolDefs,
       toolGuidance: quickAction ? null : flightToolSystem(),
       onToolCall: (c) => runYuliTool(ref, c),
+      widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
     );
   }
 
@@ -1592,11 +1599,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           color: filled ? yCream : null,
           border: Border.all(color: yCream, width: yLineMid),
         ),
-        child: Icon(
-          icon,
-          size: 14,
-          color: filled ? widget.accent : yCream,
-        ),
+        child: Icon(icon, size: 14, color: filled ? widget.accent : yCream),
       ),
     );
   }
@@ -1779,7 +1782,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     } else if (m.text.isEmpty && streaming) {
       content = Text('…', style: yBody(size: 14, color: yInk));
     } else if (streaming) {
-      content = SelectableText(m.text, style: yBody(size: 14, color: yInk));
+      final visible = AiWidgetParser.stripStreamingWidgetDraft(m.text);
+      content =
+          AiWidgetParser.isStreamingWidgetDraft(m.text)
+              ? _streamingWidgetPreview(visible)
+              : SelectableText(m.text, style: yBody(size: 14, color: yInk));
+    } else if (AiWidgetParser.hasWidgets(m.text)) {
+      content = AiWidgetRenderer(
+        text: m.text,
+        accent: widget.accent,
+        surface: AiWidgetSurface.flight,
+        onSendMessage: (message) => _send(message),
+      );
     } else {
       content = NoteMarkdownPreview(
         data: fixMarkdownTables(m.text),
@@ -1819,6 +1833,48 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             ]
             : null;
     return _aiMsgFrame(content, actions: actions);
+  }
+
+  Widget _streamingWidgetPreview(String visible) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (visible.trim().isNotEmpty)
+          SelectableText(visible, style: yBody(size: 14, color: yInk)),
+        if (visible.trim().isNotEmpty) const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: widget.accent.withValues(alpha: 0.12),
+            border: Border.all(color: widget.accent, width: yLineThin),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.3,
+                  color: widget.accent,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Preparando widget',
+                style: yMono(
+                  size: 10,
+                  weight: FontWeight.w800,
+                  tracking: 0.8,
+                  color: yInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _userBubble(String text) {

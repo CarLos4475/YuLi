@@ -8,9 +8,12 @@ import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_ai_fab.dart' show YuliCubeMark;
 import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
-import '../flight/ai_chat_session.dart' show AiChatMsg, AiChatSession, kConsultingLabel;
+import '../flight/ai_chat_session.dart'
+    show AiChatMsg, AiChatSession, kConsultingLabel;
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
+import 'ai_widget_contracts.dart';
+import 'ai_widget_renderer.dart';
 import 'yuli_ai_tools.dart';
 
 /// YuLi AI chat (YuLi AI 2). Opened from the floating cube FAB across Fight /
@@ -88,7 +91,9 @@ class _YuliAssistantBubbleMark extends StatelessWidget {
                 ),
                 Positioned.fill(
                   child: IgnorePointer(
-                    child: CustomPaint(painter: _PixelEyePainter(accent: accent)),
+                    child: CustomPaint(
+                      painter: _PixelEyePainter(accent: accent),
+                    ),
                   ),
                 ),
               ],
@@ -190,18 +195,33 @@ class _YuliAiPatchworkPainter extends CustomPainter {
             ],
             stops: const [0.0, 0.18, 0.82, 1.0],
           ).createShader(
-            Rect.fromLTWH(0, size.height * 0.18, size.width, size.height * 0.64),
+            Rect.fromLTWH(
+              0,
+              size.height * 0.18,
+              size.width,
+              size.height * 0.64,
+            ),
           );
     canvas.drawRect(
       Rect.fromLTWH(0, size.height * 0.18, size.width, size.height * 0.64),
       calmBand,
     );
     canvas.drawRect(
-      Rect.fromLTWH(size.width * 0.06, size.height * 0.22, size.width * 0.40, size.height * 0.56),
+      Rect.fromLTWH(
+        size.width * 0.06,
+        size.height * 0.22,
+        size.width * 0.40,
+        size.height * 0.56,
+      ),
       Paint()..color = yInk.withValues(alpha: 0.16),
     );
     canvas.drawRect(
-      Rect.fromLTWH(size.width * 0.69, size.height * 0.24, size.width * 0.14, size.height * 0.52),
+      Rect.fromLTWH(
+        size.width * 0.69,
+        size.height * 0.24,
+        size.width * 0.14,
+        size.height * 0.52,
+      ),
       Paint()..color = yInk.withValues(alpha: 0.12),
     );
     canvas.drawRect(
@@ -386,10 +406,11 @@ class _YuliAiPatchworkPainter extends CustomPainter {
   }
 
   void _leaves(Canvas canvas, Rect rect, Color a) {
-    final p = Paint()
-      ..color = a
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
+    final p =
+        Paint()
+          ..color = a
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
     final stemX = rect.center.dx;
     canvas.drawLine(
       Offset(stemX, rect.top + rect.height * 0.15),
@@ -484,6 +505,13 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
   void _send(String text) {
     if (text.trim().isEmpty || _s.streaming) return;
     _input.clear();
+    final widgetSpecs = ref
+        .read(aiWidgetRetrieverProvider)
+        .retrieve(text, surface: AiWidgetSurface.yuli);
+    final widgetPrompt = aiWidgetPrompt(
+      widgetSpecs,
+      surface: AiWidgetSurface.yuli,
+    );
     _s.send(
       ref.read(aiAssistantProvider),
       ref.read(aiUsageLimiterProvider),
@@ -491,6 +519,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
       tools: yuliToolDefs,
       toolGuidance: yuliToolSystem(),
       onToolCall: (c) => runYuliTool(ref, c),
+      widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
     );
   }
 
@@ -617,9 +646,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
     return Container(
       width: 118,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: yInk.withValues(alpha: 0.24),
-      ),
+      decoration: BoxDecoration(color: yInk.withValues(alpha: 0.24)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -678,7 +705,10 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: yInk.withValues(alpha: 0.24),
-          border: Border.all(color: yCream.withValues(alpha: 0.65), width: yLineMid),
+          border: Border.all(
+            color: yCream.withValues(alpha: 0.65),
+            width: yLineMid,
+          ),
         ),
         child: Icon(icon, size: 14, color: yCream),
       ),
@@ -747,12 +777,14 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                 _quickPromptCard(
                   icon: YuLiIcons.folder,
                   label: 'Resume mis proyectos',
-                  prompt: 'Resume mis proyectos y dime en qué debería enfocarme.',
+                  prompt:
+                      'Resume mis proyectos y dime en qué debería enfocarme.',
                 ),
                 _quickPromptCard(
                   icon: YuLiIcons.sparkles,
                   label: 'Dame ideas para ser más productivo',
-                  prompt: 'Dame ideas para ser más productivo con lo que ya tengo en YuLi.',
+                  prompt:
+                      'Dame ideas para ser más productivo con lo que ya tengo en YuLi.',
                 ),
               ],
             ),
@@ -815,7 +847,18 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
     } else if (m.text.isEmpty && streaming) {
       content = Text('…', style: yBody(size: 14, color: yInk));
     } else if (streaming) {
-      content = SelectableText(m.text, style: yBody(size: 14, color: yInk));
+      final visible = AiWidgetParser.stripStreamingWidgetDraft(m.text);
+      content =
+          AiWidgetParser.isStreamingWidgetDraft(m.text)
+              ? _streamingWidgetPreview(visible)
+              : SelectableText(m.text, style: yBody(size: 14, color: yInk));
+    } else if (AiWidgetParser.hasWidgets(m.text)) {
+      content = AiWidgetRenderer(
+        text: m.text,
+        accent: widget.accent,
+        surface: AiWidgetSurface.yuli,
+        onSendMessage: _send,
+      );
     } else {
       content = NoteMarkdownPreview(
         data: fixMarkdownTables(m.text),
@@ -823,6 +866,48 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
       );
     }
     return _aiMsgFrame(content);
+  }
+
+  Widget _streamingWidgetPreview(String visible) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (visible.trim().isNotEmpty)
+          SelectableText(visible, style: yBody(size: 14, color: yInk)),
+        if (visible.trim().isNotEmpty) const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: widget.accent.withValues(alpha: 0.12),
+            border: Border.all(color: widget.accent, width: yLineThin),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.3,
+                  color: widget.accent,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Preparando widget',
+                style: yMono(
+                  size: 10,
+                  weight: FontWeight.w800,
+                  tracking: 0.8,
+                  color: yInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _aiMsgFrame(Widget content) {
@@ -854,10 +939,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 15),
                   decoration: BoxDecoration(
                     color: yCream,
-                    border: Border.all(
-                      color: yBorderStrong,
-                      width: yLineHeavy,
-                    ),
+                    border: Border.all(color: yBorderStrong, width: yLineHeavy),
                     boxShadow: const [
                       BoxShadow(color: yBorderStrong, offset: Offset(5, 5)),
                     ],
@@ -1027,7 +1109,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
                           color: yCream,
                           size: 24,
                         ),
-                ),
+              ),
             ),
           ],
         ),

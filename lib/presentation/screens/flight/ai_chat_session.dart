@@ -319,6 +319,7 @@ class AiChatSession extends ChangeNotifier {
     List<AiToolDef> tools = const [],
     Future<String> Function(AiToolCall)? onToolCall,
     String? toolGuidance,
+    List<String> widgetDocs = const [],
   }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
@@ -356,6 +357,8 @@ class AiChatSession extends ChangeNotifier {
     final convo = <AiMessage>[
       AiMessage(AiRole.system, mode.systemPrompt),
       if (toolGuidance != null) AiMessage(AiRole.system, toolGuidance),
+      if (widgetDocs.isNotEmpty)
+        AiMessage(AiRole.system, widgetDocs.join('\n\n')),
       if (hasAnchor) AiMessage(AiRole.user, _anchorContent()),
     ];
 
@@ -536,7 +539,8 @@ class AiChatSession extends ChangeNotifier {
       notifyListeners();
     }
     // Iteration cap hit without a final text answer.
-    if (messages[idx].text.trim().isEmpty || messages[idx].text == kConsultingLabel) {
+    if (messages[idx].text.trim().isEmpty ||
+        messages[idx].text == kConsultingLabel) {
       messages[idx] = AiChatMsg(
         AiRole.assistant,
         '⚠️ No pude completar la consulta.',
