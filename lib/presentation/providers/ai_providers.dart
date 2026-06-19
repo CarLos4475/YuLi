@@ -40,16 +40,6 @@ final aiSessionProvider =
   return session;
 });
 
-/// Per-LAB-space chat session (scope 'lab' → no collision with note sessions).
-/// Context = the serialized board, (re)synced via ↻. NOT autoDispose → survives
-/// leaving the space detail and coming back; cleared only on a full app close.
-final aiLabSessionProvider =
-    Provider.family<AiChatSession, int>((ref, labSpaceId) {
-  final session = AiChatSession(labSpaceId, scope: 'lab');
-  ref.onDispose(session.dispose);
-  return session;
-});
-
 /// Local daily request cap (150/day). See [AiUsageLimiter].
 final aiUsageLimiterProvider =
     Provider<AiUsageLimiter>((ref) => const AiUsageLimiter(dailyLimit: 150));

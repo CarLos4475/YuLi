@@ -22,7 +22,6 @@ import 'calendar_tab.dart';
 import 'timeline_tab.dart';
 import 'schedule_tab.dart';
 import 'graph_tab.dart';
-import 'lab_ai_sheet.dart';
 import 'lab_space_sources_sheet.dart';
 
 class LabSpaceDetailScreen extends ConsumerStatefulWidget {
@@ -587,14 +586,6 @@ class _KanbanHeader extends ConsumerWidget {
             icon: YuLiIcons.calendar,
             bg: space.accentColor,
             onTap: () => _showDateEditor(context, ref),
-          ),
-          const SizedBox(width: 6),
-          _HeaderIcon(
-            icon: YuLiIcons.sparkles,
-            bg: space.accentColor,
-            fg: y.yCream,
-            fill: true,
-            onTap: () => showLabAiSheet(context, ref, space),
           ),
           if (onToggleSelectionMode != null) ...[
             const SizedBox(width: 6),
