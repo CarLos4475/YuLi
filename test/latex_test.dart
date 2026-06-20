@@ -14,20 +14,52 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
 
-  testWidgets('LaTeX inline + block renderizan como widgets Math en el preview', (
+  testWidgets(
+    'LaTeX inline + block renderizan como widgets Math en el preview',
+    (WidgetTester tester) async {
+      // Apunta al widget de preview reusable (la ruta de preview del editor por
+      // bloques), no a toda la NoteEditorScreen → robusto ante rediseños del
+      // chrome del editor. Cubre el valor real: que `$...$` y `$$...$$` se
+      // rendericen como widgets Math (flutter_math_fork).
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: NoteMarkdownPreview(
+                  data: r'Testing inline $x^2$ and block $$e = mc^2$$ in note.',
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Uno inline ($...$) + uno en bloque ($$...$$) → dos widgets Math.
+      expect(find.byType(Math), findsNWidgets(2));
+
+      // Limpia timers del visibility detector antes de cerrar.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets('Markdown tables render inside horizontal scroll', (
     WidgetTester tester,
   ) async {
-    // Apunta al widget de preview reusable (la ruta de preview del editor por
-    // bloques), no a toda la NoteEditorScreen → robusto ante rediseños del
-    // chrome del editor. Cubre el valor real: que `$...$` y `$$...$$` se
-    // rendericen como widgets Math (flutter_math_fork).
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
           home: Scaffold(
-            body: SingleChildScrollView(
+            body: SizedBox(
+              width: 220,
               child: NoteMarkdownPreview(
-                data: r'Testing inline $x^2$ and block $$e = mc^2$$ in note.',
+                data:
+                    '| Columna enorme A | Columna enorme B | Columna enorme C |\n'
+                    '|---|---|---|\n'
+                    '| Texto largo uno | Texto largo dos | Texto largo tres |',
               ),
             ),
           ),
@@ -37,10 +69,50 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // Uno inline ($...$) + uno en bloque ($$...$$) → dos widgets Math.
-    expect(find.byType(Math), findsNWidgets(2));
+    final horizontalScrolls = tester
+        .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+        .where((w) => w.scrollDirection == Axis.horizontal);
+    expect(horizontalScrolls, isNotEmpty);
+    final tableBox = horizontalScrolls.single.child as SizedBox;
+    expect(tableBox.width, greaterThan(220));
 
-    // Limpia timers del visibility detector antes de cerrar.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('Markdown tables stay compact before overflowing', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: NoteMarkdownPreview(
+                data:
+                    '| Derivada | Integral | Idea |\n'
+                    '|---|---|---|\n'
+                    '| Cambio | Acumulacion | Inversas |',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final horizontalScroll =
+        tester
+            .widgetList<SingleChildScrollView>(
+              find.byType(SingleChildScrollView),
+            )
+            .where((w) => w.scrollDirection == Axis.horizontal)
+            .single;
+    final tableBox = horizontalScroll.child as SizedBox;
+    expect(tableBox.width, 420);
+
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 600));
   });
@@ -48,9 +120,7 @@ void main() {
   test('Note to Kanban and Folder to Space link integration test', () async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     final container = ProviderContainer(
-      overrides: [
-        databaseProvider.overrideWithValue(db),
-      ],
+      overrides: [databaseProvider.overrideWithValue(db)],
     );
     addTearDown(container.dispose);
 

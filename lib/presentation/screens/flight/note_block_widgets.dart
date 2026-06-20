@@ -1393,19 +1393,76 @@ String fixMarkdownTables(String md) {
   return lines.join('\n');
 }
 
+bool _hasMarkdownTable(String md) {
+  if (!md.contains('|')) return false;
+  final lines = md.split('\n');
+  final sepRe = RegExp(r'^\s*\|?[\s:|-]*-[\s:|-]*\|[\s:|-]*\s*$');
+  for (var i = 1; i < lines.length; i++) {
+    if (sepRe.hasMatch(lines[i]) && lines[i - 1].contains('|')) return true;
+  }
+  return false;
+}
+
+double _markdownTableWidth(String md, double viewportWidth) {
+  final rows =
+      md
+          .split('\n')
+          .where(
+            (line) =>
+                line.contains('|') &&
+                !RegExp(r'^\s*\|?[\s:|-]+\|[\s:|-]*\s*$').hasMatch(line),
+          )
+          .map(_markdownTableCells)
+          .where((cells) => cells.length > 1)
+          .toList();
+  if (rows.isEmpty) return viewportWidth;
+  final columnCount = rows.fold<int>(
+    0,
+    (max, cells) => cells.length > max ? cells.length : max,
+  );
+  final columnWidths = List<double>.filled(columnCount, 72);
+  for (final cells in rows) {
+    for (var i = 0; i < cells.length; i++) {
+      final longestWord = cells[i]
+          .split(RegExp(r'\s+'))
+          .fold<int>(0, (max, word) => word.length > max ? word.length : max);
+      final cellLength = cells[i].length;
+      final estimated = (longestWord * 7.5 + cellLength * 1.8 + 32).clamp(
+        72,
+        220,
+      );
+      if (estimated > columnWidths[i]) columnWidths[i] = estimated.toDouble();
+    }
+  }
+  final estimated = columnWidths.fold<double>(32, (sum, w) => sum + w);
+  final overflowThreshold = viewportWidth * 1.08;
+  if (estimated <= overflowThreshold) return viewportWidth;
+  return estimated.clamp(viewportWidth, 1400).toDouble();
+}
+
+List<String> _markdownTableCells(String row) {
+  var value = row.trim();
+  if (value.startsWith('|')) value = value.substring(1);
+  if (value.endsWith('|')) value = value.substring(0, value.length - 1);
+  return value.split('|').map((cell) => cell.trim()).toList();
+}
+
 class NoteMarkdownPreview extends ConsumerWidget {
   final String data;
   final bool tight;
   final Color accent;
+  final TextStyle? textStyle;
   const NoteMarkdownPreview({
     super.key,
     required this.data,
     this.tight = false,
     this.accent = yFlight,
+    this.textStyle,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final md = fixMarkdownTables(data);
     SpanNode? customTextGenerator(
       m.Node node,
       MarkdownConfig config,
@@ -1448,8 +1505,8 @@ class NoteMarkdownPreview extends ConsumerWidget {
       ],
     );
 
-    return MarkdownWidget(
-      data: data,
+    final markdown = MarkdownWidget(
+      data: md,
       shrinkWrap: true,
       padding:
           tight
@@ -1458,7 +1515,9 @@ class NoteMarkdownPreview extends ConsumerWidget {
       markdownGenerator: generator,
       config: MarkdownConfig(
         configs: [
-          PConfig(textStyle: yBody(size: 15, color: yInk2, height: 1.55)),
+          PConfig(
+            textStyle: textStyle ?? yBody(size: 15, color: yInk2, height: 1.55),
+          ),
           H1Config(
             style: ySans(
               size: 28,
@@ -1537,6 +1596,19 @@ class NoteMarkdownPreview extends ConsumerWidget {
             },
           ),
         ],
+      ),
+    );
+    if (!_hasMarkdownTable(md)) return markdown;
+    return ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (!constraints.maxWidth.isFinite) return markdown;
+          final tableWidth = _markdownTableWidth(md, constraints.maxWidth);
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: tableWidth, child: markdown),
+          );
+        },
       ),
     );
   }

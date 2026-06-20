@@ -258,7 +258,7 @@ class AiChatDock extends StatefulWidget {
 
 class _AiChatDockState extends State<AiChatDock>
     with SingleTickerProviderStateMixin {
-  static const double _w = 420;
+  static const double _w = 450;
   static const double _handleW = 30;
   static const double _handleH = 56;
 

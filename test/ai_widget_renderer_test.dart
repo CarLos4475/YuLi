@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_contracts.dart';
@@ -130,6 +131,203 @@ void main() {
     expect(find.text('Mas seguro'), findsOneWidget);
   });
 
+  testWidgets('STEPS sends explanation prompt when tapping a step', (
+    tester,
+  ) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:STEPS v=1\n'
+              '{"title":"resolver ecuacion",'
+              '"items":[{"label":"despeja x","detail":"divide entre 2"}]}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+          onSendMessage: sent.add,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Despeja x'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(sent.single, contains('Explícame con más detalle el paso 1'));
+    expect(sent.single, contains('Despeja x'));
+  });
+
+  testWidgets('SOLVED_EXAMPLE renders latex and sends step prompt', (
+    tester,
+  ) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        AiWidgetRenderer(
+          text: r'''<!--YULI_WIDGET:SOLVED_EXAMPLE v=1
+{"title":"resolver $2x=0$","setup":"buscamos el valor de $x$","steps":[{"label":"despeja","detail":"divide ambos lados entre $2$","formula":"$$x=0$$"},{"label":"verifica","detail":"sustituye $x=0$"}],"result":"resultado final: $$x=0$$","intuition":"si duplicas cero, queda cero"}
+-->''',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+          onSendMessage: sent.add,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('EJEMPLO'), findsOneWidget);
+    expect(find.byType(Math), findsWidgets);
+    expect(find.textContaining('YULI_WIDGET'), findsNothing);
+
+    await tester.tap(find.text('Despeja'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(sent.last, contains('Explícame con más detalle el paso 1'));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('FORMULA_CARD renders latex formula and variables', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text: r'''<!--YULI_WIDGET:FORMULA_CARD v=1
+{"title":"formula cuadratica","formula":"$$x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$$","variables":[{"symbol":"$a$","meaning":"coeficiente de $x^2$"}],"whenToUse":"cuando tienes $ax^2+bx+c=0$","example":"si $a=1$, se simplifica"}
+-->''',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('FORMULA'), findsOneWidget);
+    expect(find.byType(Math), findsWidgets);
+    expect(find.textContaining('YULI_WIDGET'), findsNothing);
+    expect(find.textContaining('<center>'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('PRACTICE_SET sends solve prompt from exercise action', (
+    tester,
+  ) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        AiWidgetRenderer(
+          text: r'''<!--YULI_WIDGET:PRACTICE_SET v=1
+{"title":"practica ecuaciones","items":[{"level":"facil","prompt":"Resuelve $2x=0$.","hint":"divide entre 2"}]}
+-->''',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+          onSendMessage: sent.add,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Resolver'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(sent.single, contains('Resuelve este ejercicio paso a paso'));
+    expect(sent.single, contains('2x=0'));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('HINT_LADDER reveals hints and sends detail prompt', (
+    tester,
+  ) async {
+    final sent = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        AiWidgetRenderer(
+          text: r'''<!--YULI_WIDGET:HINT_LADDER v=1
+{"title":"pistas para resolver","hints":[{"label":"pista 1","text":"deja $x$ sola"},{"label":"pista 2","text":"divide entre $2$"}]}
+-->''',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+          onSendMessage: sent.add,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pista 2'), findsNothing);
+    await tester.tap(find.text('REVELAR PISTA'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('Pista 2'), findsOneWidget);
+
+    await tester.tap(find.text('Pista 1'), warnIfMissed: false);
+    await tester.pump();
+    expect(sent.single, contains('Explícame con más detalle el paso 1'));
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('expanded study widgets render without raw contracts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:MISTAKE_CHECK v=1\n'
+              '{"title":"errores comunes","items":[{"mistake":"sumar mal","why":"signos","fix":"revisa cada paso"}]}'
+              '-->'
+              '<!--YULI_WIDGET:MINI_PROOF v=1\n'
+              '{"title":"prueba breve","claim":"si a=b","steps":[{"label":"usa igualdad","detail":"sustituye"}],"conclusion":"queda probado"}'
+              '-->'
+              '<!--YULI_WIDGET:VOCAB_CARD v=1\n'
+              '{"term":"pendiente","definition":"inclinacion","example":"sube 3"}'
+              '-->'
+              '<!--YULI_WIDGET:TIMELINE v=1\n'
+              '{"title":"cronologia","entries":[{"date":"1637","label":"inicio","detail":"primera idea"}]}'
+              '-->'
+              '<!--YULI_WIDGET:FLOWCHART v=1\n'
+              '{"title":"flujo de estudio","nodes":[{"label":"lee","detail":"detecta datos"},{"label":"resuelve","detail":"aplica metodo"}]}'
+              '-->'
+              '<!--YULI_WIDGET:CAUSE_EFFECT v=1\n'
+              '{"title":"causa y efecto","cause":"aumenta x","mechanism":"cambia y","effect":"sube la recta"}'
+              '-->'
+              '<!--YULI_WIDGET:GRAPH_SKETCH v=1\n'
+              '{"title":"grafica lineal","xLabel":"x","yLabel":"y","description":"recta creciente","features":[{"label":"pendiente","value":"3"}]}'
+              '-->'
+              '<!--YULI_WIDGET:MNEMONIC v=1\n'
+              '{"title":"mnemotecnia","mnemonic":"SOH CAH TOA","meaning":"razones trigonometricas","items":[{"cue":"SOH","text":"seno"}]}'
+              '-->'
+              '<!--YULI_WIDGET:EXAM_RUBRIC v=1\n'
+              '{"title":"guia examen","focus":"reglas basicas","criteria":[{"label":"derivar","weight":"50%","detail":"potencia"}],"traps":[{"text":"olvidar signos"}]}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.text('Errores comunes'), findsOneWidget);
+    expect(find.text('Prueba breve'), findsOneWidget);
+    expect(find.text('Pendiente'), findsWidgets);
+    expect(find.text('Cronologia'), findsOneWidget);
+    expect(find.text('1637'), findsOneWidget);
+    expect(find.text('Flujo de estudio'), findsOneWidget);
+    expect(find.text('Causa y efecto'), findsOneWidget);
+    expect(find.text('Grafica lineal'), findsOneWidget);
+    expect(find.text('Mnemotecnia'), findsOneWidget);
+    expect(find.text('Guia examen'), findsOneWidget);
+    expect(find.textContaining('YULI_WIDGET'), findsNothing);
+  });
+
   testWidgets('FLASHCARDS flips card on tap', (tester) async {
     await tester.pumpWidget(
       _wrap(
@@ -148,7 +346,7 @@ void main() {
     expect(find.text('Que mide la derivada'), findsOneWidget);
     expect(find.text('Cambio instantaneo'), findsNothing);
 
-    await tester.tap(find.text('Que mide la derivada'));
+    await tester.tap(find.text('Que mide la derivada'), warnIfMissed: false);
     await tester.pump();
 
     expect(find.text('Respuesta'), findsOneWidget);
@@ -175,7 +373,7 @@ void main() {
     expect(find.text('Repasar formulas'), findsOneWidget);
     expect(find.text('Resolver ejercicios'), findsOneWidget);
 
-    await tester.tap(find.text('Repasar formulas'));
+    await tester.tap(find.text('Repasar formulas'), warnIfMissed: false);
     await tester.pump();
 
     expect(find.byIcon(YuLiIcons.squareCheck), findsNWidgets(3));
@@ -184,6 +382,12 @@ void main() {
 
 Widget _wrap(Widget child) {
   return ProviderScope(
-    child: MaterialApp(home: Scaffold(body: Center(child: child))),
+    child: MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: Center(child: SizedBox(width: 500, child: child)),
+        ),
+      ),
+    ),
   );
 }

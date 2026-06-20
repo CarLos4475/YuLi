@@ -54,7 +54,7 @@ void main() {
     });
 
     test('ignores incomplete blocks', () {
-      final text = 'Hola <!--YULI_WIDGET:QUIZ v=1 {"question":"Q"}';
+      final text = 'Hola <!--YULI_WIDGET:QUIZ v=1 {"question":"Q"';
       final parts = AiWidgetParser.parse(text);
 
       expect(parts, hasLength(1));
@@ -72,6 +72,17 @@ void main() {
       final widget = parts.whereType<AiWidgetBlockPart>().single;
       expect(widget.type, 'LAB_CARD_DRAFT');
       expect(widget.data['title'], 'Investigar APIs');
+    });
+
+    test('rescues html-like widget block without closing comment', () {
+      final parts = AiWidgetParser.parse(
+        '<!--YULI_WIDGET:TIMELINE v=1\n'
+        '{"title":"Historia","entries":[{"date":"1637","label":"Descartes"}]}',
+      );
+
+      final widget = parts.whereType<AiWidgetBlockPart>().single;
+      expect(widget.type, 'TIMELINE');
+      expect(widget.data['title'], 'Historia');
     });
 
     test('strips widget drafts while streaming', () {
@@ -116,6 +127,15 @@ void main() {
       expect(specs.map((s) => s.type), contains('STEPS'));
     });
 
+    test('retrieves solved example for concrete exercise intent', () {
+      final specs = retriever.retrieve(
+        'Resuelve 2x = 0 con un ejemplo resuelto paso a paso',
+        surface: AiWidgetSurface.flight,
+      );
+
+      expect(specs.map((s) => s.type), contains('SOLVED_EXAMPLE'));
+    });
+
     test('retrieves comparison for compare intent', () {
       final specs = retriever.retrieve(
         'Compara derivada vs integral',
@@ -141,6 +161,36 @@ void main() {
       );
 
       expect(specs.map((s) => s.type), contains('CHECKLIST'));
+    });
+
+    test('retrieves expanded study widgets', () {
+      final cases = {
+        'Dame la formula clave con variables': 'FORMULA_CARD',
+        'Que errores comunes debo evitar': 'MISTAKE_CHECK',
+        'Demuestra por que se cumple esa regla': 'MINI_PROOF',
+        'Ponme ejercicios para practicar': 'PRACTICE_SET',
+        'Dame pistas sin resolverlo': 'HINT_LADDER',
+        'Hazme una tarjeta de vocabulario': 'VOCAB_CARD',
+        'Dame una linea de tiempo historica': 'TIMELINE',
+        'Aber haz un flowchart': 'FLOWCHART',
+        'Explica causa y efecto de esto': 'CAUSE_EFFECT',
+        'Haz un boceto de la grafica de la funcion': 'GRAPH_SKETCH',
+        'Dame un mnemonic para recordar formulas': 'MNEMONIC',
+        'Dame una guia examen con criterios': 'EXAM_RUBRIC',
+      };
+
+      for (final entry in cases.entries) {
+        final specs = retriever.retrieve(
+          entry.key,
+          surface: AiWidgetSurface.flight,
+        );
+
+        expect(
+          specs.map((s) => s.type),
+          contains(entry.value),
+          reason: entry.key,
+        );
+      }
     });
 
     test('does not retrieve app data in Flight without explicit intent', () {

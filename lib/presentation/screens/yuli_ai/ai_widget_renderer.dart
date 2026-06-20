@@ -59,10 +59,43 @@ class AiWidgetRenderer extends ConsumerWidget {
     if (part is! AiWidgetBlockPart) return const SizedBox.shrink();
     return switch (part.type) {
       'CONCEPT_CARD' => _ConceptCardWidget(data: part.data, accent: accent),
-      'STEPS' => _StepsWidget(data: part.data, accent: accent),
+      'SOLVED_EXAMPLE' => _SolvedExampleWidget(
+        data: part.data,
+        accent: accent,
+        onSendMessage: onSendMessage,
+      ),
+      'STEPS' => _StepsWidget(
+        data: part.data,
+        accent: accent,
+        onSendMessage: onSendMessage,
+      ),
       'COMPARISON' => _ComparisonWidget(data: part.data, accent: accent),
       'FLASHCARDS' => _FlashcardsWidget(data: part.data, accent: accent),
       'CHECKLIST' => _ChecklistWidget(data: part.data, accent: accent),
+      'FORMULA_CARD' => _FormulaCardWidget(data: part.data, accent: accent),
+      'MISTAKE_CHECK' => _MistakeCheckWidget(data: part.data, accent: accent),
+      'MINI_PROOF' => _MiniProofWidget(
+        data: part.data,
+        accent: accent,
+        onSendMessage: onSendMessage,
+      ),
+      'PRACTICE_SET' => _PracticeSetWidget(
+        data: part.data,
+        accent: accent,
+        onSendMessage: onSendMessage,
+      ),
+      'HINT_LADDER' => _HintLadderWidget(
+        data: part.data,
+        accent: accent,
+        onSendMessage: onSendMessage,
+      ),
+      'VOCAB_CARD' => _VocabCardWidget(data: part.data, accent: accent),
+      'TIMELINE' => _TimelineWidget(data: part.data, accent: accent),
+      'FLOWCHART' => _FlowchartWidget(data: part.data, accent: accent),
+      'CAUSE_EFFECT' => _CauseEffectWidget(data: part.data, accent: accent),
+      'GRAPH_SKETCH' => _GraphSketchWidget(data: part.data, accent: accent),
+      'MNEMONIC' => _MnemonicWidget(data: part.data, accent: accent),
+      'EXAM_RUBRIC' => _ExamRubricWidget(data: part.data, accent: accent),
       'QUIZ' => _QuizWidget(data: part.data, accent: accent),
       'OPTIONS' => _OptionsWidget(
         data: part.data,
@@ -78,6 +111,282 @@ class AiWidgetRenderer extends ConsumerWidget {
       ),
       _ => _UnknownWidget(type: part.type, accent: accent),
     };
+  }
+}
+
+class _SolvedExampleWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _SolvedExampleWidget({
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'] ?? data['problem'], 'Ejemplo resuelto');
+    final setup = _string(data['setup'] ?? data['given'], '');
+    final steps = _list(data['steps']);
+    final result = _string(data['result'] ?? data['finalResult'], '');
+    final intuition = _string(data['intuition'] ?? data['note'], '');
+    return _WidgetFrame(
+      title: 'Ejemplo',
+      icon: YuLiIcons.box,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 20, weight: FontWeight.w900, color: yInk),
+          ),
+          if (setup.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _CalloutStrip(
+              icon: YuLiIcons.info,
+              label: 'Planteamiento',
+              text: setup,
+              color: accent,
+            ),
+          ],
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoCols = constraints.maxWidth >= 360;
+              final gap = twoCols ? 10.0 : 0.0;
+              final width =
+                  twoCols
+                      ? (constraints.maxWidth - gap) / 2
+                      : constraints.maxWidth;
+              return Wrap(
+                spacing: gap,
+                runSpacing: 10,
+                children: [
+                  for (var i = 0; i < steps.length; i++)
+                    _SolvedStepCard(
+                      index: i + 1,
+                      data: steps[i],
+                      width: width,
+                      accent: accent,
+                      onSendMessage: onSendMessage,
+                    ),
+                ],
+              );
+            },
+          ),
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _ResultStrip(result: result, accent: accent),
+          ],
+          if (intuition.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _CalloutStrip(
+              icon: YuLiIcons.lightbulb,
+              label: 'Intuición',
+              text: intuition,
+              color: accent,
+            ),
+          ],
+          if (onSendMessage != null) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MiniActionButton(
+                  label: 'Profundiza',
+                  icon: YuLiIcons.search,
+                  color: accent,
+                  onTap:
+                      () => onSendMessage!(
+                        'Profundiza este ejemplo resuelto: $title',
+                      ),
+                ),
+                _MiniActionButton(
+                  label: 'Más simple',
+                  icon: YuLiIcons.listChecks,
+                  color: accent,
+                  onTap:
+                      () => onSendMessage!(
+                        'Explícame este ejemplo resuelto más simple: $title',
+                      ),
+                ),
+                _MiniActionButton(
+                  label: 'Otro ejemplo',
+                  icon: YuLiIcons.box,
+                  color: accent,
+                  onTap:
+                      () => onSendMessage!(
+                        'Dame otro ejemplo parecido a este: $title',
+                      ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SolvedStepCard extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> data;
+  final double width;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _SolvedStepCard({
+    required this.index,
+    required this.data,
+    required this.width,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _string(data['label'] ?? data['title'], 'Paso $index');
+    final detail = _string(data['detail'] ?? data['explanation'], '');
+    final formula = _string(data['formula'] ?? data['math'], '');
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _sendStepQuestion(index, label, detail, onSendMessage),
+      child: SizedBox(
+        width: width,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 130),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 11),
+          decoration: BoxDecoration(
+            color: yCream2,
+            border: Border.all(color: yBorderStrong, width: yLineThin),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      border: Border.all(
+                        color: yBorderStrong,
+                        width: yLineThin,
+                      ),
+                    ),
+                    child: Text(
+                      '$index',
+                      style: yMono(
+                        size: 11,
+                        weight: FontWeight.w900,
+                        color: yCream,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: _WidgetMarkdownText(
+                      label,
+                      accent: accent,
+                      style: yBody(
+                        size: 14,
+                        weight: FontWeight.w900,
+                        color: yInk,
+                      ),
+                    ),
+                  ),
+                  if (onSendMessage != null) ...[
+                    const SizedBox(width: 7),
+                    _TapHintIcon(accent: accent),
+                  ],
+                ],
+              ),
+              if (detail.isNotEmpty) ...[
+                const SizedBox(height: 9),
+                _WidgetMarkdownText(
+                  detail,
+                  accent: accent,
+                  style: yBody(size: 13, color: yInk2, height: 1.35),
+                ),
+              ],
+              if (formula.isNotEmpty) ...[
+                const SizedBox(height: 9),
+                Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: yCream,
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
+                  ),
+                  child: _WidgetMarkdownText(
+                    formula,
+                    accent: accent,
+                    style: yBody(
+                      size: 15,
+                      weight: FontWeight.w800,
+                      color: yInk,
+                    ),
+                    center: true,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultStrip extends StatelessWidget {
+  final String result;
+  final Color accent;
+
+  const _ResultStrip({required this.result, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.14),
+        border: Border.all(color: accent, width: yLineMid),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: const Icon(YuLiIcons.star, size: 17, color: yCream),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _WidgetMarkdownText(
+              result,
+              accent: accent,
+              style: yBody(size: 16, weight: FontWeight.w900, color: yInk),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -100,14 +409,16 @@ class _ConceptCardWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            _sentence(title),
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
             style: ySans(size: 20, weight: FontWeight.w900, color: yInk),
           ),
           if (definition.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              _sentence(definition),
+            _WidgetMarkdownText(
+              definition,
+              accent: accent,
               style: yBody(size: 14, color: yInk2, height: 1.4),
             ),
           ],
@@ -138,8 +449,13 @@ class _ConceptCardWidget extends StatelessWidget {
 class _StepsWidget extends StatelessWidget {
   final Map<String, dynamic> data;
   final Color accent;
+  final void Function(String message)? onSendMessage;
 
-  const _StepsWidget({required this.data, required this.accent});
+  const _StepsWidget({
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -152,13 +468,19 @@ class _StepsWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            _sentence(title),
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
             style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
           ),
           const SizedBox(height: 12),
           for (var i = 0; i < items.length; i++) ...[
-            _StepRow(index: i + 1, data: items[i], accent: accent),
+            _StepRow(
+              index: i + 1,
+              data: items[i],
+              accent: accent,
+              onSendMessage: onSendMessage,
+            ),
             if (i != items.length - 1) const SizedBox(height: 8),
           ],
         ],
@@ -171,59 +493,75 @@ class _StepRow extends StatelessWidget {
   final int index;
   final Map<String, dynamic> data;
   final Color accent;
+  final void Function(String message)? onSendMessage;
 
   const _StepRow({
     required this.index,
     required this.data,
     required this.accent,
+    this.onSendMessage,
   });
 
   @override
   Widget build(BuildContext context) {
     final label = _string(data['label'], 'Paso $index');
     final detail = _string(data['detail'], '');
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
-      decoration: BoxDecoration(
-        color: yCream2,
-        border: Border.all(color: yBorderStrong, width: yLineThin),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: accent,
-              border: Border.all(color: yBorderStrong, width: yLineThin),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _sendStepQuestion(index, label, detail, onSendMessage),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+        decoration: BoxDecoration(
+          color: yCream2,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Text(
+                '$index',
+                style: yMono(size: 11, weight: FontWeight.w900, color: yCream),
+              ),
             ),
-            child: Text(
-              '$index',
-              style: yMono(size: 11, weight: FontWeight.w900, color: yCream),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _sentence(label),
-                  style: yBody(size: 14, weight: FontWeight.w900, color: yInk),
-                ),
-                if (detail.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    _sentence(detail),
-                    style: yBody(size: 13, color: yInk2, height: 1.3),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _WidgetMarkdownText(
+                    label,
+                    accent: accent,
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w900,
+                      color: yInk,
+                    ),
                   ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    _WidgetMarkdownText(
+                      detail,
+                      accent: accent,
+                      style: yBody(size: 13, color: yInk2, height: 1.3),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+            if (onSendMessage != null) ...[
+              const SizedBox(width: 7),
+              _TapHintIcon(accent: accent),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -248,8 +586,9 @@ class _ComparisonWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            _sentence(title),
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
             style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
           ),
           const SizedBox(height: 12),
@@ -268,11 +607,17 @@ class _ComparisonWidget extends StatelessWidget {
                 Expanded(
                   child: _CompareCell(
                     text: _string(row['left'], ''),
+                    accent: accent,
                     pale: true,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: _CompareCell(text: _string(row['right'], ''))),
+                Expanded(
+                  child: _CompareCell(
+                    text: _string(row['right'], ''),
+                    accent: accent,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -313,9 +658,14 @@ class _CompareHeader extends StatelessWidget {
 
 class _CompareCell extends StatelessWidget {
   final String text;
+  final Color accent;
   final bool pale;
 
-  const _CompareCell({required this.text, this.pale = false});
+  const _CompareCell({
+    required this.text,
+    required this.accent,
+    this.pale = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -325,8 +675,9 @@ class _CompareCell extends StatelessWidget {
         color: pale ? yCream2 : yCream,
         border: Border.all(color: yBorderStrong, width: yLineThin),
       ),
-      child: Text(
-        _sentence(text),
+      child: _WidgetMarkdownText(
+        text,
+        accent: accent,
         style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
       ),
     );
@@ -357,8 +708,9 @@ class _FlashcardsWidgetState extends State<_FlashcardsWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            _sentence(title),
+          _WidgetMarkdownText(
+            title,
+            accent: widget.accent,
             style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
           ),
           const SizedBox(height: 12),
@@ -409,8 +761,9 @@ class _FlashcardsWidgetState extends State<_FlashcardsWidget> {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              _sentence(flipped ? back : front),
+            _WidgetMarkdownText(
+              flipped ? back : front,
+              accent: widget.accent,
               style: yBody(
                 size: 14,
                 weight: FontWeight.w800,
@@ -449,8 +802,9 @@ class _ChecklistWidgetState extends State<_ChecklistWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            _sentence(title),
+          _WidgetMarkdownText(
+            title,
+            accent: widget.accent,
             style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
           ),
           const SizedBox(height: 10),
@@ -487,8 +841,9 @@ class _ChecklistWidgetState extends State<_ChecklistWidget> {
             ),
             const SizedBox(width: 9),
             Expanded(
-              child: Text(
-                _sentence(label),
+              child: _WidgetMarkdownText(
+                label,
+                accent: widget.accent,
                 style: yBody(
                   size: 14,
                   weight: FontWeight.w800,
@@ -510,6 +865,1402 @@ class _ChecklistWidgetState extends State<_ChecklistWidget> {
       for (var i = 0; i < items.length; i++)
         if (items[i]['checked'] == true) i,
     };
+  }
+}
+
+class _FormulaCardWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _FormulaCardWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Formula');
+    final formula = _string(data['formula'] ?? data['math'], '');
+    final variables = _list(data['variables']);
+    final whenToUse = _string(data['whenToUse'] ?? data['use'], '');
+    final example = _string(data['example'], '');
+    return _WidgetFrame(
+      title: 'Formula',
+      icon: YuLiIcons.sigma,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          if (formula.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+              decoration: BoxDecoration(
+                color: yCream2,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+              ),
+              child: _WidgetMarkdownText(
+                formula,
+                accent: accent,
+                style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+                center: true,
+              ),
+            ),
+          ],
+          if (variables.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final variable in variables)
+                  _FormulaVariableChip(data: variable, accent: accent),
+              ],
+            ),
+          ],
+          if (whenToUse.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _CalloutStrip(
+              icon: YuLiIcons.lightbulb,
+              label: 'Cuándo usar',
+              text: whenToUse,
+              color: accent,
+            ),
+          ],
+          if (example.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CalloutStrip(
+              icon: YuLiIcons.box,
+              label: 'Ejemplo',
+              text: example,
+              color: yAmber,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FormulaVariableChip extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _FormulaVariableChip({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final symbol = _string(data['symbol'] ?? data['name'], 'x');
+    final meaning = _string(data['meaning'] ?? data['label'], '');
+    return Container(
+      constraints: const BoxConstraints(minWidth: 92),
+      padding: const EdgeInsets.fromLTRB(9, 7, 9, 8),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            constraints: const BoxConstraints(minWidth: 28),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+            decoration: BoxDecoration(
+              color: accent,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: _WidgetMarkdownText(
+              symbol,
+              accent: accent,
+              style: yMono(size: 10, weight: FontWeight.w900, color: yCream),
+            ),
+          ),
+          if (meaning.isNotEmpty) ...[
+            const SizedBox(width: 7),
+            Flexible(
+              child: _WidgetMarkdownText(
+                meaning,
+                accent: accent,
+                style: yBody(size: 12, weight: FontWeight.w800, color: yInk),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MistakeCheckWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _MistakeCheckWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Errores comunes');
+    final items = _list(data['items']);
+    return _WidgetFrame(
+      title: 'Cuidado',
+      icon: YuLiIcons.triangleAlert,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < items.length; i++) ...[
+            _MistakeRow(data: items[i], accent: accent),
+            if (i != items.length - 1) const SizedBox(height: 9),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MistakeRow extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _MistakeRow({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final mistake = _string(data['mistake'] ?? data['error'], 'Error comun');
+    final why = _string(data['why'] ?? data['reason'], '');
+    final fix = _string(data['fix'] ?? data['correction'], '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+      decoration: BoxDecoration(
+        color: yCream2,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _CalloutLine(
+            icon: YuLiIcons.xSquare,
+            label: 'Error',
+            text: mistake,
+            color: yFight,
+          ),
+          if (why.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _CalloutLine(
+              icon: YuLiIcons.helpCircle,
+              label: 'Por qué',
+              text: why,
+              color: accent,
+            ),
+          ],
+          if (fix.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _CalloutLine(
+              icon: YuLiIcons.checkCheck,
+              label: 'Corrección',
+              text: fix,
+              color: yLab,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniProofWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _MiniProofWidget({
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Prueba breve');
+    final claim = _string(data['claim'] ?? data['statement'], '');
+    final steps = _list(data['steps']);
+    final conclusion = _string(data['conclusion'], '');
+    return _WidgetFrame(
+      title: 'Demostración',
+      icon: YuLiIcons.graduationCap,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          if (claim.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CalloutStrip(
+              icon: YuLiIcons.info,
+              label: 'Afirmación',
+              text: claim,
+              color: accent,
+            ),
+          ],
+          const SizedBox(height: 12),
+          for (var i = 0; i < steps.length; i++) ...[
+            _StepRow(
+              index: i + 1,
+              data: steps[i],
+              accent: accent,
+              onSendMessage: onSendMessage,
+            ),
+            if (i != steps.length - 1) const SizedBox(height: 8),
+          ],
+          if (conclusion.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _ResultStrip(result: conclusion, accent: accent),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PracticeSetWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _PracticeSetWidget({
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Práctica');
+    final items = _list(data['items']);
+    return _WidgetFrame(
+      title: 'Práctica',
+      icon: YuLiIcons.pencil,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < items.length; i++) ...[
+            _PracticeItem(
+              index: i + 1,
+              data: items[i],
+              accent: accent,
+              onSendMessage: onSendMessage,
+            ),
+            if (i != items.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PracticeItem extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> data;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _PracticeItem({
+    required this.index,
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final prompt = _string(data['prompt'] ?? data['question'], 'Ejercicio');
+    final level = _string(data['level'], '');
+    final hint = _string(data['hint'], '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 11),
+      decoration: BoxDecoration(
+        color: yCream2,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: accent,
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
+                ),
+                child: Text(
+                  '$index',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w900,
+                    color: yCream,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: _WidgetMarkdownText(
+                  prompt,
+                  accent: accent,
+                  style: yBody(size: 14, weight: FontWeight.w900, color: yInk),
+                ),
+              ),
+            ],
+          ),
+          if (level.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _MiniBadge(
+                icon: YuLiIcons.graduationCap,
+                label: level,
+                color: accent,
+              ),
+            ),
+          ],
+          if (onSendMessage != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MiniActionButton(
+                  label: 'Resolver',
+                  icon: YuLiIcons.play,
+                  color: accent,
+                  onTap:
+                      () => onSendMessage!(
+                        'Resuelve este ejercicio paso a paso: ${_plainWidgetText(prompt)}',
+                      ),
+                ),
+                if (hint.isNotEmpty)
+                  _MiniActionButton(
+                    label: 'Pista',
+                    icon: YuLiIcons.lightbulb,
+                    color: accent,
+                    onTap:
+                        () => onSendMessage!(
+                          'Dame una pista para este ejercicio: ${_plainWidgetText(prompt)}',
+                        ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HintLadderWidget extends StatefulWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _HintLadderWidget({
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  State<_HintLadderWidget> createState() => _HintLadderWidgetState();
+}
+
+class _HintLadderWidgetState extends State<_HintLadderWidget> {
+  int _visible = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(widget.data['title'], 'Pistas');
+    final hints = _list(widget.data['hints']);
+    final visible = hints.isEmpty ? 0 : _visible.clamp(0, hints.length);
+    return _WidgetFrame(
+      title: 'Pistas',
+      icon: YuLiIcons.lightbulb,
+      accent: widget.accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: widget.accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < visible; i++) ...[
+            _HintRow(
+              index: i + 1,
+              data: hints[i],
+              accent: widget.accent,
+              onSendMessage: widget.onSendMessage,
+            ),
+            if (i != visible - 1) const SizedBox(height: 8),
+          ],
+          if (visible < hints.length) ...[
+            const SizedBox(height: 10),
+            _ActionButton(
+              label: 'Revelar pista',
+              icon: YuLiIcons.chevronDown,
+              color: widget.accent,
+              onTap: () => setState(() => _visible++),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HintRow extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> data;
+  final Color accent;
+  final void Function(String message)? onSendMessage;
+
+  const _HintRow({
+    required this.index,
+    required this.data,
+    required this.accent,
+    this.onSendMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _string(data['label'], 'Pista $index');
+    final text = _string(data['text'] ?? data['detail'], '');
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _sendStepQuestion(index, label, text, onSendMessage),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+        decoration: BoxDecoration(
+          color: yCream2,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(YuLiIcons.lightbulb, size: 18, color: accent),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _WidgetMarkdownText(
+                    label,
+                    accent: accent,
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w900,
+                      color: yInk,
+                    ),
+                  ),
+                  if (text.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    _WidgetMarkdownText(
+                      text,
+                      accent: accent,
+                      style: yBody(size: 13, color: yInk2, height: 1.35),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (onSendMessage != null) ...[
+              const SizedBox(width: 7),
+              _TapHintIcon(accent: accent),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VocabCardWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _VocabCardWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final term = _string(data['term'] ?? data['title'], 'Término');
+    final definition = _string(data['definition'], '');
+    final example = _string(data['example'], '');
+    final counterexample = _string(data['counterexample'], '');
+    final mnemonic = _string(data['mnemonic'] ?? data['memory'], '');
+    return _WidgetFrame(
+      title: 'Vocabulario',
+      icon: YuLiIcons.bookOpen,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            term,
+            accent: accent,
+            style: ySans(size: 21, weight: FontWeight.w900, color: yInk),
+          ),
+          if (definition.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            _WidgetMarkdownText(
+              definition,
+              accent: accent,
+              style: yBody(size: 14, color: yInk2, height: 1.4),
+            ),
+          ],
+          if (example.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _CalloutStrip(
+              icon: YuLiIcons.check,
+              label: 'Ejemplo',
+              text: example,
+              color: yLab,
+            ),
+          ],
+          if (counterexample.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CalloutStrip(
+              icon: YuLiIcons.xSquare,
+              label: 'Contraejemplo',
+              text: counterexample,
+              color: yFight,
+            ),
+          ],
+          if (mnemonic.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CalloutStrip(
+              icon: YuLiIcons.brain,
+              label: 'Mnemotecnia',
+              text: mnemonic,
+              color: accent,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MnemonicWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _MnemonicWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Mnemotecnia');
+    final phrase = _string(
+      data['mnemonic'] ?? data['phrase'] ?? data['hook'],
+      '',
+    );
+    final meaning = _string(data['meaning'] ?? data['explanation'], '');
+    final items =
+        _list(data['items']).isNotEmpty
+            ? _list(data['items'])
+            : _list(data['chunks']);
+    return _WidgetFrame(
+      title: 'Mnemotecnia',
+      icon: YuLiIcons.brain,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          if (phrase.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+              ),
+              child: _WidgetMarkdownText(
+                phrase,
+                accent: accent,
+                style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+              ),
+            ),
+          ],
+          if (meaning.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CalloutStrip(
+              icon: YuLiIcons.lightbulb,
+              label: 'Cómo usarla',
+              text: meaning,
+              color: accent,
+            ),
+          ],
+          if (items.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (var i = 0; i < items.length; i++) ...[
+              _MnemonicChunk(data: items[i], accent: accent),
+              if (i != items.length - 1) const SizedBox(height: 8),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MnemonicChunk extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _MnemonicChunk({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final cue = _string(
+      data['cue'] ?? data['letter'] ?? data['label'],
+      'Clave',
+    );
+    final text = _string(data['text'] ?? data['meaning'] ?? data['detail'], '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(9, 8, 9, 9),
+      decoration: BoxDecoration(
+        color: yCream2,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: const BoxConstraints(minWidth: 30),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+            decoration: BoxDecoration(
+              color: accent,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: _WidgetMarkdownText(
+              cue,
+              accent: accent,
+              style: yMono(size: 10, weight: FontWeight.w900, color: yCream),
+            ),
+          ),
+          if (text.isNotEmpty) ...[
+            const SizedBox(width: 9),
+            Expanded(
+              child: _WidgetMarkdownText(
+                text,
+                accent: accent,
+                style: yBody(size: 13, weight: FontWeight.w800, color: yInk),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _TimelineWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Linea de tiempo');
+    final events =
+        _list(data['events']).isNotEmpty
+            ? _list(data['events'])
+            : _list(data['entries']);
+    return _WidgetFrame(
+      title: 'Timeline',
+      icon: YuLiIcons.timeline,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < events.length; i++)
+            _TimelineEvent(
+              data: events[i],
+              accent: accent,
+              first: i == 0,
+              last: i == events.length - 1,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelineEvent extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+  final bool first;
+  final bool last;
+
+  const _TimelineEvent({
+    required this.data,
+    required this.accent,
+    required this.first,
+    required this.last,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final date = _string(data['date'] ?? data['time'], '');
+    final name = _string(data['label'] ?? data['name'], '');
+    final label = _string(date.isNotEmpty ? date : name, 'Evento');
+    final detail = [
+      if (date.isNotEmpty && name.isNotEmpty) name,
+      _string(data['detail'] ?? data['text'], ''),
+    ].where((item) => item.isNotEmpty).join('\n');
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 38,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Container(
+                    width: 3,
+                    color: first ? Colors.transparent : yBorderStrong,
+                  ),
+                ),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    width: 3,
+                    color: last ? Colors.transparent : yBorderStrong,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: last ? 0 : 9),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+                decoration: BoxDecoration(
+                  color: yCream2,
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _WidgetMarkdownText(
+                      label,
+                      accent: accent,
+                      style: yMono(
+                        size: 11,
+                        weight: FontWeight.w900,
+                        tracking: 0.8,
+                        color: yInk,
+                      ),
+                    ),
+                    if (detail.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      _WidgetMarkdownText(
+                        detail,
+                        accent: accent,
+                        style: yBody(size: 13, color: yInk2, height: 1.35),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlowchartWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _FlowchartWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Flujo');
+    final nodes =
+        _list(data['nodes']).isNotEmpty
+            ? _list(data['nodes'])
+            : _list(data['steps']).isNotEmpty
+            ? _list(data['steps'])
+            : _list(data['items']);
+    return _WidgetFrame(
+      title: 'Flujo',
+      icon: YuLiIcons.gitGraph,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < nodes.length; i++) ...[
+            _FlowNode(index: i + 1, data: nodes[i], accent: accent),
+            if (i != nodes.length - 1) ...[
+              const SizedBox(height: 8),
+              _ArrowDivider(color: accent),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FlowNode extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _FlowNode({
+    required this.index,
+    required this.data,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _string(data['label'] ?? data['title'], 'Paso $index');
+    final detail = _string(data['detail'] ?? data['text'] ?? data['body'], '');
+    final kind = _string(data['kind'] ?? data['type'], '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+      decoration: BoxDecoration(
+        color: yCream2,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: Text(
+              '$index',
+              style: yMono(size: 11, weight: FontWeight.w900, color: yCream),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _WidgetMarkdownText(
+                        label,
+                        accent: accent,
+                        style: yBody(
+                          size: 14,
+                          weight: FontWeight.w900,
+                          color: yInk,
+                        ),
+                      ),
+                    ),
+                    if (kind.isNotEmpty) ...[
+                      const SizedBox(width: 7),
+                      _MiniBadge(
+                        icon: YuLiIcons.gitGraph,
+                        label: kind,
+                        color: accent,
+                      ),
+                    ],
+                  ],
+                ),
+                if (detail.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  _WidgetMarkdownText(
+                    detail,
+                    accent: accent,
+                    style: yBody(size: 13, color: yInk2, height: 1.35),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CauseEffectWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _CauseEffectWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Causa y efecto');
+    final cause = _string(data['cause'], '');
+    final mechanism = _string(data['mechanism'] ?? data['bridge'], '');
+    final effect = _string(data['effect'], '');
+    return _WidgetFrame(
+      title: 'Causa efecto',
+      icon: YuLiIcons.gitGraph,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          _CauseBox(label: 'Causa', text: cause, color: accent),
+          if (mechanism.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArrowDivider(color: accent),
+            const SizedBox(height: 8),
+            _CauseBox(label: 'Mecanismo', text: mechanism, color: yAmber),
+          ],
+          if (effect.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArrowDivider(color: accent),
+            const SizedBox(height: 8),
+            _CauseBox(label: 'Efecto', text: effect, color: yLab),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CauseBox extends StatelessWidget {
+  final String label;
+  final String text;
+  final Color color;
+
+  const _CauseBox({
+    required this.label,
+    required this.text,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: yMono(
+              size: 9,
+              weight: FontWeight.w900,
+              tracking: 1,
+              color: color,
+            ),
+          ),
+          if (text.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            _WidgetMarkdownText(
+              text,
+              accent: color,
+              style: yBody(size: 14, weight: FontWeight.w800, color: yInk),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ArrowDivider extends StatelessWidget {
+  final Color color;
+
+  const _ArrowDivider({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Container(height: 2, color: yBorderStrong)),
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color,
+            border: Border.all(color: yBorderStrong, width: yLineThin),
+          ),
+          child: const Icon(YuLiIcons.chevronDown, size: 16, color: yCream),
+        ),
+        Expanded(child: Container(height: 2, color: yBorderStrong)),
+      ],
+    );
+  }
+}
+
+class _GraphSketchWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _GraphSketchWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Boceto de gráfica');
+    final description = _string(data['description'], '');
+    final xLabel = _string(data['xLabel'], 'x');
+    final yLabel = _string(data['yLabel'], 'y');
+    final features = _list(data['features']);
+    return _WidgetFrame(
+      title: 'Gráfica',
+      icon: YuLiIcons.gitGraph,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 150,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: yCream2,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _GraphSketchPainter(color: accent),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: _AxisLabel(label: yLabel, accent: accent),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: _AxisLabel(label: xLabel, accent: accent),
+                ),
+              ],
+            ),
+          ),
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _WidgetMarkdownText(
+              description,
+              accent: accent,
+              style: yBody(size: 13, color: yInk2, height: 1.35),
+            ),
+          ],
+          if (features.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final feature in features)
+                  _FeaturePill(data: feature, accent: accent),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GraphSketchPainter extends CustomPainter {
+  final Color color;
+
+  const _GraphSketchPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final axis =
+        Paint()
+          ..color = yBorderStrong
+          ..strokeWidth = 2;
+    final curve =
+        Paint()
+          ..color = color
+          ..strokeWidth = 4
+          ..style = PaintingStyle.stroke;
+    final origin = Offset(20, size.height - 22);
+    canvas.drawLine(Offset(origin.dx, 8), origin, axis);
+    canvas.drawLine(origin, Offset(size.width - 8, origin.dy), axis);
+    final path =
+        Path()
+          ..moveTo(origin.dx + 4, origin.dy - 8)
+          ..cubicTo(
+            size.width * 0.35,
+            size.height * 0.85,
+            size.width * 0.48,
+            size.height * 0.22,
+            size.width - 18,
+            size.height * 0.28,
+          );
+    canvas.drawPath(path, curve);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GraphSketchPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
+class _AxisLabel extends StatelessWidget {
+  final String label;
+  final Color accent;
+
+  const _AxisLabel({required this.label, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: accent,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: _WidgetMarkdownText(
+        label,
+        accent: accent,
+        style: yMono(size: 10, weight: FontWeight.w900, color: yCream),
+      ),
+    );
+  }
+}
+
+class _FeaturePill extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _FeaturePill({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _string(data['label'] ?? data['name'], 'Dato');
+    final value = _string(data['value'] ?? data['text'], '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 7),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _sentence(label),
+            style: yMono(
+              size: 9,
+              weight: FontWeight.w900,
+              tracking: 0.7,
+              color: accent,
+            ),
+          ),
+          if (value.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            _WidgetMarkdownText(
+              value,
+              accent: accent,
+              style: yBody(size: 12, weight: FontWeight.w800, color: yInk),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ExamRubricWidget extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _ExamRubricWidget({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _string(data['title'], 'Guía de examen');
+    final focus = _string(data['focus'], '');
+    final criteria = _list(data['criteria']);
+    final traps = _list(data['traps']);
+    return _WidgetFrame(
+      title: 'Examen',
+      icon: YuLiIcons.clipboard,
+      accent: accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WidgetMarkdownText(
+            title,
+            accent: accent,
+            style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+          ),
+          if (focus.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _CalloutStrip(
+              icon: YuLiIcons.star,
+              label: 'Enfoque',
+              text: focus,
+              color: accent,
+            ),
+          ],
+          const SizedBox(height: 12),
+          for (var i = 0; i < criteria.length; i++) ...[
+            _RubricRow(data: criteria[i], accent: accent),
+            if (i != criteria.length - 1) const SizedBox(height: 8),
+          ],
+          if (traps.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _CalloutStrip(
+              icon: YuLiIcons.triangleAlert,
+              label: 'Trampas',
+              text: traps
+                  .map((item) => _string(item['label'] ?? item['text'], ''))
+                  .where((item) => item.isNotEmpty)
+                  .join('\n'),
+              color: yFight,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RubricRow extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final Color accent;
+
+  const _RubricRow({required this.data, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _string(data['label'] ?? data['criterion'], 'Criterio');
+    final weight = _string(data['weight'], '');
+    final detail = _string(data['detail'], '');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+      decoration: BoxDecoration(
+        color: yCream2,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: const BoxConstraints(minWidth: 42),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+            decoration: BoxDecoration(
+              color: accent,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: Text(
+              weight.isEmpty ? 'OK' : weight,
+              style: yMono(size: 10, weight: FontWeight.w900, color: yCream),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _WidgetMarkdownText(
+                  label,
+                  accent: accent,
+                  style: yBody(size: 14, weight: FontWeight.w900, color: yInk),
+                ),
+                if (detail.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  _WidgetMarkdownText(
+                    detail,
+                    accent: accent,
+                    style: yBody(size: 13, color: yInk2, height: 1.35),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -539,8 +2290,9 @@ class _QuizWidgetState extends State<_QuizWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            _sentence(question),
+          _WidgetMarkdownText(
+            question,
+            accent: widget.accent,
             style: ySans(size: 18, weight: FontWeight.w800, color: yInk),
           ),
           const SizedBox(height: 12),
@@ -555,8 +2307,9 @@ class _QuizWidgetState extends State<_QuizWidget> {
               text: _selected == answer ? 'Correcto' : 'Revisa la explicación',
             ),
             const SizedBox(height: 8),
-            Text(
-              _sentence(explanation),
+            _WidgetMarkdownText(
+              explanation,
+              accent: widget.accent,
               style: yBody(size: 13, color: yInk2, height: 1.35),
             ),
           ],
@@ -1428,6 +3181,85 @@ class _UnknownWidget extends StatelessWidget {
   }
 }
 
+class _CalloutLine extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String text;
+  final Color color;
+
+  const _CalloutLine({
+    required this.icon,
+    required this.label,
+    required this.text,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color,
+            border: Border.all(color: yBorderStrong, width: yLineThin),
+          ),
+          child: Icon(icon, size: 13, color: yCream),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w900,
+                  tracking: 0.8,
+                  color: yMuted,
+                ),
+              ),
+              const SizedBox(height: 3),
+              _WidgetMarkdownText(
+                text,
+                accent: color,
+                style: yBody(size: 13, weight: FontWeight.w800, color: yInk),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TapHintIcon extends StatelessWidget {
+  final Color accent;
+
+  const _TapHintIcon({required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.48,
+      child: Container(
+        width: 24,
+        height: 24,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.14),
+          border: Border.all(color: accent, width: yLineThin),
+        ),
+        child: Icon(YuLiIcons.search, size: 12, color: accent),
+      ),
+    );
+  }
+}
+
 class _WidgetFrame extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -1591,8 +3423,9 @@ class _CalloutStrip extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  _sentence(text),
+                _WidgetMarkdownText(
+                  text,
+                  accent: color,
                   style: yBody(
                     size: 13,
                     weight: FontWeight.w800,
@@ -1605,6 +3438,51 @@ class _CalloutStrip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WidgetMarkdownText extends StatelessWidget {
+  final String text;
+  final Color accent;
+  final TextStyle style;
+  final bool center;
+
+  const _WidgetMarkdownText(
+    this.text, {
+    required this.accent,
+    required this.style,
+    this.center = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _sentence(text);
+    if (!_needsMarkdownText(data)) {
+      return Text(
+        data,
+        textAlign: center ? TextAlign.center : null,
+        style: style,
+      );
+    }
+    final markdown = data;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final child = IgnorePointer(
+          child: NoteMarkdownPreview(
+            data: markdown,
+            tight: true,
+            accent: accent,
+            textStyle: style,
+          ),
+        );
+        final wrapped =
+            constraints.maxWidth.isFinite
+                ? child
+                : SizedBox(width: 180, child: child);
+        if (!center) return wrapped;
+        return Align(alignment: Alignment.center, child: wrapped);
+      },
     );
   }
 }
@@ -1664,6 +3542,52 @@ class _ToggleRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MiniActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _MiniActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: yCream,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 7),
+            Text(
+              _sentence(label),
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w900,
+                tracking: 0.7,
+                color: yInk,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1842,6 +3766,21 @@ String _formatDateLabel(String raw) {
   return DateFormat(hasTime ? 'd MMM HH:mm' : 'd MMM').format(parsed);
 }
 
+void _sendStepQuestion(
+  int index,
+  String label,
+  String detail,
+  void Function(String message)? onSendMessage,
+) {
+  if (onSendMessage == null) return;
+  final cleanLabel = _sentence(_plainWidgetText(label));
+  final cleanDetail = _plainWidgetText(detail);
+  final suffix = cleanDetail.isEmpty ? '' : ' Contexto: $cleanDetail';
+  onSendMessage(
+    'Explícame con más detalle el paso $index: $cleanLabel.$suffix',
+  );
+}
+
 Color? _parseColor(String raw) {
   final clean = raw.replaceAll('#', '').trim();
   if (clean.length != 6 && clean.length != 8) return null;
@@ -1882,6 +3821,21 @@ String _sentence(String text) {
   final trimmed = text.trim();
   if (trimmed.isEmpty) return trimmed;
   return trimmed[0].toUpperCase() + trimmed.substring(1);
+}
+
+String _plainWidgetText(String text) {
+  return text
+      .replaceAll(r'$$', '')
+      .replaceAll(r'$', '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+bool _needsMarkdownText(String text) {
+  return text.contains(r'$') ||
+      text.contains(r'\(') ||
+      text.contains(r'\[') ||
+      text.contains('|');
 }
 
 void _snack(BuildContext context, String message) {

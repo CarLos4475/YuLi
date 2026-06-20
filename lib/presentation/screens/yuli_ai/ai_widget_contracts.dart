@@ -191,8 +191,13 @@ class AiWidgetParser {
 
   static String _normalizeBareBlocks(String text) {
     if (_block.hasMatch(text)) return text;
-    if (text.contains('<!--YULI_WIDGET')) return text;
-    return text.replaceAllMapped(_bareBlock, (match) {
+    final source =
+        text.contains('<!--YULI_WIDGET')
+            ? text
+                .replaceAll('<!--YULI_WIDGET:', 'YULI_WIDGET:')
+                .replaceAll('-->', '')
+            : text;
+    return source.replaceAllMapped(_bareBlock, (match) {
       final type = match.group(1) ?? '';
       final version = match.group(2) ?? '1';
       final body = (match.group(3) ?? '').trim();
@@ -255,6 +260,32 @@ Formato estricto:
 -->''',
   ),
   AiWidgetSpec(
+    type: 'SOLVED_EXAMPLE',
+    version: 1,
+    description:
+        'Renderiza un ejemplo resuelto con pasos, fórmulas, resultado e intuición.',
+    triggerKeywords: [
+      'ejemplo',
+      'ejemplo completo',
+      'ejemplo resuelto',
+      'resolver',
+      'resuelve',
+      'ejercicio',
+      'derivar',
+      'deriva',
+      'ecuacion',
+      'paso a paso',
+      'por definicion',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget para ejercicios concretos resueltos: álgebra, cálculo, física, estadística o procedimientos con sustitución y resultado. Puedes usar la cantidad de pasos necesaria; no está topado. Usa LaTeX válido dentro de strings con $...$ o $$...$$ cuando haya fórmulas.
+Formato estricto:
+<!--YULI_WIDGET:SOLVED_EXAMPLE v=1
+{"title":"Derivar $f(x)=3x+2$ por definición","setup":"Usamos la definición de derivada como límite del cociente incremental.","steps":[{"label":"Planteamiento","detail":"Definición de derivada.","formula":"$$f'(x)=\\lim_{h\\to 0}\\frac{f(x+h)-f(x)}{h}$$"},{"label":"Sustitución","detail":"Sustituimos $f(x)=3x+2$.","formula":"$$f'(x)=\\lim_{h\\to 0}\\frac{(3(x+h)+2)-(3x+2)}{h}$$"},{"label":"Simplificación","detail":"Cancelamos términos semejantes.","formula":"$$\\lim_{h\\to 0}\\frac{3h}{h}=\\lim_{h\\to 0}3$$"},{"label":"Resultado","detail":"Tomamos el límite.","formula":"$$f'(x)=3$$"}],"result":"Resultado final: $$f'(x)=3$$","intuition":"Una función lineal $mx+b$ tiene pendiente constante $m$."}
+-->''',
+  ),
+  AiWidgetSpec(
     type: 'STEPS',
     version: 1,
     description: 'Renderiza pasos visuales para un método o proceso.',
@@ -268,8 +299,8 @@ Formato estricto:
       'procedimiento',
     ],
     policy: AiWidgetPolicy.study,
-    promptContract: '''
-Usa este widget para explicar procesos, métodos o resolución paso a paso.
+    promptContract: r'''
+Usa este widget para explicar procesos, métodos o resolución paso a paso cuando no sea un ejercicio completo. Puedes usar la cantidad de pasos necesaria; no está topado. Usa LaTeX válido dentro de strings con $...$ o $$...$$ cuando haya fórmulas.
 Formato estricto:
 <!--YULI_WIDGET:STEPS v=1
 {"title":"Método rápido","items":[{"label":"Identifica la función","detail":"Mira qué regla aplica."},{"label":"Deriva","detail":"Aplica la regla correspondiente."}]}
@@ -335,6 +366,247 @@ Usa este widget para planes, preparación o listas accionables dentro del chat. 
 Formato estricto:
 <!--YULI_WIDGET:CHECKLIST v=1
 {"title":"Plan de estudio","items":[{"label":"Repasar fórmulas","checked":false},{"label":"Resolver 3 ejercicios","checked":false}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'FORMULA_CARD',
+    version: 1,
+    description: 'Renderiza una fórmula con variables, uso y ejemplo.',
+    triggerKeywords: [
+      'formula',
+      'formula clave',
+      'variables',
+      'cuando usar',
+      'despeje',
+      'identidad',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget para presentar fórmulas importantes con LaTeX, significado de variables, cuándo usarla y un ejemplo breve.
+Formato estricto:
+<!--YULI_WIDGET:FORMULA_CARD v=1
+{"title":"Fórmula cuadrática","formula":"$$x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$$","variables":[{"symbol":"$a$","meaning":"Coeficiente de $x^2$"},{"symbol":"$b$","meaning":"Coeficiente de $x$"},{"symbol":"$c$","meaning":"Término constante"}],"whenToUse":"Cuando tienes una ecuación $ax^2+bx+c=0$.","example":"Para $x^2-4=0$, $a=1$, $b=0$, $c=-4$."}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'MISTAKE_CHECK',
+    version: 1,
+    description: 'Renderiza errores comunes con causa y corrección.',
+    triggerKeywords: [
+      'errores',
+      'error comun',
+      'me equivoque',
+      'cuidado',
+      'trampa',
+      'fallos',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget para advertir errores típicos, por qué ocurren y cómo corregirlos.
+Formato estricto:
+<!--YULI_WIDGET:MISTAKE_CHECK v=1
+{"title":"Errores al derivar potencias","items":[{"mistake":"Olvidar bajar el exponente.","why":"La regla requiere multiplicar por $n$.","fix":"Si $f(x)=x^n$, entonces $f'(x)=nx^{n-1}$."}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'MINI_PROOF',
+    version: 1,
+    description: 'Renderiza una demostración breve con pasos tocables.',
+    triggerKeywords: [
+      'demuestra',
+      'demostracion',
+      'prueba',
+      'por que se cumple',
+      'justifica',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget cuando convenga probar por qué una regla o afirmación es cierta. Los pasos pueden llevar LaTeX y el usuario puede tocar uno para pedir más detalle.
+Formato estricto:
+<!--YULI_WIDGET:MINI_PROOF v=1
+{"title":"Por qué $\\frac{d}{dx}x^2=2x$","claim":"La derivada de $x^2$ es $2x$.","steps":[{"label":"Definición","detail":"Usa el límite del cociente incremental."},{"label":"Expansión","detail":"$(x+h)^2-x^2=2xh+h^2$"},{"label":"Límite","detail":"$\\lim_{h\\to0}(2x+h)=2x$"}],"conclusion":"Por tanto, $\\frac{d}{dx}x^2=2x$."}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'PRACTICE_SET',
+    version: 1,
+    description:
+        'Renderiza ejercicios de práctica con acciones de resolver o pedir pista.',
+    triggerKeywords: [
+      'ejercicios',
+      'practica',
+      'problemas',
+      'ponme ejercicios',
+      'para practicar',
+      'tarea de practica',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget para dejar varios ejercicios concretos. No incluyas soluciones completas aquí; el botón local puede pedir resolver uno.
+Formato estricto:
+<!--YULI_WIDGET:PRACTICE_SET v=1
+{"title":"Practica ecuaciones lineales","items":[{"level":"Fácil","prompt":"Resuelve $2x=0$.","hint":"Divide ambos lados entre 2."},{"level":"Medio","prompt":"Resuelve $3x+6=0$.","hint":"Primero resta 6."}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'HINT_LADDER',
+    version: 1,
+    description: 'Renderiza pistas progresivas sin revelar todo de golpe.',
+    triggerKeywords: [
+      'pista',
+      'pistas',
+      'hint',
+      'sin decirme',
+      'ayuda sin resolver',
+      'guia',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget cuando el usuario quiera ayuda gradual o cuando una respuesta completa arruinaría la práctica.
+Formato estricto:
+<!--YULI_WIDGET:HINT_LADDER v=1
+{"title":"Pistas para resolver $2x=0$","hints":[{"label":"Pista 1","text":"El objetivo es dejar $x$ sola."},{"label":"Pista 2","text":"Divide ambos lados entre $2$."},{"label":"Pista 3","text":"Queda $x=0$."}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'VOCAB_CARD',
+    version: 1,
+    description: 'Renderiza una tarjeta de vocabulario o término clave.',
+    triggerKeywords: [
+      'vocabulario',
+      'termino',
+      'palabra',
+      'definicion',
+      'glosario',
+      'concepto clave',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: '''
+Usa este widget para términos, idiomas, glosario o palabras nuevas.
+Formato estricto:
+<!--YULI_WIDGET:VOCAB_CARD v=1
+{"term":"Pendiente","definition":"Medida de inclinación de una recta.","example":"Una recta con pendiente 3 sube 3 por cada 1 en x.","counterexample":"No es la altura de la recta; eso es una posición.","mnemonic":"Pendiente = qué tan inclinada está."}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'MNEMONIC',
+    version: 1,
+    description: 'Renderiza una mnemotecnia visual para recordar ideas.',
+    triggerKeywords: [
+      'mnemonic',
+      'mnemotecnia',
+      'truco para recordar',
+      'memorizar',
+      'recordar',
+      'acronimo',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget para crear una regla de memoria, acrónimo o frase corta.
+Formato estricto:
+<!--YULI_WIDGET:MNEMONIC v=1
+{"title":"Recordar seno, coseno y tangente","mnemonic":"SOH-CAH-TOA","meaning":"Seno = opuesto/hipotenusa, coseno = adyacente/hipotenusa, tangente = opuesto/adyacente.","items":[{"cue":"SOH","text":"$\\sin(\\theta)=\\frac{opuesto}{hipotenusa}$"},{"cue":"CAH","text":"$\\cos(\\theta)=\\frac{adyacente}{hipotenusa}$"},{"cue":"TOA","text":"$\\tan(\\theta)=\\frac{opuesto}{adyacente}$"}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'TIMELINE',
+    version: 1,
+    description: 'Renderiza una secuencia temporal o histórica.',
+    triggerKeywords: [
+      'linea de tiempo',
+      'cronologia',
+      'historia',
+      'secuencia',
+      'orden cronologico',
+      'etapas',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: '''
+Usa este widget para secuencias, historia, evolución de un tema o pasos temporales.
+Formato estricto:
+<!--YULI_WIDGET:TIMELINE v=1
+{"title":"Historia breve del cálculo","events":[{"label":"Siglo XVII","detail":"Newton y Leibniz formalizan ideas de derivada e integral."},{"label":"Siglo XIX","detail":"Se vuelve más riguroso con límites."}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'FLOWCHART',
+    version: 1,
+    description: 'Renderiza un diagrama de flujo vertical con nodos.',
+    triggerKeywords: [
+      'flowchart',
+      'diagrama de flujo',
+      'flujo',
+      'decision',
+      'proceso visual',
+      'mapa de proceso',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: '''
+Usa este widget para procesos con decisiones o pasos conectados.
+Formato estricto:
+<!--YULI_WIDGET:FLOWCHART v=1
+{"title":"Cómo elegir método","nodes":[{"label":"Lee el problema","detail":"Identifica datos y objetivo.","kind":"Inicio"},{"label":"¿Hay fórmula directa?","detail":"Si sí, sustituye. Si no, transforma.","kind":"Decisión"},{"label":"Resuelve y verifica","detail":"Comprueba unidades o sustitución.","kind":"Cierre"}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'CAUSE_EFFECT',
+    version: 1,
+    description: 'Renderiza una relación causa, mecanismo y efecto.',
+    triggerKeywords: [
+      'causa',
+      'efecto',
+      'por que pasa',
+      'consecuencia',
+      'relacion causa',
+      'provoca',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: '''
+Usa este widget para explicar relaciones causa-efecto, especialmente cuando importa el mecanismo intermedio.
+Formato estricto:
+<!--YULI_WIDGET:CAUSE_EFFECT v=1
+{"title":"Por qué subir el exponente cambia la derivada","cause":"La función crece más rápido.","mechanism":"El cambio local depende del exponente y de la escala de x.","effect":"La derivada incluye el factor del exponente."}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'GRAPH_SKETCH',
+    version: 1,
+    description: 'Renderiza un boceto visual de gráfica con rasgos clave.',
+    triggerKeywords: [
+      'grafica',
+      'graficar',
+      'boceto',
+      'ejes',
+      'funcion',
+      'curva',
+      'pendiente',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: r'''
+Usa este widget cuando explicar una función o relación necesite una mini gráfica conceptual. Es boceto, no plano exacto.
+Formato estricto:
+<!--YULI_WIDGET:GRAPH_SKETCH v=1
+{"title":"Boceto de $f(x)=3x+2$","xLabel":"$x$","yLabel":"$f(x)$","description":"Recta creciente: por cada 1 que avanza $x$, sube 3.","features":[{"label":"Corte en y","value":"$2$"},{"label":"Pendiente","value":"$3$"}]}
+-->''',
+  ),
+  AiWidgetSpec(
+    type: 'EXAM_RUBRIC',
+    version: 1,
+    description: 'Renderiza una guía de examen con criterios y trampas.',
+    triggerKeywords: [
+      'guia examen',
+      'rubrica',
+      'criterios',
+      'que estudiar',
+      'examen',
+      'prioridades',
+    ],
+    policy: AiWidgetPolicy.study,
+    promptContract: '''
+Usa este widget para orientar estudio antes de un examen, priorizando criterios, pesos aproximados y trampas.
+Formato estricto:
+<!--YULI_WIDGET:EXAM_RUBRIC v=1
+{"title":"Guía para examen de derivadas","focus":"Domina reglas básicas y ejemplos con justificación.","criteria":[{"label":"Reglas de derivación","weight":"40%","detail":"Potencia, suma, constante y producto."},{"label":"Interpretación","weight":"30%","detail":"Pendiente, tasa de cambio y unidades."}],"traps":[{"text":"Confundir derivada con valor de la función."},{"text":"Olvidar simplificar signos."}]}
 -->''',
   ),
   AiWidgetSpec(
