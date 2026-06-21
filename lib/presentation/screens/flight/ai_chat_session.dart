@@ -171,6 +171,13 @@ class AiChatSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addLocalAssistant(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    messages.add(AiChatMsg(AiRole.assistant, t, modeId: mode.id));
+    notifyListeners();
+  }
+
   void setAnchor(String value) {
     final t = value.trim();
     _applyAnchor(t.isEmpty ? null : t, compactTried: false);
@@ -320,6 +327,8 @@ class AiChatSession extends ChangeNotifier {
     Future<String> Function(AiToolCall)? onToolCall,
     String? toolGuidance,
     List<String> widgetDocs = const [],
+    List<String> knowledgeDocs = const [],
+    List<String> memoryDocs = const [],
   }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
@@ -357,6 +366,10 @@ class AiChatSession extends ChangeNotifier {
     final convo = <AiMessage>[
       AiMessage(AiRole.system, mode.systemPrompt),
       if (toolGuidance != null) AiMessage(AiRole.system, toolGuidance),
+      if (knowledgeDocs.isNotEmpty)
+        AiMessage(AiRole.system, knowledgeDocs.join('\n\n')),
+      if (memoryDocs.isNotEmpty)
+        AiMessage(AiRole.system, memoryDocs.join('\n\n')),
       if (widgetDocs.isNotEmpty)
         AiMessage(AiRole.system, widgetDocs.join('\n\n')),
       if (hasAnchor) AiMessage(AiRole.user, _anchorContent()),

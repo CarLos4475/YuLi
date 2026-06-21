@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import '../flight/ai_chat_session.dart'
     show AiChatMsg, AiChatSession, kConsultingLabel;
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
+import 'ai_knowledge_contracts.dart';
 import 'ai_widget_contracts.dart';
 import 'ai_widget_renderer.dart';
 import 'yuli_ai_tools.dart';
@@ -27,7 +29,11 @@ Future<void> showYuliAiChat(
   BuildContext context,
   WidgetRef ref, {
   required Color accent,
+  YuliAiSurfaceContext? surfaceContext,
 }) async {
+  if (surfaceContext != null) {
+    ref.read(yuliAiSurfaceContextProvider.notifier).state = surfaceContext;
+  }
   final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
   if (!context.mounted) return;
   if (!hasKey) {
@@ -503,15 +509,30 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
   }
 
   void _send(String text) {
+    unawaited(_sendAsync(text));
+  }
+
+  Future<void> _sendAsync(String text) async {
     if (text.trim().isEmpty || _s.streaming) return;
     _input.clear();
+    final retrievalQuery = _retrievalQuery(text);
     final widgetSpecs = ref
         .read(aiWidgetRetrieverProvider)
-        .retrieve(text, surface: AiWidgetSurface.yuli);
+        .retrieve(text, surface: AiWidgetSurface.yuli, context: retrievalQuery);
     final widgetPrompt = aiWidgetPrompt(
       widgetSpecs,
       surface: AiWidgetSurface.yuli,
     );
+    final knowledgePrompt = aiKnowledgePrompt(
+      ref
+          .read(aiKnowledgeRetrieverProvider)
+          .retrieve(retrievalQuery, surface: AiKnowledgeSurface.yuli),
+      surface: AiKnowledgeSurface.yuli,
+    );
+    final surfacePrompt = ref.read(yuliAiSurfaceContextProvider)?.prompt ?? '';
+    final memoryPrompt = await ref
+        .read(aiMemoryStoreProvider)
+        .promptForTurn(retrievalQuery);
     _s.send(
       ref.read(aiAssistantProvider),
       ref.read(aiUsageLimiterProvider),
@@ -519,8 +540,24 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
       tools: yuliToolDefs,
       toolGuidance: yuliToolSystem(),
       onToolCall: (c) => runYuliTool(ref, c),
+      knowledgeDocs: [
+        if (knowledgePrompt.isNotEmpty) knowledgePrompt,
+        if (surfacePrompt.isNotEmpty) surfacePrompt,
+      ],
+      memoryDocs: memoryPrompt.isEmpty ? const [] : [memoryPrompt],
       widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
     );
+  }
+
+  String _retrievalQuery(String text) {
+    final recent = _s.messages.reversed
+        .where((m) => m.role != AiRole.system)
+        .take(4)
+        .map((m) => m.text)
+        .toList()
+        .reversed
+        .join('\n');
+    return '$recent\n$text';
   }
 
   @override
@@ -858,6 +895,7 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
         accent: widget.accent,
         surface: AiWidgetSurface.yuli,
         onSendMessage: _send,
+        onActionResult: _s.addLocalAssistant,
       );
     } else {
       content = NoteMarkdownPreview(

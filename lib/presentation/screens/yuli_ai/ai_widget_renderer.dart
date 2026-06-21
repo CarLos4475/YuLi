@@ -1,30 +1,30 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/kanban_column.dart';
+import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/reminder_preset.dart';
 import '../../../domain/models/task.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
 import 'ai_widget_contracts.dart';
 
-const _kUserMemoryKey = 'yuli_user_memory_v1';
-
 class AiWidgetRenderer extends ConsumerWidget {
   final String text;
   final Color accent;
   final AiWidgetSurface surface;
   final void Function(String message)? onSendMessage;
+  final void Function(String message)? onActionResult;
+  final int? noteId;
 
   const AiWidgetRenderer({
     super.key,
@@ -32,6 +32,8 @@ class AiWidgetRenderer extends ConsumerWidget {
     required this.accent,
     required this.surface,
     this.onSendMessage,
+    this.onActionResult,
+    this.noteId,
   });
 
   @override
@@ -70,7 +72,9 @@ class AiWidgetRenderer extends ConsumerWidget {
         onSendMessage: onSendMessage,
       ),
       'COMPARISON' => _ComparisonWidget(data: part.data, accent: accent),
-      'FLASHCARDS' => _FlashcardsWidget(data: part.data, accent: accent),
+      'FLASHCARDS' ||
+      'FLASHCARD' ||
+      'FLASH_CARD' => _FlashcardsWidget(data: part.data, accent: accent),
       'CHECKLIST' => _ChecklistWidget(data: part.data, accent: accent),
       'FORMULA_CARD' => _FormulaCardWidget(data: part.data, accent: accent),
       'MISTAKE_CHECK' => _MistakeCheckWidget(data: part.data, accent: accent),
@@ -92,8 +96,11 @@ class AiWidgetRenderer extends ConsumerWidget {
       'VOCAB_CARD' => _VocabCardWidget(data: part.data, accent: accent),
       'TIMELINE' => _TimelineWidget(data: part.data, accent: accent),
       'FLOWCHART' => _FlowchartWidget(data: part.data, accent: accent),
-      'CAUSE_EFFECT' => _CauseEffectWidget(data: part.data, accent: accent),
-      'GRAPH_SKETCH' => _GraphSketchWidget(data: part.data, accent: accent),
+      'CAUSE_EFFECT' ||
+      'CAUSEEFFECT' => _CauseEffectWidget(data: part.data, accent: accent),
+      'GRAPH_SKETCH' ||
+      'GRAPH' ||
+      'CHART_SKETCH' => _GraphSketchWidget(data: part.data, accent: accent),
       'MNEMONIC' => _MnemonicWidget(data: part.data, accent: accent),
       'EXAM_RUBRIC' => _ExamRubricWidget(data: part.data, accent: accent),
       'QUIZ' => _QuizWidget(data: part.data, accent: accent),
@@ -103,11 +110,19 @@ class AiWidgetRenderer extends ConsumerWidget {
         onSendMessage: onSendMessage,
       ),
       'TASK_LIST' => _TaskListWidget(data: part.data),
-      'TASK_DRAFT' => _TaskDraftWidget(data: part.data),
-      'LAB_CARD_DRAFT' => _LabCardDraftWidget(data: part.data),
+      'TASK_DRAFT' => _TaskDraftWidget(
+        data: part.data,
+        onActionResult: onActionResult,
+        noteId: noteId,
+      ),
+      'LAB_CARD_DRAFT' => _LabCardDraftWidget(
+        data: part.data,
+        onActionResult: onActionResult,
+      ),
       'MEMORY_SUGGESTION' => _MemorySuggestionWidget(
         data: part.data,
         accent: accent,
+        onActionResult: onActionResult,
       ),
       _ => _UnknownWidget(type: part.type, accent: accent),
     };
@@ -334,10 +349,11 @@ class _SolvedStepCard extends StatelessWidget {
                     accent: accent,
                     style: yBody(
                       size: 15,
-                      weight: FontWeight.w800,
+                      weight: FontWeight.w500,
                       color: yInk,
                     ),
                     center: true,
+                    formula: true,
                   ),
                 ),
               ],
@@ -381,7 +397,8 @@ class _ResultStrip extends StatelessWidget {
             child: _WidgetMarkdownText(
               result,
               accent: accent,
-              style: yBody(size: 16, weight: FontWeight.w900, color: yInk),
+              style: yBody(size: 16, weight: FontWeight.w700, color: yInk),
+              formula: true,
             ),
           ),
         ],
@@ -700,7 +717,7 @@ class _FlashcardsWidgetState extends State<_FlashcardsWidget> {
   @override
   Widget build(BuildContext context) {
     final title = _string(widget.data['title'], 'Tarjetas');
-    final cards = _list(widget.data['cards']);
+    final cards = _flashcardItems(widget.data);
     return _WidgetFrame(
       title: 'Flashcards',
       icon: YuLiIcons.bookOpen,
@@ -725,8 +742,14 @@ class _FlashcardsWidgetState extends State<_FlashcardsWidget> {
 
   Widget _flashcard(int index, Map<String, dynamic> data) {
     final flipped = _flipped.contains(index);
-    final front = _string(data['front'], 'Pregunta');
-    final back = _string(data['back'], 'Respuesta');
+    final front = _string(
+      data['front'] ?? data['question'] ?? data['term'] ?? data['prompt'],
+      'Pregunta',
+    );
+    final back = _string(
+      data['back'] ?? data['answer'] ?? data['definition'] ?? data['response'],
+      'Respuesta',
+    );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -905,8 +928,9 @@ class _FormulaCardWidget extends StatelessWidget {
               child: _WidgetMarkdownText(
                 formula,
                 accent: accent,
-                style: ySans(size: 18, weight: FontWeight.w900, color: yInk),
+                style: ySans(size: 18, weight: FontWeight.w500, color: yInk),
                 center: true,
+                formula: true,
               ),
             ),
           ],
@@ -1658,7 +1682,7 @@ class _TimelineEvent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            width: 38,
+            width: 30,
             child: Column(
               children: [
                 Expanded(
@@ -1668,8 +1692,8 @@ class _TimelineEvent extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  width: 22,
-                  height: 22,
+                  width: 18,
+                  height: 18,
                   decoration: BoxDecoration(
                     color: accent,
                     border: Border.all(color: yBorderStrong, width: yLineThin),
@@ -1688,7 +1712,7 @@ class _TimelineEvent extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.only(bottom: last ? 0 : 9),
               child: Container(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+                padding: const EdgeInsets.fromLTRB(9, 7, 9, 8),
                 decoration: BoxDecoration(
                   color: yCream2,
                   border: Border.all(color: yBorderStrong, width: yLineThin),
@@ -1711,7 +1735,7 @@ class _TimelineEvent extends StatelessWidget {
                       _WidgetMarkdownText(
                         detail,
                         accent: accent,
-                        style: yBody(size: 13, color: yInk2, height: 1.35),
+                        style: yBody(size: 12, color: yInk2, height: 1.25),
                       ),
                     ],
                   ],
@@ -1860,9 +1884,18 @@ class _CauseEffectWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = _string(data['title'], 'Causa y efecto');
-    final cause = _string(data['cause'], '');
-    final mechanism = _string(data['mechanism'] ?? data['bridge'], '');
-    final effect = _string(data['effect'], '');
+    final cause = _string(
+      data['cause'] ?? data['causa'] ?? data['input'],
+      _joinTextList(data['causes'] ?? data['causas']),
+    );
+    final mechanism = _string(
+      data['mechanism'] ?? data['bridge'] ?? data['proceso'] ?? data['link'],
+      _joinTextList(data['mechanisms'] ?? data['bridges']),
+    );
+    final effect = _string(
+      data['effect'] ?? data['efecto'] ?? data['output'],
+      _joinTextList(data['effects'] ?? data['efectos']),
+    );
     return _WidgetFrame(
       title: 'Causa efecto',
       icon: YuLiIcons.gitGraph,
@@ -2091,16 +2124,45 @@ class _AxisLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final clean = _stripOuterMath(label);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: accent,
         border: Border.all(color: yBorderStrong, width: yLineThin),
       ),
-      child: _WidgetMarkdownText(
-        label,
-        accent: accent,
-        style: yMono(size: 10, weight: FontWeight.w900, color: yCream),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 72),
+        child:
+            clean.contains('\\')
+                ? Math.tex(
+                  clean,
+                  mathStyle: MathStyle.text,
+                  textStyle: yMono(
+                    size: 10,
+                    weight: FontWeight.w900,
+                    color: yCream,
+                  ),
+                  onErrorFallback:
+                      (_) => Text(
+                        _plainWidgetText(label),
+                        overflow: TextOverflow.ellipsis,
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w900,
+                          color: yCream,
+                        ),
+                      ),
+                )
+                : Text(
+                  _plainWidgetText(label),
+                  overflow: TextOverflow.ellipsis,
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w900,
+                    color: yCream,
+                  ),
+                ),
       ),
     );
   }
@@ -2279,10 +2341,19 @@ class _QuizWidgetState extends State<_QuizWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final question = _string(widget.data['question'], 'Pregunta');
-    final answer = _string(widget.data['answer'], '');
+    final question = _string(
+      widget.data['question'] ?? widget.data['prompt'] ?? widget.data['title'],
+      'Pregunta',
+    );
+    final options = _quizOptions(widget.data);
+    final answer = _normalizeQuizAnswer(
+      widget.data['answer'] ??
+          widget.data['correctAnswer'] ??
+          widget.data['correct'] ??
+          widget.data['solution'],
+      options,
+    );
     final explanation = _string(widget.data['explanation'], '');
-    final options = _list(widget.data['options']);
     return _WidgetFrame(
       title: 'Quiz',
       icon: YuLiIcons.listChecks,
@@ -2295,10 +2366,18 @@ class _QuizWidgetState extends State<_QuizWidget> {
             accent: widget.accent,
             style: ySans(size: 18, weight: FontWeight.w800, color: yInk),
           ),
-          const SizedBox(height: 12),
-          for (final option in options) ...[
-            _quizOption(option, answer),
-            const SizedBox(height: 8),
+          if (options.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final option in options) ...[
+              _quizOption(option, answer),
+              const SizedBox(height: 8),
+            ],
+          ] else ...[
+            const SizedBox(height: 12),
+            _StatusStrip(
+              color: yAmber,
+              text: 'Faltan opciones para hacerlo interactivo',
+            ),
           ],
           if (_selected != null && explanation.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -2319,8 +2398,11 @@ class _QuizWidgetState extends State<_QuizWidget> {
   }
 
   Widget _quizOption(Map<String, dynamic> option, String answer) {
-    final id = _string(option['id'], '');
-    final label = _string(option['label'], id.toUpperCase());
+    final id = _string(option['id'] ?? option['key'], '');
+    final label = _string(
+      option['label'] ?? option['text'] ?? option['value'] ?? option['answer'],
+      id.toUpperCase(),
+    );
     final selected = _selected == id;
     final correct = selected && id == answer;
     final wrong = selected && id != answer;
@@ -2539,8 +2621,14 @@ class _TaskRow extends StatelessWidget {
 
 class _TaskDraftWidget extends ConsumerStatefulWidget {
   final Map<String, dynamic> data;
+  final void Function(String message)? onActionResult;
+  final int? noteId;
 
-  const _TaskDraftWidget({required this.data});
+  const _TaskDraftWidget({
+    required this.data,
+    this.onActionResult,
+    this.noteId,
+  });
 
   @override
   ConsumerState<_TaskDraftWidget> createState() => _TaskDraftWidgetState();
@@ -2548,16 +2636,20 @@ class _TaskDraftWidget extends ConsumerStatefulWidget {
 
 class _TaskDraftWidgetState extends ConsumerState<_TaskDraftWidget> {
   late String _content = _string(widget.data['content'], 'Nueva tarea');
+  late Map<String, dynamic>? _folder = _map(widget.data['folder']);
+  late String _dueDate = _string(widget.data['dueDate'], '');
+  late String _duePrecision = _string(widget.data['duePrecision'], '');
+  late String _reminderPreset = _string(widget.data['reminderPreset'], '');
+  late Map<String, dynamic>? _temporaryMemory = _map(
+    widget.data['temporaryMemory'],
+  );
+  late Map<String, dynamic>? _labLink = _map(widget.data['labLink']);
   bool _memoryEnabled = true;
   bool _busy = false;
   bool _created = false;
 
   @override
   Widget build(BuildContext context) {
-    final folder = _map(widget.data['folder']);
-    final due = _string(widget.data['dueDate'], '');
-    final reminder = _string(widget.data['reminderPreset'], '');
-    final memory = _map(widget.data['temporaryMemory']);
     return _WidgetFrame(
       title: 'Crear tarea',
       icon: YuLiIcons.plus,
@@ -2574,27 +2666,33 @@ class _TaskDraftWidgetState extends ConsumerState<_TaskDraftWidget> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              if (folder != null)
-                _FolderBadge(folder: folder, fallback: yFight),
-              if (due.isNotEmpty)
+              if (_folder != null)
+                _FolderBadge(folder: _folder!, fallback: yFight),
+              if (_dueDate.isNotEmpty)
                 _MiniBadge(
                   icon: YuLiIcons.calendar,
-                  label: 'Fecha ${_formatDateLabel(due)}',
+                  label: 'Fecha ${_formatDateLabel(_dueDate)}',
                   color: yFight,
                 ),
-              if (reminder.isNotEmpty)
+              if (_reminderPreset.isNotEmpty)
                 _MiniBadge(
                   icon: YuLiIcons.bell,
-                  label: _reminderLabel(reminder),
+                  label: _reminderLabel(_reminderPreset),
                   color: yFight,
+                ),
+              if (_labLink != null)
+                _MiniBadge(
+                  icon: YuLiIcons.flaskConical,
+                  label: 'Lab ${_labLinkName(_labLink!)}',
+                  color: yLab,
                 ),
             ],
           ),
-          if (memory != null) ...[
+          if (_temporaryMemory != null) ...[
             const SizedBox(height: 12),
             _ToggleRow(
               active: _memoryEnabled,
-              label: 'Guardar recuerdo temporal',
+              label: _memoryToggleLabel(_temporaryMemory!),
               color: yFight,
               onTap: () => setState(() => _memoryEnabled = !_memoryEnabled),
             ),
@@ -2627,8 +2725,55 @@ class _TaskDraftWidgetState extends ConsumerState<_TaskDraftWidget> {
   }
 
   Future<void> _edit() async {
-    final ctrl = TextEditingController(text: _content);
-    final next = await showDialog<String>(
+    final folders = await ref.read(folderRepositoryProvider).getActive();
+    final spaces = await ref.read(labSpaceRepositoryProvider).getActive();
+    final columnsBySpace = <int, List<KanbanColumn>>{};
+    for (final space in spaces) {
+      final columns = await ref
+          .read(labSpaceRepositoryProvider)
+          .getColumns(space.id);
+      columnsBySpace[space.id] =
+          columns.where((c) => !c.isTerminal && !c.isExpired).toList();
+    }
+    if (!mounted) return;
+    final contentCtrl = TextEditingController(text: _content);
+    final folderIdCtrl = TextEditingController(
+      text: _string(_folder?['id'], ''),
+    );
+    final folderNameCtrl = TextEditingController(
+      text: _string(_folder?['name'], ''),
+    );
+    final folderColorCtrl = TextEditingController(
+      text: _string(_folder?['color'], ''),
+    );
+    final dueCtrl = TextEditingController(text: _dueDate);
+    final duePrecisionCtrl = TextEditingController(text: _duePrecision);
+    final reminderCtrl = TextEditingController(text: _reminderPreset);
+    final labSpaceIdCtrl = TextEditingController(
+      text: _string(
+        _map(_labLink?['space'])?['id'] ?? _labLink?['spaceId'],
+        '',
+      ),
+    );
+    final labSpaceNameCtrl = TextEditingController(
+      text: _labLink == null ? '' : _labLinkName(_labLink!),
+    );
+    final labColumnCtrl = TextEditingController(
+      text: _string(_labLink?['column'], ''),
+    );
+    final memoryValueCtrl = TextEditingController(
+      text: _string(
+        _temporaryMemory?['value'] ?? _temporaryMemory?['text'],
+        '',
+      ),
+    );
+    final memoryScopeCtrl = TextEditingController(
+      text: _string(_temporaryMemory?['scope'], ''),
+    );
+    final memoryExpiresCtrl = TextEditingController(
+      text: _string(_temporaryMemory?['expiresAt'], ''),
+    );
+    final next = await showDialog<_TaskDraftEditResult>(
       context: context,
       builder:
           (ctx) => Dialog(
@@ -2641,70 +2786,260 @@ class _TaskDraftWidgetState extends ConsumerState<_TaskDraftWidget> {
               decoration: BoxDecoration(
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Editar tarea',
-                    style: yMono(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      tracking: 1.1,
-                      color: yInk,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    minLines: 1,
-                    maxLines: 4,
-                    style: yBody(size: 15, color: yInk),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(
-                          color: yBorderStrong,
-                          width: yLineMid,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(
-                          color: yBorderStrong,
-                          width: yLineMid,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.82,
+                  maxWidth: 520,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: _DialogButton(
-                          label: 'Cancelar',
-                          onTap: () => Navigator.of(ctx).pop(),
+                      Text(
+                        'Editar tarea',
+                        style: yMono(
+                          size: 11,
+                          weight: FontWeight.w800,
+                          tracking: 1.1,
+                          color: yInk,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _DialogButton(
-                          label: 'Guardar',
-                          color: yFight,
-                          onTap: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+                      const SizedBox(height: 12),
+                      _DraftTextField(
+                        controller: contentCtrl,
+                        label: 'Contenido',
+                        autofocus: true,
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: folderNameCtrl,
+                              label: 'Folder',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 76,
+                            child: _DraftTextField(
+                              controller: folderIdCtrl,
+                              label: 'Id',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _DraftTextField(
+                        controller: folderColorCtrl,
+                        label: 'Color folder',
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftFolderChoices(
+                        folders: folders,
+                        idController: folderIdCtrl,
+                        nameController: folderNameCtrl,
+                        colorController: folderColorCtrl,
+                        color: yFight,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: dueCtrl,
+                              label: 'Fecha/hora',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 92,
+                            child: _DraftTextField(
+                              controller: duePrecisionCtrl,
+                              label: 'Precisión',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftDateControls(
+                        dateController: dueCtrl,
+                        precisionController: duePrecisionCtrl,
+                        color: yFight,
+                      ),
+                      const SizedBox(height: 10),
+                      _DraftTextField(
+                        controller: reminderCtrl,
+                        label: 'Recordatorio',
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftReminderChoices(
+                        controller: reminderCtrl,
+                        color: yFight,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Lab opcional',
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w900,
+                          tracking: 1,
+                          color: yMuted,
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: labSpaceNameCtrl,
+                              label: 'Proyecto',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 76,
+                            child: _DraftTextField(
+                              controller: labSpaceIdCtrl,
+                              label: 'Id',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _DraftTextField(
+                        controller: labColumnCtrl,
+                        label: 'Columna',
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftSpaceChoices(
+                        spaces: spaces,
+                        idController: labSpaceIdCtrl,
+                        nameController: labSpaceNameCtrl,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftColumnChoices(
+                        spaceIdController: labSpaceIdCtrl,
+                        columnController: labColumnCtrl,
+                        columnsBySpace: columnsBySpace,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Memoria opcional',
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w900,
+                          tracking: 1,
+                          color: yMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftTextField(
+                        controller: memoryValueCtrl,
+                        label: 'Recuerdo',
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: memoryScopeCtrl,
+                              label: 'Scope',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: memoryExpiresCtrl,
+                              label: 'Expira',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftMemoryChoices(
+                        scopeController: memoryScopeCtrl,
+                        expiresController: memoryExpiresCtrl,
+                        color: yFight,
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DialogButton(
+                              label: 'Cancelar',
+                              onTap: () => Navigator.of(ctx).pop(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _DialogButton(
+                              label: 'Guardar',
+                              color: yFight,
+                              onTap:
+                                  () => Navigator.of(ctx).pop(
+                                    _TaskDraftEditResult(
+                                      content: contentCtrl.text.trim(),
+                                      folder: _draftFolder(
+                                        folderIdCtrl.text,
+                                        folderNameCtrl.text,
+                                        folderColorCtrl.text,
+                                      ),
+                                      dueDate: dueCtrl.text.trim(),
+                                      duePrecision:
+                                          duePrecisionCtrl.text.trim(),
+                                      reminderPreset: reminderCtrl.text.trim(),
+                                      labLink: _draftLabLink(
+                                        labSpaceIdCtrl.text,
+                                        labSpaceNameCtrl.text,
+                                        labColumnCtrl.text,
+                                      ),
+                                      temporaryMemory: _draftMemory(
+                                        memoryValueCtrl.text,
+                                        memoryScopeCtrl.text,
+                                        memoryExpiresCtrl.text,
+                                      ),
+                                    ),
+                                  ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
     );
-    ctrl.dispose();
-    if (next == null || next.isEmpty) return;
-    setState(() => _content = next);
+    contentCtrl.dispose();
+    folderIdCtrl.dispose();
+    folderNameCtrl.dispose();
+    folderColorCtrl.dispose();
+    dueCtrl.dispose();
+    duePrecisionCtrl.dispose();
+    reminderCtrl.dispose();
+    labSpaceIdCtrl.dispose();
+    labSpaceNameCtrl.dispose();
+    labColumnCtrl.dispose();
+    memoryValueCtrl.dispose();
+    memoryScopeCtrl.dispose();
+    memoryExpiresCtrl.dispose();
+    if (next == null || next.content.isEmpty) return;
+    setState(() {
+      _content = next.content;
+      _folder = next.folder;
+      _dueDate = next.dueDate;
+      _duePrecision = next.duePrecision;
+      _reminderPreset = next.reminderPreset;
+      _labLink = next.labLink;
+      _temporaryMemory = next.temporaryMemory;
+      _memoryEnabled = next.temporaryMemory != null;
+    });
   }
 
   Future<void> _create() async {
@@ -2712,11 +3047,8 @@ class _TaskDraftWidgetState extends ConsumerState<_TaskDraftWidget> {
     setState(() => _busy = true);
     try {
       final now = DateTime.now();
-      final due = _parseDueDate(
-        _string(widget.data['dueDate'], ''),
-        _string(widget.data['duePrecision'], ''),
-      );
-      final preset = _parseReminder(_string(widget.data['reminderPreset'], ''));
+      final due = _parseDueDate(_dueDate, _duePrecision);
+      final preset = _parseReminder(_reminderPreset);
       final task = await ref
           .read(taskRepositoryProvider)
           .save(
@@ -2733,42 +3065,267 @@ class _TaskDraftWidgetState extends ConsumerState<_TaskDraftWidget> {
               reminderPreset: preset,
             ),
           );
-      final memory = _map(widget.data['temporaryMemory']);
-      if (_memoryEnabled && memory != null) {
-        await _saveMemory(memory, linkedTaskId: task.id);
+      await _linkTaskToCurrentNote(task.id);
+      final labResult = await _tryCreateLinkedLabCard(task);
+      if (_memoryEnabled && _temporaryMemory != null) {
+        await ref
+            .read(aiMemoryStoreProvider)
+            .saveFromWidgetItem(_temporaryMemory!, linkedTaskId: task.id);
       }
       if (!mounted) return;
       setState(() => _created = true);
+      widget.onActionResult?.call(_taskCreatedMessage(task, labResult));
       _snack(context, 'Tarea creada');
     } catch (_) {
+      widget.onActionResult?.call(
+        'No pude crear la tarea "${_content.trim()}". Revisa los datos e intenta de nuevo.',
+      );
       if (mounted) _snack(context, 'No se pudo crear la tarea');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<int?> _resolveFolderId() async {
-    final folder = _map(widget.data['folder']);
-    if (folder == null) return null;
-    final id = _int(folder['id']);
+  Future<void> _linkTaskToCurrentNote(int taskId) async {
+    final noteId = widget.noteId;
+    if (noteId == null || noteId == 0) return;
+    await ref.read(noteRepositoryProvider).linkTask(noteId, taskId);
+  }
+
+  String _labLinkName(Map<String, dynamic> labLink) {
+    final raw = labLink['space'] ?? labLink['labSpace'] ?? labLink['project'];
+    final map = _map(raw);
+    return _string(map?['name'] ?? raw ?? labLink['spaceName'], 'Proyecto');
+  }
+
+  String _taskCreatedMessage(Task task, _TaskLabLinkResult? labResult) {
+    final parts = <String>['Listo, creé la tarea "${task.content}"'];
+    final folderName = _string(_folder?['name'], '');
+    if (folderName.isNotEmpty) parts.add('en $folderName');
+    if (task.dueDate != null) {
+      parts.add('para ${_formatDateLabel(task.dueDate!.toIso8601String())}');
+    }
+    if (task.reminderPreset != null) {
+      parts.add(
+        'con recordatorio ${_reminderLabel(task.reminderPreset!.toDbString()).toLowerCase()}',
+      );
+    }
+    if (widget.noteId != null && widget.noteId != 0) {
+      parts.add('vinculada a esta nota');
+    }
+    if (labResult != null) parts.add(labResult.message);
+    return '${parts.join(', ')}.';
+  }
+
+  Future<_TaskLabLinkResult?> _tryCreateLinkedLabCard(Task task) async {
+    if (_labLink == null) return null;
+    final space = await _resolveLinkedSpace(_labLink!);
+    if (space == null) {
+      return const _TaskLabLinkResult(
+        message: 'pero no pude vincularla a Lab porque no encontré el proyecto',
+      );
+    }
+    final column = await _resolveLinkedColumn(space.id, _labLink!);
+    if (column == null) {
+      return _TaskLabLinkResult(
+        message:
+            'pero no pude vincularla a Lab porque ${space.name} no tiene una columna válida',
+      );
+    }
+    final folder = await _resolveFolder();
+    final title =
+        folder == null
+            ? task.content
+            : ensureFolderMention(task.content, folder.name);
+    await ref
+        .read(kanbanCardRepositoryProvider)
+        .create(
+          labSpaceId: space.id,
+          columnId: column.id,
+          title: title,
+          dueDate: task.dueDate,
+          remindAt: task.remindAt,
+          reminderPreset: task.reminderPreset,
+          sourceNoteId:
+              widget.noteId == null || widget.noteId == 0
+                  ? null
+                  : widget.noteId,
+          originTaskId: task.id,
+          originFolderColor: folder?.color.toARGB32(),
+        );
+    return _TaskLabLinkResult(
+      message: 'y la vinculé a Lab en ${space.name} > ${column.name}',
+    );
+  }
+
+  Future<LabSpace?> _resolveLinkedSpace(Map<String, dynamic> labLink) async {
+    final raw = labLink['space'] ?? labLink['labSpace'] ?? labLink['project'];
+    final map = _map(raw);
+    final id = _int(map?['id'] ?? labLink['spaceId'] ?? labLink['labSpaceId']);
+    final repo = ref.read(labSpaceRepositoryProvider);
+    if (id != null) {
+      final found = await repo.getById(id);
+      if (found != null) return found;
+    }
+    final name =
+        _string(
+          map?['name'] ?? raw ?? labLink['spaceName'],
+          '',
+        ).toLowerCase().trim();
+    if (name.isEmpty) return null;
+    final spaces = await repo.getActive();
+    return spaces
+            .where((s) => s.name.toLowerCase().trim() == name)
+            .firstOrNull ??
+        spaces.where((s) => s.name.toLowerCase().contains(name)).firstOrNull;
+  }
+
+  Future<KanbanColumn?> _resolveLinkedColumn(
+    int labSpaceId,
+    Map<String, dynamic> labLink,
+  ) async {
+    final columns = await ref
+        .read(labSpaceRepositoryProvider)
+        .getColumns(labSpaceId);
+    final valid = columns.where((c) => !c.isTerminal && !c.isExpired).toList();
+    if (valid.isEmpty) return null;
+    final wanted = _string(labLink['column'], '').toLowerCase().trim();
+    if (wanted.isNotEmpty) {
+      final byName =
+          valid.where((c) => c.name.toLowerCase().trim() == wanted).firstOrNull;
+      if (byName != null) return byName;
+    }
+    return valid
+            .where((c) => c.name.toLowerCase().trim() == 'backlog')
+            .firstOrNull ??
+        valid.where((c) => c.isDefault).firstOrNull ??
+        valid.first;
+  }
+
+  Future<int?> _resolveFolderId() async => (await _resolveFolder())?.id;
+
+  Future<Folder?> _resolveFolder() async {
+    if (_folder == null) return null;
+    final id = _int(_folder!['id']);
     if (id != null &&
         await ref.read(folderRepositoryProvider).getById(id) != null) {
-      return id;
+      return ref.read(folderRepositoryProvider).getById(id);
     }
-    final name = _string(folder['name'], '').toLowerCase().trim();
+    final name = _string(_folder!['name'], '').toLowerCase().trim();
     if (name.isEmpty) return null;
     final folders = await ref.read(folderRepositoryProvider).getActive();
     return folders
         .where((f) => f.name.toLowerCase().trim() == name)
-        .firstOrNull
-        ?.id;
+        .firstOrNull;
   }
+}
+
+class _TaskLabLinkResult {
+  final String message;
+
+  const _TaskLabLinkResult({required this.message});
+}
+
+class _TaskDraftEditResult {
+  final String content;
+  final Map<String, dynamic>? folder;
+  final String dueDate;
+  final String duePrecision;
+  final String reminderPreset;
+  final Map<String, dynamic>? labLink;
+  final Map<String, dynamic>? temporaryMemory;
+
+  const _TaskDraftEditResult({
+    required this.content,
+    required this.folder,
+    required this.dueDate,
+    required this.duePrecision,
+    required this.reminderPreset,
+    required this.labLink,
+    required this.temporaryMemory,
+  });
+}
+
+class _LabCardDraftEditResult {
+  final String title;
+  final String description;
+  final Object? space;
+  final String column;
+  final String priority;
+  final String dueDate;
+  final String duePrecision;
+  final String reminderPreset;
+
+  const _LabCardDraftEditResult({
+    required this.title,
+    required this.description,
+    required this.space,
+    required this.column,
+    required this.priority,
+    required this.dueDate,
+    required this.duePrecision,
+    required this.reminderPreset,
+  });
+}
+
+Map<String, dynamic>? _draftFolder(String id, String name, String color) {
+  final folderId = _int(id.trim());
+  final folderName = name.trim();
+  final folderColor = color.trim();
+  if (folderId == null && folderName.isEmpty) return null;
+  return {
+    if (folderId != null) 'id': folderId,
+    if (folderName.isNotEmpty) 'name': folderName,
+    if (folderColor.isNotEmpty) 'color': folderColor,
+  };
+}
+
+Map<String, dynamic>? _draftLabLink(String id, String name, String column) {
+  final space = _draftSpace(id, name);
+  final col = column.trim();
+  if (space == null && col.isEmpty) return null;
+  return {if (space != null) 'space': space, if (col.isNotEmpty) 'column': col};
+}
+
+Map<String, dynamic>? _draftMemory(
+  String value,
+  String scope,
+  String expiresAt,
+) {
+  final text = value.trim();
+  if (text.isEmpty) return null;
+  final cleanScope = scope.trim();
+  final cleanExpires = expiresAt.trim();
+  return {
+    'key': 'memory',
+    'label': 'Memoria',
+    'value': text,
+    'scope': cleanScope.isEmpty ? 'global' : cleanScope,
+    if (cleanExpires.isNotEmpty) 'expiresAt': cleanExpires,
+  };
+}
+
+Map<String, dynamic>? _draftSpace(String id, String name) {
+  final spaceId = _int(id.trim());
+  final spaceName = name.trim();
+  if (spaceId == null && spaceName.isEmpty) return null;
+  return {
+    if (spaceId != null) 'id': spaceId,
+    if (spaceName.isNotEmpty) 'name': spaceName,
+  };
+}
+
+String _memoryToggleLabel(Map<String, dynamic> memory) {
+  final expires = _string(memory['expiresAt'], '');
+  if (expires.isEmpty) return 'Guardar memoria';
+  return 'Guardar memoria temporal hasta ${_formatDateLabel(expires)}';
 }
 
 class _LabCardDraftWidget extends ConsumerStatefulWidget {
   final Map<String, dynamic> data;
+  final void Function(String message)? onActionResult;
 
-  const _LabCardDraftWidget({required this.data});
+  const _LabCardDraftWidget({required this.data, this.onActionResult});
 
   @override
   ConsumerState<_LabCardDraftWidget> createState() =>
@@ -2780,17 +3337,19 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
     widget.data['title'] ?? widget.data['content'],
     'Nueva tarjeta',
   );
+  late String _description = _string(widget.data['description'], '');
+  late Object? _space = widget.data['space'];
+  late String _column = _string(widget.data['column'], '');
+  late String _dueDate = _string(widget.data['dueDate'], '');
+  late String _duePrecision = _string(widget.data['duePrecision'], '');
+  late String _reminderPreset = _string(widget.data['reminderPreset'], '');
+  late String _priority = _string(widget.data['priority'], '');
   bool _busy = false;
   bool _created = false;
 
   @override
   Widget build(BuildContext context) {
-    final description = _string(widget.data['description'], '');
     final space = _spaceName();
-    final column = _string(widget.data['column'], '');
-    final due = _string(widget.data['dueDate'], '');
-    final reminder = _string(widget.data['reminderPreset'], '');
-    final priority = _string(widget.data['priority'], '');
     return _WidgetFrame(
       title: 'Crear tarjeta',
       icon: YuLiIcons.kanban,
@@ -2802,10 +3361,10 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
             _sentence(_title),
             style: ySans(size: 18, weight: FontWeight.w800, color: yInk),
           ),
-          if (description.isNotEmpty) ...[
+          if (_description.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
-              _sentence(description),
+              _sentence(_description),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: yBody(size: 13, color: yInk2, height: 1.35),
@@ -2822,28 +3381,28 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
                   label: 'Proyecto $space',
                   color: yLab,
                 ),
-              if (column.isNotEmpty)
+              if (_column.isNotEmpty)
                 _MiniBadge(
                   icon: YuLiIcons.kanban,
-                  label: 'Columna $column',
+                  label: 'Columna $_column',
                   color: yLab,
                 ),
-              if (priority.isNotEmpty)
+              if (_priority.isNotEmpty)
                 _MiniBadge(
                   icon: YuLiIcons.triangleAlert,
-                  label: 'Prioridad ${_priorityLabel(priority)}',
+                  label: 'Prioridad ${_priorityLabel(_priority)}',
                   color: yLab,
                 ),
-              if (due.isNotEmpty)
+              if (_dueDate.isNotEmpty)
                 _MiniBadge(
                   icon: YuLiIcons.calendar,
-                  label: 'Fecha ${_formatDateLabel(due)}',
+                  label: 'Fecha ${_formatDateLabel(_dueDate)}',
                   color: yLab,
                 ),
-              if (reminder.isNotEmpty)
+              if (_reminderPreset.isNotEmpty)
                 _MiniBadge(
                   icon: YuLiIcons.bell,
-                  label: _reminderLabel(reminder),
+                  label: _reminderLabel(_reminderPreset),
                   color: yLab,
                 ),
             ],
@@ -2876,15 +3435,35 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
   }
 
   String _spaceName() {
-    final raw = widget.data['space'];
-    final map = _map(raw);
+    final map = _map(_space);
     if (map != null) return _string(map['name'], '');
-    return _string(raw, '');
+    return _string(_space, '');
   }
 
   Future<void> _edit() async {
-    final ctrl = TextEditingController(text: _title);
-    final next = await showDialog<String>(
+    final spaces = await ref.read(labSpaceRepositoryProvider).getActive();
+    final columnsBySpace = <int, List<KanbanColumn>>{};
+    for (final space in spaces) {
+      final columns = await ref
+          .read(labSpaceRepositoryProvider)
+          .getColumns(space.id);
+      columnsBySpace[space.id] =
+          columns.where((c) => !c.isTerminal && !c.isExpired).toList();
+    }
+    if (!mounted) return;
+    final titleCtrl = TextEditingController(text: _title);
+    final descriptionCtrl = TextEditingController(text: _description);
+    final spaceMap = _map(_space);
+    final spaceIdCtrl = TextEditingController(
+      text: _string(spaceMap?['id'], ''),
+    );
+    final spaceNameCtrl = TextEditingController(text: _spaceName());
+    final columnCtrl = TextEditingController(text: _column);
+    final priorityCtrl = TextEditingController(text: _priority);
+    final dueCtrl = TextEditingController(text: _dueDate);
+    final duePrecisionCtrl = TextEditingController(text: _duePrecision);
+    final reminderCtrl = TextEditingController(text: _reminderPreset);
+    final next = await showDialog<_LabCardDraftEditResult>(
       context: context,
       builder:
           (ctx) => Dialog(
@@ -2897,70 +3476,191 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
               decoration: BoxDecoration(
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Editar tarjeta',
-                    style: yMono(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      tracking: 1.1,
-                      color: yInk,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    minLines: 1,
-                    maxLines: 3,
-                    style: yBody(size: 15, color: yInk),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(
-                          color: yBorderStrong,
-                          width: yLineMid,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(
-                          color: yBorderStrong,
-                          width: yLineMid,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.82,
+                  maxWidth: 520,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: _DialogButton(
-                          label: 'Cancelar',
-                          onTap: () => Navigator.of(ctx).pop(),
+                      Text(
+                        'Editar tarjeta',
+                        style: yMono(
+                          size: 11,
+                          weight: FontWeight.w800,
+                          tracking: 1.1,
+                          color: yInk,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _DialogButton(
-                          label: 'Guardar',
-                          color: yLab,
-                          onTap: () => Navigator.of(ctx).pop(ctrl.text.trim()),
-                        ),
+                      const SizedBox(height: 12),
+                      _DraftTextField(
+                        controller: titleCtrl,
+                        label: 'Título',
+                        autofocus: true,
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 10),
+                      _DraftTextField(
+                        controller: descriptionCtrl,
+                        label: 'Descripción',
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: spaceNameCtrl,
+                              label: 'Proyecto',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 76,
+                            child: _DraftTextField(
+                              controller: spaceIdCtrl,
+                              label: 'Id',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftSpaceChoices(
+                        spaces: spaces,
+                        idController: spaceIdCtrl,
+                        nameController: spaceNameCtrl,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: columnCtrl,
+                              label: 'Columna',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: priorityCtrl,
+                              label: 'Prioridad',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftColumnChoices(
+                        spaceIdController: spaceIdCtrl,
+                        columnController: columnCtrl,
+                        columnsBySpace: columnsBySpace,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftPriorityChoices(
+                        controller: priorityCtrl,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DraftTextField(
+                              controller: dueCtrl,
+                              label: 'Fecha/hora',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 92,
+                            child: _DraftTextField(
+                              controller: duePrecisionCtrl,
+                              label: 'Precisión',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftDateControls(
+                        dateController: dueCtrl,
+                        precisionController: duePrecisionCtrl,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 10),
+                      _DraftTextField(
+                        controller: reminderCtrl,
+                        label: 'Recordatorio',
+                      ),
+                      const SizedBox(height: 8),
+                      _DraftReminderChoices(
+                        controller: reminderCtrl,
+                        color: yLab,
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DialogButton(
+                              label: 'Cancelar',
+                              onTap: () => Navigator.of(ctx).pop(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _DialogButton(
+                              label: 'Guardar',
+                              color: yLab,
+                              onTap:
+                                  () => Navigator.of(ctx).pop(
+                                    _LabCardDraftEditResult(
+                                      title: titleCtrl.text.trim(),
+                                      description: descriptionCtrl.text.trim(),
+                                      space: _draftSpace(
+                                        spaceIdCtrl.text,
+                                        spaceNameCtrl.text,
+                                      ),
+                                      column: columnCtrl.text.trim(),
+                                      priority: priorityCtrl.text.trim(),
+                                      dueDate: dueCtrl.text.trim(),
+                                      duePrecision:
+                                          duePrecisionCtrl.text.trim(),
+                                      reminderPreset: reminderCtrl.text.trim(),
+                                    ),
+                                  ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
     );
-    ctrl.dispose();
-    if (next == null || next.isEmpty) return;
-    setState(() => _title = next);
+    titleCtrl.dispose();
+    descriptionCtrl.dispose();
+    spaceIdCtrl.dispose();
+    spaceNameCtrl.dispose();
+    columnCtrl.dispose();
+    priorityCtrl.dispose();
+    dueCtrl.dispose();
+    duePrecisionCtrl.dispose();
+    reminderCtrl.dispose();
+    if (next == null || next.title.isEmpty) return;
+    setState(() {
+      _title = next.title;
+      _description = next.description;
+      _space = next.space;
+      _column = next.column;
+      _priority = next.priority;
+      _dueDate = next.dueDate;
+      _duePrecision = next.duePrecision;
+      _reminderPreset = next.reminderPreset;
+    });
   }
 
   Future<void> _create() async {
@@ -2969,27 +3669,30 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
     try {
       final space = await _resolveSpace();
       if (space == null) {
+        widget.onActionResult?.call(
+          'No pude crear la tarjeta "${_title.trim()}" porque no encontré el proyecto Lab.',
+        );
         if (mounted) _snack(context, 'No encontré el proyecto Lab');
         return;
       }
       final column = await _resolveColumn(space.id);
       if (column == null) {
+        widget.onActionResult?.call(
+          'No pude crear la tarjeta "${_title.trim()}" porque no encontré una columna válida.',
+        );
         if (mounted) _snack(context, 'No encontré una columna válida');
         return;
       }
-      final due = _parseDueDate(
-        _string(widget.data['dueDate'], ''),
-        _string(widget.data['duePrecision'], ''),
-      );
-      final preset = _parseReminder(_string(widget.data['reminderPreset'], ''));
+      final due = _parseDueDate(_dueDate, _duePrecision);
+      final preset = _parseReminder(_reminderPreset);
       await ref
           .read(kanbanCardRepositoryProvider)
           .create(
             labSpaceId: space.id,
             columnId: column.id,
             title: _title.trim(),
-            description: _nullableString(widget.data['description']),
-            priority: _parsePriority(_string(widget.data['priority'], '')),
+            description: _nullableString(_description),
+            priority: _parsePriority(_priority),
             dueDate: due,
             remindAt:
                 preset == null ? null : reminderTimeForPreset(preset, due),
@@ -2997,17 +3700,36 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
           );
       if (!mounted) return;
       setState(() => _created = true);
+      widget.onActionResult?.call(_cardCreatedMessage(space, column, due));
       _snack(context, 'Tarjeta creada');
     } catch (_) {
+      widget.onActionResult?.call(
+        'No pude crear la tarjeta "${_title.trim()}". Revisa el proyecto, la columna o la fecha e intenta de nuevo.',
+      );
       if (mounted) _snack(context, 'No se pudo crear la tarjeta');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  String _cardCreatedMessage(
+    LabSpace space,
+    KanbanColumn column,
+    DateTime? due,
+  ) {
+    final parts = <String>[
+      'Listo, creé la tarjeta "${_title.trim()}"',
+      'en ${space.name}',
+      'columna ${column.name}',
+    ];
+    if (due != null) {
+      parts.add('para ${_formatDateLabel(due.toIso8601String())}');
+    }
+    return '${parts.join(', ')}.';
+  }
+
   Future<LabSpace?> _resolveSpace() async {
-    final raw = widget.data['space'];
-    final map = _map(raw);
+    final map = _map(_space);
     final id = _int(map?['id']);
     final repo = ref.read(labSpaceRepositoryProvider);
     if (id != null) {
@@ -3026,7 +3748,7 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
         .getColumns(labSpaceId);
     final valid = columns.where((c) => !c.isTerminal && !c.isExpired).toList();
     if (valid.isEmpty) return null;
-    final wanted = _string(widget.data['column'], '').toLowerCase().trim();
+    final wanted = _column.toLowerCase().trim();
     if (wanted.isNotEmpty) {
       final byName =
           valid.where((c) => c.name.toLowerCase().trim() == wanted).firstOrNull;
@@ -3039,8 +3761,13 @@ class _LabCardDraftWidgetState extends ConsumerState<_LabCardDraftWidget> {
 class _MemorySuggestionWidget extends ConsumerStatefulWidget {
   final Map<String, dynamic> data;
   final Color accent;
+  final void Function(String message)? onActionResult;
 
-  const _MemorySuggestionWidget({required this.data, required this.accent});
+  const _MemorySuggestionWidget({
+    required this.data,
+    required this.accent,
+    this.onActionResult,
+  });
 
   @override
   ConsumerState<_MemorySuggestionWidget> createState() =>
@@ -3152,11 +3879,16 @@ class _MemorySuggestionWidgetState
   Future<void> _save(List<Map<String, dynamic>> items) async {
     for (final index in _selected) {
       if (index >= 0 && index < items.length) {
-        await _saveMemory(items[index]);
+        await ref.read(aiMemoryStoreProvider).saveFromWidgetItem(items[index]);
       }
     }
     if (!mounted) return;
     setState(() => _saved = true);
+    widget.onActionResult?.call(
+      _selected.length == 1
+          ? 'Listo, guardé esa memoria.'
+          : 'Listo, guardé ${_selected.length} memorias.',
+    );
     _snack(context, 'Memoria guardada');
   }
 }
@@ -3447,23 +4179,87 @@ class _WidgetMarkdownText extends StatelessWidget {
   final Color accent;
   final TextStyle style;
   final bool center;
+  final bool formula;
 
   const _WidgetMarkdownText(
     this.text, {
     required this.accent,
     required this.style,
     this.center = false,
+    this.formula = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final data = _sentence(text);
+    final data = _sentence(_stripWidgetHtml(text));
+    final mathy = formula || _containsMathNotation(data);
+    final effectiveStyle =
+        mathy ? style.copyWith(fontWeight: FontWeight.w500) : style;
+    final latexBlock = formula ? _extractLatexBlock(data) : null;
+    if (latexBlock != null) {
+      final labelStyle = effectiveStyle.copyWith(fontWeight: FontWeight.w700);
+      final mathStyle = effectiveStyle.copyWith(fontWeight: FontWeight.w400);
+      return Column(
+        crossAxisAlignment:
+            center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        children: [
+          if (latexBlock.prefix.isNotEmpty) ...[
+            Text(
+              latexBlock.prefix,
+              textAlign: center ? TextAlign.center : null,
+              style: labelStyle,
+            ),
+            const SizedBox(height: 6),
+          ],
+          _mathScroll(
+            Math.tex(
+              latexBlock.latex,
+              mathStyle: MathStyle.display,
+              textStyle: mathStyle,
+              onErrorFallback:
+                  (_) => Text(
+                    data,
+                    textAlign: center ? TextAlign.center : null,
+                    style: mathStyle,
+                  ),
+            ),
+            latexBlock.latex,
+          ),
+          if (latexBlock.suffix.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              latexBlock.suffix,
+              textAlign: center ? TextAlign.center : null,
+              style: labelStyle,
+            ),
+          ],
+        ],
+      );
+    }
+    final inlineLatex = formula ? _extractInlineLatex(data) : null;
+    if (inlineLatex != null) {
+      return _mathScroll(
+        Math.tex(
+          inlineLatex,
+          mathStyle: MathStyle.text,
+          textStyle: effectiveStyle.copyWith(fontWeight: FontWeight.w400),
+          onErrorFallback:
+              (_) => Text(
+                data,
+                textAlign: center ? TextAlign.center : null,
+                style: effectiveStyle.copyWith(fontWeight: FontWeight.w400),
+              ),
+        ),
+        inlineLatex,
+      );
+    }
     if (!_needsMarkdownText(data)) {
-      return Text(
+      final child = Text(
         data,
         textAlign: center ? TextAlign.center : null,
-        style: style,
+        style: effectiveStyle,
       );
+      return _mathScroll(child, data);
     }
     final markdown = data;
     return LayoutBuilder(
@@ -3473,16 +4269,44 @@ class _WidgetMarkdownText extends StatelessWidget {
             data: markdown,
             tight: true,
             accent: accent,
-            textStyle: style,
+            textStyle: effectiveStyle,
           ),
         );
         final wrapped =
             constraints.maxWidth.isFinite
                 ? child
                 : SizedBox(width: 180, child: child);
-        if (!center) return wrapped;
-        return Align(alignment: Alignment.center, child: wrapped);
+        final aligned =
+            center
+                ? Align(alignment: Alignment.center, child: wrapped)
+                : wrapped;
+        return _mathScroll(
+          aligned,
+          data,
+          maxWidth: constraints.maxWidth,
+          bindWidth: true,
+        );
       },
+    );
+  }
+
+  Widget _mathScroll(
+    Widget child,
+    String data, {
+    double? maxWidth,
+    bool bindWidth = false,
+  }) {
+    if (!formula && !_isLongMath(data)) return child;
+    final content =
+        bindWidth && maxWidth != null && maxWidth.isFinite
+            ? SizedBox(width: maxWidth, child: child)
+            : child;
+    return ClipRect(
+      child: SingleChildScrollView(
+        key: const ValueKey('ai_widget_math_scroll'),
+        scrollDirection: Axis.horizontal,
+        child: content,
+      ),
     );
   }
 }
@@ -3689,34 +4513,603 @@ class _DialogButton extends StatelessWidget {
   }
 }
 
-Future<void> _saveMemory(Map<String, dynamic> item, {int? linkedTaskId}) async {
-  final prefs = await SharedPreferences.getInstance();
-  final raw = prefs.getString(_kUserMemoryKey);
-  final existing =
-      raw == null
-          ? <Map<String, dynamic>>[]
-          : (jsonDecode(raw) as List)
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-  final record = {
-    'key': _string(item['key'], 'memory'),
-    'label': _string(item['label'], _string(item['key'], 'Memoria')),
-    'value': _string(item['value'] ?? item['text'], ''),
-    'scope': _string(item['scope'], 'global'),
-    'expiresAt': item['expiresAt'],
-    'createdAt': DateTime.now().toIso8601String(),
-    if (linkedTaskId != null) 'linkedTaskId': linkedTaskId,
-  };
-  if (_string(record['value'], '').isEmpty) return;
-  existing.removeWhere(
-    (m) =>
-        m['key'] == record['key'] &&
-        m['scope'] == record['scope'] &&
-        m['value'] == record['value'],
-  );
-  existing.add(record);
-  await prefs.setString(_kUserMemoryKey, jsonEncode(existing));
+class _DraftTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final bool autofocus;
+  final int maxLines;
+
+  const _DraftTextField({
+    required this.controller,
+    required this.label,
+    this.autofocus = false,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      autofocus: autofocus,
+      minLines: 1,
+      maxLines: maxLines,
+      style: yBody(size: 14, color: yInk),
+      decoration: InputDecoration(
+        labelText: _sentence(label),
+        labelStyle: yMono(size: 9, weight: FontWeight.w800, color: yMuted),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.zero,
+          borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
+        enabledBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.zero,
+          borderSide: BorderSide(color: yBorderStrong, width: yLineThin),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.zero,
+          borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+        ),
+      ),
+    );
+  }
+}
+
+class _DraftFolderChoices extends StatefulWidget {
+  final List<Folder> folders;
+  final TextEditingController idController;
+  final TextEditingController nameController;
+  final TextEditingController colorController;
+  final Color color;
+
+  const _DraftFolderChoices({
+    required this.folders,
+    required this.idController,
+    required this.nameController,
+    required this.colorController,
+    required this.color,
+  });
+
+  @override
+  State<_DraftFolderChoices> createState() => _DraftFolderChoicesState();
+}
+
+class _DraftFolderChoicesState extends State<_DraftFolderChoices> {
+  @override
+  void initState() {
+    super.initState();
+    widget.idController.addListener(_refresh);
+    widget.nameController.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.idController.removeListener(_refresh);
+    widget.nameController.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedId = _int(widget.idController.text);
+    return _DraftChipGroup(
+      label: 'Folder',
+      children: [
+        _DraftChip(
+          label: 'Sin folder',
+          selected: selectedId == null && widget.nameController.text.isEmpty,
+          color: widget.color,
+          onTap: () {
+            widget.idController.clear();
+            widget.nameController.clear();
+            widget.colorController.clear();
+          },
+        ),
+        for (final folder in widget.folders)
+          _DraftChip(
+            label: folder.name,
+            selected: selectedId == folder.id,
+            color: folder.color,
+            onTap: () {
+              widget.idController.text = '${folder.id}';
+              widget.nameController.text = folder.name;
+              widget.colorController.text = _colorHex(folder.color);
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _DraftSpaceChoices extends StatefulWidget {
+  final List<LabSpace> spaces;
+  final TextEditingController idController;
+  final TextEditingController nameController;
+  final Color color;
+
+  const _DraftSpaceChoices({
+    required this.spaces,
+    required this.idController,
+    required this.nameController,
+    required this.color,
+  });
+
+  @override
+  State<_DraftSpaceChoices> createState() => _DraftSpaceChoicesState();
+}
+
+class _DraftSpaceChoicesState extends State<_DraftSpaceChoices> {
+  @override
+  void initState() {
+    super.initState();
+    widget.idController.addListener(_refresh);
+    widget.nameController.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.idController.removeListener(_refresh);
+    widget.nameController.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedId = _int(widget.idController.text);
+    return _DraftChipGroup(
+      label: 'Proyecto Lab',
+      children: [
+        _DraftChip(
+          label: 'Sin Lab',
+          selected: selectedId == null && widget.nameController.text.isEmpty,
+          color: widget.color,
+          onTap: () {
+            widget.idController.clear();
+            widget.nameController.clear();
+          },
+        ),
+        for (final space in widget.spaces)
+          _DraftChip(
+            label: space.name,
+            selected: selectedId == space.id,
+            color: space.accentColor,
+            onTap: () {
+              widget.idController.text = '${space.id}';
+              widget.nameController.text = space.name;
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _DraftColumnChoices extends StatefulWidget {
+  final TextEditingController spaceIdController;
+  final TextEditingController columnController;
+  final Map<int, List<KanbanColumn>> columnsBySpace;
+  final Color color;
+
+  const _DraftColumnChoices({
+    required this.spaceIdController,
+    required this.columnController,
+    required this.columnsBySpace,
+    required this.color,
+  });
+
+  @override
+  State<_DraftColumnChoices> createState() => _DraftColumnChoicesState();
+}
+
+class _DraftColumnChoicesState extends State<_DraftColumnChoices> {
+  @override
+  void initState() {
+    super.initState();
+    widget.spaceIdController.addListener(_refresh);
+    widget.columnController.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.spaceIdController.removeListener(_refresh);
+    widget.columnController.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final spaceId = _int(widget.spaceIdController.text);
+    final columns = widget.columnsBySpace[spaceId] ?? const <KanbanColumn>[];
+    if (columns.isEmpty) return const SizedBox.shrink();
+    final selected = widget.columnController.text.toLowerCase().trim();
+    return _DraftChipGroup(
+      label: 'Columna',
+      children: [
+        for (final column in columns)
+          _DraftChip(
+            label: column.name,
+            selected: selected == column.name.toLowerCase().trim(),
+            color: widget.color,
+            onTap: () => widget.columnController.text = column.name,
+          ),
+      ],
+    );
+  }
+}
+
+class _DraftReminderChoices extends StatelessWidget {
+  final TextEditingController controller;
+  final Color color;
+
+  const _DraftReminderChoices({required this.controller, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return _DraftValueChoices(
+      label: 'Recordatorio',
+      controller: controller,
+      color: color,
+      options: const [
+        ('Sin recordatorio', ''),
+        ('Al vencer', 'at_due'),
+        ('Antes 30 min', 'before_30m'),
+        ('Un día antes', 'before_1d'),
+      ],
+    );
+  }
+}
+
+class _DraftPriorityChoices extends StatelessWidget {
+  final TextEditingController controller;
+  final Color color;
+
+  const _DraftPriorityChoices({required this.controller, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return _DraftValueChoices(
+      label: 'Prioridad',
+      controller: controller,
+      color: color,
+      options: const [
+        ('Normal', ''),
+        ('Baja', 'low'),
+        ('Media', 'medium'),
+        ('Alta', 'high'),
+      ],
+    );
+  }
+}
+
+class _DraftMemoryChoices extends StatelessWidget {
+  final TextEditingController scopeController;
+  final TextEditingController expiresController;
+  final Color color;
+
+  const _DraftMemoryChoices({
+    required this.scopeController,
+    required this.expiresController,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DraftValueChoices(
+          label: 'Alcance',
+          controller: scopeController,
+          color: color,
+          options: const [
+            ('Global', 'global'),
+            ('Folder', 'folder'),
+            ('Nota', 'note'),
+            ('Temporal', 'temporary'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _DraftChipGroup(
+          label: 'Expiración',
+          children: [
+            _DraftChip(
+              label: 'Sin expiración',
+              selected: expiresController.text.trim().isEmpty,
+              color: color,
+              onTap: expiresController.clear,
+            ),
+            _DraftChip(
+              label: 'Mañana',
+              selected: false,
+              color: color,
+              onTap:
+                  () =>
+                      expiresController.text =
+                          DateTime.now()
+                              .add(const Duration(days: 1))
+                              .toIso8601String(),
+            ),
+            _DraftChip(
+              label: '48 horas',
+              selected: false,
+              color: color,
+              onTap:
+                  () =>
+                      expiresController.text =
+                          DateTime.now()
+                              .add(const Duration(hours: 48))
+                              .toIso8601String(),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DraftValueChoices extends StatefulWidget {
+  final String label;
+  final TextEditingController controller;
+  final Color color;
+  final List<(String label, String value)> options;
+
+  const _DraftValueChoices({
+    required this.label,
+    required this.controller,
+    required this.color,
+    required this.options,
+  });
+
+  @override
+  State<_DraftValueChoices> createState() => _DraftValueChoicesState();
+}
+
+class _DraftValueChoicesState extends State<_DraftValueChoices> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.controller.text.trim();
+    return _DraftChipGroup(
+      label: widget.label,
+      children: [
+        for (final option in widget.options)
+          _DraftChip(
+            label: option.$1,
+            selected: selected == option.$2,
+            color: widget.color,
+            onTap: () => widget.controller.text = option.$2,
+          ),
+      ],
+    );
+  }
+}
+
+class _DraftDateControls extends StatefulWidget {
+  final TextEditingController dateController;
+  final TextEditingController precisionController;
+  final Color color;
+
+  const _DraftDateControls({
+    required this.dateController,
+    required this.precisionController,
+    required this.color,
+  });
+
+  @override
+  State<_DraftDateControls> createState() => _DraftDateControlsState();
+}
+
+class _DraftDateControlsState extends State<_DraftDateControls> {
+  @override
+  void initState() {
+    super.initState();
+    widget.dateController.addListener(_refresh);
+    widget.precisionController.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.dateController.removeListener(_refresh);
+    widget.precisionController.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final due = DateTime.tryParse(widget.dateController.text.trim());
+    final label =
+        due == null
+            ? 'Sin fecha'
+            : _formatDateLabel(widget.dateController.text);
+    return _DraftChipGroup(
+      label: 'Fecha',
+      children: [
+        _DraftChip(
+          label: label,
+          selected: due != null,
+          color: widget.color,
+          onTap: _pickDate,
+        ),
+        _DraftChip(
+          label: 'Sin fecha',
+          selected: due == null,
+          color: widget.color,
+          onTap: () {
+            widget.dateController.clear();
+            widget.precisionController.clear();
+          },
+        ),
+        _DraftChip(
+          label: 'Hoy',
+          selected: false,
+          color: widget.color,
+          onTap: () => _setDate(DateTime.now(), keepTime: false),
+        ),
+        _DraftChip(
+          label: 'Mañana',
+          selected: false,
+          color: widget.color,
+          onTap:
+              () => _setDate(
+                DateTime.now().add(const Duration(days: 1)),
+                keepTime: false,
+              ),
+        ),
+        _DraftChip(
+          label: 'Elegir día',
+          selected: false,
+          color: widget.color,
+          onTap: _pickDate,
+        ),
+        _DraftChip(
+          label: 'Elegir hora',
+          selected: widget.precisionController.text.trim() == 'datetime',
+          color: widget.color,
+          onTap: _pickTime,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickDate() async {
+    final current =
+        DateTime.tryParse(widget.dateController.text.trim()) ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    _setDate(picked, keepTime: widget.precisionController.text == 'datetime');
+  }
+
+  Future<void> _pickTime() async {
+    final current =
+        DateTime.tryParse(widget.dateController.text.trim()) ?? DateTime.now();
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (picked == null) return;
+    final next = DateTime(
+      current.year,
+      current.month,
+      current.day,
+      picked.hour,
+      picked.minute,
+    );
+    widget.dateController.text = next.toIso8601String();
+    widget.precisionController.text = 'datetime';
+  }
+
+  void _setDate(DateTime value, {required bool keepTime}) {
+    final current = DateTime.tryParse(widget.dateController.text.trim());
+    final next =
+        keepTime && current != null
+            ? DateTime(
+              value.year,
+              value.month,
+              value.day,
+              current.hour,
+              current.minute,
+            )
+            : DateTime(value.year, value.month, value.day);
+    widget.dateController.text =
+        keepTime
+            ? next.toIso8601String()
+            : DateFormat('yyyy-MM-dd').format(next);
+    widget.precisionController.text = keepTime ? 'datetime' : 'date';
+  }
+}
+
+class _DraftChipGroup extends StatelessWidget {
+  final String label;
+  final List<Widget> children;
+
+  const _DraftChipGroup({required this.label, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _sentence(label),
+          style: yMono(size: 9, weight: FontWeight.w900, color: yMuted),
+        ),
+        const SizedBox(height: 6),
+        Wrap(spacing: 7, runSpacing: 7, children: children),
+      ],
+    );
+  }
+}
+
+class _DraftChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _DraftChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        onTap();
+        HapticFeedback.selectionClick();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? color : yCream,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+          boxShadow:
+              selected
+                  ? const [
+                    BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+                  ]
+                  : null,
+        ),
+        child: Text(
+          _sentence(label),
+          style: yMono(
+            size: 10,
+            weight: FontWeight.w900,
+            color: selected ? yCream : yInk,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 DateTime? _parseDueDate(String raw, String precision) {
@@ -3766,6 +5159,58 @@ String _formatDateLabel(String raw) {
   return DateFormat(hasTime ? 'd MMM HH:mm' : 'd MMM').format(parsed);
 }
 
+class _LatexBlock {
+  final String prefix;
+  final String latex;
+  final String suffix;
+
+  const _LatexBlock({
+    required this.prefix,
+    required this.latex,
+    required this.suffix,
+  });
+}
+
+String _stripWidgetHtml(String text) {
+  return text
+      .replaceAll(RegExp(r'</?center>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'</?p>', caseSensitive: false), '')
+      .trim();
+}
+
+_LatexBlock? _extractLatexBlock(String text) {
+  final display = RegExp(r'\$\$([\s\S]+?)\$\$').firstMatch(text);
+  if (display == null) return null;
+  final prefix = text.substring(0, display.start).trim();
+  final suffix = text.substring(display.end).trim();
+  return _LatexBlock(
+    prefix: _trimFormulaLabel(prefix),
+    latex: (display.group(1) ?? '').trim(),
+    suffix: _trimFormulaLabel(suffix),
+  );
+}
+
+String? _extractInlineLatex(String text) {
+  final match = RegExp(r'^\$([^$]+)\$$').firstMatch(text.trim());
+  return match?.group(1)?.trim();
+}
+
+String _trimFormulaLabel(String text) {
+  return text.replaceAll(RegExp(r':\s*$'), '').trim();
+}
+
+bool _containsMathNotation(String text) =>
+    text.contains(r'$') ||
+    text.contains(r'\frac') ||
+    text.contains(r'\int') ||
+    text.contains(r'\lim') ||
+    text.contains('∫') ||
+    text.contains('∑') ||
+    text.contains('√');
+
+bool _isLongMath(String text) =>
+    _containsMathNotation(text) && text.length > 42;
+
 void _sendStepQuestion(
   int index,
   String label,
@@ -3789,12 +5234,101 @@ Color? _parseColor(String raw) {
   return Color(clean.length == 6 ? (0xFF000000 | value) : value);
 }
 
+String _colorHex(Color color) =>
+    '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+
 List<Map<String, dynamic>> _list(Object? value) {
   if (value is! List) return const [];
   return value
       .whereType<Map>()
       .map((e) => Map<String, dynamic>.from(e))
       .toList();
+}
+
+List<Map<String, dynamic>> _flashcardItems(Map<String, dynamic> data) {
+  final cards =
+      _list(data['cards']).isNotEmpty
+          ? _list(data['cards'])
+          : _list(data['items']).isNotEmpty
+          ? _list(data['items'])
+          : _list(data['flashcards']);
+  if (cards.isNotEmpty) return cards;
+  final hasSingle =
+      data.containsKey('front') ||
+      data.containsKey('back') ||
+      data.containsKey('question') ||
+      data.containsKey('answer') ||
+      data.containsKey('term') ||
+      data.containsKey('definition');
+  return hasSingle ? [data] : const [];
+}
+
+List<Map<String, dynamic>> _quizOptions(Map<String, dynamic> data) {
+  final raw =
+      data['options'] ??
+      data['choices'] ??
+      data['answers'] ??
+      data['alternatives'] ??
+      data['opciones'];
+  if (raw is List) {
+    final result = <Map<String, dynamic>>[];
+    for (var i = 0; i < raw.length; i++) {
+      final id = String.fromCharCode(97 + i);
+      final item = raw[i];
+      if (item is Map) {
+        final map = Map<String, dynamic>.from(item);
+        map['id'] = _string(map['id'] ?? map['key'], id);
+        map['label'] = _string(
+          map['label'] ?? map['text'] ?? map['value'] ?? map['answer'],
+          id.toUpperCase(),
+        );
+        result.add(map);
+      } else {
+        result.add({'id': id, 'label': item.toString()});
+      }
+    }
+    return result;
+  }
+  if (raw is Map) {
+    return raw.entries
+        .map(
+          (entry) => {
+            'id': entry.key.toString().toLowerCase(),
+            'label': entry.value.toString(),
+          },
+        )
+        .toList();
+  }
+  return const [];
+}
+
+String _normalizeQuizAnswer(Object? raw, List<Map<String, dynamic>> options) {
+  final text = _string(raw, '').toLowerCase().trim();
+  if (text.isEmpty) return '';
+  if (options.any((option) => _string(option['id'], '') == text)) return text;
+  final byLabel = options.firstWhere(
+    (option) =>
+        _string(option['label'], '').toLowerCase().trim() == text ||
+        _string(option['text'], '').toLowerCase().trim() == text,
+    orElse: () => const {},
+  );
+  return _string(byLabel['id'], text);
+}
+
+String _joinTextList(Object? value) {
+  if (value is! List) return '';
+  return value
+      .map((item) {
+        if (item is Map) {
+          return _string(
+            item['text'] ?? item['label'] ?? item['detail'] ?? item['value'],
+            '',
+          );
+        }
+        return item.toString().trim();
+      })
+      .where((item) => item.isNotEmpty)
+      .join('\n');
 }
 
 Map<String, dynamic>? _map(Object? value) {
@@ -3829,6 +5363,14 @@ String _plainWidgetText(String text) {
       .replaceAll(r'$', '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+}
+
+String _stripOuterMath(String text) {
+  final trimmed = text.trim();
+  final display = RegExp(r'^\$\$([\s\S]+?)\$\$$').firstMatch(trimmed);
+  if (display != null) return display.group(1)!.trim();
+  final inline = RegExp(r'^\$([^$]+)\$$').firstMatch(trimmed);
+  return inline?.group(1)?.trim() ?? trimmed;
 }
 
 bool _needsMarkdownText(String text) {

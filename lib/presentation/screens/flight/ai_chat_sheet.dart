@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ import 'context_assembler.dart' as ctx;
 // Reuse the notes' markdown renderer (markdown_widget + flutter_math_fork) so
 // the assistant's markdown/LaTeX renders exactly like a note.
 import 'note_block_widgets.dart' show NoteMarkdownPreview, fixMarkdownTables;
+import '../yuli_ai/ai_knowledge_contracts.dart';
 import '../yuli_ai/ai_widget_contracts.dart';
 import '../yuli_ai/ai_widget_renderer.dart';
 import '../yuli_ai/yuli_ai_tools.dart'
@@ -105,6 +107,16 @@ Future<void> showAiChat(
 }
 
 enum _CtxAction { add, replace }
+
+class _FlightAiContext {
+  final String prompt;
+  final String? folderScope;
+
+  const _FlightAiContext({required this.prompt, required this.folderScope});
+}
+
+String _hex(Color color) =>
+    '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
 
 Future<_CtxAction?> _chooseContextAction(BuildContext context, Color accent) {
   return showModalBottomSheet<_CtxAction>(
@@ -559,21 +571,53 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   void _send(String text, {bool quickAction = false}) {
+    unawaited(_sendAsync(text, quickAction: quickAction));
+  }
+
+  Future<void> _sendAsync(String text, {bool quickAction = false}) async {
     // Anchor is OPTIONAL in v2 (modes work as pure dialogue), so DON'T gate on
     // hasAnchor — that silently blocked sending on a canvas with no linked
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming) return;
     if (!quickAction) _input.clear();
+    final retrievalQuery = _retrievalQuery(text);
+    final flightContext =
+        quickAction
+            ? const _FlightAiContext(prompt: '', folderScope: null)
+            : await _flightAiContext();
     final widgetSpecs =
         quickAction
             ? const <AiWidgetSpec>[]
             : ref
                 .read(aiWidgetRetrieverProvider)
-                .retrieve(text, surface: AiWidgetSurface.flight);
+                .retrieve(
+                  text,
+                  surface: AiWidgetSurface.flight,
+                  context: retrievalQuery,
+                );
     final widgetPrompt = aiWidgetPrompt(
       widgetSpecs,
       surface: AiWidgetSurface.flight,
     );
+    final knowledgePrompt =
+        quickAction
+            ? ''
+            : aiKnowledgePrompt(
+              ref
+                  .read(aiKnowledgeRetrieverProvider)
+                  .retrieve(retrievalQuery, surface: AiKnowledgeSurface.flight),
+              surface: AiKnowledgeSurface.flight,
+            );
+    final memoryPrompt =
+        quickAction
+            ? ''
+            : await ref
+                .read(aiMemoryStoreProvider)
+                .promptForTurn(
+                  retrievalQuery,
+                  noteScope: 'note:${_s.noteId}',
+                  folderScope: flightContext.folderScope,
+                );
     _s.send(
       ref.read(aiAssistantProvider),
       ref.read(aiUsageLimiterProvider),
@@ -584,8 +628,55 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       tools: quickAction ? const [] : yuliToolDefs,
       toolGuidance: quickAction ? null : flightToolSystem(),
       onToolCall: (c) => runYuliTool(ref, c),
+      knowledgeDocs: [
+        if (knowledgePrompt.isNotEmpty) knowledgePrompt,
+        if (flightContext.prompt.isNotEmpty) flightContext.prompt,
+      ],
+      memoryDocs: memoryPrompt.isEmpty ? const [] : [memoryPrompt],
       widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
     );
+  }
+
+  String _retrievalQuery(String text) {
+    final recent = _s.messages.reversed
+        .where((m) => m.role != AiRole.system)
+        .take(4)
+        .map((m) => m.text)
+        .toList()
+        .reversed
+        .join('\n');
+    final anchor =
+        _s.hasAnchor
+            ? _s.anchor?.substring(0, math.min(900, _s.anchor!.length)) ?? ''
+            : '';
+    return '$anchor\n$recent\n$text';
+  }
+
+  Future<_FlightAiContext> _flightAiContext() async {
+    final note = await ref.read(noteRepositoryProvider).getById(_s.noteId);
+    if (note == null) {
+      return const _FlightAiContext(prompt: '', folderScope: null);
+    }
+    final folder = await ref
+        .read(folderRepositoryProvider)
+        .getById(note.folderId);
+    final folderScope = folder == null ? null : 'folder:${folder.id}';
+    final folderLine =
+        folder == null
+            ? ''
+            : '- Carpeta actual: id=${folder.id}, nombre="${folder.name}", color="${_hex(folder.color)}".\n';
+    final prompt =
+        'Contexto actual de Flight para este turno. Usalo como contexto de producto, '
+        'no lo reveles como IDs internos salvo que sea necesario para widgets.\n'
+        '- Nota actual: id=${note.id}, titulo="${note.displayTitle}", tipo=${note.kind.name}.\n'
+        '$folderLine'
+        'Si el usuario pide crear una tarea desde esta nota y no especifica otra carpeta, '
+        'usa la carpeta actual en TASK_DRAFT con su id, nombre y color. '
+        'Si propone memoria de esta materia/carpeta, prefiere scope "$folderScope"; '
+        'si es especifica de la nota, usa scope "note:${note.id}". '
+        'Si pide crear una tarea y mandarla/enlazarla a Lab, usa TASK_DRAFT con labLink; '
+        'si solo pide tarea, no incluyas labLink; si solo pide card Lab, usa LAB_CARD_DRAFT.';
+    return _FlightAiContext(prompt: prompt, folderScope: folderScope);
   }
 
   @override
@@ -1793,6 +1884,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         accent: widget.accent,
         surface: AiWidgetSurface.flight,
         onSendMessage: (message) => _send(message),
+        onActionResult: _s.addLocalAssistant,
+        noteId: _s.noteId,
       );
     } else {
       content = NoteMarkdownPreview(

@@ -1421,20 +1421,30 @@ double _markdownTableWidth(String md, double viewportWidth) {
     (max, cells) => cells.length > max ? cells.length : max,
   );
   final columnWidths = List<double>.filled(columnCount, 72);
+  var tableHasMath = false;
   for (final cells in rows) {
     for (var i = 0; i < cells.length; i++) {
       final longestWord = cells[i]
           .split(RegExp(r'\s+'))
           .fold<int>(0, (max, word) => word.length > max ? word.length : max);
       final cellLength = cells[i].length;
-      final estimated = (longestWord * 7.5 + cellLength * 1.8 + 32).clamp(
-        72,
-        220,
-      );
+      final hasMath =
+          cells[i].contains(r'$') ||
+          cells[i].contains('\\') ||
+          cells[i].contains('∫') ||
+          cells[i].contains('∑');
+      tableHasMath = tableHasMath || hasMath;
+      final estimated =
+          hasMath
+              ? (cellLength * 9.5 + 72).clamp(160, 560)
+              : (longestWord * 7.5 + cellLength * 1.8 + 32).clamp(72, 220);
       if (estimated > columnWidths[i]) columnWidths[i] = estimated.toDouble();
     }
   }
-  final estimated = columnWidths.fold<double>(32, (sum, w) => sum + w);
+  final estimated =
+      tableHasMath
+          ? columnWidths.reduce((a, b) => a > b ? a : b) * columnCount + 32
+          : columnWidths.fold<double>(32, (sum, w) => sum + w);
   final overflowThreshold = viewportWidth * 1.08;
   if (estimated <= overflowThreshold) return viewportWidth;
   return estimated.clamp(viewportWidth, 1400).toDouble();
@@ -1628,21 +1638,36 @@ class _LatexNode extends SpanNode {
     final content = attributes['content'] ?? '';
     final isInline = attributes['isInline'] == 'true';
     final style = parentStyle ?? config.p.textStyle;
-    if (content.isEmpty) {
+    final normalizedContent = _normalizeLatexContent(content);
+    if (normalizedContent.isEmpty) {
       return TextSpan(style: style, text: textContent);
     }
+    final math = Math.tex(
+      normalizedContent,
+      mathStyle: isInline ? MathStyle.text : MathStyle.display,
+      textStyle: style,
+      onErrorFallback:
+          (err) => Text(
+            _normalizeLatexContent(textContent),
+            style: style.copyWith(color: yInk),
+          ),
+    );
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
-      child: Math.tex(
-        content,
-        mathStyle: isInline ? MathStyle.text : MathStyle.display,
-        textStyle: style,
-        onErrorFallback:
-            (err) =>
-                Text(textContent, style: style.copyWith(color: Colors.red)),
-      ),
+      child:
+          isInline
+              ? FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: math,
+              )
+              : math,
     );
   }
+}
+
+String _normalizeLatexContent(String value) {
+  return value.replaceAll('\\\\', '\\').trim();
 }
 
 class _LatexBlockSyntax extends m.BlockSyntax {

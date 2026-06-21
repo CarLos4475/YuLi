@@ -85,6 +85,17 @@ void main() {
       expect(widget.data['title'], 'Historia');
     });
 
+    test('tolerates latex backslashes inside widget json', () {
+      final parts = AiWidgetParser.parse(r'''<!--YULI_WIDGET:SOLVED_EXAMPLE v=1
+{"title":"Integral","steps":[{"label":"Formula","formula":"$$\int x\cos x\,dx$$"}]}
+-->''');
+
+      final widget = parts.whereType<AiWidgetBlockPart>().single;
+      final steps = widget.data['steps'] as List<dynamic>;
+      final step = steps.single as Map<String, dynamic>;
+      expect(step['formula'], contains(r'\int'));
+    });
+
     test('strips widget drafts while streaming', () {
       final visible = AiWidgetParser.stripStreamingWidgetDraft(
         'Ahí va:\n'
@@ -218,6 +229,14 @@ void main() {
       );
 
       expect(specs.map((s) => s.type), contains('TASK_DRAFT'));
+    });
+
+    test('task draft contract supports explicit Lab linking only', () {
+      final spec = kAiWidgetSpecs.firstWhere((s) => s.type == 'TASK_DRAFT');
+
+      expect(spec.promptContract, contains('labLink'));
+      expect(spec.promptContract, contains('Si solo pide una tarea'));
+      expect(spec.promptContract, contains('mandarla/enlazarla a Lab'));
     });
 
     test('retrieves lab card draft for card wording', () {

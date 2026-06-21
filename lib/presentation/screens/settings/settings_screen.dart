@@ -14,6 +14,7 @@ import '../../widgets/app_section_divider.dart';
 import 'image_storage_screen.dart';
 import 'crash_log_screen.dart';
 import 'math_dataset_screen.dart';
+import 'ai_memory_screen.dart';
 import '../trash/trash_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -43,7 +44,8 @@ class SettingsScreen extends ConsumerWidget {
                       width: 40,
                       height: 40,
                       alignment: Alignment.center,
-                      child: Icon(YuLiIcons.arrowLeft,
+                      child: Icon(
+                        YuLiIcons.arrowLeft,
                         size: 20,
                         color: paperColor(context),
                       ),
@@ -161,6 +163,11 @@ class SettingsScreen extends ConsumerWidget {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: _JinaKeyBlock(),
+            ),
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: _AiMemoryBlock(),
             ),
 
             const SizedBox(height: 24),
@@ -445,10 +452,7 @@ class _LauncherIconBlockState extends State<_LauncherIconBlock> {
                   style: bodyM.copyWith(color: ink),
                 ),
               ),
-              Switch(
-                value: _auto,
-                onChanged: enabled ? _toggleAuto : null,
-              ),
+              Switch(value: _auto, onChanged: enabled ? _toggleAuto : null),
             ],
           ),
           const SizedBox(height: 8),
@@ -615,6 +619,65 @@ class _CrashLogBlock extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Ver y compartir errores registrados',
+                    style: bodyS.copyWith(color: inkGray),
+                  ),
+                ],
+              ),
+            ),
+            Icon(YuLiIcons.chevronRight, size: 18, color: inkGray),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiMemoryBlock extends StatelessWidget {
+  const _AiMemoryBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = inkColor(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap:
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AiMemoryScreen()),
+          ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: paperColor(context),
+          border: Border.all(color: ink, width: borderWidth),
+          boxShadow: const [
+            BoxShadow(
+              color: inkBlack,
+              offset: shadowOffset,
+              blurRadius: shadowBlurRadius,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(YuLiIcons.brain, size: 20, color: ink),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MEMORIA IA',
+                    style: labelBold.copyWith(
+                      color: ink,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Ver y borrar recuerdos globales, de nota o temporales',
                     style: bodyS.copyWith(color: inkGray),
                   ),
                 ],

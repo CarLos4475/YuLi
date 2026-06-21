@@ -117,6 +117,47 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
+  testWidgets('Markdown tables with escaped latex get readable overflow', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: NoteMarkdownPreview(
+                data:
+                    r'| Ecuación determinista | Ecuación estocástica |'
+                    '\n'
+                    r'|---|---|'
+                    '\n'
+                    r'| $\\frac{dx}{dt}=f(x,t)$ | $dX_t=\\mu(X_t,t)dt+\\sigma(X_t,t)dW_t$ |',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final horizontalScroll =
+        tester
+            .widgetList<SingleChildScrollView>(
+              find.byType(SingleChildScrollView),
+            )
+            .where((w) => w.scrollDirection == Axis.horizontal)
+            .single;
+    final tableBox = horizontalScroll.child as SizedBox;
+    expect(tableBox.width, greaterThan(360));
+    expect(find.byType(Math), findsWidgets);
+    expect(find.textContaining(r'\\frac'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
   test('Note to Kanban and Folder to Space link integration test', () async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     final container = ProviderContainer(

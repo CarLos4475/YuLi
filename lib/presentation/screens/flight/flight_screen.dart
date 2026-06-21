@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/flight_providers.dart';
 import '../../providers/navigation_provider.dart';
@@ -169,7 +170,17 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
           bottom: 16,
           child: YuliAiFab(
             accent: yFlight,
-            onTap: () => showYuliAiChat(context, ref, accent: yFlight),
+            onTap:
+                () => showYuliAiChat(
+                  context,
+                  ref,
+                  accent: yFlight,
+                  surfaceContext: const YuliAiSurfaceContext(
+                    mode: 'Flight',
+                    view: 'Carpetas',
+                    details: 'Vista general de carpetas, notas y pizarras.',
+                  ),
+                ),
           ),
         ),
       ],

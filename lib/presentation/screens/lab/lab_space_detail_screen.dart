@@ -9,6 +9,7 @@ import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../widgets/yuli_design.dart' as y;
@@ -253,6 +254,8 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final tabs = ref.watch(labTabsProvider(widget.space.id));
+    final activeTab =
+        tabs.isEmpty ? 'Kanban' : tabs[_tabIndex.clamp(0, tabs.length - 1)];
 
     return Scaffold(
       backgroundColor: paperColor(context),
@@ -275,6 +278,13 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
                         context,
                         ref,
                         accent: widget.space.accentColor,
+                        surfaceContext: YuliAiSurfaceContext(
+                          mode: 'Lab',
+                          view: activeTab,
+                          entity: widget.space.name,
+                          details:
+                              'Proyecto Lab actual. Usa esta vista como contexto si el usuario habla de cards, calendario, timeline, horario o grafo.',
+                        ),
                       ),
                 ),
               ),

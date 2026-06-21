@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/lab_tab_providers.dart';
 import '../../providers/navigation_provider.dart';
@@ -21,6 +22,14 @@ import 'new_lab_space_dialog.dart';
 enum LabTab { todos, activos, pausados, completados, archivo }
 
 final labFilterProvider = StateProvider<LabTab>((ref) => LabTab.todos);
+
+String _filterLabel(LabTab tab) => switch (tab) {
+  LabTab.todos => 'Todos',
+  LabTab.activos => 'En proceso',
+  LabTab.pausados => 'Pausados',
+  LabTab.completados => 'Completados',
+  LabTab.archivo => 'Archivo',
+};
 
 // ─── Screen ───────────────────────────────────────────────────────────────
 
@@ -196,7 +205,17 @@ class _LabScreenState extends ConsumerState<LabScreen> {
           bottom: 16,
           child: YuliAiFab(
             accent: yLab,
-            onTap: () => showYuliAiChat(context, ref, accent: yLab),
+            onTap:
+                () => showYuliAiChat(
+                  context,
+                  ref,
+                  accent: yLab,
+                  surfaceContext: YuliAiSurfaceContext(
+                    mode: 'Lab',
+                    view: _filterLabel(filter),
+                    details: 'Vista general de proyectos Lab.',
+                  ),
+                ),
           ),
         ),
       ],

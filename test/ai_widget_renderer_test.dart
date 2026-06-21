@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_contracts.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_renderer.dart';
@@ -53,6 +54,26 @@ void main() {
     expect(find.text('Cálculo'), findsOneWidget);
     expect(find.textContaining('@Cálculo'), findsNothing);
     expect(find.text('CREAR'), findsOneWidget);
+  });
+
+  testWidgets('TASK_DRAFT renders optional Lab link as a badge', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:TASK_DRAFT v=1\n'
+              '{"content":"Hacer entrega",'
+              '"labLink":{"space":{"id":4,"name":"Proyecto Cálculo"},"column":"Backlog"}}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.text('Lab Proyecto Cálculo'), findsOneWidget);
   });
 
   testWidgets('LAB_CARD_DRAFT renders as Lab draft with due time', (
@@ -187,6 +208,24 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('SOLVED_EXAMPLE contains long latex with horizontal scroll', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text: r'''<!--YULI_WIDGET:SOLVED_EXAMPLE v=1
+{"title":"integral larga","steps":[{"label":"resultado","formula":"$$\int x\cos x\,dx=x\sin x+\cos x+C+\frac{x^4+x^3+x^2+x+1}{x^2+1}$$"}],"result":"$$\int x\cos x\,dx=x\sin x+\cos x+C+\frac{x^4+x^3+x^2+x+1}{x^2+1}$$"}
+-->''',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('ai_widget_math_scroll')), findsWidgets);
   });
 
   testWidgets('FORMULA_CARD renders latex formula and variables', (
@@ -353,6 +392,80 @@ void main() {
     expect(find.text('Cambio instantaneo'), findsOneWidget);
   });
 
+  testWidgets('FLASHCARD alias renders as a single flippable card', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:FLASHCARD v=1\n'
+              '{"front":"movimiento browniano","back":"proceso aleatorio continuo"}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.text('Movimiento browniano'), findsOneWidget);
+    expect(find.textContaining('No pude renderizar'), findsNothing);
+
+    await tester.tap(find.text('Movimiento browniano'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(find.text('Proceso aleatorio continuo'), findsOneWidget);
+  });
+
+  testWidgets('QUIZ accepts choices and correctAnswer aliases', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:QUIZ v=1\n'
+              '{"prompt":"Que representa B_t",'
+              '"choices":["Tiempo","Movimiento browniano","Derivada"],'
+              '"correctAnswer":"Movimiento browniano",'
+              '"explanation":"B_t modela el movimiento browniano."}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.text('Que representa B_t'), findsOneWidget);
+    expect(find.text('Movimiento browniano'), findsOneWidget);
+    expect(find.text('Faltan opciones para hacerlo interactivo'), findsNothing);
+
+    await tester.tap(find.text('Movimiento browniano'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(find.text('Correcto'), findsOneWidget);
+  });
+
+  testWidgets('CAUSE_EFFECT accepts list aliases', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:CAUSE_EFFECT v=1\n'
+              '{"title":"causa efecto",'
+              '"causes":["ruido aleatorio"],'
+              '"mechanisms":["acumulacion de incrementos"],'
+              '"effects":["trayectoria irregular"]}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.text('Ruido aleatorio'), findsOneWidget);
+    expect(find.text('Acumulacion de incrementos'), findsOneWidget);
+    expect(find.text('Trayectoria irregular'), findsOneWidget);
+  });
+
   testWidgets('CHECKLIST toggles local item state', (tester) async {
     await tester.pumpWidget(
       _wrap(
@@ -377,6 +490,33 @@ void main() {
     await tester.pump();
 
     expect(find.byIcon(YuLiIcons.squareCheck), findsNWidgets(3));
+  });
+
+  testWidgets('MEMORY_SUGGESTION emits local action result after save', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    String? result;
+
+    await tester.pumpWidget(
+      _wrap(
+        AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:MEMORY_SUGGESTION v=1\n'
+              '{"title":"Guardar memoria",'
+              '"items":[{"key":"name","label":"Nombre","value":"Carlos","scope":"global"}]}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+          onActionResult: (message) => result = message,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('GUARDAR'));
+    await tester.pump();
+
+    expect(result, 'Listo, guardé esa memoria.');
   });
 }
 

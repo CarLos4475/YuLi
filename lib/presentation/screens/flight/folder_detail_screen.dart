@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/flight_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/task_providers.dart';
@@ -146,7 +147,19 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
       backgroundColor: yCream,
       floatingActionButton: YuliAiFab(
         accent: widget.folder.color,
-        onTap: () => showYuliAiChat(context, ref, accent: widget.folder.color),
+        onTap:
+            () => showYuliAiChat(
+              context,
+              ref,
+              accent: widget.folder.color,
+              surfaceContext: YuliAiSurfaceContext(
+                mode: 'Flight',
+                view: 'Carpeta',
+                entity: widget.folder.name,
+                details:
+                    'Carpeta actual con ${sortedNotes.length} notas y ${pending.length} tareas pendientes.',
+              ),
+            ),
       ),
       body: StatusBarFlood(
         color: yCream2, // matches the _FolderHero header

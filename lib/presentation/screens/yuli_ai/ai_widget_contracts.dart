@@ -34,9 +34,10 @@ class AiWidgetRetriever {
   List<AiWidgetSpec> retrieve(
     String query, {
     required AiWidgetSurface surface,
+    String context = '',
     int k = 3,
   }) {
-    final q = _normalize(query);
+    final q = _normalize('$context\n$query');
     final explicitApp = _explicitAppIntent(q);
     final scored = <({AiWidgetSpec spec, int score})>[];
     for (final spec in kAiWidgetSpecs) {
@@ -154,7 +155,23 @@ class AiWidgetParser {
           parts.add(AiWidgetTextPart(raw));
         }
       } catch (_) {
-        parts.add(AiWidgetTextPart(raw));
+        try {
+          final decoded = jsonDecode(_escapeInvalidJsonBackslashes(body));
+          if (decoded is Map<String, dynamic>) {
+            parts.add(
+              AiWidgetBlockPart(
+                type: type,
+                version: version,
+                data: decoded,
+                raw: raw,
+              ),
+            );
+          } else {
+            parts.add(AiWidgetTextPart(raw));
+          }
+        } catch (_) {
+          parts.add(AiWidgetTextPart(raw));
+        }
       }
       cursor = match.end;
     }
@@ -235,6 +252,10 @@ class AiWidgetParser {
       }
     }
     return null;
+  }
+
+  static String _escapeInvalidJsonBackslashes(String body) {
+    return body.replaceAllMapped(RegExp(r'\\(?!["\\/bfnrtu])'), (_) => r'\\');
   }
 }
 
@@ -617,6 +638,7 @@ Formato estricto:
       'quiz',
       'examen',
       'pregunta',
+      'interactivo',
       'opcion multiple',
       'prueba',
       'repasar',
@@ -686,6 +708,9 @@ No inventes ids, carpetas ni fechas.''',
       'anota tarea',
       'agrega tarea',
       'haz task',
+      'manda a lab',
+      'enlaza a lab',
+      'link lab',
       'recordarme',
       'recuerdame',
       'tengo que',
@@ -695,9 +720,9 @@ No inventes ids, carpetas ni fechas.''',
 Usa este widget cuando el usuario pida convertir algo en tarea nueva. Esto NO crea la tarea por tu cuenta: solo propone un borrador y la app pedirá confirmación.
 Formato estricto:
 <!--YULI_WIDGET:TASK_DRAFT v=1
-{"content":"Hacer tarea","folder":{"id":2,"name":"Cálculo","color":"#2D4B8E"},"dueDate":"2026-06-20","duePrecision":"date","reminderPreset":"before_1d","temporaryMemory":{"scope":"folder:2","text":"Tiene tarea mañana.","expiresAt":"2026-06-21T23:59:59"}}
+{"content":"Hacer tarea","folder":{"id":2,"name":"Cálculo","color":"#2D4B8E"},"dueDate":"2026-06-20","duePrecision":"date","reminderPreset":"before_1d","labLink":{"space":{"id":4,"name":"Proyecto Cálculo"},"column":"Backlog"},"temporaryMemory":{"scope":"folder:2","text":"Tiene tarea mañana.","expiresAt":"2026-06-21T23:59:59"}}
 -->
-Si no conoces folderId real, omite id y manda solo name. Si no conoces una fecha exacta, omite dueDate. Usa solo lo que el usuario pidió o lo que esté claro por contexto.''',
+Solo incluye labLink si el usuario pidió explícitamente crear la tarea Y mandarla/enlazarla a Lab. Si solo pide una tarea, no incluyas labLink. Si no conoces folderId real, omite id y manda solo name. Si no conoces una fecha exacta, omite dueDate. Usa solo lo que el usuario pidió o lo que esté claro por contexto.''',
   ),
   AiWidgetSpec(
     type: 'LAB_CARD_DRAFT',
@@ -715,7 +740,7 @@ Si no conoces folderId real, omite id y manda solo name. Si no conoces una fecha
     ],
     policy: AiWidgetPolicy.appWrite,
     promptContract: '''
-Usa este widget cuando el usuario pida crear una tarjeta nueva de Lab. Esto NO crea la tarjeta por tu cuenta: solo propone un borrador y la app pedirá confirmación.
+Usa este widget cuando el usuario pida crear una tarjeta nueva de Lab. Si pide crear una tarea y mandarla/enlazarla a Lab, usa TASK_DRAFT con labLink. Esto NO crea la tarjeta por tu cuenta: solo propone un borrador y la app pedirá confirmación.
 Formato estricto:
 <!--YULI_WIDGET:LAB_CARD_DRAFT v=1
 {"title":"Investigar APIs REST","space":"Hello","column":"Backlog","description":"Leer documentación de Flask y FastAPI","priority":"medium","dueDate":"2026-06-26T19:00:00","reminderPreset":"before_1d"}
@@ -769,12 +794,25 @@ String aiWidgetPrompt(
           : 'Estás en el chat de una nota Flight: usa proactivamente widgets de estudio/nota y sugerencias de memoria cuando el usuario afirme algo explícito sobre sí mismo; para Fight o Lab espera petición explícita o confirmación.';
   return 'Tienes contratos de widgets renderizables. Puedes intercalar markdown '
       'normal y uno o varios widgets cuando eso haga la explicación más clara. '
+      'Estos contratos son una selección recuperada para este turno, NO una lista '
+      'completa de todo lo que YuLi puede hacer. Nunca digas "solo tengo estos '
+      'widgets" ni niegues una capacidad visible por no verla en esta selección. '
+      'En respuestas de estudio medianas o largas, prefiere reforzar con widgets '
+      'cuando haya concepto central, pasos, ejemplo concreto, formula, quiz, '
+      'comparacion, practica, pista, linea de tiempo o decision visual. '
+      'Si el usuario pide un quiz, no lo niegues: usa QUIZ. '
       'Si usas uno, respeta el JSON '
       'exacto dentro de <!--YULI_WIDGET:TYPE v=1 ...-->. No inventes datos reales '
       'existentes: tareas, proyectos y cards existentes deben venir de tools o '
       'contexto. Si el usuario pide crear una tarea o tarjeta nueva, puedes '
       'proponer TASK_DRAFT o LAB_CARD_DRAFT con los datos pedidos; la app '
-      'pedirá confirmación. $mode\n\n'
+      'pedirá confirmación. Cuando hables con el usuario, no enumeres IDs '
+      'internos como SOLVED_EXAMPLE, TASK_LIST o MEMORY_SUGGESTION; describe '
+      'capacidades visibles: quiz, ejemplos, pasos, fórmulas, comparaciones, '
+      'flashcards, práctica, pistas, timelines, flowcharts, tareas y borradores. '
+      'No uses HTML dentro de los campos de widgets; para centrar o destacar una '
+      'formula basta con ponerla en un campo formula con LaTeX válido. '
+      '$mode\n\n'
       '${specs.map((s) => s.promptDoc).join('\n\n')}';
 }
 

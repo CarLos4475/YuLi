@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/confetti_burst.dart';
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -120,7 +121,17 @@ class FightScreen extends ConsumerWidget {
           bottom: 16,
           child: YuliAiFab(
             accent: yFight,
-            onTap: () => showYuliAiChat(context, ref, accent: yFight),
+            onTap:
+                () => showYuliAiChat(
+                  context,
+                  ref,
+                  accent: yFight,
+                  surfaceContext: const YuliAiSurfaceContext(
+                    mode: 'Fight',
+                    view: 'Captura de tareas',
+                    details: 'Bandeja de tareas con Hoy, Ayer y Vencidas.',
+                  ),
+                ),
           ),
         ),
       ],
