@@ -275,32 +275,35 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   bool _hasFocus = false;
   late String _lastText;
 
+  bool _livePreview = false;
+  int _cursorLine = 0;
+  final List<TextEditingController> _lineCtrls = [];
+  final List<FocusNode> _lineFocuses = [];
+
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.block.markdown);
     _lastText = _ctrl.text;
-    // Listen on the controller (not just TextField.onChanged) so PROGRAMMATIC
-    // edits — the [+] insert menu / panels writing image/table/code syntax via
-    // ctrl.value — also schedule a save. onChanged only fires for human typing.
     _ctrl.addListener(_onTextChanged);
     _focus = FocusNode();
     _focus.addListener(_onFocusChange);
   }
 
   void _onTextChanged() {
-    if (_ctrl.text == _lastText) return; // ignore selection-only changes
+    if (_ctrl.text == _lastText) return;
     _lastText = _ctrl.text;
     scheduleSave(_persist);
   }
 
   @override
   void dispose() {
-    commitPendingSave(); // flush before tearing down _ctrl the save reads from
+    commitPendingSave();
     _focus.removeListener(_onFocusChange);
     _ctrl.removeListener(_onTextChanged);
     _focus.dispose();
     _ctrl.dispose();
+    _disposeLiveLines();
     super.dispose();
   }
 
@@ -321,8 +324,283 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
     });
   }
 
+  // ─── Live Preview ──────────────────────────────────────────────────────────
+
+  void _toggleLive() {
+    setState(() {
+      _livePreview = !_livePreview;
+      if (_livePreview) { _enterLive(); } else { _exitLive(); }
+    });
+  }
+
+  void _enterLive() {
+    _disposeLiveLines();
+    final lines = _ctrl.text.split('\n');
+    if (lines.isEmpty) lines.add('');
+    for (final line in lines) {
+      final c = TextEditingController(text: line);
+      c.addListener(_onLiveLineChanged);
+      _lineCtrls.add(c);
+      final f = FocusNode();
+      f.addListener(_onLiveFocusChange);
+      _lineFocuses.add(f);
+    }
+    _cursorLine = _ctrl.selection.isValid
+        ? _ctrl.text.substring(0, _ctrl.selection.baseOffset).split('\n').length - 1
+        : 0;
+    if (_cursorLine < 0) _cursorLine = 0;
+    if (_cursorLine >= _lineCtrls.length) _cursorLine = _lineCtrls.length - 1;
+    _hasFocus = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _lineFocuses.isNotEmpty) {
+        _lineFocuses[_cursorLine.clamp(0, _lineFocuses.length - 1)].requestFocus();
+      }
+    });
+  }
+
+  void _exitLive() {
+    _ctrl.text = _lineCtrls.map((c) => c.text).join('\n');
+    _lastText = _ctrl.text;
+    _disposeLiveLines();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  void _disposeLiveLines() {
+    for (int i = 0; i < _lineCtrls.length; i++) {
+      _lineCtrls[i].removeListener(_onLiveLineChanged);
+      _lineCtrls[i].dispose();
+      _lineFocuses[i].removeListener(_onLiveFocusChange);
+      _lineFocuses[i].dispose();
+    }
+    _lineCtrls.clear();
+    _lineFocuses.clear();
+  }
+
+  void _syncLiveToCtrl() {
+    final text = _lineCtrls.map((c) => c.text).join('\n');
+    if (_ctrl.text != text) {
+      _ctrl.text = text;
+      _lastText = text;
+      scheduleSave(_persist);
+    }
+  }
+
+  void _onLiveLineChanged() { _syncLiveToCtrl(); }
+
+  void _onLiveFocusChange() {
+    for (int i = 0; i < _lineFocuses.length; i++) {
+      if (_lineFocuses[i].hasFocus && _cursorLine != i) {
+        setState(() => _cursorLine = i);
+        return;
+      }
+    }
+  }
+
+  // ─── Atomic block detection ────────────────────────────────────────────────
+
+  bool _isTableLine(String t) => t.trimLeft().startsWith('|') && t.trimRight().endsWith('|');
+
+  bool _isFenceLine(String t) => t.trimLeft().startsWith('```');
+
+  bool _isInAtomicBlock(int lineIdx) {
+    final t = _lineCtrls[lineIdx].text;
+    final prev = lineIdx > 0 ? _lineCtrls[lineIdx - 1].text : '';
+    final next = lineIdx < _lineCtrls.length - 1 ? _lineCtrls[lineIdx + 1].text : '';
+    if (_isTableLine(t) && (_isTableLine(prev) || _isTableLine(next))) return true;
+    int fenceCount = 0;
+    for (int i = 0; i <= lineIdx; i++) {
+      if (_isFenceLine(_lineCtrls[i].text)) fenceCount++;
+    }
+    return fenceCount % 2 == 1;
+  }
+
+  List<bool> _atomicMask(int lineIdx) {
+    final mask = List<bool>.filled(_lineCtrls.length, false);
+    if (!_isInAtomicBlock(lineIdx)) return mask;
+    final t = _lineCtrls[lineIdx].text;
+    if (_isTableLine(t)) {
+      int s = lineIdx, e = lineIdx;
+      while (s > 0 && _isTableLine(_lineCtrls[s - 1].text)) { s--; }
+      while (e < _lineCtrls.length - 1 && _isTableLine(_lineCtrls[e + 1].text)) { e++; }
+      for (int i = s; i <= e; i++) { mask[i] = true; }
+      return mask;
+    }
+    int fenceCount = 0, start = -1;
+    for (int i = 0; i < _lineCtrls.length; i++) {
+      if (_isFenceLine(_lineCtrls[i].text)) {
+        if (fenceCount % 2 == 0) { start = i; } else { for (int j = start; j <= i; j++) { mask[j] = true; } }
+        fenceCount++;
+      }
+    }
+    return mask;
+  }
+
+  // ─── Line navigation / edit ────────────────────────────────────────────────
+
+  void _insertLineAfter(int lineIdx) {
+    final ctrl = _lineCtrls[lineIdx];
+    final cursor = ctrl.selection.baseOffset;
+    final after = ctrl.text.substring(cursor);
+    ctrl.text = ctrl.text.substring(0, cursor);
+    final newCtrl = TextEditingController(text: after);
+    newCtrl.addListener(_onLiveLineChanged);
+    _lineCtrls.insert(lineIdx + 1, newCtrl);
+    final newFocus = FocusNode();
+    newFocus.addListener(_onLiveFocusChange);
+    _lineFocuses.insert(lineIdx + 1, newFocus);
+    _syncLiveToCtrl();
+    setState(() => _cursorLine = lineIdx + 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) => newFocus.requestFocus());
+  }
+
+  void _mergeWithPrevLine(int lineIdx) {
+    if (lineIdx <= 0) return;
+    final prevCtrl = _lineCtrls[lineIdx - 1];
+    final curCtrl = _lineCtrls[lineIdx];
+    final prevLen = prevCtrl.text.length;
+    prevCtrl.text = prevCtrl.text + curCtrl.text;
+    prevCtrl.selection = TextSelection.collapsed(offset: prevLen);
+    curCtrl.removeListener(_onLiveLineChanged);
+    curCtrl.dispose();
+    _lineFocuses[lineIdx].removeListener(_onLiveFocusChange);
+    _lineFocuses[lineIdx].dispose();
+    _lineCtrls.removeAt(lineIdx);
+    _lineFocuses.removeAt(lineIdx);
+    _syncLiveToCtrl();
+    setState(() => _cursorLine = lineIdx - 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _lineFocuses[lineIdx - 1].requestFocus());
+  }
+
+  void _moveUp() {
+    if (_cursorLine > 0) {
+      setState(() => _cursorLine--);
+      _lineFocuses[_cursorLine].requestFocus();
+    }
+  }
+
+  void _moveDown() {
+    if (_cursorLine < _lineCtrls.length - 1) {
+      setState(() => _cursorLine++);
+      _lineFocuses[_cursorLine].requestFocus();
+    }
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
+
+  Widget _buildLiveToggle() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleLive,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 3),
+              decoration: BoxDecoration(
+                color: yLab,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(YuLiIcons.eye, size: 10, color: yCream),
+                  const SizedBox(width: 4),
+                  Text('LIVE', style: yMono(size: 8, weight: FontWeight.w700, color: yCream, tracking: 1.0)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRawToggle() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggleLive,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(6, 2, 6, 2),
+        child: Icon(YuLiIcons.eye, size: 13, color: yMuted.withValues(alpha: 0.4)),
+      ),
+    );
+  }
+
+  Widget _buildLiveMode() {
+    final atomicMask = _atomicMask(_cursorLine);
+    final widgets = <Widget>[_buildLiveToggle()];
+
+    for (int i = 0; i < _lineCtrls.length; i++) {
+      final inAtomic = atomicMask[i];
+      final isActive = i == _cursorLine || inAtomic;
+
+      if (isActive) {
+        final idx = i;
+        widgets.add(
+          Focus(
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp && idx > 0) { _moveUp(); return KeyEventResult.handled; }
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown && idx < _lineCtrls.length - 1) { _moveDown(); return KeyEventResult.handled; }
+                if (event.logicalKey == LogicalKeyboardKey.backspace && !inAtomic) {
+                  final c = _lineCtrls[idx];
+                  final sel = c.selection;
+                  if (sel.baseOffset == 0 && sel.extentOffset == 0 && idx > 0) {
+                    _mergeWithPrevLine(idx);
+                    return KeyEventResult.handled;
+                  }
+                }
+              }
+              return KeyEventResult.ignored;
+            },
+            child: TextField(
+              controller: _lineCtrls[i],
+              focusNode: _lineFocuses[i],
+              maxLines: inAtomic ? null : 1,
+              onSubmitted: inAtomic ? null : (_) => _insertLineAfter(i),
+              style: yBody(size: 15, color: yInk2, height: 1.55),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                contentPadding: EdgeInsets.zero,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+              ),
+            ),
+          ),
+        );
+      } else {
+        widgets.add(
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              setState(() => _cursorLine = i);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _lineFocuses[i].requestFocus();
+              });
+            },
+            child: NoteMarkdownPreview(data: _lineCtrls[i].text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: widgets,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_livePreview) return _buildLiveMode();
+
     if (!_hasFocus && _ctrl.text.isNotEmpty) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -337,23 +615,28 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
         ),
       );
     }
-    return TextField(
-      controller: _ctrl,
-      focusNode: _focus,
-      maxLines: null,
-      // Saves are scheduled via the controller listener (_onTextChanged), which
-      // also catches programmatic [+] inserts — no onChanged needed here.
-      style: yBody(size: 15, color: yInk2, height: 1.55),
-      decoration: InputDecoration(
-        isCollapsed: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: 6),
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        filled: false,
-        hintText: 'Escribe…',
-        hintStyle: yBody(size: 15, color: yMuted, height: 1.55),
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildRawToggle(),
+        TextField(
+          controller: _ctrl,
+          focusNode: _focus,
+          maxLines: null,
+          style: yBody(size: 15, color: yInk2, height: 1.55),
+          decoration: InputDecoration(
+            isCollapsed: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 6),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            filled: false,
+            hintText: 'Escribe…',
+            hintStyle: yBody(size: 15, color: yMuted, height: 1.55),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1462,12 +1745,14 @@ class NoteMarkdownPreview extends ConsumerWidget {
   final bool tight;
   final Color accent;
   final TextStyle? textStyle;
+  final EdgeInsets? padding;
   const NoteMarkdownPreview({
     super.key,
     required this.data,
     this.tight = false,
     this.accent = yFlight,
     this.textStyle,
+    this.padding,
   });
 
   @override
@@ -1519,9 +1804,10 @@ class NoteMarkdownPreview extends ConsumerWidget {
       data: md,
       shrinkWrap: true,
       padding:
-          tight
+          padding ??
+          (tight
               ? const EdgeInsets.symmetric(vertical: 4)
-              : const EdgeInsets.all(8.0),
+              : const EdgeInsets.all(8.0)),
       markdownGenerator: generator,
       config: MarkdownConfig(
         configs: [
