@@ -35,7 +35,7 @@ class BlockRouter extends StatelessWidget {
   final Note note;
   final Folder folder;
   final int index;
-  final void Function(TextEditingController? ctrl)? onTextBlockFocusChanged;
+  final void Function(TextEditingController? ctrl, FocusNode? node)? onTextBlockFocusChanged;
   final ValueChanged<bool>? onScrollLockChanged;
 
   const BlockRouter({
@@ -257,7 +257,7 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
 class _TextBlockBody extends ConsumerStatefulWidget {
   final TextBlock block;
   final Color accent;
-  final void Function(TextEditingController? ctrl)? onFocusChanged;
+  final void Function(TextEditingController? ctrl, FocusNode? node)? onFocusChanged;
   const _TextBlockBody({
     required this.block,
     required this.accent,
@@ -308,9 +308,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
     final focused = _focus.hasFocus;
     if (focused != _hasFocus) setState(() => _hasFocus = focused);
     if (focused) {
-      widget.onFocusChanged?.call(_ctrl);
+      widget.onFocusChanged?.call(_ctrl, _focus);
     } else {
-      widget.onFocusChanged?.call(null);
+      widget.onFocusChanged?.call(null, null);
       flushSave(_persist);
     }
   }

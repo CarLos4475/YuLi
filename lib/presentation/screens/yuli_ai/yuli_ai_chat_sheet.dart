@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../providers/ai_providers.dart';
 import '../../theme/lab_icons.dart';
@@ -71,83 +72,91 @@ class _YuliAiPatchwork extends StatelessWidget {
   }
 }
 
-class _YuliAssistantBubbleMark extends StatelessWidget {
+class _YuliAssistantBubbleMark extends StatefulWidget {
   final Color accent;
 
   const _YuliAssistantBubbleMark({required this.accent});
 
   @override
+  State<_YuliAssistantBubbleMark> createState() =>
+      _YuliAssistantBubbleMarkState();
+}
+
+const _kSvgTemplate = '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M25.5932 78V21.7745L5 4V59.0375L25.5932 78Z" fill="{ACCENT}"/>
+<path d="M25.5932 21.7745V21.575H86L64.9492 4L5 4L25.5932 21.7745Z" fill="{ACCENT}"/>
+<path d="M25.5932 21.575V21.7745V78H86V21.575H25.5932Z" fill="{ACCENT}"/>
+<path d="M25.5932 21.575V78M25.5932 21.7745V21.575H86M5 4L64.9492 4L86 21.575V78H25.5932L5 59.0375V4ZM25.5932 78V21.7745M25.5932 21.7745L5 4M68.8922 31.75V49M54.5776 31.75V49M69.5254 31.75V49M53.9661 31.75V49" stroke="black" stroke-width="4" fill="none"/>
+</svg>''';
+
+class _YuliAssistantBubbleMarkState extends State<_YuliAssistantBubbleMark>
+    with SingleTickerProviderStateMixin {
+  static const _cycleMs = 30000;
+  static const _bobs = 3;
+  static const _size = 42.0;
+
+  late final AnimationController _ctrl;
+  double _bob = 0;
+  String _svg = '';
+
+  String _accentHex(Color c) {
+    final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
+    final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
+    final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
+    return '#$r$g$b';
+  }
+
+  void _onTick() {
+    final t =
+        (DateTime.now().millisecondsSinceEpoch % _cycleMs) / _cycleMs;
+    final bob = math.sin(t * _bobs * 2 * math.pi) * _size * 0.06;
+    if (bob != _bob) {
+      setState(() => _bob = bob);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _svg = _kSvgTemplate.replaceAll('{ACCENT}', _accentHex(widget.accent));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: _cycleMs),
+    )..repeat();
+    _ctrl.addListener(_onTick);
+    _onTick();
+  }
+
+  @override
+  void didUpdateWidget(_YuliAssistantBubbleMark old) {
+    super.didUpdateWidget(old);
+    if (old.accent != widget.accent) {
+      _svg = _kSvgTemplate.replaceAll('{ACCENT}', _accentHex(widget.accent));
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.removeListener(_onTick);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 58,
-      height: 60,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Stack(
-              children: [
-                Center(
-                  child: YuliCubeMark(
-                    color: accent,
-                    size: 42,
-                    yaw: 0.53,
-                    pitch: 0.44,
-                    roll: -0.02,
-                  ),
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _PixelEyePainter(accent: accent),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      width: _size,
+      height: _size,
+      child: Transform.translate(
+        offset: Offset(0, _bob),
+        child: SvgPicture.string(
+          _svg,
+          width: _size,
+          height: _size,
+        ),
       ),
     );
   }
-}
-
-class _PixelEyePainter extends CustomPainter {
-  final Color accent;
-
-  const _PixelEyePainter({required this.accent});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final eyePaint =
-        Paint()
-          ..style = PaintingStyle.fill
-          ..color = yInk.withValues(alpha: 0.88);
-
-    final face = Rect.fromLTWH(
-      size.width * 0.345,
-      size.height * 0.28,
-      size.width * 0.27,
-      size.height * 0.28,
-    );
-
-    void eye(double x, double y) {
-      final w = face.width * 0.09;
-      final h = face.height * 0.30;
-      final r = Radius.circular(w * 0.12);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(x, y, w, h), r),
-        eyePaint,
-      );
-    }
-
-    final eyeTop = face.top + face.height * 0.33;
-    eye(face.left + face.width * 0.27, eyeTop);
-    eye(face.left + face.width * 0.61, eyeTop);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PixelEyePainter oldDelegate) =>
-      oldDelegate.accent != accent;
 }
 
 class _YuliAiPatchworkPainter extends CustomPainter {

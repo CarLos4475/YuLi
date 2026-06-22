@@ -11,6 +11,7 @@ import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../../../domain/models/note.dart' show NoteKind;
 import '../../../domain/models/note_block.dart';
@@ -30,6 +31,13 @@ import '../yuli_ai/ai_widget_contracts.dart';
 import '../yuli_ai/ai_widget_renderer.dart';
 import '../yuli_ai/yuli_ai_tools.dart'
     show yuliToolDefs, flightToolSystem, runYuliTool, ConsultingIndicator;
+
+const _kSvgTemplate = '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M25.5932 78V21.7745L5 4V59.0375L25.5932 78Z" fill="{ACCENT}"/>
+<path d="M25.5932 21.7745V21.575H86L64.9492 4L5 4L25.5932 21.7745Z" fill="{ACCENT}"/>
+<path d="M25.5932 21.575V21.7745V78H86V21.575H25.5932Z" fill="{ACCENT}"/>
+<path d="M25.5932 21.575V78M25.5932 21.7745V21.575H86M5 4L64.9492 4L86 21.575V78H25.5932L5 59.0375V4ZM25.5932 78V21.7745M25.5932 21.7745L5 4M68.8922 31.75V49M54.5776 31.75V49M69.5254 31.75V49M53.9661 31.75V49" stroke="black" stroke-width="4" fill="none"/>
+</svg>''';
 
 /// Open the AI chat for a note view. The conversation is the per-note
 /// [AiChatSession] (persists while you're in the view; the sheet is a window).
@@ -419,7 +427,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   final _anchorInput = TextEditingController();
   final _scroll = ScrollController();
   int? _remaining;
-  late final AnimationController _aiSpinCtrl;
+  static const _bobCycleMs = 30000;
+  static const _bobs = 3;
+  static const _svgSize = 34.0;
+  late final AnimationController _bobCtrl;
+  double _bob = 0;
+  String _svg = '';
 
   AiChatSession get _s => widget.session;
 
@@ -428,11 +441,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     super.initState();
     _s.addListener(_onSession);
     _loadRemaining();
-    // Drives the erratic rotation of the diamond inside the AI mark.
-    _aiSpinCtrl = AnimationController(
+    _svg = _kSvgTemplate.replaceAll('{ACCENT}', _accentHex(widget.accent));
+    _bobCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: _bobCycleMs),
     )..repeat();
+    _bobCtrl.addListener(_onBobTick);
+    _onBobTick();
     // If there are existing messages, jump to the latest one on first open.
     if (_s.messages.isNotEmpty) _scrollToBottom();
     final prefill = widget.prefillMessage?.trim();
@@ -540,7 +555,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   @override
   void dispose() {
-    _aiSpinCtrl.dispose();
+    _bobCtrl.removeListener(_onBobTick);
+    _bobCtrl.dispose();
     _s.removeListener(_onSession);
     _input.dispose();
     _anchorInput.dispose();
@@ -1713,36 +1729,38 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
+  String _accentHex(Color c) {
+    final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
+    final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
+    final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
+    return '#$r$g$b';
+  }
+
+  void _onBobTick() {
+    final t =
+        (DateTime.now().millisecondsSinceEpoch % _bobCycleMs) / _bobCycleMs;
+    final bob = math.sin(t * _bobs * 2 * math.pi) * _svgSize * 0.06;
+    if (bob != _bob) {
+      setState(() => _bob = bob);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AiChatSheet old) {
+    super.didUpdateWidget(old);
+    if (old.accent != widget.accent) {
+      _svg = _kSvgTemplate.replaceAll('{ACCENT}', _accentHex(widget.accent));
+    }
+  }
+
   Widget _aiAvatar() {
-    return AnimatedBuilder(
-      animation: _aiSpinCtrl,
-      builder: (_, _) {
-        final poses = [
-          [-0.72, 0.34, -0.10],
-          [-0.26, -0.92, 0.12],
-          [0.72, 0.34, 0.10],
-          [0.26, 0.92, -0.12],
-        ];
-        final step = _aiSpinCtrl.value * poses.length;
-        final i = step.floor() % poses.length;
-        final next = (i + 1) % poses.length;
-        final local = step - step.floor();
-        final jump =
-            local < 0.16
-                ? 0.0
-                : Curves.easeInOutCubic.transform(
-                  ((local - 0.16) / 0.84).clamp(0, 1),
-                );
-        final yaw = poses[i][0] + (poses[next][0] - poses[i][0]) * jump;
-        final pitch = poses[i][1] + (poses[next][1] - poses[i][1]) * jump;
-        final roll = poses[i][2] + (poses[next][2] - poses[i][2]) * jump;
-        return _AiCubeMark(
-          accent: widget.accent,
-          yaw: yaw,
-          pitch: pitch,
-          roll: roll,
-        );
-      },
+    return SizedBox(
+      width: _svgSize,
+      height: _svgSize,
+      child: Transform.translate(
+        offset: Offset(0, _bob),
+        child: SvgPicture.string(_svg, width: _svgSize, height: _svgSize),
+      ),
     );
   }
 
@@ -2247,167 +2265,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 }
 
-class _AiCubeMark extends StatelessWidget {
-  final Color accent;
-  final double yaw;
-  final double pitch;
-  final double roll;
 
-  const _AiCubeMark({
-    required this.accent,
-    required this.yaw,
-    required this.pitch,
-    required this.roll,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: CustomPaint(
-        painter: _AiCubePainter(
-          accent: accent,
-          yaw: yaw,
-          pitch: pitch,
-          roll: roll,
-        ),
-      ),
-    );
-  }
-}
-
-class _AiCubePainter extends CustomPainter {
-  final Color accent;
-  final double yaw;
-  final double pitch;
-  final double roll;
-
-  const _AiCubePainter({
-    required this.accent,
-    required this.yaw,
-    required this.pitch,
-    required this.roll,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const r = 10.5;
-    const camera = 48.0;
-    final verts = <_CubePoint>[
-      for (final x in [-r, r])
-        for (final y in [-r, r])
-          for (final z in [-r, r]) _rotate(x, y, z),
-    ];
-    final points =
-        verts
-            .map(
-              (p) => Offset(
-                size.width / 2 + p.x * camera / (camera - p.z),
-                size.height / 2 + p.y * camera / (camera - p.z),
-              ),
-            )
-            .toList();
-    final faces =
-        <_CubeFace>[
-            _CubeFace([0, 1, 3, 2], _shade(0.88)),
-            _CubeFace([4, 6, 7, 5], _shade(1.04)),
-            _CubeFace([0, 4, 5, 1], _shade(0.72)),
-            _CubeFace([2, 3, 7, 6], _shade(1.12)),
-            _CubeFace([0, 2, 6, 4], _shade(0.8)),
-            _CubeFace([1, 5, 7, 3], _shade(0.96)),
-          ].where((face) => face.visibleFromCamera(verts)).toList()
-          ..sort((a, b) => a.depth(verts).compareTo(b.depth(verts)));
-
-    final fill = Paint()..style = PaintingStyle.fill;
-    final stroke =
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.1
-          ..strokeJoin = StrokeJoin.bevel
-          ..color = yInk;
-
-    for (final face in faces) {
-      final path =
-          Path()..moveTo(
-            points[face.indexes.first].dx,
-            points[face.indexes.first].dy,
-          );
-      for (final i in face.indexes.skip(1)) {
-        path.lineTo(points[i].dx, points[i].dy);
-      }
-      path.close();
-      fill.color = face.color;
-      canvas.drawPath(path, fill);
-      canvas.drawPath(path, stroke);
-    }
-  }
-
-  _CubePoint _rotate(double x, double y, double z) {
-    final cy = math.cos(yaw);
-    final sy = math.sin(yaw);
-    final cx = math.cos(pitch);
-    final sx = math.sin(pitch);
-    final cz = math.cos(roll);
-    final sz = math.sin(roll);
-
-    final x1 = x * cy + z * sy;
-    final z1 = -x * sy + z * cy;
-    final y2 = y * cx - z1 * sx;
-    final z2 = y * sx + z1 * cx;
-    final x3 = x1 * cz - y2 * sz;
-    final y3 = x1 * sz + y2 * cz;
-    return _CubePoint(x3, y3, z2);
-  }
-
-  Color _shade(double amount) {
-    final argb = accent.toARGB32();
-    final a = (argb >> 24) & 0xFF;
-    final r = (((argb >> 16) & 0xFF) * amount).clamp(0, 255).round();
-    final g = (((argb >> 8) & 0xFF) * amount).clamp(0, 255).round();
-    final b = ((argb & 0xFF) * amount).clamp(0, 255).round();
-    return Color.fromARGB(a, r, g, b);
-  }
-
-  @override
-  bool shouldRepaint(covariant _AiCubePainter oldDelegate) {
-    return oldDelegate.accent != accent ||
-        oldDelegate.yaw != yaw ||
-        oldDelegate.pitch != pitch ||
-        oldDelegate.roll != roll;
-  }
-}
-
-class _CubePoint {
-  final double x;
-  final double y;
-  final double z;
-
-  const _CubePoint(this.x, this.y, this.z);
-}
-
-class _CubeFace {
-  final List<int> indexes;
-  final Color color;
-
-  const _CubeFace(this.indexes, this.color);
-
-  double depth(List<_CubePoint> verts) {
-    return indexes.fold<double>(0, (sum, i) => sum + verts[i].z) /
-        indexes.length;
-  }
-
-  bool visibleFromCamera(List<_CubePoint> verts) {
-    final a = verts[indexes[0]];
-    final b = verts[indexes[1]];
-    final c = verts[indexes[2]];
-    final ux = b.x - a.x;
-    final uy = b.y - a.y;
-    final vx = c.x - a.x;
-    final vy = c.y - a.y;
-    return ux * vy - uy * vx > 0;
-  }
-}
 
 /// Review checklist for "Extraer tareas": pick/edit which lines become FIGHT
 /// tasks, then create them linked to the host note.

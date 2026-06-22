@@ -46,6 +46,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   bool _dirty = false;
   TextEditingController? _activeTextCtrl;
   TextEditingController? _lastTextCtrl;
+  FocusNode? _lastFocusNode;
   InsertPanelType? _activePanel;
   bool _isPreview = false;
   bool _scrollLocked = false;
@@ -203,10 +204,13 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     return loaded;
   }
 
-  void _onTextBlockFocusChanged(TextEditingController? ctrl) {
+  void _onTextBlockFocusChanged(TextEditingController? ctrl, FocusNode? node) {
     setState(() {
       _activeTextCtrl = ctrl;
-      if (ctrl != null) _lastTextCtrl = ctrl;
+      if (ctrl != null) {
+        _lastTextCtrl = ctrl;
+        _lastFocusNode = node;
+      }
     });
   }
 
@@ -225,6 +229,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
         offset: (cursor >= 0 ? cursor : text.length) + syntax.length,
       ),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _lastFocusNode?.requestFocus();
+    });
   }
 
   void _showInsertMenu() {
@@ -233,10 +240,15 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       backgroundColor: Colors.transparent,
       builder:
           (_) => BlockInsertMenu(
+            accent: _accent,
             onDirectInsert: (syntax) => _insertSyntax(syntax),
             onOpenPanel: (type) => setState(() => _activePanel = type),
           ),
-    );
+    ).whenComplete(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _lastFocusNode?.requestFocus();
+      });
+    });
   }
 
   Future<void> _showLinkToLab(List<LabSpace> spaces) async {
@@ -450,11 +462,19 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                   child: InsertPanelOverlay(
                     type: _activePanel!,
                     noteId: widget.note.id,
+                    accent: _accent,
                     onInsert: (md) {
-                      _insertSyntax(md);
                       setState(() => _activePanel = null);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _insertSyntax(md);
+                      });
                     },
-                    onClose: () => setState(() => _activePanel = null),
+                    onClose: () {
+                      setState(() => _activePanel = null);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _lastFocusNode?.requestFocus();
+                      });
+                    },
                   ),
                 ),
             ],

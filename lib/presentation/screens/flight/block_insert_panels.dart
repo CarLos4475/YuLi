@@ -18,6 +18,7 @@ class InsertPanelOverlay extends StatelessWidget {
   final void Function(String markdown) onInsert;
   final VoidCallback onClose;
   final int noteId;
+  final Color accent;
 
   const InsertPanelOverlay({
     super.key,
@@ -25,6 +26,7 @@ class InsertPanelOverlay extends StatelessWidget {
     required this.onInsert,
     required this.onClose,
     required this.noteId,
+    required this.accent,
   });
 
   @override
@@ -47,22 +49,27 @@ class InsertPanelOverlay extends StatelessWidget {
               constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
               child: switch (type) {
                 InsertPanelType.table => _TablePanel(
+                  accent: accent,
                   onInsert: onInsert,
                   onClose: onClose,
                 ),
                 InsertPanelType.code => _CodePanel(
+                  accent: accent,
                   onInsert: onInsert,
                   onClose: onClose,
                 ),
                 InsertPanelType.quote => _QuotePanel(
+                  accent: accent,
                   onInsert: onInsert,
                   onClose: onClose,
                 ),
                 InsertPanelType.latex => _LatexPanel(
+                  accent: accent,
                   onInsert: onInsert,
                   onClose: onClose,
                 ),
                 InsertPanelType.image => _ImagePanel(
+                  accent: accent,
                   onInsert: onInsert,
                   onClose: onClose,
                   noteId: noteId,
@@ -82,12 +89,14 @@ class _PanelScaffold extends StatelessWidget {
   final String title;
   final VoidCallback onClose;
   final VoidCallback? onInsert;
+  final Color accent;
   final Widget child;
 
   const _PanelScaffold({
     required this.title,
     required this.onClose,
     this.onInsert,
+    required this.accent,
     required this.child,
   });
 
@@ -144,9 +153,9 @@ class _PanelScaffold extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: const BoxDecoration(
-                  color: yFlight,
-                  border: Border(
+                decoration: BoxDecoration(
+                  color: accent,
+                  border: const Border(
                     top: BorderSide(color: yBorderStrong, width: yLineMid),
                   ),
                 ),
@@ -176,11 +185,11 @@ InputDecoration _panelInputDecoration({String? hint}) {
     hintStyle: yBody(size: 13, color: yMuted),
     border: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yBorderSoft, width: 1),
+      borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
     ),
-    enabledBorder: OutlineInputBorder(
+    enabledBorder: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yBorderSoft, width: 1),
+      borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
     ),
     focusedBorder: const OutlineInputBorder(
       borderRadius: BorderRadius.zero,
@@ -196,8 +205,9 @@ InputDecoration _panelInputDecoration({String? hint}) {
 class _TablePanel extends StatefulWidget {
   final void Function(String) onInsert;
   final VoidCallback onClose;
+  final Color accent;
 
-  const _TablePanel({required this.onInsert, required this.onClose});
+  const _TablePanel({required this.accent, required this.onInsert, required this.onClose});
 
   @override
   State<_TablePanel> createState() => _TablePanelState();
@@ -309,7 +319,7 @@ class _TablePanelState extends State<_TablePanel> {
             decoration: BoxDecoration(
               border: Border.all(
                 color: onRemove != null ? yBorderStrong : disabledColor,
-                width: 1,
+                width: yLineThin,
               ),
             ),
             child: Center(
@@ -335,7 +345,7 @@ class _TablePanelState extends State<_TablePanel> {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              border: Border.all(color: yBorderStrong, width: 1),
+              border: Border.all(color: yBorderStrong, width: yLineThin),
             ),
             child: Center(
               child: Text('+', style: yBody(size: 16, color: yInk, height: 1)),
@@ -354,10 +364,10 @@ class _TablePanelState extends State<_TablePanel> {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: selected ? yFlight : Colors.transparent,
+          color: selected ? widget.accent : Colors.transparent,
           border: Border.all(
-            color: selected ? yFlight : yMuted.withValues(alpha: 0.4),
-            width: 1,
+            color: yBorderStrong,
+            width: yLineThin,
           ),
         ),
         child: Icon(icon, size: 18, color: selected ? yCream : yInk),
@@ -370,6 +380,7 @@ class _TablePanelState extends State<_TablePanel> {
     final borderCol = yMuted.withValues(alpha: 0.3);
     return _PanelScaffold(
       title: 'Tabla',
+      accent: widget.accent,
       onClose: widget.onClose,
       onInsert: () => widget.onInsert(_generateMarkdown()),
       child: Column(
@@ -410,14 +421,10 @@ class _TablePanelState extends State<_TablePanel> {
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               width: _cols * 130.0,
-              child: Table(
-                border: TableBorder(
-                  top: BorderSide(color: borderCol, width: 1.5),
-                  bottom: BorderSide(color: borderCol, width: 1.5),
-                  left: BorderSide(color: borderCol, width: 1.5),
-                  right: BorderSide(color: borderCol, width: 1.5),
-                  horizontalInside: BorderSide(color: borderCol, width: 0.5),
-                  verticalInside: BorderSide(color: borderCol, width: 0.5),
+              child:               Table(
+                border: TableBorder.all(
+                  color: borderCol,
+                  width: yLineThin,
                 ),
                 children: [
                   for (int r = 0; r < _cells.length; r++)
@@ -483,8 +490,9 @@ class _TablePanelState extends State<_TablePanel> {
 class _CodePanel extends StatefulWidget {
   final void Function(String) onInsert;
   final VoidCallback onClose;
+  final Color accent;
 
-  const _CodePanel({required this.onInsert, required this.onClose});
+  const _CodePanel({required this.accent, required this.onInsert, required this.onClose});
 
   @override
   State<_CodePanel> createState() => _CodePanelState();
@@ -504,7 +512,8 @@ class _CodePanelState extends State<_CodePanel> {
   @override
   Widget build(BuildContext context) {
     return _PanelScaffold(
-      title: 'Código',
+      title: 'Codigo',
+      accent: widget.accent,
       onClose: widget.onClose,
       onInsert: () {
         final lang = _langController.text.trim();
@@ -517,7 +526,7 @@ class _CodePanelState extends State<_CodePanel> {
         children: [
           Text(
             'Lenguaje',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -528,7 +537,7 @@ class _CodePanelState extends State<_CodePanel> {
           const SizedBox(height: 16),
           Text(
             'Código',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -549,8 +558,9 @@ class _CodePanelState extends State<_CodePanel> {
 class _QuotePanel extends StatefulWidget {
   final void Function(String) onInsert;
   final VoidCallback onClose;
+  final Color accent;
 
-  const _QuotePanel({required this.onInsert, required this.onClose});
+  const _QuotePanel({required this.accent, required this.onInsert, required this.onClose});
 
   @override
   State<_QuotePanel> createState() => _QuotePanelState();
@@ -569,6 +579,7 @@ class _QuotePanelState extends State<_QuotePanel> {
   Widget build(BuildContext context) {
     return _PanelScaffold(
       title: 'Cita',
+      accent: widget.accent,
       onClose: widget.onClose,
       onInsert: () {
         final lines = _controller.text.split('\n');
@@ -581,7 +592,7 @@ class _QuotePanelState extends State<_QuotePanel> {
         children: [
           Text(
             'Texto de la cita',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -602,8 +613,9 @@ class _QuotePanelState extends State<_QuotePanel> {
 class _LatexPanel extends StatefulWidget {
   final void Function(String) onInsert;
   final VoidCallback onClose;
+  final Color accent;
 
-  const _LatexPanel({required this.onInsert, required this.onClose});
+  const _LatexPanel({required this.accent, required this.onInsert, required this.onClose});
 
   @override
   State<_LatexPanel> createState() => _LatexPanelState();
@@ -622,12 +634,13 @@ class _LatexPanelState extends State<_LatexPanel> {
   Widget _modeChip(String label, bool value) {
     final selected = _isBlock == value;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _isBlock = value),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? yFlight : Colors.transparent,
-          border: Border.all(color: selected ? yFlight : yMuted, width: 1),
+          color: selected ? widget.accent : Colors.transparent,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Text(
           label,
@@ -640,7 +653,8 @@ class _LatexPanelState extends State<_LatexPanel> {
   @override
   Widget build(BuildContext context) {
     return _PanelScaffold(
-      title: 'LaTeX',
+      title: 'Latex',
+      accent: widget.accent,
       onClose: widget.onClose,
       onInsert: () {
         if (_isBlock) {
@@ -665,7 +679,7 @@ class _LatexPanelState extends State<_LatexPanel> {
           const SizedBox(height: 16),
           Text(
             'Fórmula',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yMuted),
+            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -687,8 +701,10 @@ class _ImagePanel extends ConsumerStatefulWidget {
   final void Function(String) onInsert;
   final VoidCallback onClose;
   final int noteId;
+  final Color accent;
 
   const _ImagePanel({
+    required this.accent,
     required this.onInsert,
     required this.onClose,
     required this.noteId,
@@ -747,6 +763,7 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
   Widget build(BuildContext context) {
     return _PanelScaffold(
       title: 'Imagen',
+      accent: widget.accent,
       onClose: widget.onClose,
       onInsert: _pickedFile != null && !_isLoading ? _insertImage : null,
       child: Column(
@@ -765,7 +782,7 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
                 width: double.infinity,
                 height: 180,
                 decoration: BoxDecoration(
-                  border: Border.all(color: yMuted, width: 1),
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -783,29 +800,29 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
           if (_pickedFile != null && !_isLoading)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: GestureDetector(
-                onTap: _pickImage,
-                child: Text(
-                  'Cambiar imagen',
-                  style: yBody(
-                    size: 14,
-                    weight: FontWeight.w700,
-                    color: yFlight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _pickImage,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: yBorderStrong, width: yLineThin),
+                    ),
+                    child: Text(
+                      'Cambiar imagen',
+                      style: yBody(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ),
           if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: yFlight,
-                ),
-              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Text('...', style: ySans(size: 18, weight: FontWeight.w700, color: yInk)),
             ),
         ],
       ),

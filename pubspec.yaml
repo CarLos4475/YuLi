@@ -84,6 +84,7 @@ flutter:
 
   assets:
     - assets/fonts/
+    - assets/icon/
     - assets/sounds/
     - math_model/exported/
 
