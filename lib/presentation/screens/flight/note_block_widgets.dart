@@ -6,8 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:markdown/markdown.dart' as m;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
@@ -27,6 +31,7 @@ import 'drawing_cell.dart';
 import 'note_block_actions.dart';
 import 'note_cell_model.dart';
 import 'ocr_flow.dart';
+import 'yuli_live_text_editor.dart';
 
 // ─── Router ───────────────────────────────────────────────────────────────
 
@@ -35,8 +40,9 @@ class BlockRouter extends StatelessWidget {
   final Note note;
   final Folder folder;
   final int index;
-  final void Function(TextEditingController? ctrl, FocusNode? node)? onTextBlockFocusChanged;
+  final YuliEditorFocusChanged? onTextBlockFocusChanged;
   final ValueChanged<bool>? onScrollLockChanged;
+  final bool autofocus;
 
   const BlockRouter({
     super.key,
@@ -46,6 +52,7 @@ class BlockRouter extends StatelessWidget {
     required this.index,
     this.onTextBlockFocusChanged,
     this.onScrollLockChanged,
+    this.autofocus = false,
   });
 
   Color get _accent => note.color ?? folder.color;
@@ -57,10 +64,11 @@ class BlockRouter extends StatelessWidget {
       block: block,
       index: index,
       child: switch (block) {
-        TextBlock t => _TextBlockBody(
+        TextBlock t => YuliLiveTextEditor(
           block: t,
           accent: accent,
           onFocusChanged: onTextBlockFocusChanged,
+          autofocus: autofocus,
         ),
         MathBlock m => _MathBlockBody(block: m, accentColor: accent),
         BulletsBlock bl => _BulletsBlockBody(block: bl),
@@ -83,7 +91,7 @@ class BlockRouter extends StatelessWidget {
 
 // ─── Block shell: gutter + body + delete affordance ───────────────────────
 
-class _BlockShell extends ConsumerWidget {
+class _BlockShell extends ConsumerStatefulWidget {
   final NoteBlock block;
   final Widget child;
   final int index;
@@ -103,72 +111,102 @@ class _BlockShell extends ConsumerWidget {
   };
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 28,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 2),
-              Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: yCream,
-                  border: Border.all(color: yBorderStrong, width: 1.5),
-                ),
-                child: Icon(
-                  _glyphForType[block.type] ?? YuLiIcons.textInitial,
-                  size: 12,
-                  color: yMuted,
-                ),
-              ),
-              const SizedBox(height: 6),
-              ReorderableDragStartListener(
-                index: index,
-                child: const Icon(
-                  YuLiIcons.gripVertical,
-                  size: 14,
-                  color: yMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Stack(
-            children: [
-              child,
-              Positioned(
-                top: 0,
-                right: 0,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _confirmDelete(context, ref),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      YuLiIcons.close,
-                      size: 14,
-                      color: yMuted.withValues(alpha: 0.5),
-                    ),
+  ConsumerState<_BlockShell> createState() => _BlockShellState();
+}
+
+class _BlockShellState extends ConsumerState<_BlockShell> {
+  bool _controlsVisible = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _controlsVisible = true),
+      onExit: (_) => setState(() => _controlsVisible = false),
+      child: Listener(
+        onPointerDown: (_) {
+          if (!_controlsVisible) {
+            setState(() => _controlsVisible = true);
+          }
+        },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedOpacity(
+              opacity: _controlsVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 120),
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: SizedBox(
+                  width: 28,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 2),
+                      Container(
+                        width: 22,
+                        height: 22,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: yCream,
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Icon(
+                          _BlockShell._glyphForType[widget.block.type] ??
+                              YuLiIcons.textInitial,
+                          size: 12,
+                          color: yMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ReorderableDragStartListener(
+                        index: widget.index,
+                        child: const Icon(
+                          YuLiIcons.gripVertical,
+                          size: 14,
+                          color: yMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Stack(
+                children: [
+                  widget.child,
+                  if (_controlsVisible)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _confirmDelete(context),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(
+                            YuLiIcons.close,
+                            size: 14,
+                            color: yMuted.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+  Future<void> _confirmDelete(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
       builder:
@@ -199,7 +237,9 @@ class _BlockShell extends ConsumerWidget {
           ),
     );
     if (ok == true) {
-      await ref.read(noteBlockRepositoryProvider).delete(block.id);
+      await ref
+          .read(noteBlockRepositoryProvider)
+          .delete(widget.block.id);
     }
   }
 }
@@ -257,11 +297,15 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
 class _TextBlockBody extends ConsumerStatefulWidget {
   final TextBlock block;
   final Color accent;
+  final int noteId;
   final void Function(TextEditingController? ctrl, FocusNode? node)? onFocusChanged;
+  final void Function(Widget? editor)? onRequestEditor;
   const _TextBlockBody({
     required this.block,
     required this.accent,
-    this.onFocusChanged,
+    required this.noteId,
+    required this.onFocusChanged,
+    required this.onRequestEditor,
   });
 
   @override
@@ -279,6 +323,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   int _cursorLine = 0;
   final List<TextEditingController> _lineCtrls = [];
   final List<FocusNode> _lineFocuses = [];
+
+  List<int>? _editingTableIndices;
+  List<int>? _editingFenceIndices;
 
   @override
   void initState() {
@@ -391,11 +438,18 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
 
   void _onLiveFocusChange() {
     for (int i = 0; i < _lineFocuses.length; i++) {
-      if (_lineFocuses[i].hasFocus && _cursorLine != i) {
-        setState(() => _cursorLine = i);
+      if (_lineFocuses[i].hasFocus) {
+        if (_cursorLine != i) setState(() => _cursorLine = i);
+        widget.onFocusChanged?.call(_lineCtrls[i], _lineFocuses[i]);
         return;
       }
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (int i = 0; i < _lineFocuses.length; i++) {
+        if (_lineFocuses[i].hasFocus) return;
+      }
+      widget.onFocusChanged?.call(null, null);
+    });
   }
 
   // ─── Atomic block detection ────────────────────────────────────────────────
@@ -405,10 +459,6 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   bool _isFenceLine(String t) => t.trimLeft().startsWith('```');
 
   bool _isInAtomicBlock(int lineIdx) {
-    final t = _lineCtrls[lineIdx].text;
-    final prev = lineIdx > 0 ? _lineCtrls[lineIdx - 1].text : '';
-    final next = lineIdx < _lineCtrls.length - 1 ? _lineCtrls[lineIdx + 1].text : '';
-    if (_isTableLine(t) && (_isTableLine(prev) || _isTableLine(next))) return true;
     int fenceCount = 0;
     for (int i = 0; i <= lineIdx; i++) {
       if (_isFenceLine(_lineCtrls[i].text)) fenceCount++;
@@ -419,14 +469,6 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
   List<bool> _atomicMask(int lineIdx) {
     final mask = List<bool>.filled(_lineCtrls.length, false);
     if (!_isInAtomicBlock(lineIdx)) return mask;
-    final t = _lineCtrls[lineIdx].text;
-    if (_isTableLine(t)) {
-      int s = lineIdx, e = lineIdx;
-      while (s > 0 && _isTableLine(_lineCtrls[s - 1].text)) { s--; }
-      while (e < _lineCtrls.length - 1 && _isTableLine(_lineCtrls[e + 1].text)) { e++; }
-      for (int i = s; i <= e; i++) { mask[i] = true; }
-      return mask;
-    }
     int fenceCount = 0, start = -1;
     for (int i = 0; i < _lineCtrls.length; i++) {
       if (_isFenceLine(_lineCtrls[i].text)) {
@@ -435,6 +477,68 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
       }
     }
     return mask;
+  }
+
+  List<List<int>> _findTableGroups() {
+    final groups = <List<int>>[];
+    List<int>? current;
+    for (int i = 0; i < _lineCtrls.length; i++) {
+      if (_isTableLine(_lineCtrls[i].text)) {
+        current ??= <int>[];
+        current.add(i);
+      } else {
+        if (current != null && current.length >= 2) {
+          groups.add(current);
+        } else if (current != null) {
+          current.clear();
+        }
+        current = null;
+      }
+    }
+    if (current != null && current.length >= 2) groups.add(current);
+    return groups;
+  }
+
+  List<List<int>> _findImageGroups() {
+    final groups = <List<int>>[];
+    final seen = <int>{};
+    for (int i = 0; i < _lineCtrls.length; i++) {
+      if (seen.contains(i)) continue;
+      if (!_isImageLine(i)) continue;
+      if (i > 0 && i + 1 < _lineCtrls.length) {
+        final above = _lineCtrls[i - 1].text.trim();
+        final below = _lineCtrls[i + 1].text.trim();
+        if (above.startsWith(':::') && below == ':::') {
+          groups.add([i - 1, i, i + 1]);
+          seen.addAll([i - 1, i, i + 1]);
+          continue;
+        }
+      }
+      groups.add([i]);
+      seen.add(i);
+    }
+    return groups;
+  }
+
+  List<List<int>> _findFenceGroups() {
+    final groups = <List<int>>[];
+    int? start;
+    for (int i = 0; i < _lineCtrls.length; i++) {
+      if (_isFenceLine(_lineCtrls[i].text)) {
+        if (start == null) {
+          start = i;
+        } else {
+          groups.add(List.generate(i - start + 1, (j) => start! + j));
+          start = null;
+        }
+      }
+    }
+    return groups;
+  }
+
+  bool _isImageLine(int i) {
+    final t = _lineCtrls[i].text.trim();
+    return t.startsWith('![') && t.contains('](');
   }
 
   // ─── Line navigation / edit ────────────────────────────────────────────────
@@ -532,14 +636,38 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
 
   Widget _buildLiveMode() {
     final atomicMask = _atomicMask(_cursorLine);
+    final tableGroups = _findTableGroups();
+    final imageGroups = _findImageGroups();
+    final fenceGroups = _findFenceGroups();
+
+    final groupSet = <int>{};
+    final groupWidget = <int, Widget>{};
+    for (final g in tableGroups) {
+      for (final i in g) { groupSet.add(i); }
+      groupWidget[g.first] = _buildTableGroup(g, g.contains(_cursorLine));
+    }
+    for (final g in imageGroups) {
+      for (final i in g) { groupSet.add(i); }
+      groupWidget[g.first] = _buildImageGroup(g, g.contains(_cursorLine));
+    }
+    for (final g in fenceGroups) {
+      for (final i in g) { groupSet.add(i); }
+      groupWidget[g.first] = _buildFenceGroup(g, g.contains(_cursorLine));
+    }
+
     final widgets = <Widget>[_buildLiveToggle()];
-
-    for (int i = 0; i < _lineCtrls.length; i++) {
-      final inAtomic = atomicMask[i];
-      final isActive = i == _cursorLine || inAtomic;
-
-      if (isActive) {
+    int i = 0;
+    while (i < _lineCtrls.length) {
+      if (groupSet.contains(i)) {
+        widgets.add(groupWidget[i]!);
+        int end = i;
+        for (final g in [...tableGroups, ...imageGroups, ...fenceGroups]) {
+          if (g.contains(i)) end = g.last;
+        }
+        i = end + 1;
+      } else if (i == _cursorLine || atomicMask[i]) {
         final idx = i;
+        final inAtomic = atomicMask[i];
         widgets.add(
           Focus(
             onKeyEvent: (node, event) {
@@ -561,7 +689,7 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
               controller: _lineCtrls[i],
               focusNode: _lineFocuses[i],
               maxLines: inAtomic ? null : 1,
-              onSubmitted: inAtomic ? null : (_) => _insertLineAfter(i),
+              onSubmitted: inAtomic ? null : (_) => _insertLineAfter(idx),
               style: yBody(size: 15, color: yInk2, height: 1.55),
               decoration: InputDecoration(
                 isCollapsed: true,
@@ -574,19 +702,24 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
             ),
           ),
         );
+        i++;
       } else {
+        final idx = i;
         widgets.add(
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {
-              setState(() => _cursorLine = i);
+              setState(() => _cursorLine = idx);
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                _lineFocuses[i].requestFocus();
+                _lineFocuses[idx].requestFocus();
               });
             },
-            child: NoteMarkdownPreview(data: _lineCtrls[i].text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+            child: IgnorePointer(
+              child: NoteMarkdownPreview(data: _lineCtrls[idx].text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+            ),
           ),
         );
+        i++;
       }
     }
 
@@ -595,6 +728,253 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: widgets,
     );
+  }
+
+  Widget _groupContainer({required bool selected, required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        border: selected ? Border.all(color: widget.accent, width: yLineMid) : null,
+      ),
+      child: child,
+    );
+  }
+
+  Widget _groupPills({required List<int> indices, required VoidCallback onEdit, required VoidCallback onDelete}) {
+    return Positioned(
+      top: 4,
+      right: 4,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onEdit,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
+              decoration: BoxDecoration(
+                color: widget.accent,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Text('EDITAR', style: yMono(size: 9, weight: FontWeight.w700, color: yCream, tracking: 1.2)),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onDelete,
+            child: Container(
+              width: 26, height: 26, alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yFight,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: const Icon(YuLiIcons.close, size: 12, color: yCream),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _groupFocusWrapper({
+    required List<int> indices,
+    required bool selected,
+    required Widget child,
+  }) {
+    if (!selected) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          setState(() => _cursorLine = indices.first);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _lineFocuses[indices.first].requestFocus();
+          });
+        },
+        child: IgnorePointer(child: child),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _lineFocuses[indices.first].requestFocus();
+    });
+    return Focus(
+      focusNode: _lineFocuses[indices.first],
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          final last = indices.last;
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp && indices.first > 0) {
+            setState(() => _cursorLine = indices.first - 1);
+            WidgetsBinding.instance.addPostFrameCallback((_) => _lineFocuses[_cursorLine].requestFocus());
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown && last < _lineCtrls.length - 1) {
+            setState(() => _cursorLine = last + 1);
+            WidgetsBinding.instance.addPostFrameCallback((_) => _lineFocuses[_cursorLine].requestFocus());
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.backspace) {
+            _deleteGroup(indices);
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: child,
+    );
+  }
+
+  Widget _buildTableGroup(List<int> indices, bool selected) {
+    if (_editingTableIndices != null && _listEquals(_editingTableIndices!, indices)) {
+      return _TableInlineEditor(
+        initialData: indices.map((i) => _lineCtrls[i].text).join('\n'),
+        accent: widget.accent,
+        onSave: (newMd) => _saveTableEdit(indices, newMd),
+        onCancel: _cancelTableEdit,
+      );
+    }
+    final text = indices.map((i) => _lineCtrls[i].text).join('\n');
+    final preview = IgnorePointer(
+      child: NoteMarkdownPreview(data: text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+    );
+    return Stack(
+      children: [
+        _groupContainer(selected: selected, child: _groupFocusWrapper(indices: indices, selected: selected, child: preview)),
+        if (selected) _groupPills(indices: indices, onEdit: () => _editTableGroup(indices), onDelete: () => _deleteGroup(indices)),
+      ],
+    );
+  }
+
+  Widget _buildImageGroup(List<int> indices, bool selected) {
+    final text = indices.map((i) => _lineCtrls[i].text).join('\n');
+    final preview = IgnorePointer(
+      child: NoteMarkdownPreview(data: text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+    );
+    return Stack(
+      children: [
+        _groupContainer(selected: selected, child: _groupFocusWrapper(indices: indices, selected: selected, child: preview)),
+        if (selected) _groupPills(indices: indices, onEdit: () => _editImageGroup(indices), onDelete: () => _deleteGroup(indices)),
+      ],
+    );
+  }
+
+  Widget _buildFenceGroup(List<int> indices, bool selected) {
+    if (_editingFenceIndices != null && _listEquals(_editingFenceIndices!, indices)) {
+      return _CodeInlineEditor(
+        initialData: indices.map((i) => _lineCtrls[i].text).join('\n'),
+        accent: widget.accent,
+        onSave: (newMd) => _saveFenceEdit(indices, newMd),
+        onCancel: _cancelFenceEdit,
+      );
+    }
+    final text = indices.map((i) => _lineCtrls[i].text).join('\n');
+    final preview = IgnorePointer(
+      child: NoteMarkdownPreview(data: text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+    );
+    return Stack(
+      children: [
+        _groupContainer(selected: selected, child: _groupFocusWrapper(indices: indices, selected: selected, child: preview)),
+        if (selected) _groupPills(indices: indices, onEdit: () => _editFenceGroup(indices), onDelete: () => _deleteGroup(indices)),
+      ],
+    );
+  }
+
+  void _deleteGroup(List<int> indices) {
+    for (final i in indices.reversed) {
+      _lineCtrls[i].removeListener(_onLiveLineChanged);
+      _lineCtrls[i].dispose();
+      _lineFocuses[i].removeListener(_onLiveFocusChange);
+      _lineFocuses[i].dispose();
+      _lineCtrls.removeAt(i);
+      _lineFocuses.removeAt(i);
+    }
+    _syncLiveToCtrl();
+    _cursorLine = indices.first.clamp(0, _lineCtrls.length - 1);
+    if (_cursorLine < 0) _cursorLine = 0;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _lineFocuses.isNotEmpty) {
+        _lineFocuses[_cursorLine].requestFocus();
+      } else {
+        _toggleLive();
+      }
+    });
+  }
+
+  void _editTableGroup(List<int> indices) {
+    setState(() => _editingTableIndices = indices);
+  }
+
+  void _cancelTableEdit() {
+    setState(() => _editingTableIndices = null);
+  }
+
+  void _saveTableEdit(List<int> indices, String newMd) {
+    _replaceGroup(indices, newMd);
+    setState(() => _editingTableIndices = null);
+  }
+
+  void _editFenceGroup(List<int> indices) {
+    setState(() => _editingFenceIndices = indices);
+  }
+
+  void _cancelFenceEdit() {
+    setState(() => _editingFenceIndices = null);
+  }
+
+  void _saveFenceEdit(List<int> indices, String newMd) {
+    _replaceGroup(indices, newMd);
+    setState(() => _editingFenceIndices = null);
+  }
+
+  void _editImageGroup(List<int> indices) {
+    final text = indices.map((i) => _lineCtrls[i].text).join('\n');
+    widget.onRequestEditor?.call(
+      _ImageEditor(
+        initialData: text,
+        noteId: widget.noteId,
+        accent: widget.accent,
+        onSave: (newMd) {
+          _replaceGroup(indices, newMd);
+          widget.onRequestEditor?.call(null);
+        },
+        onClose: () => widget.onRequestEditor?.call(null),
+      ),
+    );
+  }
+
+  static bool _listEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _replaceGroup(List<int> indices, String newMd) {
+    final newLines = newMd.split('\n');
+    for (final i in indices.reversed) {
+      _lineCtrls[i].removeListener(_onLiveLineChanged);
+      _lineCtrls[i].dispose();
+      _lineFocuses[i].removeListener(_onLiveFocusChange);
+      _lineFocuses[i].dispose();
+      _lineCtrls.removeAt(i);
+      _lineFocuses.removeAt(i);
+    }
+    for (int j = 0; j < newLines.length; j++) {
+      final c = TextEditingController(text: newLines[j]);
+      c.addListener(_onLiveLineChanged);
+      _lineCtrls.insert(indices.first + j, c);
+      final f = FocusNode();
+      f.addListener(_onLiveFocusChange);
+      _lineFocuses.insert(indices.first + j, f);
+    }
+    _syncLiveToCtrl();
+    _cursorLine = indices.first.clamp(0, _lineCtrls.length - 1);
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _lineFocuses.isNotEmpty) {
+        _lineFocuses[_cursorLine].requestFocus();
+      }
+    });
   }
 
   @override
@@ -637,6 +1017,984 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Edit overlay widgets (rendered as Positioned.fill in note_editor_screen) ─
+
+class _TableEditor extends StatefulWidget {
+  final String initialData;
+  final Color accent;
+  final void Function(String newMarkdown) onSave;
+  final VoidCallback onClose;
+
+  const _TableEditor({
+    required this.initialData,
+    required this.accent,
+    required this.onSave,
+    required this.onClose,
+  });
+
+  @override
+  State<_TableEditor> createState() => _TableEditorState();
+}
+
+class _TableEditorState extends State<_TableEditor> {
+  late List<List<TextEditingController>> _cells;
+  late List<List<FocusNode>> _focuses;
+  int _rows = 0;
+  int _cols = 0;
+  String _align = 'left';
+
+  @override
+  void initState() {
+    super.initState();
+    _parseTable();
+  }
+
+  void _parseTable() {
+    final lines = widget.initialData.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
+    if (lines.length < 2) {
+      _cells = [[TextEditingController()], [TextEditingController()]];
+      _focuses = [[FocusNode(), FocusNode()], [FocusNode(), FocusNode()]];
+      _rows = 2; _cols = 1;
+      return;
+    }
+    _cols = lines[0].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|').length;
+    final dataRows = <List<String>>[];
+    for (int i = 0; i < lines.length; i++) {
+      final isSep = i == 1;
+      if (isSep) {
+        final seps = lines[i].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|');
+        if (seps.any((s) => s.trim().startsWith(':') && s.trim().endsWith(':'))) { _align = 'center'; }
+        else if (seps.any((s) => s.trim().endsWith(':'))) { _align = 'right'; }
+        else if (seps.any((s) => s.trim().startsWith(':'))) { _align = 'left'; }
+        continue;
+      }
+      final cells = lines[i].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|').map((c) => c.trim()).toList();
+      while (cells.length < _cols) { cells.add(''); }
+      dataRows.add(cells.take(_cols).toList());
+    }
+    _rows = dataRows.length;
+    _cells = dataRows.map((r) => r.map((c) => TextEditingController(text: c)).toList()).toList();
+    _focuses = List.generate(_rows, (_) => List.generate(_cols, (_) => FocusNode()));
+  }
+
+  String _generateMarkdown() {
+    final buf = StringBuffer();
+    buf.write('|');
+    for (int c = 0; c < _cols; c++) { buf.write(' ${_cells[0][c].text} |'); }
+    buf.write('\n|');
+    for (int c = 0; c < _cols; c++) {
+      switch (_align) {
+        case 'center': buf.write(' :---: |');
+        case 'right': buf.write(' ---: |');
+        default: buf.write(' --- |');
+      }
+    }
+    for (int r = 1; r < _rows; r++) {
+      buf.write('\n|');
+      for (int c = 0; c < _cols; c++) { buf.write(' ${_cells[r][c].text} |'); }
+    }
+    buf.write('\n');
+    final table = buf.toString().trim();
+    if (_align != 'left') return '\n::: $_align\n$table\n:::\n';
+    return '\n$table\n';
+  }
+
+  void _addRow() { setState(() { _rows++; _cells.add(List.generate(_cols, (_) => TextEditingController())); _focuses.add(List.generate(_cols, (_) => FocusNode())); }); }
+  void _removeRow() { if (_rows <= 2) return; setState(() { _rows--; for (final c in _cells.removeLast()) { c.dispose(); } for (final f in _focuses.removeLast()) { f.dispose(); } }); }
+  void _addCol() { setState(() { _cols++; for (final row in _cells) { row.add(TextEditingController()); } for (final row in _focuses) { row.add(FocusNode()); } }); }
+  void _removeCol() { if (_cols <= 1) return; setState(() { _cols--; for (final row in _cells) { row.removeLast().dispose(); } for (final row in _focuses) { row.removeLast().dispose(); } }); }
+
+  @override
+  void dispose() {
+    for (final row in _cells) { for (final c in row) { c.dispose(); } }
+    for (final row in _focuses) { for (final f in row) { f.dispose(); } }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxW = 640.0;
+    return Container(
+      color: yCream,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW, maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Tabla', style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onClose,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(YuLiIcons.close, color: yInk, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+              child: Row(
+                children: [
+                  _counter(label: 'fil', value: _rows - 1, onAdd: _addRow, onRemove: _rows > 2 ? _removeRow : null),
+                  const SizedBox(width: 20),
+                  _counter(label: 'col', value: _cols, onAdd: _addCol, onRemove: _cols > 1 ? _removeCol : null),
+                  const SizedBox(width: 20),
+                  _alignBtn('left'),
+                  const SizedBox(width: 4),
+                  _alignBtn('center'),
+                  const SizedBox(width: 4),
+                  _alignBtn('right'),
+                ],
+              ),
+            ),
+            Container(height: 1, color: yBorderStrong.withValues(alpha: 0.3)),
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Table(
+                        border: TableBorder.all(color: yBorderSoft, width: yLineThin),
+                        columnWidths: {for (int c = 0; c < _cols; c++) c: const FixedColumnWidth(140)},
+                        children: [
+                          for (int r = 0; r < _rows; r++)
+                            TableRow(
+                              decoration: r == 0 ? BoxDecoration(color: yInk.withValues(alpha: 0.04)) : null,
+                              children: [
+                                for (int c = 0; c < _cols; c++)
+                                  Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: TextField(
+                                      controller: _cells[r][c],
+                                      focusNode: _focuses[r][c],
+                                      maxLines: null,
+                                      style: yBody(size: r == 0 ? 14 : 13, color: yInk, weight: r == 0 ? FontWeight.w700 : FontWeight.w400),
+                                      decoration: InputDecoration(
+                                        hintText: r == 0 ? 'Col ${c + 1}' : '',
+                                        hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        contentPadding: const EdgeInsets.all(6),
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () { widget.onSave(_generateMarkdown()); },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: widget.accent,
+                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                ),
+                child: Center(
+                  child: Text('GUARDAR', style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _counter({required String label, required int value, required VoidCallback onAdd, VoidCallback? onRemove}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onRemove != null)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onRemove,
+            child: Container(
+              width: 28, height: 28, alignment: Alignment.center,
+              decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+              child: Text('−', style: yBody(size: 14, color: yInk, height: 1.0)),
+            ),
+          ),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('$value $label', style: yBody(size: 12, color: yInk))),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onAdd,
+          child: Container(
+            width: 28, height: 28, alignment: Alignment.center,
+            decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+            child: Text('+', style: yBody(size: 14, color: yInk, height: 1.0)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _alignBtn(String value) {
+    final selected = _align == value;
+    final label = value == 'left' ? '←' : value == 'center' ? '↔' : '→';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _align = value),
+      child: Container(
+        width: 28, height: 28, alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? widget.accent : Colors.transparent,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Text(label, style: yBody(size: 12, color: selected ? yCream : yInk, height: 1.0)),
+      ),
+    );
+  }
+}
+
+class _CodeEditor extends StatefulWidget {
+  final String initialData;
+  final Color accent;
+  final void Function(String newMarkdown) onSave;
+  final VoidCallback onClose;
+
+  const _CodeEditor({
+    required this.initialData,
+    required this.accent,
+    required this.onSave,
+    required this.onClose,
+  });
+
+  @override
+  State<_CodeEditor> createState() => _CodeEditorState();
+}
+
+class _CodeEditorState extends State<_CodeEditor> {
+  late TextEditingController _langCtrl;
+  late TextEditingController _codeCtrl;
+  late FocusNode _langFocus;
+  late FocusNode _codeFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _langFocus = FocusNode();
+    _codeFocus = FocusNode();
+    final lines = widget.initialData.split('\n');
+    String lang = '';
+    final codeLines = <String>[];
+    for (int i = 0; i < lines.length; i++) {
+      final t = lines[i].trim();
+      if (t.startsWith('```') && i == 0 && t.length > 3) {
+        lang = t.substring(3).trim();
+      } else if (!t.startsWith('```')) {
+        codeLines.add(lines[i]);
+      }
+    }
+    _langCtrl = TextEditingController(text: lang);
+    _codeCtrl = TextEditingController(text: codeLines.join('\n'));
+  }
+
+  @override
+  void dispose() {
+    _langCtrl.dispose();
+    _codeCtrl.dispose();
+    _langFocus.dispose();
+    _codeFocus.dispose();
+    super.dispose();
+  }
+
+  String _generate() {
+    final lang = _langCtrl.text.trim();
+    final code = _codeCtrl.text;
+    return '```$lang\n$code\n```';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxW = 600.0;
+    return Container(
+      color: yCream,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW, maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Codigo', style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onClose,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(YuLiIcons.close, color: yInk, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+              child: Text('Lenguaje', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
+              child: TextField(
+                controller: _langCtrl,
+                focusNode: _langFocus,
+                style: yBody(size: 16, color: yInk),
+                decoration: const InputDecoration(
+                  hintText: 'python, dart, js...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderStrong, width: yLineMid)),
+                  contentPadding: EdgeInsets.all(12),
+                  isDense: true,
+                ),
+              ),
+            ),
+            Container(height: 1, color: yBorderStrong.withValues(alpha: 0.3)),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: _codeCtrl,
+                  focusNode: _codeFocus,
+                  style: yMono(size: 14, color: yInk, tracking: 0),
+                  maxLines: null,
+                  minLines: 8,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderStrong, width: yLineMid)),
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                ),
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () { widget.onSave(_generate()); },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: widget.accent,
+                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                ),
+                child: Center(
+                  child: Text('GUARDAR', style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageEditor extends ConsumerStatefulWidget {
+  final String initialData;
+  final int noteId;
+  final Color accent;
+  final void Function(String newMarkdown) onSave;
+  final VoidCallback onClose;
+
+  const _ImageEditor({
+    required this.initialData,
+    required this.noteId,
+    required this.accent,
+    required this.onSave,
+    required this.onClose,
+  });
+
+  @override
+  ConsumerState<_ImageEditor> createState() => _ImageEditorState();
+}
+
+class _ImageEditorState extends ConsumerState<_ImageEditor> {
+  String _imagePath = '';
+  String _alt = 'Imagen';
+  String? _align;
+  XFile? _newFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _parse();
+  }
+
+  void _parse() {
+    final raw = widget.initialData.trim();
+    final lines = raw.split('\n');
+    if (lines.length >= 3 && lines[0].trim().startsWith(':::') && lines[2].trim() == ':::') {
+      _align = lines[0].trim().replaceAll(':::', '').trim();
+      _parseImageLine(lines[1].trim());
+    } else {
+      _parseImageLine(raw);
+    }
+  }
+
+  void _parseImageLine(String line) {
+    final re = RegExp(r'^!\[(.*)\]\((.*)\)$');
+    final m = re.firstMatch(line);
+    if (m != null) {
+      _alt = m.group(1) ?? 'Imagen';
+      _imagePath = m.group(2) ?? '';
+    }
+  }
+
+  String _generate() {
+    final img = '![$_alt]($_imagePath)';
+    if (_align != null) return '::: $_align\n$img\n:::';
+    return img;
+  }
+
+  Future<void> _pickImage() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 1920, maxHeight: 1920);
+    if (picked != null && mounted) setState(() => _newFile = picked);
+  }
+
+  Future<void> _save() async {
+    if (_newFile != null) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final imagesDir = Directory(p.join(appDir.path, 'note_images', '${widget.noteId}'));
+        await imagesDir.create(recursive: true);
+        final ext = p.extension(_newFile!.path).toLowerCase();
+        final newFilename = '${const Uuid().v4()}$ext';
+        final newPath = p.join(imagesDir.path, newFilename);
+        await File(_newFile!.path).copy(newPath);
+        final fileSize = await File(newPath).length();
+        await ref.read(noteRepositoryProvider).addImage(widget.noteId, newFilename, newPath, fileSize);
+        _imagePath = newPath;
+      } catch (_) {}
+    }
+    widget.onSave(_generate());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxW = 480.0;
+    return Container(
+      color: yCream,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxW),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Imagen', style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onClose,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(YuLiIcons.close, color: yInk, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  if (_newFile != null)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 240),
+                      child: Image.file(File(_newFile!.path), fit: BoxFit.contain),
+                    )
+                  else if (_imagePath.isNotEmpty)
+                    IgnorePointer(child: NoteMarkdownPreview(data: '![$_alt]($_imagePath)', accent: widget.accent, tight: true, padding: EdgeInsets.zero))
+                  else
+                    Container(
+                      height: 120,
+                      decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+                      child: const Center(child: Icon(YuLiIcons.image, size: 48, color: yMuted)),
+                    ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _pickImage,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+                      child: Text('Cambiar imagen', style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text('Alineacion', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _alignPill('Izquierda', 'left'),
+                      const SizedBox(width: 6),
+                      _alignPill('Centro', 'center'),
+                      const SizedBox(width: 6),
+                      _alignPill('Derecha', 'right'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _save,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: widget.accent,
+                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                ),
+                child: Center(
+                  child: Text('GUARDAR', style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _alignPill(String label, String value) {
+    final selected = _align == value;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _align = selected ? null : value),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 5, 10, 6),
+        decoration: BoxDecoration(
+          color: selected ? widget.accent : Colors.transparent,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Text(label, style: yBody(size: 11, weight: FontWeight.w700, color: selected ? yCream : yInk)),
+      ),
+    );
+  }
+}
+
+// ─── Inline editors (rendered in place of the group preview) ───────────────
+
+class _TableInlineEditor extends StatefulWidget {
+  final String initialData;
+  final Color accent;
+  final void Function(String newMarkdown) onSave;
+  final VoidCallback onCancel;
+
+  const _TableInlineEditor({
+    required this.initialData,
+    required this.accent,
+    required this.onSave,
+    required this.onCancel,
+  });
+
+  @override
+  State<_TableInlineEditor> createState() => _TableInlineEditorState();
+}
+
+class _TableInlineEditorState extends State<_TableInlineEditor> {
+  late List<List<TextEditingController>> _cells;
+  late List<List<FocusNode>> _focuses;
+  int _rows = 0;
+  int _cols = 0;
+  String _align = 'left';
+
+  @override
+  void initState() {
+    super.initState();
+    _parseTable();
+  }
+
+  void _parseTable() {
+    final lines = widget.initialData.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
+    if (lines.length < 2) {
+      _cells = [[TextEditingController()], [TextEditingController()]];
+      _focuses = [[FocusNode(), FocusNode()], [FocusNode(), FocusNode()]];
+      _rows = 2; _cols = 1;
+      return;
+    }
+    _cols = lines[0].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|').length;
+    final dataRows = <List<String>>[];
+    for (int i = 0; i < lines.length; i++) {
+      final isSep = i == 1;
+      if (isSep) {
+        final seps = lines[i].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|');
+        if (seps.any((s) => s.trim().startsWith(':') && s.trim().endsWith(':'))) { _align = 'center'; }
+        else if (seps.any((s) => s.trim().endsWith(':'))) { _align = 'right'; }
+        else if (seps.any((s) => s.trim().startsWith(':'))) { _align = 'left'; }
+        continue;
+      }
+      final cells = lines[i].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|').map((c) => c.trim()).toList();
+      while (cells.length < _cols) { cells.add(''); }
+      dataRows.add(cells.take(_cols).toList());
+    }
+    _rows = dataRows.length;
+    _cells = dataRows.map((r) => r.map((c) => TextEditingController(text: c)).toList()).toList();
+    _focuses = List.generate(_rows, (_) => List.generate(_cols, (_) => FocusNode()));
+  }
+
+  String _generateMarkdown() {
+    final buf = StringBuffer();
+    buf.write('|');
+    for (int c = 0; c < _cols; c++) { buf.write(' ${_cells[0][c].text} |'); }
+    buf.write('\n|');
+    for (int c = 0; c < _cols; c++) {
+      switch (_align) {
+        case 'center': buf.write(' :---: |');
+        case 'right': buf.write(' ---: |');
+        default: buf.write(' --- |');
+      }
+    }
+    for (int r = 1; r < _rows; r++) {
+      buf.write('\n|');
+      for (int c = 0; c < _cols; c++) { buf.write(' ${_cells[r][c].text} |'); }
+    }
+    buf.write('\n');
+    final table = buf.toString().trim();
+    if (_align != 'left') return '\n::: $_align\n$table\n:::\n';
+    return '\n$table\n';
+  }
+
+  void _addRow() { setState(() { _rows++; _cells.add(List.generate(_cols, (_) => TextEditingController())); _focuses.add(List.generate(_cols, (_) => FocusNode())); }); }
+  void _removeRow() { if (_rows <= 2) return; setState(() { _rows--; for (final c in _cells.removeLast()) { c.dispose(); } for (final f in _focuses.removeLast()) { f.dispose(); } }); }
+  void _addCol() { setState(() { _cols++; for (final row in _cells) { row.add(TextEditingController()); } for (final row in _focuses) { row.add(FocusNode()); } }); }
+  void _removeCol() { if (_cols <= 1) return; setState(() { _cols--; for (final row in _cells) { row.removeLast().dispose(); } for (final row in _focuses) { row.removeLast().dispose(); } }); }
+
+  @override
+  void dispose() {
+    for (final row in _cells) { for (final c in row) { c.dispose(); } }
+    for (final row in _focuses) { for (final f in row) { f.dispose(); } }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: widget.accent, width: yLineMid),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            child: Row(
+              children: [
+                _counter(label: 'fil', value: _rows - 1, onAdd: _addRow, onRemove: _rows > 2 ? _removeRow : null),
+                const SizedBox(width: 20),
+                _counter(label: 'col', value: _cols, onAdd: _addCol, onRemove: _cols > 1 ? _removeCol : null),
+                const SizedBox(width: 20),
+                _alignBtn('left'),
+                const SizedBox(width: 4),
+                _alignBtn('center'),
+                const SizedBox(width: 4),
+                _alignBtn('right'),
+              ],
+            ),
+          ),
+          Container(height: 1, color: yBorderStrong.withValues(alpha: 0.3)),
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(8),
+                child: Table(
+                  border: TableBorder.all(color: yBorderSoft, width: yLineThin),
+                  columnWidths: {for (int c = 0; c < _cols; c++) c: const FixedColumnWidth(140)},
+                  children: [
+                    for (int r = 0; r < _rows; r++)
+                      TableRow(
+                        decoration: r == 0 ? BoxDecoration(color: yInk.withValues(alpha: 0.04)) : null,
+                        children: [
+                          for (int c = 0; c < _cols; c++)
+                            Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: TextField(
+                                controller: _cells[r][c],
+                                focusNode: _focuses[r][c],
+                                maxLines: null,
+                                style: yBody(size: r == 0 ? 14 : 13, color: yInk, weight: r == 0 ? FontWeight.w700 : FontWeight.w400),
+                                decoration: InputDecoration(
+                                  hintText: r == 0 ? 'Col ${c + 1}' : '',
+                                  hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  contentPadding: const EdgeInsets.all(6),
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onCancel,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                    ),
+                    child: Center(child: Text('CANCELAR', style: yBody(size: 12, weight: FontWeight.w700, color: yInk).copyWith(letterSpacing: 1.0))),
+                  ),
+                ),
+              ),
+              Container(width: 1, height: 44, color: yBorderStrong),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () { widget.onSave(_generateMarkdown()); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: widget.accent,
+                      border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                    ),
+                    child: Center(child: Text('GUARDAR', style: yBody(size: 12, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0))),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _counter({required String label, required int value, required VoidCallback onAdd, VoidCallback? onRemove}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onRemove != null)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onRemove,
+            child: Container(
+              width: 28, height: 28, alignment: Alignment.center,
+              decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+              child: Text('−', style: yBody(size: 14, color: yInk, height: 1.0)),
+            ),
+          ),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('$value $label', style: yBody(size: 12, color: yInk))),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onAdd,
+          child: Container(
+            width: 28, height: 28, alignment: Alignment.center,
+            decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+            child: Text('+', style: yBody(size: 14, color: yInk, height: 1.0)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _alignBtn(String value) {
+    final selected = _align == value;
+    final label = value == 'left' ? '←' : value == 'center' ? '↔' : '→';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _align = value),
+      child: Container(
+        width: 28, height: 28, alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? widget.accent : Colors.transparent,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Text(label, style: yBody(size: 12, color: selected ? yCream : yInk, height: 1.0)),
+      ),
+    );
+  }
+}
+
+class _CodeInlineEditor extends StatefulWidget {
+  final String initialData;
+  final Color accent;
+  final void Function(String newMarkdown) onSave;
+  final VoidCallback onCancel;
+
+  const _CodeInlineEditor({
+    required this.initialData,
+    required this.accent,
+    required this.onSave,
+    required this.onCancel,
+  });
+
+  @override
+  State<_CodeInlineEditor> createState() => _CodeInlineEditorState();
+}
+
+class _CodeInlineEditorState extends State<_CodeInlineEditor> {
+  late TextEditingController _langCtrl;
+  late TextEditingController _codeCtrl;
+  late FocusNode _langFocus;
+  late FocusNode _codeFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _langFocus = FocusNode();
+    _codeFocus = FocusNode();
+    final lines = widget.initialData.split('\n');
+    String lang = '';
+    final codeLines = <String>[];
+    for (int i = 0; i < lines.length; i++) {
+      final t = lines[i].trim();
+      if (t.startsWith('```') && i == 0 && t.length > 3) {
+        lang = t.substring(3).trim();
+      } else if (!t.startsWith('```')) {
+        codeLines.add(lines[i]);
+      }
+    }
+    _langCtrl = TextEditingController(text: lang);
+    _codeCtrl = TextEditingController(text: codeLines.join('\n'));
+  }
+
+  @override
+  void dispose() {
+    _langCtrl.dispose();
+    _codeCtrl.dispose();
+    _langFocus.dispose();
+    _codeFocus.dispose();
+    super.dispose();
+  }
+
+  String _generate() {
+    final lang = _langCtrl.text.trim();
+    final code = _codeCtrl.text;
+    return '```$lang\n$code\n```';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: widget.accent, width: yLineMid),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: TextField(
+              controller: _langCtrl,
+              focusNode: _langFocus,
+              style: yBody(size: 14, color: yInk, weight: FontWeight.w700),
+              decoration: InputDecoration(
+                hintText: 'Lenguaje (python, dart, js...)',
+                hintStyle: yBody(size: 13, color: yMuted),
+                border: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderStrong, width: yLineMid)),
+                contentPadding: const EdgeInsets.all(8),
+                isDense: true,
+              ),
+            ),
+          ),
+          Container(height: 1, color: yBorderStrong.withValues(alpha: 0.3)),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: TextField(
+                controller: _codeCtrl,
+                focusNode: _codeFocus,
+                style: yMono(size: 13, color: yInk, tracking: 0),
+                maxLines: null,
+                minLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Codigo',
+                  hintStyle: yBody(size: 13, color: yMuted),
+                  border: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                  enabledBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderSoft, width: yLineThin)),
+                  focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: yBorderStrong, width: yLineMid)),
+                  contentPadding: const EdgeInsets.all(8),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onCancel,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                    ),
+                    child: Center(child: Text('CANCELAR', style: yBody(size: 12, weight: FontWeight.w700, color: yInk).copyWith(letterSpacing: 1.0))),
+                  ),
+                ),
+              ),
+              Container(width: 1, height: 40, color: yBorderStrong),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () { widget.onSave(_generate()); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: widget.accent,
+                      border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                    ),
+                    child: Center(child: Text('GUARDAR', style: yBody(size: 12, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0))),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

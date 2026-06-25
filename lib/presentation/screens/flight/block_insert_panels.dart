@@ -31,50 +31,60 @@ class InsertPanelOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
     final maxW = screenWidth > 720 ? 560.0 : screenWidth - 32.0;
-    final maxH = MediaQuery.of(context).size.height * 0.7;
+    final availableHeight =
+        media.size.height - media.padding.vertical - media.viewInsets.bottom;
+    final maxH = availableHeight * (screenWidth > 720 ? 0.78 : 0.9);
 
-    return GestureDetector(
-      onTap: onClose,
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.4),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: GestureDetector(
-          onTap: () {},
-          child: Material(
-            color: Colors.transparent,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
-              child: switch (type) {
-                InsertPanelType.table => _TablePanel(
-                  accent: accent,
-                  onInsert: onInsert,
-                  onClose: onClose,
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      child: GestureDetector(
+        onTap: onClose,
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.4),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: SafeArea(
+            child: GestureDetector(
+              onTap: () {},
+              child: Material(
+                color: Colors.transparent,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
+                  child: switch (type) {
+                    InsertPanelType.table => _TablePanel(
+                      accent: accent,
+                      onInsert: onInsert,
+                      onClose: onClose,
+                    ),
+                    InsertPanelType.code => _CodePanel(
+                      accent: accent,
+                      onInsert: onInsert,
+                      onClose: onClose,
+                    ),
+                    InsertPanelType.quote => _QuotePanel(
+                      accent: accent,
+                      onInsert: onInsert,
+                      onClose: onClose,
+                    ),
+                    InsertPanelType.latex => _LatexPanel(
+                      accent: accent,
+                      onInsert: onInsert,
+                      onClose: onClose,
+                    ),
+                    InsertPanelType.image => _ImagePanel(
+                      accent: accent,
+                      onInsert: onInsert,
+                      onClose: onClose,
+                      noteId: noteId,
+                    ),
+                  },
                 ),
-                InsertPanelType.code => _CodePanel(
-                  accent: accent,
-                  onInsert: onInsert,
-                  onClose: onClose,
-                ),
-                InsertPanelType.quote => _QuotePanel(
-                  accent: accent,
-                  onInsert: onInsert,
-                  onClose: onClose,
-                ),
-                InsertPanelType.latex => _LatexPanel(
-                  accent: accent,
-                  onInsert: onInsert,
-                  onClose: onClose,
-                ),
-                InsertPanelType.image => _ImagePanel(
-                  accent: accent,
-                  onInsert: onInsert,
-                  onClose: onClose,
-                  noteId: noteId,
-                ),
-              },
+              ),
             ),
           ),
         ),
@@ -82,7 +92,6 @@ class InsertPanelOverlay extends StatelessWidget {
     );
   }
 }
-
 // ─── Panel Scaffold ──────────────────────────────────────────────────────────
 
 class _PanelScaffold extends StatelessWidget {
@@ -296,8 +305,11 @@ class _TablePanelState extends State<_TablePanel> {
         buf.write(' ${t.isEmpty ? '   ' : t} |');
       }
     }
-    buf.write('\n\n');
-    return buf.toString();
+    buf.write('\n');
+    final table = buf.toString().trim();
+    if (_alignment == TextAlign.center) return '\n::: center\n$table\n:::\n';
+    if (_alignment == TextAlign.right) return '\n::: right\n$table\n:::\n';
+    return '\n$table\n';
   }
 
   Widget _counterBtn({
@@ -438,38 +450,30 @@ class _TablePanelState extends State<_TablePanel> {
                       children: [
                         for (int c = 0; c < _cols; c++)
                           Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            child: SizedBox(
-                              height: 36,
-                              child: TextField(
-                                controller: _cells[r][c],
-                                style:
-                                    r == 0
-                                        ? yBody(
+                            padding: const EdgeInsets.all(4),
+                            child: TextField(
+                              controller: _cells[r][c],
+                              maxLines: null,
+                              style:
+                                  r == 0
+                                      ? yBody(
                                           size: 13,
                                           weight: FontWeight.w700,
                                           color: yInk,
                                         )
-                                        : yBody(size: 13, color: yInk),
-                                textAlign: _alignment,
-                                decoration: InputDecoration(
-                                  hintText: r == 0 ? 'Encab.' : '',
-                                  hintStyle: yBody(
-                                    size: 13,
-                                    color: yMuted.withValues(alpha: 0.5),
-                                  ),
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 8,
-                                  ),
-                                  isDense: true,
+                                      : yBody(size: 13, color: yInk),
+                              textAlign: _alignment,
+                              decoration: InputDecoration(
+                                hintText: r == 0 ? 'Encab.' : '',
+                                hintStyle: yBody(
+                                  size: 13,
+                                  color: yMuted.withValues(alpha: 0.5),
                                 ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.all(6),
+                                isDense: true,
                               ),
                             ),
                           ),
@@ -717,6 +721,7 @@ class _ImagePanel extends ConsumerStatefulWidget {
 class _ImagePanelState extends ConsumerState<_ImagePanel> {
   XFile? _pickedFile;
   bool _isLoading = false;
+  String? _imageAlign;
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(
@@ -752,7 +757,11 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
           .read(noteRepositoryProvider)
           .addImage(widget.noteId, newFilename, newPath, fileSize);
 
-      widget.onInsert('\n![Imagen]($newPath)\n');
+      final imgMarkdown = '![Imagen]($newPath)';
+      final md = _imageAlign != null
+          ? '\n::: $_imageAlign\n$imgMarkdown\n:::\n'
+          : '\n$imgMarkdown\n';
+      widget.onInsert(md);
       widget.onClose();
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
@@ -797,34 +806,57 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
                 ),
               ),
             ),
-          if (_pickedFile != null && !_isLoading)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _pickImage,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: yBorderStrong, width: yLineThin),
-                    ),
-                    child: Text(
-                      'Cambiar imagen',
-                      style: yBody(
-                        size: 13,
-                        weight: FontWeight.w700,
-                        color: yInk,
-                      ),
-                    ),
-                  ),
-                ),
+          if (_pickedFile != null && !_isLoading) ...[
+            const SizedBox(height: 10),
+            Text('Alineacion', style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                _buildAlignBtn('Izquierda', 'left'),
+                const SizedBox(width: 6),
+                _buildAlignBtn('Centro', 'center'),
+                const SizedBox(width: 6),
+                _buildAlignBtn('Derecha', 'right'),
+              ],
             ),
+            const SizedBox(height: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _pickImage,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
+                ),
+                child: Text(
+                  'Cambiar imagen',
+                  style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
+                ),
+              ),
+            ),
+          ],
           if (_isLoading)
             Padding(
               padding: const EdgeInsets.only(top: 16),
               child: Text('...', style: ySans(size: 18, weight: FontWeight.w700, color: yInk)),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAlignBtn(String label, String align) {
+    final selected = _imageAlign == align;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _imageAlign = selected ? null : align),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 5, 10, 6),
+        decoration: BoxDecoration(
+          color: selected ? widget.accent : Colors.transparent,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Text(label, style: yBody(size: 11, weight: FontWeight.w700, color: selected ? yCream : yInk)),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +29,7 @@ import 'note_block_widgets.dart';
 import 'note_cell_model.dart';
 import 'note_export_view.dart';
 import 'ai_chat_sheet.dart';
+import 'yuli_markdown_commands.dart';
 import '../lab/lab_space_detail_screen.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
@@ -44,14 +46,18 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   late final TextEditingController _titleCtrl;
   Timer? _titleSaveTimer;
   bool _dirty = false;
-  TextEditingController? _activeTextCtrl;
-  TextEditingController? _lastTextCtrl;
+  EditorState? _activeEditorState;
+  EditorState? _lastEditorState;
   FocusNode? _lastFocusNode;
+  EditorState? _insertEditorState;
+  Selection? _insertSelection;
   InsertPanelType? _activePanel;
   bool _isPreview = false;
   bool _scrollLocked = false;
   bool _headerCollapsed = true;
   final AiChatDockController _chatDock = AiChatDockController();
+  final Map<int, GlobalKey> _blockKeys = {};
+  int? _pendingFocusBlockId;
 
   Color get _accent => widget.note.color ?? widget.folder.color;
 
@@ -107,9 +113,29 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       case NoteBlockType.drawing:
         payload = {'h': 240, 's': []};
     }
-    await ref
+    final block = await ref
         .read(noteBlockRepositoryProvider)
         .insertAtEnd(widget.note.id, type, payload: payload);
+    if (!mounted) return;
+    setState(() => _pendingFocusBlockId = block.id);
+    _revealBlock(block.id);
+  }
+
+  void _revealBlock(int blockId, [int attempts = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _pendingFocusBlockId != blockId) return;
+      final blockContext = _blockKeys[blockId]?.currentContext;
+      if (blockContext != null) {
+        Scrollable.ensureVisible(
+          blockContext,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: 0.85,
+        );
+      } else if (attempts < 8) {
+        _revealBlock(blockId, attempts + 1);
+      }
+    });
   }
 
   Future<void> _onReorder(
@@ -204,37 +230,48 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     return loaded;
   }
 
-  void _onTextBlockFocusChanged(TextEditingController? ctrl, FocusNode? node) {
+  void _onTextBlockFocusChanged(EditorState? editorState, FocusNode? node) {
     setState(() {
-      _activeTextCtrl = ctrl;
-      if (ctrl != null) {
-        _lastTextCtrl = ctrl;
+      _activeEditorState = editorState;
+      if (editorState != null) {
+        _lastEditorState = editorState;
         _lastFocusNode = node;
       }
     });
   }
 
-  void _insertSyntax(String syntax) {
-    final ctrl = _lastTextCtrl ?? _activeTextCtrl;
-    if (ctrl == null) return;
-    final cursor = ctrl.selection.baseOffset;
-    final text = ctrl.text;
-    final newText =
-        cursor >= 0
-            ? text.substring(0, cursor) + syntax + text.substring(cursor)
-            : text + syntax;
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-        offset: (cursor >= 0 ? cursor : text.length) + syntax.length,
-      ),
-    );
+  void _captureInsertionAnchor() {
+    final editorState = _lastEditorState ?? _activeEditorState;
+    final selection = editorState?.selection;
+    if (editorState == null || selection == null) return;
+    _insertEditorState = editorState;
+    _insertSelection = selection;
+  }
+
+  void _restoreInsertionAnchor() {
+    final editorState = _insertEditorState;
+    final selection = _insertSelection;
+    if (editorState != null && selection != null) {
+      editorState.selection = selection;
+    }
+    _lastFocusNode?.requestFocus();
+  }
+
+  Future<void> _insertSyntax(String syntax) async {
+    final editorState =
+        _insertEditorState ?? _lastEditorState ?? _activeEditorState;
+    final selection = _insertSelection ?? editorState?.selection;
+    if (editorState == null || selection == null) return;
+    await insertMarkdownAtSelection(editorState, selection, syntax);
+    _insertEditorState = null;
+    _insertSelection = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _lastFocusNode?.requestFocus();
     });
   }
 
   void _showInsertMenu() {
+    _captureInsertionAnchor();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -246,7 +283,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
           ),
     ).whenComplete(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _lastFocusNode?.requestFocus();
+        if (_activePanel == null) _restoreInsertionAnchor();
       });
     });
   }
@@ -328,160 +365,185 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                     ?.isNotEmpty ??
                 false));
 
-    return _wrapWithChatDock(Scaffold(
-      backgroundColor: yCream,
-      body: StatusBarFlood(
-        // Header is the note accent when expanded, cream2 when collapsed.
-        color: _headerCollapsed ? yCream2 : _accent,
-        child: SafeArea(
-          top: false,
-          child: Stack(
-            children: [
-              Column(
-                children: [
-                  if (_headerCollapsed)
-                    _CollapsedHeader(
-                      folder: widget.folder,
-                      titleCtrl: _titleCtrl,
-                      dirty: _dirty,
-                      isPreview: _isPreview,
-                      accent: _accent,
-                      onBack: () => Navigator.pop(context),
-                      onSave: _saveTitle,
-                      onTogglePreview:
-                          () => setState(() => _isPreview = !_isPreview),
-                      onPdf: () => _exportPdf(blocks),
-                      onExpand: () => setState(() => _headerCollapsed = false),
-                    )
-                  else ...[
-                    ModeHeader(
-                      mode: 'NOTA',
-                      subtitle: _buildSubtitle(),
-                      subtitleWidget: _buildNoteSubtitleWidget(linkedCards),
-                      color: _accent,
-                      onBack: () => Navigator.pop(context),
-                      headerRight: _buildExpandedHeaderRight(
+    return _wrapWithChatDock(
+      Scaffold(
+        backgroundColor: yCream,
+        body: StatusBarFlood(
+          // Header is the note accent when expanded, cream2 when collapsed.
+          color: _headerCollapsed ? yCream2 : _accent,
+          child: SafeArea(
+            top: false,
+            child: Stack(
+              children: [
+                Column(
+                  children: [
+                    if (_headerCollapsed)
+                      _CollapsedHeader(
+                        folder: widget.folder,
+                        titleCtrl: _titleCtrl,
                         dirty: _dirty,
                         isPreview: _isPreview,
+                        accent: _accent,
+                        onBack: () => Navigator.pop(context),
                         onSave: _saveTitle,
                         onTogglePreview:
                             () => setState(() => _isPreview = !_isPreview),
-                        onLink: () => _showLinkToLab(spaces),
                         onPdf: () => _exportPdf(blocks),
-                        onCollapse:
-                            () => setState(() => _headerCollapsed = true),
+                        onExpand:
+                            () => setState(() => _headerCollapsed = false),
+                      )
+                    else ...[
+                      ModeHeader(
+                        mode: 'NOTA',
+                        subtitle: _buildSubtitle(),
+                        subtitleWidget: _buildNoteSubtitleWidget(linkedCards),
+                        color: _accent,
+                        onBack: () => Navigator.pop(context),
+                        headerRight: _buildExpandedHeaderRight(
+                          dirty: _dirty,
+                          isPreview: _isPreview,
+                          onSave: _saveTitle,
+                          onTogglePreview:
+                              () => setState(() => _isPreview = !_isPreview),
+                          onLink: () => _showLinkToLab(spaces),
+                          onPdf: () => _exportPdf(blocks),
+                          onCollapse:
+                              () => setState(() => _headerCollapsed = true),
+                        ),
+                      ),
+                    ],
+                    Expanded(
+                      child: Container(
+                        color: yCream,
+                        child:
+                            blocks.isEmpty
+                                ? _EmptyState(onAdd: _addBlock, accent: _accent)
+                                : _isPreview
+                                ? _buildPreview(blocks)
+                                : ScrollConfiguration(
+                                  // Stylus draws on canvas blocks; only the finger
+                                  // scrolls the note (pen excluded from dragDevices),
+                                  // so a pen stroke never scrolls the list.
+                                  behavior: const _NoteScrollBehavior(),
+                                  child: ReorderableListView.builder(
+                                    physics:
+                                        _scrollLocked
+                                            ? const NeverScrollableScrollPhysics()
+                                            : null,
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      16,
+                                      16,
+                                      16,
+                                    ),
+                                    buildDefaultDragHandles: false,
+                                    proxyDecorator:
+                                        (child, _, _) => Material(
+                                          color: Colors.transparent,
+                                          child: DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                color: _accent,
+                                                width: yLineThin,
+                                              ),
+                                            ),
+                                            child: child,
+                                          ),
+                                        ),
+                                    itemBuilder:
+                                        (ctx, i) => Padding(
+                                          key: _blockKeys.putIfAbsent(
+                                            blocks[i].id,
+                                            GlobalKey.new,
+                                          ),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8,
+                                          ),
+                                          child: BlockRouter(
+                                            block: blocks[i],
+                                            note: widget.note,
+                                            folder: widget.folder,
+                                            index: i,
+                                            autofocus:
+                                                _pendingFocusBlockId ==
+                                                blocks[i].id,
+                                            onTextBlockFocusChanged: (
+                                              editorState,
+                                              focusNode,
+                                            ) {
+                                              if (editorState != null &&
+                                                  _pendingFocusBlockId ==
+                                                      blocks[i].id) {
+                                                _pendingFocusBlockId = null;
+                                              }
+                                              _onTextBlockFocusChanged(
+                                                editorState,
+                                                focusNode,
+                                              );
+                                            },
+                                            onScrollLockChanged: (locked) {
+                                              setState(
+                                                () => _scrollLocked = locked,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                    itemCount: blocks.length,
+                                    onReorder:
+                                        (a, b) => _onReorder(blocks, a, b),
+                                  ),
+                                ),
                       ),
                     ),
-                  ],
-                  Expanded(
-                    child: Container(
-                      color: yCream,
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
                       child:
-                          blocks.isEmpty
-                              ? _EmptyState(onAdd: _addBlock, accent: _accent)
-                              : _isPreview
-                              ? _buildPreview(blocks)
-                              : ScrollConfiguration(
-                                // Stylus draws on canvas blocks; only the finger
-                                // scrolls the note (pen excluded from dragDevices),
-                                // so a pen stroke never scrolls the list.
-                                behavior: const _NoteScrollBehavior(),
-                                child: ReorderableListView.builder(
-                                  physics:
-                                      _scrollLocked
-                                          ? const NeverScrollableScrollPhysics()
-                                          : null,
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    16,
-                                    16,
-                                    16,
-                                  ),
-                                  buildDefaultDragHandles: false,
-                                  proxyDecorator:
-                                      (child, _, _) => Material(
-                                        color: Colors.transparent,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: _accent,
-                                              width: yLineThin,
-                                            ),
-                                          ),
-                                          child: child,
-                                        ),
-                                      ),
-                                  itemBuilder:
-                                      (ctx, i) => Padding(
-                                        key: ValueKey('block_${blocks[i].id}'),
-                                        padding: const EdgeInsets.only(
-                                          bottom: 8,
-                                        ),
-                                        child: BlockRouter(
-                                          block: blocks[i],
-                                          note: widget.note,
-                                          folder: widget.folder,
-                                          index: i,
-                                          onTextBlockFocusChanged:
-                                              _onTextBlockFocusChanged,
-                                          onScrollLockChanged: (locked) {
-                                            setState(
-                                              () => _scrollLocked = locked,
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                  itemCount: blocks.length,
-                                  onReorder: (a, b) => _onReorder(blocks, a, b),
-                                ),
-                              ),
+                          _lastEditorState != null && !_isPreview
+                              ? FormatToolbar(
+                                editorState: _lastEditorState,
+                                onOpenInsertMenu: _showInsertMenu,
+                                accent: _accent,
+                              )
+                              : const SizedBox.shrink(),
+                    ),
+                    _EditorFooter(
+                      blocks: blocks,
+                      wordCount: _countWords(blocks),
+                      onAdd: _addBlock,
+                      accent: _accent,
+                    ),
+                  ],
+                ),
+                if (_activePanel != null)
+                  Positioned.fill(
+                    child: InsertPanelOverlay(
+                      type: _activePanel!,
+                      noteId: widget.note.id,
+                      accent: _accent,
+                      onInsert: (md) {
+                        setState(() => _activePanel = null);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _insertSyntax(md);
+                        });
+                      },
+                      onClose: () {
+                        setState(() => _activePanel = null);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _restoreInsertionAnchor();
+                          _insertEditorState = null;
+                          _insertSelection = null;
+                        });
+                      },
                     ),
                   ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOut,
-                    child:
-                        _activeTextCtrl != null && !_isPreview
-                            ? FormatToolbar(
-                              controller: _activeTextCtrl,
-                              onOpenInsertMenu: _showInsertMenu,
-                              accent: _accent,
-                            )
-                            : const SizedBox.shrink(),
-                  ),
-                  _EditorFooter(
-                    blocks: blocks,
-                    wordCount: _countWords(blocks),
-                    onAdd: _addBlock,
-                    accent: _accent,
-                  ),
-                ],
-              ),
-              if (_activePanel != null)
-                Positioned.fill(
-                  child: InsertPanelOverlay(
-                    type: _activePanel!,
-                    noteId: widget.note.id,
-                    accent: _accent,
-                    onInsert: (md) {
-                      setState(() => _activePanel = null);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _insertSyntax(md);
-                      });
-                    },
-                    onClose: () {
-                      setState(() => _activePanel = null);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        _lastFocusNode?.requestFocus();
-                      });
-                    },
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ), linked: aiLinked);
+      linked: aiLinked,
+    );
   }
 
   Widget _buildPreview(List<NoteBlock> blocks) {

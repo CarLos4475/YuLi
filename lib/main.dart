@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/services/crash_logger.dart';
@@ -85,6 +86,9 @@ class YuLiApp extends ConsumerWidget {
       theme: lightTheme(),
       darkTheme: darkTheme(),
       themeMode: themeMode,
+      localizationsDelegates: const [
+        AppFlowyEditorLocalizations.delegate,
+      ],
       // Transparent system bars so the app background floods them. Icon
       // brightness tracks the active theme (dark icons on cream, light on ink).
       // Wraps the navigator → applies app-wide, across every pushed route.

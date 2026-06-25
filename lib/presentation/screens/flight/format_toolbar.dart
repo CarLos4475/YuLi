@@ -1,123 +1,197 @@
+import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
+import 'yuli_markdown_commands.dart';
 
 class FormatToolbar extends StatelessWidget {
-  final TextEditingController? controller;
+  final EditorState? editorState;
   final VoidCallback? onOpenInsertMenu;
   final Color accent;
 
   const FormatToolbar({
     super.key,
-    this.controller,
+    this.editorState,
     this.onOpenInsertMenu,
     this.accent = yFlight,
   });
 
-  void _wrap(String before, String after) {
-    final ctrl = controller;
-    if (ctrl == null) return;
-    final sel = ctrl.selection;
-    if (!sel.isValid) return;
-    final text = ctrl.text;
-    final selected = sel.textInside(text);
-    final newText = text.replaceRange(
-      sel.start,
-      sel.end,
-      '$before$selected$after',
-    );
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection(
-        baseOffset: sel.start + before.length,
-        extentOffset: sel.start + before.length + selected.length,
-      ),
-    );
+  void _wrap(String marker) {
+    final state = editorState;
+    if (state == null) return;
+    wrapMarkdownSelection(state, marker);
   }
 
-  void _wrapAlign(String align) {
-    final ctrl = controller;
-    if (ctrl == null) return;
-    final sel = ctrl.selection;
-    if (!sel.isValid) return;
-    final text = ctrl.text;
-    final selected = sel.textInside(text);
-    final wrapped = '::: $align\n$selected\n:::';
-    final newText = text.replaceRange(sel.start, sel.end, wrapped);
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: sel.start + wrapped.length),
-    );
+  void _align(String align) {
+    final state = editorState;
+    final selection = state?.selection;
+    if (state == null || selection == null) return;
+    setPreferredMarkdownAlignment(state, align);
+    final targets = <Node>{};
+    for (final node in state.getNodesInSelection(selection)) {
+      targets.add(_alignmentTarget(node));
+    }
+    final direct = state.getNodeAtPath(selection.start.path);
+    if (direct != null) targets.add(_alignmentTarget(direct));
+    final transaction = state.transaction;
+    for (final node in targets) {
+      transaction.updateNode(node, {
+        if (node.type == ImageBlockKeys.type)
+          ImageBlockKeys.align: align
+        else
+          blockComponentAlign: align == 'left' ? null : align,
+      });
+    }
+    state.apply(transaction);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineThin)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        children: [
-          _FmtBtn(label: 'B', onTap: () => _wrap('**', '**')),
-          const SizedBox(width: 4),
-          _FmtBtn(label: 'I', onTap: () => _wrap('*', '*')),
-          const SizedBox(width: 4),
-          _FmtBtn(label: 'S', onTap: () => _wrap('~~', '~~')),
-          const SizedBox(width: 4),
-          _FmtBtn(label: '`', onTap: () => _wrap('`', '`')),
-          const SizedBox(width: 4),
-          _FmtBtn(label: r'$', onTap: () => _wrap(r'$', r'$')),
-          const SizedBox(width: 8),
-          _AlignBtn(
-            icon: YuLiIcons.textAlignStart,
-            onTap: () => _wrapAlign('left'),
-          ),
-          const SizedBox(width: 4),
-          _AlignBtn(
-            icon: YuLiIcons.textAlignCenter,
-            onTap: () => _wrapAlign('center'),
-          ),
-          const SizedBox(width: 4),
-          _AlignBtn(
-            icon: YuLiIcons.textAlignEnd,
-            onTap: () => _wrapAlign('right'),
-          ),
-          const Spacer(),
-          if (onOpenInsertMenu != null)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onOpenInsertMenu,
-              child: Container(
-                width: 30,
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accent,
-                  border: Border.all(color: yBorderStrong, width: 1.5),
-                ),
-                child: Text(
-                  '+',
-                  style: yMono(
-                    size: 14,
-                    weight: FontWeight.w700,
-                    color: yCream,
-                    tracking: 0,
-                  ),
-                ),
-              ),
+    final state = editorState;
+    if (state == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<Selection?>(
+      valueListenable: state.selectionNotifier,
+      builder: (context, selection, _) {
+        String activeAlign() {
+          if (selection == null) return preferredMarkdownAlignment(state);
+          final nodes = state.getNodesInSelection(selection).toList();
+          final direct = state.getNodeAtPath(selection.start.path);
+          if (direct != null && !nodes.contains(direct)) nodes.add(direct);
+          if (nodes.isEmpty) return preferredMarkdownAlignment(state);
+          final values =
+              nodes
+                  .map(_alignmentTarget)
+                  .map(
+                    (node) =>
+                        node.type == ImageBlockKeys.type
+                            ? node.attributes[ImageBlockKeys.align] ?? 'center'
+                            : node.attributes[blockComponentAlign] ?? 'left',
+                  )
+                  .toSet();
+          return values.length == 1
+              ? values.first as String
+              : preferredMarkdownAlignment(state);
+        }
+
+        final align = activeAlign();
+        return Container(
+          decoration: const BoxDecoration(
+            color: yCream,
+            border: Border(
+              top: BorderSide(color: yBorderStrong, width: yLineThin),
             ),
-        ],
-      ),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                _FmtBtn(
+                  label: 'B',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _wrap('**'),
+                ),
+                const SizedBox(width: 4),
+                _FmtBtn(
+                  label: 'I',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _wrap('*'),
+                ),
+                const SizedBox(width: 4),
+                _FmtBtn(
+                  label: 'S',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _wrap('~~'),
+                ),
+                const SizedBox(width: 4),
+                _FmtBtn(
+                  label: '`',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _wrap('`'),
+                ),
+                const SizedBox(width: 8),
+                _AlignBtn(
+                  icon: YuLiIcons.textAlignStart,
+                  active: align == 'left',
+                  accent: accent,
+                  onTap: () => _align('left'),
+                ),
+                const SizedBox(width: 4),
+                _AlignBtn(
+                  icon: YuLiIcons.textAlignCenter,
+                  active: align == 'center',
+                  accent: accent,
+                  onTap: () => _align('center'),
+                ),
+                const SizedBox(width: 4),
+                _AlignBtn(
+                  icon: YuLiIcons.textAlignEnd,
+                  active: align == 'right',
+                  accent: accent,
+                  onTap: () => _align('right'),
+                ),
+                const SizedBox(width: 12),
+                if (onOpenInsertMenu != null)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onOpenInsertMenu,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        border: Border.all(color: yBorderStrong, width: 1.5),
+                      ),
+                      child: Text(
+                        '+',
+                        style: yMono(
+                          size: 14,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                          tracking: 0,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
+}
+
+Node _alignmentTarget(Node node) {
+  final original = node;
+  var current = node;
+  while (current.parent != null) {
+    if (current.type == ImageBlockKeys.type ||
+        current.type == TableBlockKeys.type) {
+      return current;
+    }
+    current = current.parent!;
+  }
+  return original;
 }
 
 class _FmtBtn extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-  const _FmtBtn({required this.label, required this.onTap});
+  final bool active;
+  final Color accent;
+  const _FmtBtn({
+    required this.label,
+    required this.onTap,
+    required this.active,
+    required this.accent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -129,12 +203,16 @@ class _FmtBtn extends StatelessWidget {
         height: 30,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: yCream,
+          color: active ? accent : yCream,
           border: Border.all(color: yBorderStrong, width: 1.5),
         ),
         child: Text(
           label,
-          style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
+          style: yBody(
+            size: 13,
+            weight: FontWeight.w700,
+            color: active ? yCream : yInk,
+          ),
         ),
       ),
     );
@@ -144,7 +222,14 @@ class _FmtBtn extends StatelessWidget {
 class _AlignBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const _AlignBtn({required this.icon, required this.onTap});
+  final bool active;
+  final Color accent;
+  const _AlignBtn({
+    required this.icon,
+    required this.onTap,
+    required this.active,
+    required this.accent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -156,9 +241,10 @@ class _AlignBtn extends StatelessWidget {
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
+          color: active ? accent : yCream,
           border: Border.all(color: yBorderStrong, width: 1.5),
         ),
-        child: Icon(icon, size: 14, color: yInk),
+        child: Icon(icon, size: 14, color: active ? yCream : yInk),
       ),
     );
   }
