@@ -312,9 +312,6 @@ Delta buildLiveMarkdownDelta(String text) {
     }
   }
 
-  final list = RegExp(r'^(?:[-+*]|\d+[.)])\s').firstMatch(text);
-  if (list != null) _markBlock(attributes, list.start, list.end - 1);
-
   if (text.trim() == '---') {
     _markBlock(attributes, 0, text.length);
   }

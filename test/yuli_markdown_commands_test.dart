@@ -302,6 +302,23 @@ x^2 + y^2
     );
   });
 
+  test('list and task markers remain visible source text', () {
+    for (final source in ['- Tarea', '1. Paso', '- [ ] Pendiente']) {
+      final markers =
+          buildLiveMarkdownDelta(source)
+              .toList()
+              .whereType<TextInsert>()
+              .where(
+                (operation) =>
+                    operation.attributes?[yuliMarkdownMarker] == true,
+              )
+              .map((operation) => operation.text)
+              .join();
+
+      expect(markers, isEmpty, reason: source);
+    }
+  });
+
   test('panel insertion restores its captured selection', () async {
     final state = EditorState(
       document: Document(

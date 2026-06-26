@@ -719,9 +719,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final math = tester.widget<Math>(find.byType(Math));
-    final richText = tester.widgetList<RichText>(find.byType(RichText)).firstWhere(
-      (widget) => _containsWidgetSpan(widget.text),
-    );
+    final richText = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .firstWhere((widget) => _containsWidgetSpan(widget.text));
 
     expect(math.textStyle?.fontSize, 16);
     expect(richText.textAlign, TextAlign.left);
@@ -949,14 +949,68 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      state?.document.root.children.single
-          .attributes[yuliLatexBlockContent],
+      state?.document.root.children.single.attributes[yuliLatexBlockContent],
       r'\frac{1}{2}',
     );
     expect(
       YuliMarkdownDocument.encode(state!.document),
       contains('\$\$\n\\frac{1}{2}\n\$\$'),
     );
+  });
+
+  testWidgets('code block uses compact atomic editing flow', (tester) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '```dart\nfinal value = 1;\n```',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, _) => state = editorState,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('```'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_code_0')));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR'), findsOneWidget);
+
+    await tester.tap(find.text('EDITAR'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextField);
+    expect(fields, findsNWidgets(2));
+    await tester.enterText(fields.at(0), 'type');
+    await tester.pump();
+    await tester.tap(find.text('TYPESCRIPT'));
+    await tester.pump();
+    await tester.enterText(
+      find.byType(TextField).last,
+      'const value = 2;\nconsole.log(value);',
+    );
+    await tester.tap(find.text('GUARDAR'));
+    await tester.pumpAndSettle();
+
+    final code = state!.document.root.children.single;
+    expect(code.attributes['language'], 'ts');
+    expect(code.delta?.toPlainText(), contains('console.log'));
+    expect(YuliMarkdownDocument.encode(state!.document), contains('```ts'));
   });
 
   testWidgets('last atomic node offers a following paragraph', (tester) async {
@@ -992,10 +1046,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state?.document.root.children, hasLength(2));
-    expect(
-      state?.document.root.children.last.type,
-      ParagraphBlockKeys.type,
-    );
+    expect(state?.document.root.children.last.type, ParagraphBlockKeys.type);
     expect(state?.selection?.start.path, [1]);
   });
 

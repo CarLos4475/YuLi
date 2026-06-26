@@ -11,6 +11,7 @@ import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/repositories/note_block_repository.dart';
+import 'yuli_code_language_picker.dart';
 import 'yuli_markdown_commands.dart';
 import 'yuli_markdown_document.dart';
 
@@ -105,6 +106,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   final Set<String> _editingTables = {};
   final Set<String> _editingImages = {};
   final Set<String> _editingLatex = {};
+  final Set<String> _editingCode = {};
 
   @override
   void initState() {
@@ -346,6 +348,25 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     await _editorState.apply(transaction);
     if (!mounted) return;
     setState(() => _editingLatex.remove(_nodeKey(node)));
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _saveCode(Node node, String language, String code) async {
+    final transaction =
+        _editorState.transaction
+          ..updateNode(node, {
+            blockComponentDelta:
+                (Delta()..insert(code.replaceAll('\r\n', '\n'))).toJson(),
+            'language': yuliNormalizeCodeLanguage(language),
+          })
+          ..afterSelection = Selection.single(
+            path: node.path,
+            startOffset: 0,
+            endOffset: 1,
+          );
+    await _editorState.apply(transaction);
+    if (!mounted) return;
+    setState(() => _editingCode.remove(_nodeKey(node)));
     _focusNode.requestFocus();
   }
 
@@ -717,10 +738,51 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
           }
           Widget result = child!;
           if (node.type == yuliCodeBlockType) {
-            result = Container(
-              width: double.infinity,
-              color: yCream2,
-              child: result,
+            final editing = _editingCode.contains(key);
+            final code = node.delta?.toPlainText() ?? '';
+            return _YuliAtomicFrame(
+              key: ValueKey('yuli_atomic_code_${node.path.join('_')}'),
+              accent: widget.accent,
+              selected: active,
+              editing: editing,
+              label: 'CODIGO',
+              interceptContent: !editing,
+              onSelect: () => _selectAtomicNode(node),
+              actions: [
+                if (!editing)
+                  _YuliAtomicAction(
+                    label: 'EDITAR',
+                    icon: YuLiIcons.pencil,
+                    onTap: () {
+                      setState(() => _editingCode.add(key));
+                    },
+                  ),
+                _YuliAtomicAction(
+                  label: 'BORRAR',
+                  icon: YuLiIcons.trash,
+                  destructive: true,
+                  onTap: () => _deleteAtomicNode(node),
+                ),
+              ],
+              child:
+                  editing
+                      ? _YuliCodeInlineEditor(
+                        initialCode: code,
+                        initialLanguage:
+                            node.attributes['language'] as String? ?? '',
+                        accent: widget.accent,
+                        onCancel: () {
+                          setState(() => _editingCode.remove(key));
+                          _selectAtomicNode(node);
+                        },
+                        onSave:
+                            (language, value) =>
+                                _saveCode(node, language, value),
+                      )
+                      : _YuliCodePreview(
+                        code: code,
+                        language: node.attributes['language'] as String? ?? '',
+                      ),
             );
           }
           if (node.type == TableBlockKeys.type) {
@@ -905,7 +967,8 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         lastNode != null &&
         (lastNode.type == ImageBlockKeys.type ||
             lastNode.type == TableBlockKeys.type ||
-            lastNode.type == yuliLatexBlockType);
+            lastNode.type == yuliLatexBlockType ||
+            lastNode.type == yuliCodeBlockType);
 
     final style = EditorStyle.mobile(
       padding: EdgeInsets.zero,
@@ -1282,6 +1345,8 @@ class _YuliLatexInlineEditorState extends State<_YuliLatexInlineEditor> {
             autofocus: true,
             minLines: 2,
             maxLines: 6,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
             onChanged: (_) => setState(() {}),
             style: yMono(size: 14, color: yInk, tracking: 0),
             decoration: const InputDecoration(
@@ -1339,6 +1404,154 @@ class _YuliLatexInlineEditorState extends State<_YuliLatexInlineEditor> {
                       formula.isEmpty
                           ? null
                           : () => widget.onSave(_controller.text),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YuliCodePreview extends StatelessWidget {
+  final String code;
+  final String language;
+
+  const _YuliCodePreview({required this.code, required this.language});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = language.trim().toUpperCase();
+    return Container(
+      width: double.infinity,
+      color: yCream2,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (label.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                label,
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  color: yMuted,
+                  tracking: 0.9,
+                ),
+              ),
+            ),
+          Text(
+            code.isEmpty ? 'CODIGO VACIO' : code,
+            softWrap: true,
+            style: yMono(
+              size: 13,
+              color: yInk,
+              tracking: 0,
+            ).copyWith(height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YuliCodeInlineEditor extends StatefulWidget {
+  final String initialCode;
+  final String initialLanguage;
+  final Color accent;
+  final VoidCallback onCancel;
+  final void Function(String language, String code) onSave;
+
+  const _YuliCodeInlineEditor({
+    required this.initialCode,
+    required this.initialLanguage,
+    required this.accent,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  @override
+  State<_YuliCodeInlineEditor> createState() => _YuliCodeInlineEditorState();
+}
+
+class _YuliCodeInlineEditorState extends State<_YuliCodeInlineEditor> {
+  late final TextEditingController _codeController;
+  late String _language;
+
+  @override
+  void initState() {
+    super.initState();
+    _codeController = TextEditingController(text: widget.initialCode);
+    _language = yuliNormalizeCodeLanguage(widget.initialLanguage);
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: yCream2,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          YuliCodeLanguagePicker(
+            language: _language,
+            accent: widget.accent,
+            onChanged: (value) => setState(() => _language = value),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _codeController,
+            autofocus: true,
+            minLines: 4,
+            maxLines: 10,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            onChanged: (_) => setState(() {}),
+            style: yMono(
+              size: 13,
+              color: yInk,
+              tracking: 0,
+            ).copyWith(height: 1.45),
+            decoration: const InputDecoration(
+              hintText: 'CODIGO',
+              border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _YuliInlineEditorButton(
+                  label: 'CANCELAR',
+                  color: yCream,
+                  foreground: yInk,
+                  onTap: widget.onCancel,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _YuliInlineEditorButton(
+                  label: 'GUARDAR',
+                  color: widget.accent,
+                  foreground: yCream,
+                  onTap: () => widget.onSave(_language, _codeController.text),
                 ),
               ),
             ],
