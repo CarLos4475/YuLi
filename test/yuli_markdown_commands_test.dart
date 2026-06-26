@@ -31,6 +31,19 @@ void main() {
     expect(state.selection?.start.offset, 2);
   });
 
+  test('dollar pairing grows from inline to display latex', () async {
+    final state = EditorState(
+      document: Document(root: pageNode(children: [paragraphNode()])),
+    );
+    state.selection = Selection.collapsed(Position(path: const [0]));
+
+    await pairMarkdownCharacter(state, r'$');
+    await pairMarkdownCharacter(state, r'$');
+
+    expect(state.document.root.children.single.delta?.toPlainText(), r'$$$$');
+    expect(state.selection?.start.offset, 2);
+  });
+
   test('toolbar wrapping keeps literal markdown around a selection', () async {
     final state = EditorState(
       document: Document(
@@ -115,6 +128,74 @@ void main() {
               operation.attributes?[attribute] == true,
         ),
         isTrue,
+        reason: source,
+      );
+    }
+  });
+
+  test('inline latex keeps source markers and supports trailing spaces', () {
+    final operations =
+        buildLiveMarkdownDelta(
+          r'Antes $1 = 1 $ despues',
+        ).toList().whereType<TextInsert>().toList();
+
+    expect(
+      operations
+          .where(
+            (operation) => operation.attributes?[yuliMarkdownMarker] == true,
+          )
+          .map((operation) => operation.text)
+          .join(),
+      r'$$',
+    );
+    expect(
+      operations.any(
+        (operation) =>
+            operation.text == '1 = 1 ' &&
+            operation.attributes?[yuliLatex] == true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('multiple inline latex domains remain independent', () {
+    final operations =
+        buildLiveMarkdownDelta(
+          r'Hola $1+2$ y $1*3$',
+        ).toList().whereType<TextInsert>().toList();
+    final formulas =
+        operations
+            .where((operation) => operation.attributes?[yuliLatex] == true)
+            .map((operation) => operation.text)
+            .toList();
+
+    expect(formulas, ['1+2', '1*3']);
+  });
+
+  test('display latex remains one live domain across lines', () {
+    final operations =
+        buildLiveMarkdownDelta('''\$\$
+x^2 + y^2
+\$\$''').toList().whereType<TextInsert>().toList();
+
+    expect(
+      operations.any(
+        (operation) =>
+            operation.text.contains('x^2 + y^2') &&
+            operation.attributes?[yuliLatex] == true &&
+            operation.attributes?[yuliLatexDisplay] == true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('empty and escaped dollar domains do not render as latex', () {
+    for (final source in [r'$ $', r'\$1 = 1$']) {
+      final operations =
+          buildLiveMarkdownDelta(source).toList().whereType<TextInsert>();
+      expect(
+        operations.any((operation) => operation.attributes?[yuliLatex] == true),
+        isFalse,
         reason: source,
       );
     }
@@ -316,6 +397,25 @@ void main() {
       'center',
     );
     expect(preferredMarkdownAlignment(state), 'center');
+  });
+
+  test('enter after an atomic node creates a following paragraph', () async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(children: [imageNode(url: 'image.png')]),
+      ),
+    );
+    state.selection = Selection.single(
+      path: const [0],
+      startOffset: 0,
+      endOffset: 1,
+    );
+
+    await yuliMarkdownCharacterShortcuts.first.execute(state);
+
+    expect(state.document.root.children, hasLength(2));
+    expect(state.document.root.children.last.type, ParagraphBlockKeys.type);
+    expect(state.selection?.start.path, [1]);
   });
 
   test('alignment remains selected until the user changes it', () async {

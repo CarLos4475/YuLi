@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -34,8 +35,7 @@ class InsertPanelOverlay extends StatelessWidget {
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
     final maxW = screenWidth > 720 ? 560.0 : screenWidth - 32.0;
-    final availableHeight =
-        media.size.height - media.padding.vertical - media.viewInsets.bottom;
+    final availableHeight = media.size.height - media.padding.vertical - media.viewInsets.bottom;
     final maxH = availableHeight * (screenWidth > 720 ? 0.78 : 0.9);
 
     return AnimatedPadding(
@@ -56,26 +56,10 @@ class InsertPanelOverlay extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
                   child: switch (type) {
-                    InsertPanelType.table => _TablePanel(
-                      accent: accent,
-                      onInsert: onInsert,
-                      onClose: onClose,
-                    ),
-                    InsertPanelType.code => _CodePanel(
-                      accent: accent,
-                      onInsert: onInsert,
-                      onClose: onClose,
-                    ),
-                    InsertPanelType.quote => _QuotePanel(
-                      accent: accent,
-                      onInsert: onInsert,
-                      onClose: onClose,
-                    ),
-                    InsertPanelType.latex => _LatexPanel(
-                      accent: accent,
-                      onInsert: onInsert,
-                      onClose: onClose,
-                    ),
+                    InsertPanelType.table => _TablePanel(accent: accent, onInsert: onInsert, onClose: onClose),
+                    InsertPanelType.code => _CodePanel(accent: accent, onInsert: onInsert, onClose: onClose),
+                    InsertPanelType.quote => _QuotePanel(accent: accent, onInsert: onInsert, onClose: onClose),
+                    InsertPanelType.latex => _LatexPanel(accent: accent, onInsert: onInsert, onClose: onClose),
                     InsertPanelType.image => _ImagePanel(
                       accent: accent,
                       onInsert: onInsert,
@@ -112,49 +96,25 @@ class _PanelScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: yBorderStrong, width: yLineMid),
-      ),
+      decoration: BoxDecoration(color: yCream, border: Border.all(color: yBorderStrong, width: yLineMid)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-              ),
-            ),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid))),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: ySans(
-                      size: 24,
-                      weight: FontWeight.w700,
-                      color: yInk,
-                    ),
-                  ),
-                ),
+                Expanded(child: Text(title, style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: onClose,
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(YuLiIcons.close, color: yInk, size: 22),
-                  ),
+                  child: const Padding(padding: EdgeInsets.all(8), child: Icon(YuLiIcons.close, color: yInk, size: 22)),
                 ),
               ],
             ),
           ),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: child,
-            ),
-          ),
+          Flexible(child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: child)),
           if (onInsert != null)
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -164,18 +124,12 @@ class _PanelScaffold extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: accent,
-                  border: const Border(
-                    top: BorderSide(color: yBorderStrong, width: yLineMid),
-                  ),
+                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
                 ),
                 child: Center(
                   child: Text(
                     'INSERTAR',
-                    style: yBody(
-                      size: 14,
-                      weight: FontWeight.w700,
-                      color: yCream,
-                    ).copyWith(letterSpacing: 1.0),
+                    style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0),
                   ),
                 ),
               ),
@@ -230,10 +184,7 @@ class _TablePanelState extends State<_TablePanel> {
   @override
   void initState() {
     super.initState();
-    _cells = List.generate(
-      2,
-      (_) => List.generate(2, (_) => TextEditingController()),
-    );
+    _cells = List.generate(2, (_) => List.generate(2, (_) => TextEditingController()));
   }
 
   @override
@@ -312,12 +263,7 @@ class _TablePanelState extends State<_TablePanel> {
     return '\n$table\n';
   }
 
-  Widget _counterBtn({
-    required String label,
-    required int value,
-    required VoidCallback onAdd,
-    VoidCallback? onRemove,
-  }) {
+  Widget _counterBtn({required String label, required int value, required VoidCallback onAdd, VoidCallback? onRemove}) {
     final disabledColor = yMuted.withValues(alpha: 0.4);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -329,20 +275,10 @@ class _TablePanelState extends State<_TablePanel> {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              border: Border.all(
-                color: onRemove != null ? yBorderStrong : disabledColor,
-                width: yLineThin,
-              ),
+              border: Border.all(color: onRemove != null ? yBorderStrong : disabledColor, width: yLineThin),
             ),
             child: Center(
-              child: Text(
-                '−',
-                style: yBody(
-                  size: 16,
-                  color: onRemove != null ? yInk : disabledColor,
-                  height: 1,
-                ),
-              ),
+              child: Text('−', style: yBody(size: 16, color: onRemove != null ? yInk : disabledColor, height: 1)),
             ),
           ),
         ),
@@ -356,12 +292,8 @@ class _TablePanelState extends State<_TablePanel> {
           child: Container(
             width: 30,
             height: 30,
-            decoration: BoxDecoration(
-              border: Border.all(color: yBorderStrong, width: yLineThin),
-            ),
-            child: Center(
-              child: Text('+', style: yBody(size: 16, color: yInk, height: 1)),
-            ),
+            decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+            child: Center(child: Text('+', style: yBody(size: 16, color: yInk, height: 1))),
           ),
         ),
       ],
@@ -377,10 +309,7 @@ class _TablePanelState extends State<_TablePanel> {
         height: 34,
         decoration: BoxDecoration(
           color: selected ? widget.accent : Colors.transparent,
-          border: Border.all(
-            color: yBorderStrong,
-            width: yLineThin,
-          ),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Icon(icon, size: 18, color: selected ? yCream : yInk),
       ),
@@ -403,12 +332,7 @@ class _TablePanelState extends State<_TablePanel> {
             runSpacing: 12,
             alignment: WrapAlignment.center,
             children: [
-              _counterBtn(
-                label: 'col',
-                value: _cols,
-                onAdd: _addColumn,
-                onRemove: _cols > 1 ? _removeColumn : null,
-              ),
+              _counterBtn(label: 'col', value: _cols, onAdd: _addColumn, onRemove: _cols > 1 ? _removeColumn : null),
               _counterBtn(
                 label: 'filas',
                 value: _cells.length - 1,
@@ -433,20 +357,12 @@ class _TablePanelState extends State<_TablePanel> {
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               width: _cols * 130.0,
-              child:               Table(
-                border: TableBorder.all(
-                  color: borderCol,
-                  width: yLineThin,
-                ),
+              child: Table(
+                border: TableBorder.all(color: borderCol, width: yLineThin),
                 children: [
                   for (int r = 0; r < _cells.length; r++)
                     TableRow(
-                      decoration:
-                          r == 0
-                              ? BoxDecoration(
-                                color: yInk.withValues(alpha: 0.05),
-                              )
-                              : null,
+                      decoration: r == 0 ? BoxDecoration(color: yInk.withValues(alpha: 0.05)) : null,
                       children: [
                         for (int c = 0; c < _cols; c++)
                           Padding(
@@ -456,19 +372,12 @@ class _TablePanelState extends State<_TablePanel> {
                               maxLines: null,
                               style:
                                   r == 0
-                                      ? yBody(
-                                          size: 13,
-                                          weight: FontWeight.w700,
-                                          color: yInk,
-                                        )
+                                      ? yBody(size: 13, weight: FontWeight.w700, color: yInk)
                                       : yBody(size: 13, color: yInk),
                               textAlign: _alignment,
                               decoration: InputDecoration(
                                 hintText: r == 0 ? 'Encab.' : '',
-                                hintStyle: yBody(
-                                  size: 13,
-                                  color: yMuted.withValues(alpha: 0.5),
-                                ),
+                                hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
                                 focusedBorder: InputBorder.none,
@@ -528,10 +437,7 @@ class _CodePanelState extends State<_CodePanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Lenguaje',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
-          ),
+          Text('Lenguaje', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
           const SizedBox(height: 8),
           TextField(
             controller: _langController,
@@ -539,10 +445,7 @@ class _CodePanelState extends State<_CodePanel> {
             decoration: _panelInputDecoration(hint: 'python, dart, js...'),
           ),
           const SizedBox(height: 16),
-          Text(
-            'Código',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
-          ),
+          Text('Código', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
           const SizedBox(height: 8),
           TextField(
             controller: _codeController,
@@ -594,10 +497,7 @@ class _QuotePanelState extends State<_QuotePanel> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Texto de la cita',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
-          ),
+          Text('Texto de la cita', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
@@ -646,52 +546,62 @@ class _LatexPanelState extends State<_LatexPanel> {
           color: selected ? widget.accent : Colors.transparent,
           border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
-        child: Text(
-          label,
-          style: yBody(size: 13, color: selected ? yCream : yInk),
-        ),
+        child: Text(label, style: yBody(size: 13, color: selected ? yCream : yInk)),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final formula = _controller.text.trim();
     return _PanelScaffold(
       title: 'Latex',
       accent: widget.accent,
       onClose: widget.onClose,
-      onInsert: () {
-        if (_isBlock) {
-          final formula = _controller.text;
-          widget.onInsert('\n\n\$\$\n$formula\n\$\$\n\n');
-        } else {
-          final formula = _controller.text.trim();
-          widget.onInsert(' \$$formula\$ ');
-        }
-      },
+      onInsert:
+          formula.isEmpty
+              ? null
+              : () {
+                if (_isBlock) {
+                  widget.onInsert('\n\n\$\$\n${_controller.text}\n\$\$\n\n');
+                } else {
+                  widget.onInsert(' \$$formula\$ ');
+                }
+              },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _modeChip('En línea', false),
-              const SizedBox(width: 8),
-              _modeChip('Bloque', true),
-            ],
-          ),
+          Row(children: [_modeChip('En línea', false), const SizedBox(width: 8), _modeChip('Bloque', true)]),
           const SizedBox(height: 16),
-          Text(
-            'Fórmula',
-            style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
-          ),
+          Text('Fórmula', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
+            onChanged: (_) => setState(() {}),
             style: yMono(size: 14, color: yInk, tracking: 0),
             maxLines: _isBlock ? 6 : 1,
             minLines: _isBlock ? 3 : 1,
             decoration: _panelInputDecoration(hint: r'f(x) = \int_0^1 x^2\,dx'),
+          ),
+          const SizedBox(height: 16),
+          Text('Vista previa', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 72),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: yCream2, border: Border.all(color: yBorderSoft, width: yLineThin)),
+            alignment: _isBlock ? Alignment.center : Alignment.centerLeft,
+            child:
+                formula.isEmpty
+                    ? Text('Escribe una fórmula para previsualizarla', style: yBody(size: 13, color: yMuted))
+                    : Math.tex(
+                      formula.replaceAll('\\\\', '\\'),
+                      mathStyle: _isBlock ? MathStyle.display : MathStyle.text,
+                      textStyle: yBody(size: 16, color: yInk),
+                      onErrorFallback: (_) => Text(formula, style: yMono(size: 13, color: yMuted, tracking: 0)),
+                    ),
           ),
         ],
       ),
@@ -707,12 +617,7 @@ class _ImagePanel extends ConsumerStatefulWidget {
   final int noteId;
   final Color accent;
 
-  const _ImagePanel({
-    required this.accent,
-    required this.onInsert,
-    required this.onClose,
-    required this.noteId,
-  });
+  const _ImagePanel({required this.accent, required this.onInsert, required this.onClose, required this.noteId});
 
   @override
   ConsumerState<_ImagePanel> createState() => _ImagePanelState();
@@ -741,9 +646,7 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
 
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final imagesDir = Directory(
-        p.join(appDir.path, 'note_images', '${widget.noteId}'),
-      );
+      final imagesDir = Directory(p.join(appDir.path, 'note_images', '${widget.noteId}'));
       await imagesDir.create(recursive: true);
 
       final ext = p.extension(_pickedFile!.path).toLowerCase();
@@ -753,14 +656,10 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
       await File(_pickedFile!.path).copy(newPath);
 
       final fileSize = await File(newPath).length();
-      await ref
-          .read(noteRepositoryProvider)
-          .addImage(widget.noteId, newFilename, newPath, fileSize);
+      await ref.read(noteRepositoryProvider).addImage(widget.noteId, newFilename, newPath, fileSize);
 
       final imgMarkdown = '![Imagen]($newPath)';
-      final md = _imageAlign != null
-          ? '\n::: $_imageAlign\n$imgMarkdown\n:::\n'
-          : '\n$imgMarkdown\n';
+      final md = _imageAlign != null ? '\n::: $_imageAlign\n$imgMarkdown\n:::\n' : '\n$imgMarkdown\n';
       widget.onInsert(md);
       widget.onClose();
     } catch (_) {
@@ -790,18 +689,13 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
               child: Container(
                 width: double.infinity,
                 height: 180,
-                decoration: BoxDecoration(
-                  border: Border.all(color: yBorderStrong, width: yLineThin),
-                ),
+                decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(YuLiIcons.image, size: 48, color: yMuted),
                     const SizedBox(height: 12),
-                    Text(
-                      'Seleccionar imagen',
-                      style: yBody(size: 16, color: yMuted),
-                    ),
+                    Text('Seleccionar imagen', style: yBody(size: 16, color: yMuted)),
                   ],
                 ),
               ),
@@ -825,13 +719,8 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
               onTap: _pickImage,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  border: Border.all(color: yBorderStrong, width: yLineThin),
-                ),
-                child: Text(
-                  'Cambiar imagen',
-                  style: yBody(size: 13, weight: FontWeight.w700, color: yInk),
-                ),
+                decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+                child: Text('Cambiar imagen', style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
               ),
             ),
           ],

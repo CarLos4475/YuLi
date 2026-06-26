@@ -2,6 +2,8 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:markdown/markdown.dart' as md;
 
 const yuliCodeBlockType = 'code';
+const yuliLatexBlockType = 'latex_block';
+const yuliLatexBlockContent = 'latex';
 
 class YuliMarkdownDocument {
   const YuliMarkdownDocument._();
@@ -30,6 +32,25 @@ class YuliMarkdownDocument {
 
     for (var i = 0; i < lines.length; i++) {
       final trimmed = lines[i].trim();
+      if (trimmed == r'$$') {
+        var end = i + 1;
+        while (end < lines.length && lines[end].trim() != r'$$') {
+          end++;
+        }
+        if (end < lines.length) {
+          appendPlain();
+          root.insert(
+            Node(
+              type: yuliLatexBlockType,
+              attributes: {
+                yuliLatexBlockContent: lines.sublist(i + 1, end).join('\n'),
+              },
+            ),
+          );
+          i = end;
+          continue;
+        }
+      }
       if (!trimmed.startsWith(':::')) {
         if (trimmed == '***' || trimmed == '___' || trimmed == '---') {
           appendPlain();
@@ -54,11 +75,9 @@ class YuliMarkdownDocument {
       }
       appendPlain();
       final inner = lines.sublist(i + 1, end).join('\n');
-      final decoded = markdownToDocument(
-        inner,
-        markdownParsers: const [_CodeMarkdownParser()],
-      );
-      final nodes = _visibleSourceNodes(decoded.root.children);
+      final decoded = decode(inner);
+      final nodes =
+          decoded.root.children.map((node) => node.deepCopy()).toList();
       _normalizeNodes(nodes);
       for (final node in nodes) {
         node.updateAttributes({
@@ -104,7 +123,9 @@ class YuliMarkdownDocument {
       }
       final isolated = Document(root: pageNode(children: [node.deepCopy()]));
       final encoded =
-          node.delta != null && node.type != yuliCodeBlockType
+          node.type == yuliLatexBlockType
+              ? '\$\$\n${node.attributes[yuliLatexBlockContent] ?? ''}\n\$\$'
+              : node.delta != null && node.type != yuliCodeBlockType
               ? node.delta!.toPlainText()
               : documentToMarkdown(isolated).trimRight();
       if (encoded.isNotEmpty) {

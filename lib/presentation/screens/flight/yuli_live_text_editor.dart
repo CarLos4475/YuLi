@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/database_providers.dart';
@@ -101,6 +102,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   bool _syncingStyles = false;
   bool _styleSyncScheduled = false;
   bool _selectionRefreshScheduled = false;
+  final Set<String> _editingTables = {};
+  final Set<String> _editingImages = {};
+  final Set<String> _editingLatex = {};
 
   @override
   void initState() {
@@ -154,7 +158,12 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   }
 
   void _onFocusChanged() {
-    if (_focusNode.hasFocus) return;
+    if (_focusNode.hasFocus) {
+      if (!_focused && mounted) setState(() => _focused = true);
+      _reportedActive = true;
+      widget.onFocusChanged?.call(_editorState, _focusNode);
+      return;
+    }
     if (_focused && mounted) setState(() => _focused = false);
     if (_pendingSave) _persist();
   }
@@ -186,10 +195,50 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     );
   }
 
+  bool _isNodeActive(Node node) {
+    final selection = _editorState.selection?.normalized;
+    return selection != null &&
+        selection.start.path.equals(node.path) &&
+        selection.end.path.equals(node.path);
+  }
+
+  String _nodeKey(Node node) => node.path.join('.');
+
+  Future<void> _activateNode(Node node, int offset) async {
+    if (!mounted) return;
+    _focusNode.requestFocus();
+    final length = node.delta?.length ?? 0;
+    await _editorState.updateSelectionWithReason(
+      Selection.collapsed(
+        Position(path: node.path, offset: offset.clamp(0, length)),
+      ),
+      reason: SelectionUpdateReason.uiEvent,
+    );
+  }
+
+  Future<void> _selectAtomicNode(Node node) async {
+    if (!mounted) return;
+    _focusNode.requestFocus();
+    await _editorState.updateSelectionWithReason(
+      Selection.single(path: node.path, startOffset: 0, endOffset: 1),
+      reason: SelectionUpdateReason.uiEvent,
+    );
+  }
+
+  bool _containsInlineLatex(String source) {
+    return RegExp(
+      r'(?<![\\$])\$(?![$\s])([^$\n]*[^$\s\n][^$\n]*)\$(?!\$)',
+    ).hasMatch(source);
+  }
+
   void _applyInitialLiveStyles() {
     for (final node in _editorState.document.root.children) {
       final delta = node.delta;
-      if (delta == null || node.type == yuliCodeBlockType) continue;
+      if (delta == null ||
+          node.type == yuliCodeBlockType ||
+          node.type == yuliLatexBlockType) {
+        continue;
+      }
       node.updateAttributes({
         blockComponentDelta:
             buildLiveMarkdownDelta(delta.toPlainText()).toJson(),
@@ -225,6 +274,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         }
         continue;
       }
+      if (node.type == yuliLatexBlockType) continue;
       final delta = node.delta;
       if (delta == null || node.type == yuliCodeBlockType) continue;
       final styled = buildLiveMarkdownDelta(delta.toPlainText());
@@ -250,6 +300,157 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     _pendingSave = false;
     final markdown = YuliMarkdownDocument.encode(_editorState.document);
     await _repository.updatePayload(widget.block.id, {'md': markdown});
+  }
+
+  Future<void> _appendParagraphAfter(Node node) async {
+    final path = [node.path.first + 1];
+    final transaction =
+        _editorState.transaction
+          ..insertNode(path, paragraphNode())
+          ..afterSelection = Selection.collapsed(Position(path: path));
+    await _editorState.apply(transaction);
+    _focusNode.requestFocus();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _deleteAtomicNode(Node node) async {
+    final children = _editorState.document.root.children;
+    final index = node.path.first;
+    final transaction = _editorState.transaction..deleteNode(node);
+    if (children.length == 1) {
+      transaction.insertNode([0], paragraphNode());
+      transaction.afterSelection = Selection.collapsed(
+        Position(path: const [0]),
+      );
+    } else {
+      final targetIndex = index < children.length - 1 ? index : index - 1;
+      final target = children[targetIndex];
+      transaction.afterSelection = Selection.collapsed(
+        Position(path: [targetIndex], offset: target.delta?.length ?? 0),
+      );
+    }
+    await _editorState.apply(transaction);
+    _focusNode.requestFocus();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveLatex(Node node, String formula) async {
+    final transaction =
+        _editorState.transaction
+          ..updateNode(node, {yuliLatexBlockContent: formula})
+          ..afterSelection = Selection.single(
+            path: node.path,
+            startOffset: 0,
+            endOffset: 1,
+          );
+    await _editorState.apply(transaction);
+    if (!mounted) return;
+    setState(() => _editingLatex.remove(_nodeKey(node)));
+    _focusNode.requestFocus();
+  }
+
+  Node? _selectedTableCell(Node tableNode) {
+    final selection = _editorState.selection?.normalized;
+    final path = selection?.start.path;
+    if (selection == null ||
+        path == null ||
+        path.length < tableNode.path.length ||
+        !tableNode.path.indexed.every((entry) => path[entry.$1] == entry.$2)) {
+      return null;
+    }
+    var current = _editorState.getNodeAtPath(selection.start.path);
+    while (current != null && current != tableNode) {
+      if (current.type == TableCellBlockKeys.type) return current;
+      current = current.parent;
+    }
+    return null;
+  }
+
+  int _selectedTableRow(Node tableNode) {
+    final cell = _selectedTableCell(tableNode);
+    return cell?.attributes[TableCellBlockKeys.rowPosition] as int? ??
+        (tableNode.attributes[TableBlockKeys.rowsLen] as num).toInt() - 1;
+  }
+
+  int _selectedTableCol(Node tableNode) {
+    final cell = _selectedTableCell(tableNode);
+    return cell?.attributes[TableCellBlockKeys.colPosition] as int? ??
+        (tableNode.attributes[TableBlockKeys.colsLen] as num).toInt() - 1;
+  }
+
+  void _mutateTable(
+    Node node, {
+    required TableDirection direction,
+    required bool add,
+  }) {
+    final rows = (node.attributes[TableBlockKeys.rowsLen] as num).toInt();
+    final cols = (node.attributes[TableBlockKeys.colsLen] as num).toInt();
+    final selectedRow = _selectedTableRow(node).clamp(0, rows - 1);
+    final selectedCol = _selectedTableCol(node).clamp(0, cols - 1);
+    if (direction == TableDirection.row) {
+      final position = add ? selectedRow + 1 : selectedRow;
+      if (add) {
+        TableActions.add(node, position, _editorState, direction);
+      } else {
+        TableActions.delete(node, position, _editorState, direction);
+      }
+    } else {
+      final position = add ? selectedCol + 1 : selectedCol;
+      if (add) {
+        TableActions.add(node, position, _editorState, direction);
+      } else {
+        TableActions.delete(node, position, _editorState, direction);
+      }
+    }
+    _focusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _setNodeAlignment(Node node, String align) async {
+    final transaction =
+        _editorState.transaction
+          ..updateNode(node, {
+            if (node.type == ImageBlockKeys.type)
+              ImageBlockKeys.align: align
+            else if (align == 'left')
+              blockComponentAlign: null
+            else
+              blockComponentAlign: align,
+          })
+          ..afterSelection = Selection.single(
+            path: node.path,
+            startOffset: 0,
+            endOffset: 1,
+          );
+    await _editorState.apply(transaction);
+    _focusNode.requestFocus();
+  }
+
+  Future<void> _saveImage(
+    Node node, {
+    required String url,
+    required double width,
+    required String align,
+  }) async {
+    final transaction =
+        _editorState.transaction
+          ..updateNode(node, {
+            ImageBlockKeys.url: url.trim(),
+            ImageBlockKeys.width: width.clamp(160.0, 520.0),
+            ImageBlockKeys.height: null,
+            ImageBlockKeys.align: align,
+          })
+          ..afterSelection = Selection.single(
+            path: node.path,
+            startOffset: 0,
+            endOffset: 1,
+          );
+    await _editorState.apply(transaction);
+    if (!mounted) return;
+    setState(() => _editingImages.remove(_nodeKey(node)));
+    _focusNode.requestFocus();
   }
 
   BlockComponentConfiguration get _textConfiguration =>
@@ -309,6 +510,10 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         configuration: text,
       ),
       ImageBlockKeys.type: ImageBlockComponentBuilder(),
+      yuliLatexBlockType: _YuliLatexBlockComponentBuilder(
+        editorState: _editorState,
+        accent: widget.accent,
+      ),
       TableBlockKeys.type: TableBlockComponentBuilder(
         menuBuilder:
             (node, editorState, position, direction, _, _) =>
@@ -410,6 +615,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
           fontWeight: FontWeight.w600,
         );
       }
+      if (attrs[yuliLatex] == true) {
+        style = style.merge(yMono(size: 14, color: yInk, tracking: 0));
+      }
       return TextSpan(
         text: base.text,
         children: base.children,
@@ -431,12 +639,70 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         animation: Listenable.merge([node, _editorState.selectionNotifier]),
         child: child,
         builder: (context, child) {
-          final text = node.delta?.toPlainText().trimLeft() ?? '';
-          final selection = _editorState.selection?.normalized;
-          final active =
-              selection != null &&
-              selection.start.path.equals(node.path) &&
-              selection.end.path.equals(node.path);
+          final source = node.delta?.toPlainText() ?? '';
+          final text = source.trimLeft();
+          final active = _isNodeActive(node);
+          final key = _nodeKey(node);
+          if (node.type == yuliLatexBlockType) {
+            final editing = _editingLatex.contains(key);
+            final formula =
+                node.attributes[yuliLatexBlockContent] as String? ?? '';
+            return _YuliAtomicFrame(
+              key: ValueKey('yuli_atomic_latex_${node.path.join('_')}'),
+              accent: widget.accent,
+              selected: active,
+              editing: editing,
+              label: 'LATEX',
+              interceptContent: !editing,
+              onSelect: () => _selectAtomicNode(node),
+              actions: [
+                if (!editing)
+                  _YuliAtomicAction(
+                    label: 'EDITAR',
+                    icon: YuLiIcons.pencil,
+                    onTap: () {
+                      setState(() => _editingLatex.add(key));
+                    },
+                  ),
+                _YuliAtomicAction(
+                  label: 'BORRAR',
+                  icon: YuLiIcons.trash,
+                  destructive: true,
+                  onTap: () => _deleteAtomicNode(node),
+                ),
+              ],
+              child:
+                  editing
+                      ? _YuliLatexInlineEditor(
+                        initialFormula: formula,
+                        accent: widget.accent,
+                        onCancel: () {
+                          setState(() => _editingLatex.remove(key));
+                          _selectAtomicNode(node);
+                        },
+                        onSave: (value) => _saveLatex(node, value),
+                      )
+                      : child!,
+            );
+          }
+          if (!active && _containsInlineLatex(source)) {
+            final formulaOffset = source.indexOf(r'$') + 1;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _activateNode(node, formulaOffset),
+              child: IgnorePointer(
+                child: _YuliInlineLatexPreview(
+                  source: source,
+                  accent: widget.accent,
+                  textAlign: switch (node.attributes[blockComponentAlign]) {
+                    'center' => TextAlign.center,
+                    'right' => TextAlign.right,
+                    _ => TextAlign.left,
+                  },
+                ),
+              ),
+            );
+          }
           if (text.trim() == '---') {
             return Stack(
               alignment: Alignment.center,
@@ -458,24 +724,164 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
             );
           }
           if (node.type == TableBlockKeys.type) {
+            final editing = _editingTables.contains(key);
+            final rows =
+                (node.attributes[TableBlockKeys.rowsLen] as num).toInt();
+            final cols =
+                (node.attributes[TableBlockKeys.colsLen] as num).toInt();
             final align = node.attributes[blockComponentAlign] as String?;
             final alignment = switch (align) {
               'center' => Alignment.center,
               'right' => Alignment.centerRight,
               _ => Alignment.centerLeft,
             };
-            final tableChild = result;
-            result = LayoutBuilder(
-              builder: (context, constraints) {
-                final width = (TableNode(node: node).tableWidth + 40).clamp(
-                  0,
-                  constraints.maxWidth,
-                );
-                return Align(
-                  alignment: alignment,
-                  child: SizedBox(width: width.toDouble(), child: tableChild),
-                );
-              },
+            final maxWidth = MediaQuery.sizeOf(context).width - 64;
+            final width = (TableNode(node: node).tableWidth + 40).clamp(
+              0,
+              maxWidth,
+            );
+            result = Align(
+              alignment: alignment,
+              child: SizedBox(width: width.toDouble(), child: result),
+            );
+            return _YuliAtomicFrame(
+              key: ValueKey('yuli_atomic_table_${node.path.join('_')}'),
+              accent: widget.accent,
+              selected: active,
+              editing: editing,
+              label: 'TABLA',
+              interceptContent: !editing,
+              onSelect: () => _selectAtomicNode(node),
+              actions: [
+                _YuliAtomicAction(
+                  label: editing ? 'TERMINAR' : 'EDITAR CELDAS',
+                  icon: editing ? YuLiIcons.check : YuLiIcons.pencil,
+                  onTap: () {
+                    if (editing) {
+                      setState(() => _editingTables.remove(key));
+                      _selectAtomicNode(node);
+                    } else {
+                      setState(() => _editingTables.add(key));
+                    }
+                  },
+                ),
+                _YuliAtomicAction(
+                  label: 'FILA +',
+                  icon: YuLiIcons.plus,
+                  onTap:
+                      () => _mutateTable(
+                        node,
+                        direction: TableDirection.row,
+                        add: true,
+                      ),
+                ),
+                _YuliAtomicAction(
+                  label: 'FILA -',
+                  icon: YuLiIcons.minus,
+                  enabled: rows > 1,
+                  onTap:
+                      () => _mutateTable(
+                        node,
+                        direction: TableDirection.row,
+                        add: false,
+                      ),
+                ),
+                _YuliAtomicAction(
+                  label: 'COL +',
+                  icon: YuLiIcons.plus,
+                  onTap:
+                      () => _mutateTable(
+                        node,
+                        direction: TableDirection.col,
+                        add: true,
+                      ),
+                ),
+                _YuliAtomicAction(
+                  label: 'COL -',
+                  icon: YuLiIcons.minus,
+                  enabled: cols > 1,
+                  onTap:
+                      () => _mutateTable(
+                        node,
+                        direction: TableDirection.col,
+                        add: false,
+                      ),
+                ),
+              ],
+              child: result,
+            );
+          }
+          if (node.type == ImageBlockKeys.type) {
+            final editing = _editingImages.contains(key);
+            return _YuliAtomicFrame(
+              key: ValueKey('yuli_atomic_image_${node.path.join('_')}'),
+              accent: widget.accent,
+              selected: active,
+              editing: editing,
+              label: 'IMAGEN',
+              interceptContent: !editing,
+              onSelect: () => _selectAtomicNode(node),
+              actions: [
+                if (!editing)
+                  _YuliAtomicAction(
+                    label: 'EDITAR',
+                    icon: YuLiIcons.pencil,
+                    onTap: () {
+                      setState(() => _editingImages.add(key));
+                    },
+                  ),
+                if (!editing)
+                  _YuliAtomicAction(
+                    label: 'IZQ',
+                    icon: YuLiIcons.textAlignStart,
+                    onTap: () => _setNodeAlignment(node, 'left'),
+                  ),
+                if (!editing)
+                  _YuliAtomicAction(
+                    label: 'CENTRO',
+                    icon: YuLiIcons.textAlignCenter,
+                    onTap: () => _setNodeAlignment(node, 'center'),
+                  ),
+                if (!editing)
+                  _YuliAtomicAction(
+                    label: 'DER',
+                    icon: YuLiIcons.textAlignEnd,
+                    onTap: () => _setNodeAlignment(node, 'right'),
+                  ),
+                _YuliAtomicAction(
+                  label: 'BORRAR',
+                  icon: YuLiIcons.trash,
+                  destructive: true,
+                  onTap: () => _deleteAtomicNode(node),
+                ),
+              ],
+              child:
+                  editing
+                      ? _YuliImageInlineEditor(
+                        initialUrl:
+                            node.attributes[ImageBlockKeys.url] as String? ??
+                            '',
+                        initialWidth:
+                            (node.attributes[ImageBlockKeys.width] as num?)
+                                ?.toDouble() ??
+                            320.0,
+                        initialAlign:
+                            node.attributes[ImageBlockKeys.align] as String? ??
+                            'center',
+                        accent: widget.accent,
+                        onCancel: () {
+                          setState(() => _editingImages.remove(key));
+                          _selectAtomicNode(node);
+                        },
+                        onSave:
+                            (url, width, align) => _saveImage(
+                              node,
+                              url: url,
+                              width: width,
+                              align: align,
+                            ),
+                      )
+                      : result,
             );
           }
           if (!text.startsWith('>')) return result;
@@ -492,6 +898,14 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         },
       );
     }
+
+    final rootChildren = _editorState.document.root.children;
+    final lastNode = rootChildren.isEmpty ? null : rootChildren.last;
+    final showContinue =
+        lastNode != null &&
+        (lastNode.type == ImageBlockKeys.type ||
+            lastNode.type == TableBlockKeys.type ||
+            lastNode.type == yuliLatexBlockType);
 
     final style = EditorStyle.mobile(
       padding: EdgeInsets.zero,
@@ -542,7 +956,616 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
               blockWrapper: blockWrapper,
               contextMenuItems: const [],
               enableAutoComplete: false,
+              footer:
+                  showContinue
+                      ? _YuliContinueWriting(
+                        accent: widget.accent,
+                        onTap: () => _appendParagraphAfter(lastNode),
+                      )
+                      : null,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _YuliAtomicAction {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool destructive;
+  final bool enabled;
+
+  const _YuliAtomicAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.destructive = false,
+    this.enabled = true,
+  });
+}
+
+class _YuliAtomicFrame extends StatelessWidget {
+  final Color accent;
+  final bool selected;
+  final bool editing;
+  final String label;
+  final bool interceptContent;
+  final VoidCallback onSelect;
+  final List<_YuliAtomicAction> actions;
+  final Widget child;
+
+  const _YuliAtomicFrame({
+    super.key,
+    required this.accent,
+    required this.selected,
+    required this.editing,
+    required this.label,
+    required this.interceptContent,
+    required this.onSelect,
+    required this.actions,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final showHeader = selected || editing;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        border:
+            selected || editing
+                ? Border.all(color: accent, width: yLineMid)
+                : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showHeader)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (editing)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      color: accent,
+                      child: Text(
+                        '$label - EDITANDO',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                          tracking: 0.7,
+                        ),
+                      ),
+                    ),
+                  if (editing) const SizedBox(width: 6),
+                  Expanded(
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final action in actions)
+                          _YuliAtomicActionButton(
+                            accent: accent,
+                            action: action,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Stack(
+            children: [
+              child,
+              if (interceptContent)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onSelect,
+                    child: const ColoredBox(color: Colors.transparent),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YuliAtomicActionButton extends StatelessWidget {
+  final Color accent;
+  final _YuliAtomicAction action;
+
+  const _YuliAtomicActionButton({required this.accent, required this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        action.enabled ? (action.destructive ? yFight : accent) : yCream2;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: action.enabled ? action.onTap : null,
+      child: Container(
+        margin: const EdgeInsets.only(left: 2, bottom: 2),
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  action.enabled ? yInk : yBorderSoft.withValues(alpha: 0.55),
+              offset: const Offset(2, 2),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              action.icon,
+              size: 13,
+              color: action.enabled ? yCream : yMuted,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              action.label,
+              style: yMono(
+                size: 9,
+                weight: FontWeight.w700,
+                color: action.enabled ? yCream : yMuted,
+                tracking: 0.6,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _YuliContinueWriting extends StatelessWidget {
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _YuliContinueWriting({required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        key: const ValueKey('yuli_continue_writing'),
+        margin: const EdgeInsets.only(top: 6),
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 10),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.08),
+          border: Border.all(color: accent, width: yLineThin),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(YuLiIcons.plus, size: 14, color: accent),
+            const SizedBox(width: 7),
+            Text(
+              'CONTINUAR ESCRIBIENDO',
+              style: yMono(
+                size: 10,
+                weight: FontWeight.w700,
+                color: accent,
+                tracking: 0.8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _YuliInlineLatexPreview extends StatelessWidget {
+  final String source;
+  final Color accent;
+  final TextAlign textAlign;
+
+  const _YuliInlineLatexPreview({
+    required this.source,
+    required this.accent,
+    required this.textAlign,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = <InlineSpan>[];
+    for (final operation in buildLiveMarkdownDelta(source).toList()) {
+      if (operation is! TextInsert) continue;
+      final attributes = operation.attributes ?? const <String, dynamic>{};
+      if (attributes[yuliMarkdownMarker] == true) continue;
+      if (attributes[yuliLatex] == true) {
+        final formula = operation.text.replaceAll('\\\\', '\\').trim();
+        if (formula.isEmpty) continue;
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Math.tex(
+              formula,
+              mathStyle: MathStyle.text,
+              textStyle: yBody(size: 16, color: yInk2, height: 1.45),
+              onErrorFallback:
+                  (_) => Text(
+                    operation.text,
+                    style: yBody(size: 15, color: yInk2, height: 1.55),
+                  ),
+            ),
+          ),
+        );
+        continue;
+      }
+      spans.add(
+        TextSpan(
+          text: operation.text,
+          style: applyYuliLiveTextStyle(
+            yBody(size: 15, color: yInk2, height: 1.55),
+            attributes,
+            accent,
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Text.rich(
+        TextSpan(children: spans),
+        textAlign: textAlign,
+        softWrap: true,
+      ),
+    );
+  }
+}
+
+class _YuliLatexInlineEditor extends StatefulWidget {
+  final String initialFormula;
+  final Color accent;
+  final VoidCallback onCancel;
+  final ValueChanged<String> onSave;
+
+  const _YuliLatexInlineEditor({
+    required this.initialFormula,
+    required this.accent,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  @override
+  State<_YuliLatexInlineEditor> createState() => _YuliLatexInlineEditorState();
+}
+
+class _YuliLatexInlineEditorState extends State<_YuliLatexInlineEditor> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialFormula);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final formula = _controller.text.trim();
+    return Container(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 6,
+            onChanged: (_) => setState(() {}),
+            style: yMono(size: 14, color: yInk, tracking: 0),
+            decoration: const InputDecoration(
+              hintText: 'FORMULA LATEX',
+              border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            constraints: const BoxConstraints(minHeight: 72),
+            alignment: Alignment.center,
+            child:
+                formula.isEmpty
+                    ? Text(
+                      'VISTA PREVIA',
+                      style: yMono(size: 10, color: yMuted, tracking: 0.8),
+                    )
+                    : Math.tex(
+                      formula.replaceAll('\\\\', '\\'),
+                      mathStyle: MathStyle.display,
+                      textStyle: yBody(size: 20, color: yInk),
+                      onErrorFallback:
+                          (_) => Text(
+                            formula,
+                            style: yMono(size: 13, color: yMuted, tracking: 0),
+                          ),
+                    ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _YuliInlineEditorButton(
+                  label: 'CANCELAR',
+                  color: yCream,
+                  foreground: yInk,
+                  onTap: widget.onCancel,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _YuliInlineEditorButton(
+                  label: 'GUARDAR',
+                  color: widget.accent,
+                  foreground: yCream,
+                  onTap:
+                      formula.isEmpty
+                          ? null
+                          : () => widget.onSave(_controller.text),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YuliImageInlineEditor extends StatefulWidget {
+  final String initialUrl;
+  final double initialWidth;
+  final String initialAlign;
+  final Color accent;
+  final VoidCallback onCancel;
+  final void Function(String url, double width, String align) onSave;
+
+  const _YuliImageInlineEditor({
+    required this.initialUrl,
+    required this.initialWidth,
+    required this.initialAlign,
+    required this.accent,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  @override
+  State<_YuliImageInlineEditor> createState() => _YuliImageInlineEditorState();
+}
+
+class _YuliImageInlineEditorState extends State<_YuliImageInlineEditor> {
+  late final TextEditingController _urlController;
+  late double _width;
+  late String _align;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlController = TextEditingController(text: widget.initialUrl);
+    _width = widget.initialWidth.clamp(160.0, 520.0);
+    _align = widget.initialAlign;
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _urlController.text.trim();
+    return Container(
+      color: yCream2,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _urlController,
+            autofocus: true,
+            maxLines: 2,
+            minLines: 1,
+            onChanged: (_) => setState(() {}),
+            style: yMono(size: 13, color: yInk, tracking: 0),
+            decoration: const InputDecoration(
+              hintText: 'URL DE IMAGEN',
+              border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.zero,
+                borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _YuliInlineEditorChip(
+                label: 'PEQUEÑA',
+                active: _width <= 220,
+                accent: widget.accent,
+                onTap: () => setState(() => _width = 180),
+              ),
+              _YuliInlineEditorChip(
+                label: 'MEDIA',
+                active: _width > 220 && _width < 430,
+                accent: widget.accent,
+                onTap: () => setState(() => _width = 320),
+              ),
+              _YuliInlineEditorChip(
+                label: 'GRANDE',
+                active: _width >= 430,
+                accent: widget.accent,
+                onTap: () => setState(() => _width = 520),
+              ),
+              _YuliInlineEditorChip(
+                label: 'IZQ',
+                active: _align == 'left',
+                accent: widget.accent,
+                onTap: () => setState(() => _align = 'left'),
+              ),
+              _YuliInlineEditorChip(
+                label: 'CENTRO',
+                active: _align == 'center',
+                accent: widget.accent,
+                onTap: () => setState(() => _align = 'center'),
+              ),
+              _YuliInlineEditorChip(
+                label: 'DER',
+                active: _align == 'right',
+                accent: widget.accent,
+                onTap: () => setState(() => _align = 'right'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'ANCHO ${_width.round()} PX',
+            style: yMono(size: 10, color: yMuted, tracking: 0.7),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _YuliInlineEditorButton(
+                  label: 'CANCELAR',
+                  color: yCream,
+                  foreground: yInk,
+                  onTap: widget.onCancel,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _YuliInlineEditorButton(
+                  label: 'GUARDAR',
+                  color: widget.accent,
+                  foreground: yCream,
+                  onTap:
+                      url.isEmpty
+                          ? null
+                          : () => widget.onSave(url, _width, _align),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YuliInlineEditorChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _YuliInlineEditorChip({
+    required this.label,
+    required this.active,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? accent : yCream,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Text(
+          label,
+          style: yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            color: active ? yCream : yInk,
+            tracking: 0.7,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _YuliInlineEditorButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final Color foreground;
+  final VoidCallback? onTap;
+
+  const _YuliInlineEditorButton({
+    required this.label,
+    required this.color,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: onTap == null ? yCream2 : color,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Text(
+          label,
+          style: yBody(
+            size: 11,
+            weight: FontWeight.w700,
+            color: onTap == null ? yMuted : foreground,
           ),
         ),
       ),
@@ -613,6 +1636,158 @@ class _YuliTableAxisButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _YuliLatexBlockComponentBuilder extends BlockComponentBuilder {
+  final EditorState editorState;
+  final Color accent;
+
+  _YuliLatexBlockComponentBuilder({
+    required this.editorState,
+    required this.accent,
+  });
+
+  @override
+  BlockComponentWidget build(BlockComponentContext blockComponentContext) {
+    final node = blockComponentContext.node;
+    return _YuliLatexBlockComponentWidget(
+      key: node.key,
+      node: node,
+      editorState: editorState,
+      accent: accent,
+    );
+  }
+
+  @override
+  BlockComponentValidate get validate =>
+      (node) =>
+          node.delta == null &&
+          node.children.isEmpty &&
+          node.attributes[yuliLatexBlockContent] is String;
+}
+
+class _YuliLatexBlockComponentWidget extends BlockComponentStatefulWidget {
+  final EditorState editorState;
+  final Color accent;
+
+  const _YuliLatexBlockComponentWidget({
+    super.key,
+    required super.node,
+    required this.editorState,
+    required this.accent,
+  }) : super(configuration: const BlockComponentConfiguration());
+
+  @override
+  State<_YuliLatexBlockComponentWidget> createState() =>
+      _YuliLatexBlockComponentWidgetState();
+}
+
+class _YuliLatexBlockComponentWidgetState
+    extends State<_YuliLatexBlockComponentWidget>
+    with SelectableMixin, BlockComponentConfigurable {
+  final _contentKey = GlobalKey();
+
+  @override
+  BlockComponentConfiguration get configuration => widget.configuration;
+
+  @override
+  Node get node => widget.node;
+
+  RenderBox? get _renderBox => context.findRenderObject() as RenderBox?;
+
+  @override
+  Widget build(BuildContext context) {
+    final formula = node.attributes[yuliLatexBlockContent] as String? ?? '';
+    final align = node.attributes[blockComponentAlign] as String?;
+    final alignment = switch (align) {
+      'left' => Alignment.centerLeft,
+      'right' => Alignment.centerRight,
+      _ => Alignment.center,
+    };
+    Widget child = Container(
+      key: _contentKey,
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 76),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      alignment: alignment,
+      child:
+          formula.trim().isEmpty
+              ? Text(
+                'LATEX VACIO',
+                style: yMono(size: 11, color: yMuted, tracking: 0.8),
+              )
+              : Math.tex(
+                formula.replaceAll('\\\\', '\\'),
+                mathStyle: MathStyle.display,
+                textStyle: yBody(size: 20, color: yInk),
+                onErrorFallback:
+                    (_) => Text(
+                      formula,
+                      style: yMono(size: 13, color: yMuted, tracking: 0),
+                    ),
+              ),
+    );
+    child = BlockSelectionContainer(
+      node: node,
+      delegate: this,
+      listenable: widget.editorState.selectionNotifier,
+      remoteSelection: widget.editorState.remoteSelections,
+      blockColor: widget.editorState.editorStyle.selectionColor,
+      supportTypes: const [BlockSelectionType.block],
+      child: child,
+    );
+    return child;
+  }
+
+  @override
+  Position start() => Position(path: node.path, offset: 0);
+
+  @override
+  Position end() => Position(path: node.path, offset: 1);
+
+  @override
+  Position getPositionInOffset(Offset start) => end();
+
+  @override
+  Selection getSelectionInRange(Offset start, Offset end) =>
+      Selection.single(path: node.path, startOffset: 0, endOffset: 1);
+
+  @override
+  Rect getBlockRect({bool shiftWithBaseOffset = false}) {
+    final box = _contentKey.currentContext?.findRenderObject();
+    if (box is RenderBox) return Offset.zero & box.size;
+    return Rect.zero;
+  }
+
+  @override
+  List<Rect> getRectsInSelection(
+    Selection selection, {
+    bool shiftWithBaseOffset = false,
+  }) {
+    final box = _contentKey.currentContext?.findRenderObject();
+    if (box is RenderBox) return [Offset.zero & box.size];
+    return const [];
+  }
+
+  @override
+  Rect? getCursorRectInPosition(
+    Position position, {
+    bool shiftWithBaseOffset = false,
+  }) {
+    final box = _renderBox;
+    if (box == null) return null;
+    return Offset.zero & box.size;
+  }
+
+  @override
+  Offset localToGlobal(Offset offset, {bool shiftWithBaseOffset = false}) =>
+      _renderBox?.localToGlobal(offset) ?? offset;
+
+  @override
+  bool get shouldCursorBlink => false;
+
+  @override
+  CursorStyle get cursorStyle => CursorStyle.cover;
 }
 
 class _YuliCodeBlockComponentBuilder extends BlockComponentBuilder {

@@ -503,6 +503,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                               ? FormatToolbar(
                                 editorState: _lastEditorState,
                                 onOpenInsertMenu: _showInsertMenu,
+                                onRequestFocus:
+                                    () => _lastFocusNode?.requestFocus(),
                                 accent: _accent,
                               )
                               : const SizedBox.shrink(),

@@ -1,5 +1,6 @@
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/domain/models/note_block.dart';
@@ -375,6 +376,137 @@ void main() {
     state.dispose();
   });
 
+  testWidgets('format toolbar preserves selection and requests focus', (
+    tester,
+  ) async {
+    final document = YuliMarkdownDocument.decode('''
+| A | B |
+| --- | --- |
+| Uno | Dos |
+''');
+    final state = EditorState(document: document);
+    final selection = Selection.single(
+      path: const [0],
+      startOffset: 0,
+      endOffset: 1,
+    );
+    var focusRequests = 0;
+    state.selection = selection;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FormatToolbar(
+            editorState: state,
+            accent: const Color(0xFF2D3F8C),
+            onRequestFocus: () => focusRequests++,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byIcon(YuLiIcons.textAlignCenter));
+    await tester.pumpAndSettle();
+
+    expect(state.selection, selection);
+    expect(focusRequests, greaterThanOrEqualTo(2));
+    state.dispose();
+  });
+
+  testWidgets('tapping a table selects its atomic node and keeps focus', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+    FocusNode? focusNode;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '''
+| A | B |
+| --- | --- |
+| Uno | Dos |
+''',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, node) {
+                  state = editorState;
+                  focusNode = node;
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_table_0')));
+    await tester.pumpAndSettle();
+
+    expect(state?.selection?.start.path, [0]);
+    expect(state?.selection?.start.offset, 0);
+    expect(state?.selection?.end.offset, 1);
+    expect(focusNode?.hasFocus, isTrue);
+  });
+
+  testWidgets('tapping an image selects its atomic node and keeps focus', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+    FocusNode? focusNode;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '![Imagen](C:\\notes\\missing.png)',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, node) {
+                  state = editorState;
+                  focusNode = node;
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('yuli_atomic_image_0')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(state?.selection?.start.path, [0]);
+    expect(state?.selection?.start.offset, 0);
+    expect(state?.selection?.end.offset, 1);
+    expect(focusNode?.hasFocus, isTrue);
+  });
+
   test('live style reapplies markdown after the paragraph base style', () {
     const accent = Color(0xFF2D3F8C);
     const base = TextStyle(fontWeight: FontWeight.w400);
@@ -436,6 +568,435 @@ void main() {
     expect(bold.style?.fontWeight, FontWeight.w700);
     expect(headingMarker.style?.color, Colors.transparent);
     expect(headingMarker.style?.fontSize, 0);
+  });
+
+  testWidgets('inline and display latex render as Math while inactive', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: const Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: YuliLiveTextEditor(
+                block: TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: 'Inline \$1=1\$\n\$\$\nx^2\n\$\$',
+                ),
+                accent: Color(0xFF2D3F8C),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.text('LATEX'), findsNothing);
+    expect(_renderedSpans(tester).any((span) => span.text == r'$$'), isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('multiple inline formulas render together without offset spans', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: const Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: YuliLiveTextEditor(
+                block: TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: r'Hola $1+2$ y $1*3$',
+                ),
+                accent: Color(0xFF2D3F8C),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(_renderedSpans(tester).where((span) => span.text == r'$'), isEmpty);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('latex returns to editable source inside its domain', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: 'Formula \$1=1\$',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, _) => state = editorState,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(Math), findsOneWidget);
+
+    await tester.tap(find.byType(Math), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    state!.selection = Selection.collapsed(
+      Position(path: const [0], offset: 10),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Math), findsNothing);
+    final dollars =
+        _renderedSpans(tester).where((span) => span.text == r'$').toList();
+    expect(dollars, hasLength(2));
+    expect(dollars.every((span) => span.style?.fontSize != 0), isTrue);
+  });
+
+  testWidgets('inline latex keeps body size and paragraph alignment', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: const Scaffold(
+            body: SizedBox(
+              width: 360,
+              child: YuliLiveTextEditor(
+                block: TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: r'Hola $1+2$',
+                ),
+                accent: Color(0xFF2D3F8C),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final math = tester.widget<Math>(find.byType(Math));
+    final richText = tester.widgetList<RichText>(find.byType(RichText)).firstWhere(
+      (widget) => _containsWidgetSpan(widget.text),
+    );
+
+    expect(math.textStyle?.fontSize, 16);
+    expect(richText.textAlign, TextAlign.left);
+  });
+
+  testWidgets('table requires explicit cell edit mode', (tester) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '''
+| A | B |
+| --- | --- |
+| Uno | Dos |
+''',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, _) => state = editorState,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_table_0')));
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR CELDAS'), findsOneWidget);
+    expect(state?.selection?.start.path, [0]);
+
+    await tester.tap(find.text('EDITAR CELDAS'));
+    await tester.pumpAndSettle();
+    expect(find.text('TERMINAR'), findsOneWidget);
+
+    await tester.tap(find.byType(ParagraphBlockComponentWidget).at(2));
+    await tester.pump();
+    tester.testTextInput.enterText('Editable');
+    await tester.pumpAndSettle();
+
+    expect(state?.selection?.start.path.length, greaterThan(1));
+    expect(YuliMarkdownDocument.encode(state!.document), contains('Editable'));
+  });
+
+  testWidgets('table header exposes row and column controls', (tester) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: StatefulBuilder(
+                builder:
+                    (_, setHostState) => YuliLiveTextEditor(
+                      block: const TextBlock(
+                        id: 1,
+                        noteId: 1,
+                        position: 0,
+                        markdown: '''
+| A | B |
+| --- | --- |
+| Uno | Dos |
+''',
+                      ),
+                      accent: const Color(0xFF2D3F8C),
+                      onFocusChanged:
+                          (editorState, _) =>
+                              setHostState(() => state = editorState),
+                    ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_table_0')));
+    await tester.pumpAndSettle();
+    expect(find.text('FILA +'), findsOneWidget);
+    expect(find.text('FILA -'), findsOneWidget);
+    expect(find.text('COL +'), findsOneWidget);
+    expect(find.text('COL -'), findsOneWidget);
+
+    final table = state!.document.root.children.single;
+    final initialRows = table.attributes[TableBlockKeys.rowsLen] as int;
+    final initialCols = table.attributes[TableBlockKeys.colsLen] as int;
+
+    await tester.tap(find.text('FILA +'));
+    await tester.pumpAndSettle();
+    expect(table.attributes[TableBlockKeys.rowsLen], initialRows + 1);
+
+    await tester.tap(find.text('COL +'));
+    await tester.pumpAndSettle();
+    expect(table.attributes[TableBlockKeys.colsLen], initialCols + 1);
+
+    await tester.tap(find.text('FILA -'));
+    await tester.pumpAndSettle();
+    expect(table.attributes[TableBlockKeys.rowsLen], initialRows);
+
+    await tester.tap(find.text('COL -'));
+    await tester.pumpAndSettle();
+    expect(table.attributes[TableBlockKeys.colsLen], initialCols);
+  });
+
+  testWidgets('image node has a compact editor for url size and alignment', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: StatefulBuilder(
+                builder:
+                    (_, setHostState) => YuliLiveTextEditor(
+                      block: const TextBlock(
+                        id: 1,
+                        noteId: 1,
+                        position: 0,
+                        markdown: '![Imagen](C:\\notes\\missing.png)',
+                      ),
+                      accent: const Color(0xFF2D3F8C),
+                      onFocusChanged:
+                          (editorState, _) =>
+                              setHostState(() => state = editorState),
+                    ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('yuli_atomic_image_0')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('EDITAR'), findsOneWidget);
+    expect(find.text('IZQ'), findsOneWidget);
+    expect(find.text('CENTRO'), findsOneWidget);
+    expect(find.text('DER'), findsOneWidget);
+
+    await tester.tap(find.text('EDITAR'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'C:\\notes\\updated.png');
+    await tester.pump();
+    await tester.tap(find.text('PEQUEÑA'));
+    await tester.pump();
+    await tester.tap(find.text('DER'));
+    await tester.pump();
+    await tester.tap(find.text('GUARDAR'));
+    await tester.pumpAndSettle();
+
+    final image = state!.document.root.children.single;
+    expect(image.attributes[ImageBlockKeys.url], 'C:\\notes\\updated.png');
+    expect(image.attributes[ImageBlockKeys.width], 180.0);
+    expect(image.attributes[ImageBlockKeys.align], 'right');
+  });
+
+  testWidgets('block latex edits without exposing dollar markers', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '\$\$\nx^2\n\$\$',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, _) => state = editorState,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(r'$$'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_latex_0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('EDITAR'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), r'\frac{1}{2}');
+    await tester.tap(find.text('GUARDAR'));
+    await tester.pumpAndSettle();
+
+    expect(
+      state?.document.root.children.single
+          .attributes[yuliLatexBlockContent],
+      r'\frac{1}{2}',
+    );
+    expect(
+      YuliMarkdownDocument.encode(state!.document),
+      contains('\$\$\n\\frac{1}{2}\n\$\$'),
+    );
+  });
+
+  testWidgets('last atomic node offers a following paragraph', (tester) async {
+    final repository = _FakeNoteBlockRepository();
+    EditorState? state;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '\$\$\nx^2\n\$\$',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                onFocusChanged: (editorState, _) => state = editorState,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('yuli_continue_writing')));
+    await tester.pumpAndSettle();
+
+    expect(state?.document.root.children, hasLength(2));
+    expect(
+      state?.document.root.children.last.type,
+      ParagraphBlockKeys.type,
+    );
+    expect(state?.selection?.start.path, [1]);
   });
 
   testWidgets('inline markers follow the cursor domain within one line', (
@@ -598,6 +1159,12 @@ Iterable<TextSpan> _flattenSpans(InlineSpan span) sync* {
   for (final child in span.children ?? const <InlineSpan>[]) {
     yield* _flattenSpans(child);
   }
+}
+
+bool _containsWidgetSpan(InlineSpan span) {
+  if (span is WidgetSpan) return true;
+  if (span is! TextSpan) return false;
+  return span.children?.any(_containsWidgetSpan) ?? false;
 }
 
 List<TextSpan> _renderedSpans(WidgetTester tester) => [

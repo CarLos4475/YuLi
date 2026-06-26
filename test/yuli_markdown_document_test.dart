@@ -62,6 +62,41 @@ final value = 1;
     expect(encoded, contains('::: right'));
   });
 
+  test(
+    'round trips inline and multiline latex without splitting display math',
+    () {
+      const source = r'''
+Texto con $1 = 1 $.
+
+$$
+\frac{1}{2}
+$$
+''';
+
+      final document = YuliMarkdownDocument.decode(source);
+      final encoded = YuliMarkdownDocument.encode(document);
+      final display = document.root.children.firstWhere(
+        (node) => node.type == yuliLatexBlockType,
+      );
+
+      expect(
+        display.attributes[yuliLatexBlockContent],
+        contains(r'\frac{1}{2}'),
+      );
+      expect(encoded, contains(r'$1 = 1 $'));
+      expect(
+        encoded,
+        contains(
+          r'$$'
+          '\n'
+          r'\frac{1}{2}'
+          '\n'
+          r'$$',
+        ),
+      );
+    },
+  );
+
   test('keeps long paragraphs as one wrapping document node', () {
     final text = List.filled(80, 'palabra').join(' ');
     final document = YuliMarkdownDocument.decode(text);

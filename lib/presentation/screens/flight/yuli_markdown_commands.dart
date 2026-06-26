@@ -9,6 +9,8 @@ const yuliMarkdownDomainEnd = 'yuli_markdown_domain_end';
 const yuliHeadingLevel = 'yuli_heading_level';
 const yuliQuoteText = 'yuli_quote_text';
 const yuliHighlight = 'yuli_highlight';
+const yuliLatex = 'yuli_latex';
+const yuliLatexDisplay = 'yuli_latex_display';
 
 final Expando<String> _preferredAlignment = Expando<String>();
 
@@ -18,6 +20,7 @@ List<CharacterShortcutEvent> get yuliMarkdownCharacterShortcuts => [
   _pairShortcut('_'),
   _pairShortcut('`'),
   _pairShortcut('~'),
+  _pairShortcut(r'$'),
   ...standardCharacterShortcutEvents.where(
     (event) =>
         event != formatAsteriskToBulletedList &&
@@ -140,7 +143,21 @@ final CharacterShortcutEvent _insertNewLineWithAlignment =
         var selection = editorState.selection?.normalized;
         if (selection == null) return false;
         final node = editorState.getNodeAtPath(selection.start.path);
-        if (node == null || node.type != ParagraphBlockKeys.type) return false;
+        if (node == null) return false;
+        if (node.path.length == 1 &&
+            selection.start.path.equals(selection.end.path) &&
+            (node.type == ImageBlockKeys.type ||
+                node.type == TableBlockKeys.type ||
+                node.type == yuliLatexBlockType)) {
+          final path = [node.path.first + 1];
+          final transaction =
+              editorState.transaction
+                ..insertNode(path, paragraphNode())
+                ..afterSelection = Selection.collapsed(Position(path: path));
+          await editorState.apply(transaction);
+          return true;
+        }
+        if (node.type != ParagraphBlockKeys.type) return false;
 
         if (!selection.isCollapsed) {
           await editorState.deleteSelection(selection);
@@ -305,6 +322,20 @@ Delta buildLiveMarkdownDelta(String text) {
   _applyDelimited(
     text,
     attributes,
+    RegExp(r'^\$\$([\s\S]*\S[\s\S]*?)\$\$$'),
+    2,
+    {yuliLatex: true, yuliLatexDisplay: true},
+  );
+  _applyDelimited(
+    text,
+    attributes,
+    RegExp(r'(?<![\\$])\$(?![$\s])([^$\n]*[^$\s\n][^$\n]*)\$(?!\$)'),
+    1,
+    {yuliLatex: true},
+  );
+  _applyDelimited(
+    text,
+    attributes,
     RegExp(r'(?<!\*)\*\*\*(?!\s)(.*?\S.*?)\*\*\*'),
     3,
     {AppFlowyRichTextKeys.bold: true, AppFlowyRichTextKeys.italic: true},
@@ -381,7 +412,11 @@ void _applyDelimited(
       i < match.end - markerLength;
       i++
     ) {
-      attributes[i].addAll(contentAttributes);
+      attributes[i].addAll({
+        ...contentAttributes,
+        yuliMarkdownDomainStart: match.start + markerLength,
+        yuliMarkdownDomainEnd: match.end - markerLength,
+      });
     }
   }
 }

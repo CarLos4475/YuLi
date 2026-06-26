@@ -3,29 +3,37 @@ import 'package:flutter/material.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import 'yuli_markdown_commands.dart';
+import 'yuli_markdown_document.dart';
 
 class FormatToolbar extends StatelessWidget {
   final EditorState? editorState;
   final VoidCallback? onOpenInsertMenu;
+  final VoidCallback? onRequestFocus;
   final Color accent;
 
   const FormatToolbar({
     super.key,
     this.editorState,
     this.onOpenInsertMenu,
+    this.onRequestFocus,
     this.accent = yFlight,
   });
 
   void _wrap(String marker) {
     final state = editorState;
     if (state == null) return;
+    onRequestFocus?.call();
     wrapMarkdownSelection(state, marker);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onRequestFocus?.call();
+    });
   }
 
-  void _align(String align) {
+  Future<void> _align(String align) async {
     final state = editorState;
     final selection = state?.selection;
     if (state == null || selection == null) return;
+    onRequestFocus?.call();
     setPreferredMarkdownAlignment(state, align);
     final targets = <Node>{};
     for (final node in state.getNodesInSelection(selection)) {
@@ -42,7 +50,17 @@ class FormatToolbar extends StatelessWidget {
           blockComponentAlign: align == 'left' ? null : align,
       });
     }
-    state.apply(transaction);
+    transaction.afterSelection = selection;
+    await state.apply(transaction);
+    if (state.selection != selection) {
+      await state.updateSelectionWithReason(
+        selection,
+        reason: SelectionUpdateReason.uiEvent,
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onRequestFocus?.call();
+    });
   }
 
   @override
@@ -173,7 +191,8 @@ Node _alignmentTarget(Node node) {
   var current = node;
   while (current.parent != null) {
     if (current.type == ImageBlockKeys.type ||
-        current.type == TableBlockKeys.type) {
+        current.type == TableBlockKeys.type ||
+        current.type == yuliLatexBlockType) {
       return current;
     }
     current = current.parent!;
