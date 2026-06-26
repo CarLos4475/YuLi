@@ -32,6 +32,7 @@ List<CharacterShortcutEvent> get yuliMarkdownCharacterShortcuts => [
         event != formatHyphenEmptyBracketsToUncheckedBox &&
         event != formatFilledBracketsToCheckedBox &&
         event != formatHyphenFilledBracketsToCheckedBox &&
+        event != convertMinusesToDivider &&
         event != convertStarsToDivider &&
         event != convertUnderscoreToDivider &&
         !markdownSyntaxShortcutEvents.contains(event) &&
@@ -288,6 +289,40 @@ Future<void> wrapMarkdownSelection(
                   startOffset: start + marker.length,
                   endOffset: end + marker.length,
                 );
+  await editorState.apply(transaction);
+}
+
+Future<void> applyMarkdownLinePrefix(
+  EditorState editorState,
+  String prefix, {
+  RegExp? removePattern,
+  bool replaceLine = false,
+}) async {
+  final selection = editorState.selection?.normalized;
+  if (selection == null || !selection.isSingle) return;
+  final node = editorState.getNodeAtPath(selection.start.path);
+  final delta = node?.delta;
+  if (node == null || delta == null) return;
+  final source = delta.toPlainText();
+  final next =
+      replaceLine
+          ? prefix
+          : '$prefix${removePattern == null ? source : source.replaceFirst(removePattern, '')}';
+  final transaction =
+      editorState.transaction
+        ..updateNode(node, {
+          blockComponentDelta: (Delta()..insert(next)).toJson(),
+        })
+        ..afterSelection = Selection.collapsed(
+          Position(
+            path: node.path,
+            offset:
+                selection.isCollapsed
+                    ? (selection.start.offset + next.length - source.length)
+                        .clamp(prefix.length, next.length)
+                    : next.length,
+          ),
+        );
   await editorState.apply(transaction);
 }
 

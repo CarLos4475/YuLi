@@ -1,5 +1,6 @@
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -314,6 +315,36 @@ void main() {
     expect(
       state.document.root.children.single.delta?.toPlainText(),
       '**Texto**',
+    );
+    state.dispose();
+  });
+
+  testWidgets('format toolbar applies markdown block prefixes', (tester) async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(
+          children: [paragraphNode(delta: Delta()..insert('Titulo'))],
+        ),
+      ),
+    );
+    state.selection = Selection.collapsed(Position(path: const [0], offset: 6));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FormatToolbar(
+            editorState: state,
+            accent: const Color(0xFF2D3F8C),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('H1'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      state.document.root.children.single.delta?.toPlainText(),
+      '# Titulo',
     );
     state.dispose();
   });
@@ -868,6 +899,7 @@ void main() {
                         markdown: '![Imagen](C:\\notes\\missing.png)',
                       ),
                       accent: const Color(0xFF2D3F8C),
+                      debugPickImagePath: () async => 'C:\\notes\\updated.png',
                       onFocusChanged:
                           (editorState, _) =>
                               setHostState(() => state = editorState),
@@ -892,12 +924,14 @@ void main() {
 
     await tester.tap(find.text('EDITAR'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'C:\\notes\\updated.png');
-    await tester.pump();
+    await tester.tap(find.text('CAMBIAR IMAGEN'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('PEQUEÑA'));
     await tester.pump();
     await tester.tap(find.text('DER'));
     await tester.pump();
+    await tester.ensureVisible(find.text('GUARDAR'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('GUARDAR'));
     await tester.pumpAndSettle();
 
@@ -1011,6 +1045,74 @@ void main() {
     expect(code.attributes['language'], 'ts');
     expect(code.delta?.toPlainText(), contains('console.log'));
     expect(YuliMarkdownDocument.encode(state!.document), contains('```ts'));
+  });
+
+  testWidgets('code block preview applies syntax highlight', (tester) async {
+    final repository = _FakeNoteBlockRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: const Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '```dart\nfinal value = "Hola";\n```',
+                ),
+                accent: Color(0xFF2D3F8C),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('```'), findsNothing);
+    final highlight = tester.widget<HighlightView>(find.byType(HighlightView));
+    expect(highlight.language, 'dart');
+    expect(highlight.source, contains('final value'));
+  });
+
+  testWidgets('list and task markdown render visually while inactive', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: const Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: YuliLiveTextEditor(
+                block: TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '- Uno\n- [ ] Pendiente',
+                ),
+                accent: Color(0xFF2D3F8C),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('- Uno'), findsNothing);
+    expect(find.textContaining('- [ ]'), findsNothing);
+    expect(find.text('•'), findsOneWidget);
+    expect(find.byIcon(YuLiIcons.square), findsOneWidget);
   });
 
   testWidgets('last atomic node offers a following paragraph', (tester) async {

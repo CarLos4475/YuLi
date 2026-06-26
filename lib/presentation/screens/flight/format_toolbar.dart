@@ -29,6 +29,21 @@ class FormatToolbar extends StatelessWidget {
     });
   }
 
+  void _line(String prefix, {RegExp? removePattern, bool replaceLine = false}) {
+    final state = editorState;
+    if (state == null) return;
+    onRequestFocus?.call();
+    applyMarkdownLinePrefix(
+      state,
+      prefix,
+      removePattern: removePattern,
+      replaceLine: replaceLine,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onRequestFocus?.call();
+    });
+  }
+
   Future<void> _align(String align) async {
     final state = editorState;
     final selection = state?.selection;
@@ -92,90 +107,129 @@ class FormatToolbar extends StatelessWidget {
         }
 
         final align = activeAlign();
+        final blockPrefix = RegExp(
+          r'^(#{1,6}\s+|>\s?|(?:[-+*]|\d+[.)])\s+|[-+*]\s+\[[ xX]\]\s+)',
+        );
         return Container(
-          decoration: const BoxDecoration(
+          margin: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+          decoration: BoxDecoration(
             color: yCream,
-            border: Border(
-              top: BorderSide(color: yBorderStrong, width: yLineThin),
-            ),
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+            boxShadow: const [
+              BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+            ],
           ),
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               children: [
-                _FmtBtn(
+                _TextToolBtn(
+                  label: 'H1',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _line('# ', removePattern: blockPrefix),
+                ),
+                _sep(),
+                _TextToolBtn(
+                  label: 'H2',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _line('## ', removePattern: blockPrefix),
+                ),
+                _sep(),
+                _TextToolBtn(
+                  label: 'H3',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _line('### ', removePattern: blockPrefix),
+                ),
+                _groupGap(),
+                _TextToolBtn(
                   label: 'B',
                   active: false,
                   accent: accent,
                   onTap: () => _wrap('**'),
                 ),
-                const SizedBox(width: 4),
-                _FmtBtn(
+                _sep(),
+                _TextToolBtn(
                   label: 'I',
                   active: false,
                   accent: accent,
                   onTap: () => _wrap('*'),
                 ),
-                const SizedBox(width: 4),
-                _FmtBtn(
+                _sep(),
+                _TextToolBtn(
                   label: 'S',
                   active: false,
                   accent: accent,
                   onTap: () => _wrap('~~'),
                 ),
-                const SizedBox(width: 4),
-                _FmtBtn(
+                _sep(),
+                _TextToolBtn(
                   label: '`',
                   active: false,
                   accent: accent,
                   onTap: () => _wrap('`'),
                 ),
-                const SizedBox(width: 8),
+                _groupGap(),
+                _TextToolBtn(
+                  label: '>',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _line('> ', removePattern: blockPrefix),
+                ),
+                _sep(),
+                _TextToolBtn(
+                  label: '-',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _line('- ', removePattern: blockPrefix),
+                ),
+                _sep(),
+                _TextToolBtn(
+                  label: '[ ]',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _line('- [ ] ', removePattern: blockPrefix),
+                ),
+                _sep(),
+                _TextToolBtn(
+                  label: '---',
+                  active: false,
+                  accent: accent,
+                  wide: true,
+                  onTap: () => _line('---', replaceLine: true),
+                ),
+                _groupGap(),
                 _AlignBtn(
                   icon: YuLiIcons.textAlignStart,
                   active: align == 'left',
                   accent: accent,
                   onTap: () => _align('left'),
                 ),
-                const SizedBox(width: 4),
+                _sep(),
                 _AlignBtn(
                   icon: YuLiIcons.textAlignCenter,
                   active: align == 'center',
                   accent: accent,
                   onTap: () => _align('center'),
                 ),
-                const SizedBox(width: 4),
+                _sep(),
                 _AlignBtn(
                   icon: YuLiIcons.textAlignEnd,
                   active: align == 'right',
                   accent: accent,
                   onTap: () => _align('right'),
                 ),
-                const SizedBox(width: 12),
+                _groupGap(),
                 if (onOpenInsertMenu != null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onOpenInsertMenu,
-                    child: Container(
-                      width: 30,
-                      height: 30,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: accent,
-                        border: Border.all(color: yBorderStrong, width: 1.5),
-                      ),
-                      child: Text(
-                        '+',
-                        style: yMono(
-                          size: 14,
-                          weight: FontWeight.w700,
-                          color: yCream,
-                          tracking: 0,
-                        ),
-                      ),
-                    ),
+                  _TextToolBtn(
+                    label: '+',
+                    active: true,
+                    accent: accent,
+                    onTap: onOpenInsertMenu!,
                   ),
               ],
             ),
@@ -200,16 +254,22 @@ Node _alignmentTarget(Node node) {
   return original;
 }
 
-class _FmtBtn extends StatelessWidget {
+Widget _sep() => Container(width: yLineThin, height: 28, color: yBorderStrong);
+
+Widget _groupGap() => const SizedBox(width: 12);
+
+class _TextToolBtn extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool active;
   final Color accent;
-  const _FmtBtn({
+  final bool wide;
+  const _TextToolBtn({
     required this.label,
     required this.onTap,
     required this.active,
     required this.accent,
+    this.wide = false,
   });
 
   @override
@@ -218,12 +278,13 @@ class _FmtBtn extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        width: 30,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        width: wide ? 50 : 38,
         height: 30,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? accent : yCream,
-          border: Border.all(color: yBorderStrong, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Text(
           label,
@@ -256,12 +317,13 @@ class _AlignBtn extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        width: 28,
-        height: 28,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        width: 38,
+        height: 30,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? accent : yCream,
-          border: Border.all(color: yBorderStrong, width: 1.5),
+          border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
         child: Icon(icon, size: 14, color: active ? yCream : yInk),
       ),

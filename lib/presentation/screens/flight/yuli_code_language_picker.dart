@@ -94,17 +94,25 @@ class YuliCodeLanguagePicker extends StatefulWidget {
 
 class _YuliCodeLanguagePickerState extends State<YuliCodeLanguagePicker> {
   late final TextEditingController _searchController;
+  late final FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _focusNode = FocusNode()..addListener(_handleFocusChanged);
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_handleFocusChanged);
+    _focusNode.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -113,15 +121,19 @@ class _YuliCodeLanguagePickerState extends State<YuliCodeLanguagePicker> {
     final selected = yuliCodeLanguageFor(widget.language);
     final filtered =
         query.isEmpty
-            ? yuliCodeLanguages
-            : yuliCodeLanguages.where((language) {
-              final terms = [
-                language.id,
-                language.label,
-                ...language.aliases,
-              ].map((term) => term.toLowerCase());
-              return terms.any((term) => term.contains(query));
-            }).toList();
+            ? const <YuliCodeLanguage>[]
+            : yuliCodeLanguages
+                .where((language) {
+                  final terms = [
+                    language.id,
+                    language.label,
+                    ...language.aliases,
+                  ].map((term) => term.toLowerCase());
+                  return terms.any((term) => term.contains(query));
+                })
+                .take(6)
+                .toList();
+    final showSuggestions = _focusNode.hasFocus && filtered.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -130,78 +142,79 @@ class _YuliCodeLanguagePickerState extends State<YuliCodeLanguagePicker> {
           style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
         ),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: widget.accent.withValues(alpha: 0.1),
-            border: Border.all(color: widget.accent, width: yLineThin),
-          ),
-          child: Text(
-            selected.id.isEmpty
-                ? 'SELECCIONADO: TEXTO PLANO'
-                : 'SELECCIONADO: ${selected.label.toUpperCase()}  /  ${selected.id.toUpperCase()}',
-            style: yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              color: widget.accent,
-              tracking: 0.7,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
         TextField(
           controller: _searchController,
+          focusNode: _focusNode,
           onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _selectFirst(filtered),
           textInputAction: TextInputAction.search,
           style: yBody(size: 14, color: yInk),
-          decoration: const InputDecoration(
-            hintText: 'BUSCAR LENGUAJE',
-            border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-            enabledBorder: OutlineInputBorder(
+          decoration: InputDecoration(
+            hintText:
+                selected.id.isEmpty
+                    ? 'BUSCAR LENGUAJE'
+                    : 'BUSCAR LENGUAJE · ${selected.label.toUpperCase()}',
+            hintStyle: yBody(size: 13, color: yMuted),
+            border: const OutlineInputBorder(borderRadius: BorderRadius.zero),
+            enabledBorder: const OutlineInputBorder(
               borderRadius: BorderRadius.zero,
               borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.zero,
-              borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+              borderSide: BorderSide(color: widget.accent, width: yLineMid),
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 150),
-          child: SingleChildScrollView(
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
+        if (showSuggestions)
+          Container(
+            margin: const EdgeInsets.only(top: 6, right: 3, bottom: 3),
+            decoration: BoxDecoration(
+              color: yCream,
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+              boxShadow: const [
+                BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 for (final language in filtered)
-                  _YuliCodeLanguageChip(
+                  _YuliCodeLanguageOption(
                     language: language,
                     selected: language.id == selected.id,
                     accent: widget.accent,
                     onTap: () {
-                      widget.onChanged(language.id);
-                      _searchController.clear();
-                      setState(() {});
+                      _select(language);
                     },
                   ),
               ],
             ),
           ),
-        ),
       ],
     );
   }
+
+  void _selectFirst(List<YuliCodeLanguage> languages) {
+    if (languages.isEmpty) return;
+    _select(languages.first);
+  }
+
+  void _select(YuliCodeLanguage language) {
+    widget.onChanged(language.id);
+    _searchController.clear();
+    _focusNode.unfocus();
+    setState(() {});
+  }
 }
 
-class _YuliCodeLanguageChip extends StatelessWidget {
+class _YuliCodeLanguageOption extends StatelessWidget {
   final YuliCodeLanguage language;
   final bool selected;
   final Color accent;
   final VoidCallback onTap;
 
-  const _YuliCodeLanguageChip({
+  const _YuliCodeLanguageOption({
     required this.language,
     required this.selected,
     required this.accent,
@@ -214,25 +227,32 @@ class _YuliCodeLanguageChip extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? accent : yCream,
-          border: Border.all(color: yBorderStrong, width: yLineThin),
-          boxShadow:
-              selected
-                  ? const [
-                    BoxShadow(color: yInk, offset: Offset(2, 2), blurRadius: 0),
-                  ]
-                  : null,
-        ),
-        child: Text(
-          language.label.toUpperCase(),
-          style: yMono(
-            size: 10,
-            weight: FontWeight.w700,
-            color: selected ? yCream : yInk,
-            tracking: 0.6,
+          color: selected ? accent.withValues(alpha: 0.12) : yCream,
+          border: const Border(
+            bottom: BorderSide(color: yBorderSoft, width: yLineThin),
           ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                language.label.toUpperCase(),
+                style: yMono(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  color: selected ? accent : yInk,
+                  tracking: 0.6,
+                ),
+              ),
+            ),
+            Text(
+              language.id.isEmpty ? 'TEXT' : language.id.toUpperCase(),
+              style: yMono(size: 9, color: yMuted, tracking: 0.6),
+            ),
+          ],
         ),
       ),
     );

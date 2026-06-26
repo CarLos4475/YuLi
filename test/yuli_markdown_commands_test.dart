@@ -107,6 +107,21 @@ void main() {
     expect(delta.toPlainText(), '***');
   });
 
+  test('native divider shortcuts are disabled', () {
+    expect(
+      yuliMarkdownCharacterShortcuts,
+      isNot(contains(convertMinusesToDivider)),
+    );
+    expect(
+      yuliMarkdownCharacterShortcuts,
+      isNot(contains(convertStarsToDivider)),
+    );
+    expect(
+      yuliMarkdownCharacterShortcuts,
+      isNot(contains(convertUnderscoreToDivider)),
+    );
+  });
+
   test('inline formatting stays active with trailing spaces', () {
     final cases = <(String, String, String)>[
       ('**Hola **', 'Hola ', AppFlowyRichTextKeys.bold),

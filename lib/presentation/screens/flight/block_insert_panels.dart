@@ -4,14 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
-import 'package:uuid/uuid.dart';
 
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import '../../providers/database_providers.dart';
 import 'yuli_code_language_picker.dart';
+import 'yuli_note_image_importer.dart';
 
 enum InsertPanelType { table, code, quote, latex, image }
 
@@ -786,24 +784,13 @@ class _ImagePanelState extends ConsumerState<_ImagePanel> {
     setState(() => _isLoading = true);
 
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final imagesDir = Directory(
-        p.join(appDir.path, 'note_images', '${widget.noteId}'),
+      final imported = await importYuliNoteImage(
+        noteId: widget.noteId,
+        sourcePath: _pickedFile!.path,
+        noteRepository: ref.read(noteRepositoryProvider),
       );
-      await imagesDir.create(recursive: true);
 
-      final ext = p.extension(_pickedFile!.path).toLowerCase();
-      final newFilename = '${const Uuid().v4()}$ext';
-      final newPath = p.join(imagesDir.path, newFilename);
-
-      await File(_pickedFile!.path).copy(newPath);
-
-      final fileSize = await File(newPath).length();
-      await ref
-          .read(noteRepositoryProvider)
-          .addImage(widget.noteId, newFilename, newPath, fileSize);
-
-      final imgMarkdown = '![Imagen]($newPath)';
+      final imgMarkdown = '![Imagen](${imported.path})';
       final md =
           _imageAlign != null
               ? '\n::: $_imageAlign\n$imgMarkdown\n:::\n'

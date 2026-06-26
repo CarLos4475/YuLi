@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../providers/database_providers.dart';
 import '../../theme/lab_icons.dart';
@@ -14,6 +17,7 @@ import '../../../domain/repositories/note_block_repository.dart';
 import 'yuli_code_language_picker.dart';
 import 'yuli_markdown_commands.dart';
 import 'yuli_markdown_document.dart';
+import 'yuli_note_image_importer.dart';
 
 typedef YuliEditorFocusChanged =
     void Function(EditorState? editorState, FocusNode? focusNode);
@@ -77,6 +81,7 @@ class YuliLiveTextEditor extends ConsumerStatefulWidget {
   final Color accent;
   final YuliEditorFocusChanged? onFocusChanged;
   final bool autofocus;
+  final Future<String?> Function()? debugPickImagePath;
 
   const YuliLiveTextEditor({
     super.key,
@@ -84,6 +89,7 @@ class YuliLiveTextEditor extends ConsumerStatefulWidget {
     required this.accent,
     this.onFocusChanged,
     this.autofocus = false,
+    this.debugPickImagePath,
   });
 
   @override
@@ -474,6 +480,29 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     _focusNode.requestFocus();
   }
 
+  Future<String?> _pickImageForInlineEditor() {
+    final testPicker = widget.debugPickImagePath;
+    if (testPicker != null) return testPicker();
+    return _pickAndImportImageForInlineEditor();
+  }
+
+  Future<String?> _pickAndImportImageForInlineEditor() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 1920,
+      maxHeight: 1920,
+    );
+    if (picked == null) return null;
+
+    final imported = await importYuliNoteImage(
+      noteId: widget.block.noteId,
+      sourcePath: picked.path,
+      noteRepository: ref.read(noteRepositoryProvider),
+    );
+    return imported.path;
+  }
+
   BlockComponentConfiguration get _textConfiguration =>
       BlockComponentConfiguration(
         padding: (_) => const EdgeInsets.symmetric(vertical: 3),
@@ -724,6 +753,17 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
               ),
             );
           }
+          final listPreview = _YuliListLinePreview.tryParse(
+            source: source,
+            accent: widget.accent,
+          );
+          if (!active && listPreview != null) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _activateNode(node, listPreview.contentOffset),
+              child: IgnorePointer(child: listPreview),
+            );
+          }
           if (text.trim() == '---') {
             return Stack(
               alignment: Alignment.center,
@@ -731,7 +771,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
                 child!,
                 if (!active)
                   IgnorePointer(
-                    child: Container(height: yLineThin, color: yBorderStrong),
+                    child: Container(height: yLineThin, color: widget.accent),
                   ),
               ],
             );
@@ -782,6 +822,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
                       : _YuliCodePreview(
                         code: code,
                         language: node.attributes['language'] as String? ?? '',
+                        accent: widget.accent,
                       ),
             );
           }
@@ -931,6 +972,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
                             node.attributes[ImageBlockKeys.align] as String? ??
                             'center',
                         accent: widget.accent,
+                        onPickImage: _pickImageForInlineEditor,
                         onCancel: () {
                           setState(() => _editingImages.remove(key));
                           _selectAtomicNode(node);
@@ -1075,12 +1117,22 @@ class _YuliAtomicFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showHeader = selected || editing;
+    final framed = selected || editing;
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin:
+          framed
+              ? const EdgeInsets.fromLTRB(0, 4, 4, 8)
+              : const EdgeInsets.symmetric(vertical: 4),
+      padding: framed ? const EdgeInsets.all(8) : EdgeInsets.zero,
       decoration: BoxDecoration(
+        color: framed ? yCream : Colors.transparent,
         border:
-            selected || editing
-                ? Border.all(color: accent, width: yLineMid)
+            framed ? Border.all(color: yBorderStrong, width: yLineThin) : null,
+        boxShadow:
+            framed
+                ? const [
+                  BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0),
+                ]
                 : null,
       ),
       child: Column(
@@ -1088,11 +1140,11 @@ class _YuliAtomicFrame extends StatelessWidget {
         children: [
           if (showHeader)
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (editing)
+                  if (selected || editing)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 7,
@@ -1100,7 +1152,7 @@ class _YuliAtomicFrame extends StatelessWidget {
                       ),
                       color: accent,
                       child: Text(
-                        '$label - EDITANDO',
+                        editing ? '$label - EDITANDO' : label,
                         style: yMono(
                           size: 10,
                           weight: FontWeight.w700,
@@ -1109,7 +1161,7 @@ class _YuliAtomicFrame extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (editing) const SizedBox(width: 6),
+                  if (selected || editing) const SizedBox(width: 6),
                   Expanded(
                     child: Wrap(
                       alignment: WrapAlignment.end,
@@ -1160,7 +1212,7 @@ class _YuliAtomicActionButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: action.enabled ? action.onTap : null,
       child: Container(
-        margin: const EdgeInsets.only(left: 2, bottom: 2),
+        margin: const EdgeInsets.fromLTRB(2, 0, 2, 2),
         height: 28,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
@@ -1213,11 +1265,14 @@ class _YuliContinueWriting extends StatelessWidget {
       onTap: onTap,
       child: Container(
         key: const ValueKey('yuli_continue_writing'),
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 10),
+        margin: const EdgeInsets.fromLTRB(0, 8, 4, 4),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         decoration: BoxDecoration(
-          color: accent.withValues(alpha: 0.08),
-          border: Border.all(color: accent, width: yLineThin),
+          color: yCream,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+          boxShadow: const [
+            BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1297,6 +1352,138 @@ class _YuliInlineLatexPreview extends StatelessWidget {
         softWrap: true,
       ),
     );
+  }
+}
+
+enum _YuliListLineKind { bullet, numbered, taskOpen, taskDone }
+
+class _YuliListLinePreview extends StatelessWidget {
+  final _YuliListLineKind kind;
+  final String marker;
+  final String content;
+  final int contentOffset;
+  final Color accent;
+
+  const _YuliListLinePreview({
+    required this.kind,
+    required this.marker,
+    required this.content,
+    required this.contentOffset,
+    required this.accent,
+  });
+
+  static _YuliListLinePreview? tryParse({
+    required String source,
+    required Color accent,
+  }) {
+    final task = RegExp(
+      r'^(\s*[-+*]\s+\[([ xX])\]\s+)(.*)$',
+    ).firstMatch(source);
+    if (task != null) {
+      final checked = task.group(2)!.toLowerCase() == 'x';
+      return _YuliListLinePreview(
+        kind: checked ? _YuliListLineKind.taskDone : _YuliListLineKind.taskOpen,
+        marker: checked ? '[x]' : '[ ]',
+        content: task.group(3)!,
+        contentOffset: task.group(1)!.length,
+        accent: accent,
+      );
+    }
+    final bullet = RegExp(r'^(\s*[-+*]\s+)(.*)$').firstMatch(source);
+    if (bullet != null) {
+      return _YuliListLinePreview(
+        kind: _YuliListLineKind.bullet,
+        marker: '•',
+        content: bullet.group(2)!,
+        contentOffset: bullet.group(1)!.length,
+        accent: accent,
+      );
+    }
+    final numbered = RegExp(r'^(\s*(\d+[.)])\s+)(.*)$').firstMatch(source);
+    if (numbered != null) {
+      return _YuliListLinePreview(
+        kind: _YuliListLineKind.numbered,
+        marker: numbered.group(2)!,
+        content: numbered.group(3)!,
+        contentOffset: numbered.group(1)!.length,
+        accent: accent,
+      );
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 30, child: _marker()),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: _contentSpans()),
+              softWrap: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _marker() {
+    if (kind == _YuliListLineKind.taskOpen ||
+        kind == _YuliListLineKind.taskDone) {
+      final done = kind == _YuliListLineKind.taskDone;
+      return Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: Icon(
+          done ? YuLiIcons.squareCheck : YuLiIcons.square,
+          size: 16,
+          color: done ? accent : yInk,
+        ),
+      );
+    }
+    return Text(
+      marker,
+      textAlign: TextAlign.center,
+      style: yMono(
+        size: kind == _YuliListLineKind.bullet ? 18 : 11,
+        weight: FontWeight.w700,
+        color: accent,
+        tracking: 0,
+      ),
+    );
+  }
+
+  List<InlineSpan> _contentSpans() {
+    final spans = <InlineSpan>[];
+    for (final operation in buildLiveMarkdownDelta(content).toList()) {
+      if (operation is! TextInsert) continue;
+      final attributes = operation.attributes ?? const <String, dynamic>{};
+      if (attributes[yuliMarkdownMarker] == true) continue;
+      spans.add(
+        TextSpan(
+          text: operation.text,
+          style: applyYuliLiveTextStyle(
+            yBody(
+              size: 15,
+              color: kind == _YuliListLineKind.taskDone ? yMuted : yInk2,
+              height: 1.55,
+            ).copyWith(
+              decoration:
+                  kind == _YuliListLineKind.taskDone
+                      ? TextDecoration.lineThrough
+                      : null,
+              decorationColor: yMuted,
+            ),
+            attributes,
+            accent,
+          ),
+        ),
+      );
+    }
+    return spans;
   }
 }
 
@@ -1417,12 +1604,24 @@ class _YuliLatexInlineEditorState extends State<_YuliLatexInlineEditor> {
 class _YuliCodePreview extends StatelessWidget {
   final String code;
   final String language;
+  final Color accent;
 
-  const _YuliCodePreview({required this.code, required this.language});
+  const _YuliCodePreview({
+    required this.code,
+    required this.language,
+    required this.accent,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final label = language.trim().toUpperCase();
+    final normalized = yuliNormalizeCodeLanguage(language);
+    final label = yuliCodeLanguageFor(normalized).label.toUpperCase();
+    final highlightLanguage = _highlightLanguageFor(normalized);
+    final textStyle = yMono(
+      size: 13,
+      color: yInk,
+      tracking: 0,
+    ).copyWith(height: 1.45);
     return Container(
       width: double.infinity,
       color: yCream2,
@@ -1443,19 +1642,133 @@ class _YuliCodePreview extends StatelessWidget {
                 ),
               ),
             ),
-          Text(
-            code.isEmpty ? 'CODIGO VACIO' : code,
-            softWrap: true,
-            style: yMono(
-              size: 13,
-              color: yInk,
-              tracking: 0,
-            ).copyWith(height: 1.45),
-          ),
+          if (code.isEmpty)
+            Text('CODIGO VACIO', softWrap: true, style: textStyle)
+          else if (highlightLanguage == null)
+            Text(code, softWrap: true, style: textStyle)
+          else
+            HighlightView(
+              code,
+              language: highlightLanguage,
+              theme: _yuliCodeHighlightTheme(accent),
+              textStyle: textStyle,
+              padding: EdgeInsets.zero,
+            ),
         ],
       ),
     );
   }
+}
+
+String? _highlightLanguageFor(String language) {
+  final normalized = yuliNormalizeCodeLanguage(language);
+  return switch (normalized) {
+    '' => null,
+    'js' => 'javascript',
+    'ts' => 'typescript',
+    'csharp' => 'cs',
+    'c' => 'cpp',
+    'html' => 'xml',
+    'cpp' => 'cpp',
+    'dart' ||
+    'python' ||
+    'java' ||
+    'kotlin' ||
+    'swift' ||
+    'go' ||
+    'rust' ||
+    'php' ||
+    'ruby' ||
+    'sql' ||
+    'css' ||
+    'scss' ||
+    'json' ||
+    'yaml' ||
+    'xml' ||
+    'markdown' ||
+    'bash' ||
+    'powershell' ||
+    'dockerfile' ||
+    'r' ||
+    'matlab' ||
+    'julia' ||
+    'lua' ||
+    'scala' ||
+    'elixir' ||
+    'erlang' ||
+    'haskell' ||
+    'clojure' ||
+    'solidity' => normalized,
+    _ => null,
+  };
+}
+
+Map<String, TextStyle> _yuliCodeHighlightTheme(Color accent) {
+  final primary = _accentTone(
+    accent,
+    lightnessShift: -0.1,
+    saturationShift: 0.08,
+  );
+  final secondary = _accentTone(
+    accent,
+    hueShift: 18,
+    lightnessShift: -0.04,
+    saturationShift: -0.02,
+  );
+  final tertiary = _accentTone(
+    accent,
+    hueShift: -22,
+    lightnessShift: 0.06,
+    saturationShift: -0.08,
+  );
+  final subdued = _accentMix(accent, yInk2, 0.52);
+  final keyword = TextStyle(color: primary, fontWeight: FontWeight.w700);
+  final warm = TextStyle(color: secondary);
+  final calm = TextStyle(color: tertiary);
+  final muted = TextStyle(color: yMuted, fontStyle: FontStyle.italic);
+  final strong = TextStyle(color: yInk, fontWeight: FontWeight.w700);
+  return {
+    'root': const TextStyle(color: yInk, backgroundColor: yCream2),
+    'keyword': keyword,
+    'selector-tag': keyword,
+    'literal': keyword,
+    'type': TextStyle(color: subdued, fontWeight: FontWeight.w700),
+    'built_in': TextStyle(color: subdued),
+    'title': strong,
+    'name': strong,
+    'string': calm,
+    'attr': warm,
+    'attribute': warm,
+    'number': warm,
+    'regexp': warm,
+    'meta': TextStyle(color: yMuted),
+    'comment': muted,
+    'quote': muted,
+    'variable': TextStyle(color: yInk2),
+    'params': TextStyle(color: yInk2),
+    'symbol': warm,
+    'bullet': warm,
+    'section': strong,
+    'tag': TextStyle(color: primary),
+  };
+}
+
+Color _accentTone(
+  Color accent, {
+  double hueShift = 0,
+  double saturationShift = 0,
+  double lightnessShift = 0,
+}) {
+  final hsl = HSLColor.fromColor(accent);
+  return hsl
+      .withHue((hsl.hue + hueShift) % 360)
+      .withSaturation((hsl.saturation + saturationShift).clamp(0.24, 0.88))
+      .withLightness((hsl.lightness + lightnessShift).clamp(0.24, 0.58))
+      .toColor();
+}
+
+Color _accentMix(Color accent, Color target, double amount) {
+  return Color.lerp(accent, target, amount) ?? accent;
 }
 
 class _YuliCodeInlineEditor extends StatefulWidget {
@@ -1567,6 +1880,7 @@ class _YuliImageInlineEditor extends StatefulWidget {
   final double initialWidth;
   final String initialAlign;
   final Color accent;
+  final Future<String?> Function() onPickImage;
   final VoidCallback onCancel;
   final void Function(String url, double width, String align) onSave;
 
@@ -1575,6 +1889,7 @@ class _YuliImageInlineEditor extends StatefulWidget {
     required this.initialWidth,
     required this.initialAlign,
     required this.accent,
+    required this.onPickImage,
     required this.onCancel,
     required this.onSave,
   });
@@ -1584,53 +1899,57 @@ class _YuliImageInlineEditor extends StatefulWidget {
 }
 
 class _YuliImageInlineEditorState extends State<_YuliImageInlineEditor> {
-  late final TextEditingController _urlController;
+  late String _url;
   late double _width;
   late String _align;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _urlController = TextEditingController(text: widget.initialUrl);
+    _url = widget.initialUrl.trim();
     _width = widget.initialWidth.clamp(160.0, 520.0);
     _align = widget.initialAlign;
   }
 
-  @override
-  void dispose() {
-    _urlController.dispose();
-    super.dispose();
+  Future<void> _pickImage() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    final path = await widget.onPickImage();
+    if (!mounted) return;
+    setState(() {
+      if (path != null && path.trim().isNotEmpty) {
+        _url = path.trim();
+      }
+      _loading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final url = _urlController.text.trim();
     return Container(
       color: yCream2,
       padding: const EdgeInsets.all(10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _urlController,
-            autofocus: true,
-            maxLines: 2,
-            minLines: 1,
-            onChanged: (_) => setState(() {}),
-            style: yMono(size: 13, color: yInk, tracking: 0),
-            decoration: const InputDecoration(
-              hintText: 'URL DE IMAGEN',
-              border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.zero,
-                borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.zero,
-                borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+          _YuliImageInlinePreview(url: _url),
+          const SizedBox(height: 10),
+          _YuliInlineEditorButton(
+            label: _url.isEmpty ? 'SELECCIONAR IMAGEN' : 'CAMBIAR IMAGEN',
+            color: widget.accent,
+            foreground: yCream,
+            onTap: _loading ? null : _pickImage,
+          ),
+          if (_loading)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'IMPORTANDO...',
+                textAlign: TextAlign.center,
+                style: yMono(size: 10, color: yMuted, tracking: 0.8),
               ),
             ),
-          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 6,
@@ -1697,14 +2016,86 @@ class _YuliImageInlineEditorState extends State<_YuliImageInlineEditor> {
                   color: widget.accent,
                   foreground: yCream,
                   onTap:
-                      url.isEmpty
+                      _url.isEmpty || _loading
                           ? null
-                          : () => widget.onSave(url, _width, _align),
+                          : () => widget.onSave(_url, _width, _align),
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _YuliImageInlinePreview extends StatelessWidget {
+  final String url;
+
+  const _YuliImageInlinePreview({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final file = url.isEmpty ? null : File(url);
+    final exists = file?.existsSync() ?? false;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 96, maxHeight: 180),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child:
+          url.isEmpty
+              ? _YuliImageInlinePlaceholder(
+                icon: YuLiIcons.image,
+                label: 'Sin imagen seleccionada',
+              )
+              : exists
+              ? Image.file(file!, fit: BoxFit.contain)
+              : url.startsWith('http://') || url.startsWith('https://')
+              ? Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder:
+                    (_, _, _) => _YuliImageInlinePlaceholder(
+                      icon: YuLiIcons.imageOff,
+                      label: 'Imagen no disponible',
+                    ),
+              )
+              : _YuliImageInlinePlaceholder(
+                icon: YuLiIcons.image,
+                label: url.split(RegExp(r'[\\/]+')).last,
+              ),
+    );
+  }
+}
+
+class _YuliImageInlinePlaceholder extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _YuliImageInlinePlaceholder({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 28, color: yMuted),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: yMono(size: 10, color: yMuted, tracking: 0.5),
+            ),
+          ],
+        ),
       ),
     );
   }
