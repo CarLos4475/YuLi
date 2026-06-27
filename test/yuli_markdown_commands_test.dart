@@ -122,6 +122,46 @@ void main() {
     );
   });
 
+  test('native formatting command shortcuts are disabled', () {
+    expect(
+      yuliMarkdownCommandShortcuts,
+      isNot(contains(toggleTodoListCommand)),
+    );
+    for (final command in toggleMarkdownCommands) {
+      expect(yuliMarkdownCommandShortcuts, isNot(contains(command)));
+    }
+    expect(
+      yuliMarkdownCommandShortcuts.map((command) => command.key),
+      isNot(contains('toggle into Heading 1')),
+    );
+    expect(
+      yuliMarkdownCommandShortcuts.map((command) => command.key),
+      isNot(contains('toggle into Heading 2')),
+    );
+    expect(
+      yuliMarkdownCommandShortcuts.map((command) => command.key),
+      isNot(contains('toggle into Heading 3')),
+    );
+    expect(
+      yuliMarkdownCommandShortcuts.map((command) => command.key),
+      isNot(contains('toggle Body')),
+    );
+    expect(
+      yuliMarkdownCommandShortcuts,
+      isNot(contains(toggleHighlightCommand)),
+    );
+    expect(yuliMarkdownCommandShortcuts, isNot(contains(showLinkMenuCommand)));
+    expect(
+      yuliMarkdownCommandShortcuts,
+      isNot(contains(openInlineLinkCommand)),
+    );
+    expect(yuliMarkdownCommandShortcuts, isNot(contains(openLinksCommand)));
+    expect(yuliMarkdownCommandShortcuts, isNot(contains(indentCommand)));
+    expect(yuliMarkdownCommandShortcuts, isNot(contains(outdentCommand)));
+    expect(yuliMarkdownCommandShortcuts, contains(undoCommand));
+    expect(yuliMarkdownCommandShortcuts, contains(redoCommand));
+  });
+
   test('inline formatting stays active with trailing spaces', () {
     final cases = <(String, String, String)>[
       ('**Hola **', 'Hola ', AppFlowyRichTextKeys.bold),

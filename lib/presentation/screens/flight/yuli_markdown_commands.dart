@@ -40,6 +40,28 @@ List<CharacterShortcutEvent> get yuliMarkdownCharacterShortcuts => [
   ),
 ];
 
+List<CommandShortcutEvent> get yuliMarkdownCommandShortcuts => [
+  ...standardCommandShortcutEvents.where(
+    (event) =>
+        event != toggleTodoListCommand &&
+        !toggleMarkdownCommands.contains(event) &&
+        !_yuliBlockedCommandKeys.contains(event.key) &&
+        event != toggleHighlightCommand &&
+        event != showLinkMenuCommand &&
+        event != openInlineLinkCommand &&
+        event != openLinksCommand &&
+        event != indentCommand &&
+        event != outdentCommand,
+  ),
+];
+
+const _yuliBlockedCommandKeys = {
+  'toggle into Heading 1',
+  'toggle into Heading 2',
+  'toggle into Heading 3',
+  'toggle Body',
+};
+
 String preferredMarkdownAlignment(EditorState editorState) {
   final preferred = _preferredAlignment[editorState];
   if (preferred != null) return preferred;

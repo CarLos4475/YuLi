@@ -1100,6 +1100,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
               editorStyle: style,
               blockComponentBuilders: _builders,
               characterShortcutEvents: yuliMarkdownCharacterShortcuts,
+              commandShortcutEvents: yuliMarkdownCommandShortcuts,
               blockWrapper: blockWrapper,
               contextMenuItems: const [],
               enableAutoComplete: false,
