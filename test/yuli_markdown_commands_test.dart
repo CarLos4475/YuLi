@@ -291,6 +291,50 @@ x^2 + y^2
     );
   });
 
+  test('caret snaps across hidden inline marker interiors', () {
+    const source = 'Antes **fuerte** despues';
+    final openingStart = source.indexOf('**');
+    final openingInterior = openingStart + 1;
+    final contentStart = source.indexOf('fuerte');
+    final contentEnd = contentStart + 'fuerte'.length;
+    final closingStart = source.lastIndexOf('**');
+    final closingInterior = closingStart + 1;
+    final closingEnd = closingStart + 2;
+
+    expect(
+      snapHiddenMarkdownMarkerCaretOffset(
+        text: source,
+        offset: openingInterior,
+        previousOffset: openingInterior - 1,
+      ),
+      contentStart,
+    );
+    expect(
+      snapHiddenMarkdownMarkerCaretOffset(
+        text: source,
+        offset: openingInterior,
+        previousOffset: contentStart,
+      ),
+      openingStart,
+    );
+    expect(
+      snapHiddenMarkdownMarkerCaretOffset(
+        text: source,
+        offset: closingInterior,
+        previousOffset: contentEnd,
+      ),
+      closingEnd,
+    );
+    expect(
+      snapHiddenMarkdownMarkerCaretOffset(
+        text: source,
+        offset: closingInterior,
+        previousOffset: closingEnd,
+      ),
+      contentEnd,
+    );
+  });
+
   test('heading and quote markers include their following space', () {
     final heading =
         buildLiveMarkdownDelta('# Titulo').toList().whereType<TextInsert>();

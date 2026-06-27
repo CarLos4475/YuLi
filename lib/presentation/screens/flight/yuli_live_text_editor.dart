@@ -109,6 +109,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   bool _syncingStyles = false;
   bool _styleSyncScheduled = false;
   bool _selectionRefreshScheduled = false;
+  bool _snappingMarkdownMarkerSelection = false;
+  String? _lastCollapsedSelectionPath;
+  int? _lastCollapsedSelectionOffset;
   final Set<String> _editingTables = {};
   final Set<String> _editingImages = {};
   final Set<String> _editingLatex = {};
@@ -177,6 +180,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   }
 
   void _onSelectionChanged() {
+    if (_snapHiddenMarkdownMarkerSelection()) return;
     if (_selectionRefreshScheduled) return;
     _selectionRefreshScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -192,6 +196,44 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         );
       }
     });
+  }
+
+  bool _snapHiddenMarkdownMarkerSelection() {
+    if (_snappingMarkdownMarkerSelection) return false;
+    final selection = _editorState.selection?.normalized;
+    if (selection == null || !selection.isCollapsed) {
+      _lastCollapsedSelectionPath = null;
+      _lastCollapsedSelectionOffset = null;
+      return false;
+    }
+    final node = _editorState.getNodeAtPath(selection.start.path);
+    final source = node?.delta?.toPlainText();
+    if (node == null || source == null) return false;
+
+    final pathKey = node.path.join('.');
+    final previousOffset =
+        _lastCollapsedSelectionPath == pathKey
+            ? _lastCollapsedSelectionOffset
+            : null;
+    final snapOffset = snapHiddenMarkdownMarkerCaretOffset(
+      text: source,
+      offset: selection.start.offset,
+      previousOffset: previousOffset,
+    );
+    _lastCollapsedSelectionPath = pathKey;
+    _lastCollapsedSelectionOffset = snapOffset ?? selection.start.offset;
+    if (snapOffset == null || snapOffset == selection.start.offset) {
+      return false;
+    }
+
+    _snappingMarkdownMarkerSelection = true;
+    _editorState
+        .updateSelectionWithReason(
+          Selection.collapsed(Position(path: node.path, offset: snapOffset)),
+          reason: SelectionUpdateReason.uiEvent,
+        )
+        .whenComplete(() => _snappingMarkdownMarkerSelection = false);
+    return true;
   }
 
   Future<void> _activate() async {
@@ -1346,10 +1388,13 @@ class _YuliInlineLatexPreview extends StatelessWidget {
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Text.rich(
-        TextSpan(children: spans),
-        textAlign: textAlign,
-        softWrap: true,
+      child: SizedBox(
+        width: double.infinity,
+        child: Text.rich(
+          TextSpan(children: spans),
+          textAlign: textAlign,
+          softWrap: true,
+        ),
       ),
     );
   }

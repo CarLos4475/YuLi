@@ -197,6 +197,39 @@ bool isMarkdownMarkerActive({
       selectionEnd >= domainStart;
 }
 
+int? snapHiddenMarkdownMarkerCaretOffset({
+  required String text,
+  required int offset,
+  int? previousOffset,
+}) {
+  if (offset <= 0 || offset >= text.length) return null;
+
+  var cursor = 0;
+  for (final operation in buildLiveMarkdownDelta(text).toList()) {
+    if (operation is! TextInsert) continue;
+    final start = cursor;
+    final end = cursor + operation.text.length;
+    cursor = end;
+    if (offset <= start || offset >= end) continue;
+
+    final attributes = operation.attributes ?? const <String, dynamic>{};
+    if (attributes[yuliMarkdownMarker] != true ||
+        attributes[yuliMarkdownBlockMarker] == true) {
+      continue;
+    }
+
+    final domainStart = attributes[yuliMarkdownDomainStart] as int?;
+    final domainEnd = attributes[yuliMarkdownDomainEnd] as int?;
+    if (domainStart == null || domainEnd == null) continue;
+
+    final movingRight = previousOffset == null || offset > previousOffset;
+    if (end <= domainStart) return movingRight ? domainStart : start;
+    if (start >= domainEnd) return movingRight ? end : domainEnd;
+    return movingRight ? end : start;
+  }
+  return null;
+}
+
 CharacterShortcutEvent _pairShortcut(String character) =>
     CharacterShortcutEvent(
       key: 'YuLi pair $character',

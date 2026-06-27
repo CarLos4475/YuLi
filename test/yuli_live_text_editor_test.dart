@@ -756,6 +756,7 @@ void main() {
 
     expect(math.textStyle?.fontSize, 16);
     expect(richText.textAlign, TextAlign.left);
+    expect(tester.getSize(find.byWidget(richText)).width, greaterThan(320));
   });
 
   testWidgets('table requires explicit cell edit mode', (tester) async {
