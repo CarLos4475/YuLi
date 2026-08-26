@@ -6,7 +6,7 @@
 |---|---|
 | UI | Flutter + Riverpod 2.x (`flutter_riverpod ^2.x`) |
 | Database | Drift ORM + SQLite (`drift ^2.x`, `sqlite3_flutter_libs`) |
-| Markdown | `markdown_widget` + `flutter_math_fork` |
+| Markdown / LIVE editor | `appflowy_editor` + `markdown_widget` + `flutter_math_fork` |
 | Fonts | Space Grotesk (display), Inter (body) — local TTF in `assets/fonts/` |
 | Images | `image_picker`, `photo_manager`, `flutter_image_compress` |
 | Dates | `intl ^0.19.0` |
@@ -58,7 +58,7 @@ lib/
     ├── screens/
     │   ├── home/              # Dashboard (triptico Fight/Flight/Lab, progreso, próxima clase)
     │   ├── fight/             # Task capture inline, buckets Hoy/Ayer/Vencidas
-    │   ├── flight/            # Note editor (bloques), whiteboard, notebook, OCR, AI chat
+    │   ├── flight/            # LIVE block editor, whiteboard, notebook, OCR, AI chat
     │   ├── lab/               # Kanban, calendar, timeline, schedule, graph, AI, sources
     │   ├── settings/          # Tema, API keys, almacenamiento, crash logs
     │   └── trash/             # Papelera 3 columnas (Flight/Lab/Fight)
@@ -70,7 +70,7 @@ lib/
 | Mode | Color | Purpose |
 |---|---|---|
 | FIGHT | Red (`#E02B2B`) | Quick task capture (280 chars, `@folder` mention) |
-| FLIGHT | Blue (`#2D4B8E`) | Markdown notes with folders |
+| FLIGHT | Blue (`#2D4B8E`) | LIVE Markdown notes with folders |
 | LAB | Green (`#3D6B4F`) | Kanban board per project (LabSpace) |
 
 Navigation: `currentModeProvider` (StateProvider). Cross-mode navigation via `pendingNoteNavigationProvider` / `pendingFolderNavigationProvider`.

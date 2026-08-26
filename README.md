@@ -113,15 +113,16 @@ Flight es un sistema de notas triple: block (markdown con bloques), pizarra (lie
 
 Notas enriquecidas con bloques tipo-dispatch:
 
-- **TextBlock** — markdown con LaTeX inline y en vivo.
+- **TextBlock** — editor LIVE de Markdown persistido, con wrapping vertical, seleccion entre parrafos, autosave y flush al salir.
 - **MathBlock** — LaTeX display.
 - **BulletsBlock** — listas de items.
 - **TareasBlock** — tareas FIGHT embebidas con check/uncheck y propagacion.
 - **DrawingBlock** — canvas de dibujo inline con todas las herramientas.
-- **Format toolbar**: heading levels, bold, italic, Strikethrough, codigo, LaTeX, alineaciones.
-- **Insert menu**: Tabla, Codigo, Cita, LaTeX, Imagen, Divisor.
-- **Markdown preview** en vivo con el mismo renderer del chat AI.
-- **Exportacion a PDF** con share.
+- **Format toolbar**: H1/H2/H3, bold, italic, strikethrough, highlight, codigo, listas, tareas, divisor y alineaciones.
+- **Insert menu**: tabla, codigo, cita, LaTeX, imagen y divisor mediante nodos/comandos documentales.
+- **Tablas, imagenes, codigo y LaTeX display**: nodos atomicos seleccionables con acciones discretas y edicion inline/panel compacto.
+- **Render LIVE**: los marcadores Markdown se suavizan o esconden fuera del dominio activo, sin perder el texto fuente.
+- **Exportacion a PDF** con share; conserva la ruta actual usando el Markdown serializado.
 
 ### Modo Pizarra (Whiteboard)
 
@@ -309,7 +310,7 @@ Sin bordes redondeados, bordes negros marcados, sombras solidas. Colores de acen
 | Base de datos | Drift ORM + SQLite (offline-first) |
 | IA | DeepSeek API (OpenAI-compatible, streaming SSE) |
 | OCR | Google ML Kit Digital Ink Recognition (on-device) |
-| Markdown | `markdown_widget` + `flutter_math_fork` |
+| Markdown / LIVE editor | `appflowy_editor` + `markdown_widget` + `flutter_math_fork` |
 | Imagenes | `image_picker`, `photo_manager`, `flutter_image_compress` |
 | PDF | `pdf` + `share_plus` |
 | Seguridad | `flutter_secure_storage` (API key cifrada) |
