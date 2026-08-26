@@ -283,16 +283,23 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
 
   void _applyInitialLiveStyles() {
     for (final node in _editorState.document.root.children) {
-      final delta = node.delta;
-      if (delta == null ||
-          node.type == yuliCodeBlockType ||
-          node.type == yuliLatexBlockType) {
-        continue;
-      }
+      _applyInitialLiveStyle(node);
+    }
+  }
+
+  void _applyInitialLiveStyle(Node node) {
+    if (node.type == yuliCodeBlockType || node.type == yuliLatexBlockType) {
+      return;
+    }
+    final delta = node.delta;
+    if (delta != null && _shouldApplyLiveMarkdownDelta(delta)) {
       node.updateAttributes({
         blockComponentDelta:
             buildLiveMarkdownDelta(delta.toPlainText()).toJson(),
       });
+    }
+    for (final child in node.children) {
+      _applyInitialLiveStyle(child);
     }
   }
 
@@ -324,13 +331,10 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         }
         continue;
       }
-      if (node.type == yuliLatexBlockType) continue;
-      final delta = node.delta;
-      if (delta == null || node.type == yuliCodeBlockType) continue;
-      final styled = buildLiveMarkdownDelta(delta.toPlainText());
-      if (jsonEncode(styled.toJson()) == jsonEncode(delta.toJson())) continue;
-      transaction.updateNode(node, {blockComponentDelta: styled.toJson()});
-      changed = true;
+      if (node.type == TableBlockKeys.type) {
+        changed = _syncTableRowHeightHints(node, transaction) || changed;
+      }
+      changed = _syncLiveStyleNode(node, transaction) || changed;
     }
     if (!changed) return;
     transaction.afterSelection = _editorState.selection;
@@ -344,6 +348,122 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       _syncingStyles = false;
     }
   }
+
+  bool _syncLiveStyleNode(Node node, Transaction transaction) {
+    if (node.type == yuliLatexBlockType || node.type == yuliCodeBlockType) {
+      return false;
+    }
+    var changed = false;
+    final delta = node.delta;
+    if (delta != null && _shouldApplyLiveMarkdownDelta(delta)) {
+      final styled = buildLiveMarkdownDelta(delta.toPlainText());
+      if (jsonEncode(styled.toJson()) != jsonEncode(delta.toJson())) {
+        transaction.updateNode(node, {blockComponentDelta: styled.toJson()});
+        changed = true;
+      }
+    }
+    for (final child in node.children) {
+      changed = _syncLiveStyleNode(child, transaction) || changed;
+    }
+    return changed;
+  }
+
+  bool _syncTableRowHeightHints(Node table, Transaction transaction) {
+    final rows = table.attributes[TableBlockKeys.rowsLen] as int? ?? 0;
+    if (rows == 0) return false;
+    final defaultHeight =
+        (table.attributes[TableBlockKeys.rowDefaultHeight] as num?)
+            ?.toDouble() ??
+        TableDefaults.rowHeight;
+    final borderWidth =
+        (table.attributes[TableBlockKeys.borderWidth] as num?)?.toDouble() ??
+        TableDefaults.borderWidth;
+    final nextHeights = <int, double>{};
+    var changed = false;
+
+    for (var row = 0; row < rows; row++) {
+      var maxLines = 1;
+      for (final cell in table.children) {
+        if (cell.type != TableCellBlockKeys.type ||
+            cell.attributes[TableCellBlockKeys.rowPosition] != row) {
+          continue;
+        }
+        final child = cell.children.isEmpty ? null : cell.children.first;
+        final text = child?.delta?.toPlainText() ?? '';
+        final lines = '\n'.allMatches(text).length + 1;
+        if (lines > maxLines) maxLines = lines;
+      }
+      if (maxLines <= 1) continue;
+      final estimated =
+          (18 + maxLines * 26).clamp(defaultHeight, 420).toDouble();
+      nextHeights[row] = estimated;
+      for (final cell in table.children) {
+        if (cell.type != TableCellBlockKeys.type ||
+            cell.attributes[TableCellBlockKeys.rowPosition] != row) {
+          continue;
+        }
+        final current =
+            (cell.attributes[TableCellBlockKeys.height] as num?)?.toDouble() ??
+            defaultHeight;
+        if (current < estimated) {
+          transaction.updateNode(cell, {TableCellBlockKeys.height: estimated});
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return false;
+    var colsHeight = borderWidth;
+    for (var row = 0; row < rows; row++) {
+      final hinted = nextHeights[row];
+      if (hinted != null) {
+        colsHeight += hinted + borderWidth;
+        continue;
+      }
+      Node? firstCell;
+      for (final cell in table.children) {
+        if (cell.type == TableCellBlockKeys.type &&
+            cell.attributes[TableCellBlockKeys.rowPosition] == row) {
+          firstCell = cell;
+          break;
+        }
+      }
+      colsHeight +=
+          ((firstCell?.attributes[TableCellBlockKeys.height] as num?)
+                  ?.toDouble() ??
+              defaultHeight) +
+          borderWidth;
+    }
+    transaction.updateNode(table, {TableBlockKeys.colsHeight: colsHeight});
+    return true;
+  }
+
+  bool _shouldApplyLiveMarkdownDelta(Delta delta) {
+    final text = delta.toPlainText();
+    if (_containsLiveMarkdownSource(text)) return true;
+    return delta.toList().whereType<TextInsert>().any((operation) {
+      final attributes = operation.attributes;
+      return attributes != null && attributes.keys.any(_isYuliLiveAttribute);
+    });
+  }
+
+  bool _containsLiveMarkdownSource(String text) {
+    if (text.isEmpty) return false;
+    return RegExp(
+      r'(^|\n)\s*(#{1,6}\s|>\s?|[-+*]\s+\[[ xX]\]\s+|[-+*]\s+|\d+[.)]\s+)|(\*\*|__|~~|==|`|\$|\*[^*\n]+\*|_[^_\n]+_)',
+    ).hasMatch(text);
+  }
+
+  bool _isYuliLiveAttribute(String key) =>
+      key == yuliMarkdownMarker ||
+      key == yuliMarkdownBlockMarker ||
+      key == yuliMarkdownDomainStart ||
+      key == yuliMarkdownDomainEnd ||
+      key == yuliHeadingLevel ||
+      key == yuliQuoteText ||
+      key == yuliHighlight ||
+      key == yuliLatex ||
+      key == yuliLatexDisplay;
 
   Future<void> _persist() async {
     _saveTimer?.cancel();
@@ -471,6 +591,22 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         TableActions.delete(node, position, _editorState, direction);
       }
     }
+    _focusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _resizeSelectedTableColumn(Node node, double delta) async {
+    final cols = (node.attributes[TableBlockKeys.colsLen] as num).toInt();
+    final selectedCol = _selectedTableCol(node).clamp(0, cols - 1);
+    final table = TableNode(node: node);
+    final currentWidth = table.getColWidth(selectedCol);
+    final nextWidth = (currentWidth + delta).clamp(80.0, 420.0).toDouble();
+    final transaction = _editorState.transaction;
+    table.setColWidth(selectedCol, nextWidth, transaction: transaction);
+    transaction.afterSelection = _editorState.selection;
+    await _editorState.apply(transaction);
     _focusNode.requestFocus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() {});
@@ -807,15 +943,14 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
             );
           }
           if (text.trim() == '---') {
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                child!,
-                if (!active)
-                  IgnorePointer(
-                    child: Container(height: yLineThin, color: widget.accent),
-                  ),
-              ],
+            if (active) return child!;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _activateNode(node, source.length),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Container(height: yLineThin, color: widget.accent),
+              ),
             );
           }
           Widget result = child!;
@@ -952,12 +1087,31 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
                         add: false,
                       ),
                 ),
+                _YuliAtomicAction(
+                  label: 'ANCHO -',
+                  icon: YuLiIcons.chevronLeft,
+                  onTap: () => _resizeSelectedTableColumn(node, -32),
+                ),
+                _YuliAtomicAction(
+                  label: 'ANCHO +',
+                  icon: YuLiIcons.chevronRight,
+                  onTap: () => _resizeSelectedTableColumn(node, 32),
+                ),
               ],
               child: result,
             );
           }
           if (node.type == ImageBlockKeys.type) {
             final editing = _editingImages.contains(key);
+            final imageUrl =
+                node.attributes[ImageBlockKeys.url] as String? ?? '';
+            final imageWidth =
+                (node.attributes[ImageBlockKeys.width] as num?)?.toDouble() ??
+                320.0;
+            final imageAlign =
+                node.attributes[ImageBlockKeys.align] as String? ??
+                node.attributes[blockComponentAlign] as String? ??
+                'center';
             return _YuliAtomicFrame(
               key: ValueKey('yuli_atomic_image_${node.path.join('_')}'),
               accent: widget.accent,
@@ -1003,16 +1157,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
               child:
                   editing
                       ? _YuliImageInlineEditor(
-                        initialUrl:
-                            node.attributes[ImageBlockKeys.url] as String? ??
-                            '',
-                        initialWidth:
-                            (node.attributes[ImageBlockKeys.width] as num?)
-                                ?.toDouble() ??
-                            320.0,
-                        initialAlign:
-                            node.attributes[ImageBlockKeys.align] as String? ??
-                            'center',
+                        initialUrl: imageUrl,
+                        initialWidth: imageWidth,
+                        initialAlign: imageAlign,
                         accent: widget.accent,
                         onPickImage: _pickImageForInlineEditor,
                         onCancel: () {
@@ -1027,7 +1174,14 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
                               align: align,
                             ),
                       )
-                      : result,
+                      : _YuliImageBlockPreview(
+                        previewKey: ValueKey(
+                          'yuli_image_preview_${node.path.join('_')}',
+                        ),
+                        url: imageUrl,
+                        width: imageWidth,
+                        align: imageAlign,
+                      ),
             );
           }
           if (!text.startsWith('>')) return result;
@@ -1942,6 +2096,112 @@ class _YuliImageInlineEditor extends StatefulWidget {
 
   @override
   State<_YuliImageInlineEditor> createState() => _YuliImageInlineEditorState();
+}
+
+class _YuliImageBlockPreview extends StatelessWidget {
+  final Key previewKey;
+  final String url;
+  final double width;
+  final String align;
+
+  const _YuliImageBlockPreview({
+    required this.previewKey,
+    required this.url,
+    required this.width,
+    required this.align,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final availableWidth = MediaQuery.sizeOf(context).width - 64;
+    final safeMaxWidth = availableWidth.clamp(160.0, 640.0).toDouble();
+    final safeWidth = width.clamp(160.0, safeMaxWidth).toDouble();
+    final previewAlignment = switch (align) {
+      'right' => Alignment.centerRight,
+      'left' => Alignment.centerLeft,
+      _ => Alignment.center,
+    };
+    return Align(
+      alignment: previewAlignment,
+      child: SizedBox(
+        key: previewKey,
+        width: safeWidth,
+        child: _YuliImageBlockContent(url: url),
+      ),
+    );
+  }
+}
+
+class _YuliImageBlockContent extends StatelessWidget {
+  final String url;
+
+  const _YuliImageBlockContent({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedUrl = url.trim();
+    if (trimmedUrl.isEmpty) {
+      return const _YuliImageBlockPlaceholder(
+        icon: YuLiIcons.image,
+        label: 'SIN IMAGEN',
+      );
+    }
+    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
+      return Image.network(
+        trimmedUrl,
+        fit: BoxFit.contain,
+        errorBuilder:
+            (_, _, _) => const _YuliImageBlockPlaceholder(
+              icon: YuLiIcons.imageOff,
+              label: 'IMAGEN NO DISPONIBLE',
+            ),
+      );
+    }
+
+    final file = File(trimmedUrl);
+    if (file.existsSync()) {
+      return Image.file(file, fit: BoxFit.contain);
+    }
+
+    return _YuliImageBlockPlaceholder(
+      icon: YuLiIcons.image,
+      label: trimmedUrl.split(RegExp(r'[\\/]+')).last,
+    );
+  }
+}
+
+class _YuliImageBlockPlaceholder extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _YuliImageBlockPlaceholder({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 120),
+      color: yCream2,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 28, color: yMuted),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: yMono(size: 10, color: yMuted, tracking: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _YuliImageInlineEditorState extends State<_YuliImageInlineEditor> {

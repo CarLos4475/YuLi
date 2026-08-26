@@ -4,6 +4,8 @@ import 'package:markdown/markdown.dart' as md;
 const yuliCodeBlockType = 'code';
 const yuliLatexBlockType = 'latex_block';
 const yuliLatexBlockContent = 'latex';
+const _yuliTableBreakToken = '\uE000';
+final _yuliTableBreakPattern = RegExp(r'<br\s*/?>', caseSensitive: false);
 
 class YuliMarkdownDocument {
   const YuliMarkdownDocument._();
@@ -17,7 +19,7 @@ class YuliMarkdownDocument {
     void appendPlain() {
       if (plain.isEmpty) return;
       final decoded = markdownToDocument(
-        plain.toString(),
+        _prepareTableLineBreaks(plain.toString()),
         markdownParsers: const [_CodeMarkdownParser()],
       );
       final nodes = _visibleSourceNodes(decoded.root.children);
@@ -125,6 +127,8 @@ class YuliMarkdownDocument {
       final encoded =
           node.type == yuliLatexBlockType
               ? '\$\$\n${node.attributes[yuliLatexBlockContent] ?? ''}\n\$\$'
+              : node.type == TableBlockKeys.type
+              ? _encodeTable(node)
               : node.delta != null && node.type != yuliCodeBlockType
               ? node.delta!.toPlainText()
               : documentToMarkdown(isolated).trimRight();
@@ -157,6 +161,9 @@ class YuliMarkdownDocument {
           });
         }
       }
+      if (node.type == TableBlockKeys.type) {
+        _restoreTableLineBreaks(node);
+      }
       _normalizeNodes(node.children);
     }
   }
@@ -177,6 +184,96 @@ class YuliMarkdownDocument {
     }
     return result;
   }
+}
+
+String _prepareTableLineBreaks(String source) {
+  return source
+      .replaceAll('\r\n', '\n')
+      .split('\n')
+      .map(
+        (line) =>
+            line.trimLeft().startsWith('|')
+                ? line.replaceAll(_yuliTableBreakPattern, _yuliTableBreakToken)
+                : line,
+      )
+      .join('\n');
+}
+
+void _restoreTableLineBreaks(Node table) {
+  for (final cell in table.children) {
+    if (cell.type != TableCellBlockKeys.type) continue;
+    for (final child in cell.children) {
+      final delta = child.delta;
+      if (delta == null) continue;
+      final text = delta.toPlainText();
+      if (!text.contains(_yuliTableBreakToken)) continue;
+      child.updateAttributes({
+        blockComponentDelta:
+            (Delta()..insert(text.replaceAll(_yuliTableBreakToken, '\n')))
+                .toJson(),
+      });
+    }
+  }
+}
+
+String _encodeTable(Node table) {
+  final rows = (table.attributes[TableBlockKeys.rowsLen] as num).toInt();
+  final cols = (table.attributes[TableBlockKeys.colsLen] as num).toInt();
+  final lines = <String>[];
+  for (var row = 0; row < rows; row++) {
+    final cells = <String>[];
+    for (var col = 0; col < cols; col++) {
+      final cell = _tableCellAt(table, col, row);
+      cells.add(cell == null ? ' ' : _encodeTableCell(cell));
+    }
+    lines.add('|${cells.join('|')}|');
+    if (row == 0) {
+      lines.add('|${List.filled(cols, '---').join('|')}|');
+    }
+  }
+  return lines.join('\n');
+}
+
+Node? _tableCellAt(Node table, int col, int row) {
+  for (final child in table.children) {
+    if (child.type == TableCellBlockKeys.type &&
+        child.attributes[TableCellBlockKeys.colPosition] == col &&
+        child.attributes[TableCellBlockKeys.rowPosition] == row) {
+      return child;
+    }
+  }
+  return null;
+}
+
+String _encodeTableCell(Node cell) {
+  final source =
+      cell.children
+          .map((child) {
+            if (child.delta != null && child.type != yuliCodeBlockType) {
+              final text = child.delta!.toPlainText();
+              if (_tableCellLooksLikeMarkdownSource(text)) return text;
+            }
+            return documentToMarkdown(
+              Document(root: pageNode(children: [child.deepCopy()])),
+            ).trimRight();
+          })
+          .join('\n')
+          .trimRight();
+  final normalized =
+      source.isEmpty
+          ? ' '
+          : source
+              .replaceAll('\r\n', '\n')
+              .split('\n')
+              .map((line) => line.replaceAll('|', r'\|'))
+              .join('<br>');
+  return normalized;
+}
+
+bool _tableCellLooksLikeMarkdownSource(String text) {
+  return RegExp(
+    r'(^|\n)\s*(#{1,6}\s|>\s?|[-+*]\s+\[[ xX]\]\s+|[-+*]\s+|\d+[.)]\s+)|(\*\*|__|~~|==|`|\$|\*[^*\n]+\*|_[^_\n]+_)',
+  ).hasMatch(text);
 }
 
 class _CodeMarkdownParser extends CustomMarkdownParser {

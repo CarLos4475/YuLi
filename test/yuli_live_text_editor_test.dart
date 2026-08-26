@@ -319,6 +319,42 @@ void main() {
     state.dispose();
   });
 
+  testWidgets('format toolbar inserts literal highlight syntax', (
+    tester,
+  ) async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(
+          children: [paragraphNode(delta: Delta()..insert('Texto'))],
+        ),
+      ),
+    );
+    state.selection = Selection.single(
+      path: const [0],
+      startOffset: 0,
+      endOffset: 5,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FormatToolbar(
+            editorState: state,
+            accent: const Color(0xFF2D3F8C),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byIcon(YuLiIcons.highlighter));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      state.document.root.children.single.delta?.toPlainText(),
+      '==Texto==',
+    );
+    state.dispose();
+  });
+
   testWidgets('format toolbar applies markdown block prefixes', (tester) async {
     final state = EditorState(
       document: Document(
@@ -803,11 +839,18 @@ void main() {
 
     await tester.tap(find.byType(ParagraphBlockComponentWidget).at(2));
     await tester.pump();
-    tester.testTextInput.enterText('Editable');
+    tester.testTextInput.enterText('**Editable**');
     await tester.pumpAndSettle();
 
     expect(state?.selection?.start.path.length, greaterThan(1));
-    expect(YuliMarkdownDocument.encode(state!.document), contains('Editable'));
+    expect(
+      YuliMarkdownDocument.encode(state!.document),
+      contains('**Editable**'),
+    );
+    final editable = _renderedSpans(
+      tester,
+    ).firstWhere((span) => span.text == 'Editable');
+    expect(editable.style?.fontWeight, FontWeight.w700);
   });
 
   testWidgets('table header exposes row and column controls', (tester) async {
@@ -821,7 +864,7 @@ void main() {
           localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
           home: Scaffold(
             body: SizedBox(
-              width: 420,
+              width: 700,
               child: StatefulBuilder(
                 builder:
                     (_, setHostState) => YuliLiveTextEditor(
@@ -854,10 +897,14 @@ void main() {
     expect(find.text('FILA -'), findsOneWidget);
     expect(find.text('COL +'), findsOneWidget);
     expect(find.text('COL -'), findsOneWidget);
+    expect(find.text('ANCHO -'), findsOneWidget);
+    expect(find.text('ANCHO +'), findsOneWidget);
 
     final table = state!.document.root.children.single;
     final initialRows = table.attributes[TableBlockKeys.rowsLen] as int;
     final initialCols = table.attributes[TableBlockKeys.colsLen] as int;
+    final resizedCol = initialCols - 1;
+    final widthBefore = TableNode(node: table).getColWidth(resizedCol);
 
     await tester.tap(find.text('FILA +'));
     await tester.pumpAndSettle();
@@ -874,6 +921,19 @@ void main() {
     await tester.tap(find.text('COL -'));
     await tester.pumpAndSettle();
     expect(table.attributes[TableBlockKeys.colsLen], initialCols);
+
+    await tester.tap(find.text('ANCHO +'));
+    await tester.pumpAndSettle();
+    final resizedCell = table.children.firstWhere(
+      (cell) =>
+          cell.attributes[TableCellBlockKeys.colPosition] == resizedCol &&
+          cell.attributes[TableCellBlockKeys.rowPosition] == 0,
+    );
+    expect(resizedCell.attributes[TableCellBlockKeys.width], widthBefore + 32);
+
+    await tester.tap(find.text('ANCHO -'));
+    await tester.pumpAndSettle();
+    expect(resizedCell.attributes[TableCellBlockKeys.width], widthBefore);
   });
 
   testWidgets('image node has a compact editor for url size and alignment', (
@@ -927,7 +987,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('CAMBIAR IMAGEN'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('PEQUEÑA'));
+    await tester.tap(find.text('GRANDE'));
     await tester.pump();
     await tester.tap(find.text('DER'));
     await tester.pump();
@@ -938,8 +998,12 @@ void main() {
 
     final image = state!.document.root.children.single;
     expect(image.attributes[ImageBlockKeys.url], 'C:\\notes\\updated.png');
-    expect(image.attributes[ImageBlockKeys.width], 180.0);
+    expect(image.attributes[ImageBlockKeys.width], 520.0);
     expect(image.attributes[ImageBlockKeys.align], 'right');
+    final preview = tester.widget<SizedBox>(
+      find.byKey(const ValueKey('yuli_image_preview_0')),
+    );
+    expect(preview.width, 520.0);
   });
 
   testWidgets('block latex edits without exposing dollar markers', (
@@ -1114,6 +1178,45 @@ void main() {
     expect(find.textContaining('- [ ]'), findsNothing);
     expect(find.text('•'), findsOneWidget);
     expect(find.byIcon(YuLiIcons.square), findsOneWidget);
+  });
+
+  testWidgets('divider renders without raw markdown markers while inactive', (
+    tester,
+  ) async {
+    final repository = _FakeNoteBlockRepository();
+    const accent = Color(0xFF8B1E1E);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: const Scaffold(
+            body: YuliLiveTextEditor(
+              block: TextBlock(
+                id: 1,
+                noteId: 1,
+                position: 0,
+                markdown: 'Antes\n---\nDespues',
+              ),
+              accent: accent,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_renderedSpans(tester).any((span) => span.text == '---'), isFalse);
+    expect(
+      tester.widgetList<Container>(find.byType(Container)).any((container) {
+        final constraints = container.constraints;
+        return container.color == accent &&
+            constraints?.minHeight == 2.0 &&
+            constraints?.maxHeight == 2.0;
+      }),
+      isTrue,
+    );
   });
 
   testWidgets('last atomic node offers a following paragraph', (tester) async {

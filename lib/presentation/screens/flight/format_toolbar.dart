@@ -167,6 +167,13 @@ class FormatToolbar extends StatelessWidget {
                   onTap: () => _wrap('~~'),
                 ),
                 _sep(),
+                _IconToolBtn(
+                  icon: YuLiIcons.highlighter,
+                  active: false,
+                  accent: accent,
+                  onTap: () => _wrap('=='),
+                ),
+                _sep(),
                 _TextToolBtn(
                   label: '`',
                   active: false,
@@ -203,21 +210,21 @@ class FormatToolbar extends StatelessWidget {
                   onTap: () => _line('---', replaceLine: true),
                 ),
                 _groupGap(),
-                _AlignBtn(
+                _IconToolBtn(
                   icon: YuLiIcons.textAlignStart,
                   active: align == 'left',
                   accent: accent,
                   onTap: () => _align('left'),
                 ),
                 _sep(),
-                _AlignBtn(
+                _IconToolBtn(
                   icon: YuLiIcons.textAlignCenter,
                   active: align == 'center',
                   accent: accent,
                   onTap: () => _align('center'),
                 ),
                 _sep(),
-                _AlignBtn(
+                _IconToolBtn(
                   icon: YuLiIcons.textAlignEnd,
                   active: align == 'right',
                   accent: accent,
@@ -299,12 +306,12 @@ class _TextToolBtn extends StatelessWidget {
   }
 }
 
-class _AlignBtn extends StatelessWidget {
+class _IconToolBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool active;
   final Color accent;
-  const _AlignBtn({
+  const _IconToolBtn({
     required this.icon,
     required this.onTap,
     required this.active,

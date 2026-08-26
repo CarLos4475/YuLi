@@ -155,4 +155,46 @@ $$
     expect(image.attributes[ImageBlockKeys.align], 'left');
     expect(encoded, contains('::: left'));
   });
+
+  test('table cells keep multiline content through markdown br markers', () {
+    final table =
+        TableNode.fromList<String>([
+          ['Tema', 'Linea 1\nLinea 2'],
+          ['Dato', 'Valor'],
+        ]).node;
+    final encoded = YuliMarkdownDocument.encode(
+      Document(root: pageNode(children: [table])),
+    );
+    final decoded = YuliMarkdownDocument.decode(encoded);
+    final decodedTable = decoded.root.children.single;
+    final multilineCell = decodedTable.children.firstWhere(
+      (cell) =>
+          cell.attributes[TableCellBlockKeys.colPosition] == 0 &&
+          cell.attributes[TableCellBlockKeys.rowPosition] == 1,
+    );
+
+    expect(encoded, contains('Linea 1<br>Linea 2'));
+    expect(
+      multilineCell.children.single.delta?.toPlainText(),
+      'Linea 1\nLinea 2',
+    );
+  });
+
+  test(
+    'table cells keep markdown inline formatting when loaded semantically',
+    () {
+      const source = '''
+| A | B |
+| --- | --- |
+| **Fuerte** | `Codigo` |
+''';
+
+      final encoded = YuliMarkdownDocument.encode(
+        YuliMarkdownDocument.decode(source),
+      );
+
+      expect(encoded, contains('**Fuerte**'));
+      expect(encoded, contains('`Codigo`'));
+    },
+  );
 }

@@ -162,6 +162,115 @@ void main() {
     expect(yuliMarkdownCommandShortcuts, contains(redoCommand));
   });
 
+  test('YuLi command shortcuts insert markdown syntax', () async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(
+          children: [paragraphNode(delta: Delta()..insert('Hola'))],
+        ),
+      ),
+    );
+    state.selection = Selection.single(
+      path: const [0],
+      startOffset: 0,
+      endOffset: 4,
+    );
+
+    yuliMarkdownCommandShortcuts
+        .firstWhere((command) => command.key == 'YuLi markdown bold')
+        .execute(state);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      state.document.root.children.single.delta?.toPlainText(),
+      '**Hola**',
+    );
+  });
+
+  test('YuLi heading command shortcuts insert line prefixes', () async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(
+          children: [paragraphNode(delta: Delta()..insert('Titulo'))],
+        ),
+      ),
+    );
+    state.selection = Selection.collapsed(Position(path: const [0], offset: 6));
+
+    yuliMarkdownCommandShortcuts
+        .firstWhere((command) => command.key == 'YuLi markdown H2')
+        .execute(state);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      state.document.root.children.single.delta?.toPlainText(),
+      '## Titulo',
+    );
+
+    yuliMarkdownCommandShortcuts
+        .firstWhere((command) => command.key == 'YuLi markdown body')
+        .execute(state);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(state.document.root.children.single.delta?.toPlainText(), 'Titulo');
+  });
+
+  test('YuLi task command toggles markdown checkboxes', () async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(
+          children: [paragraphNode(delta: Delta()..insert('Pendiente'))],
+        ),
+      ),
+    );
+    state.selection = Selection.collapsed(Position(path: const [0], offset: 0));
+    final command = yuliMarkdownCommandShortcuts.firstWhere(
+      (command) => command.key == 'YuLi markdown task',
+    );
+
+    command.execute(state);
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      state.document.root.children.single.delta?.toPlainText(),
+      '- [ ] Pendiente',
+    );
+
+    command.execute(state);
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      state.document.root.children.single.delta?.toPlainText(),
+      '- [x] Pendiente',
+    );
+  });
+
+  test('table cell enter inserts a multiline break inside the cell', () async {
+    final table =
+        TableNode.fromList<String>([
+          ['A'],
+        ]).node;
+    final state = EditorState(document: Document(root: pageNode(children: [])));
+    state.document.root.insert(table);
+    final textNode = table.children.single.children.single;
+    state.selection = Selection.collapsed(
+      Position(path: textNode.path, offset: 1),
+    );
+
+    yuliMarkdownCommandShortcuts
+        .firstWhere((command) => command.key == 'YuLi table cell newline')
+        .execute(state);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(textNode.delta?.toPlainText(), 'A\n');
+    expect(state.selection?.start.offset, 2);
+    expect(
+      table.children.every(
+        (cell) => cell.attributes[TableCellBlockKeys.height] == 70.0,
+      ),
+      isTrue,
+    );
+    expect(table.attributes[TableBlockKeys.colsHeight], 74.0);
+  });
+
   test('inline formatting stays active with trailing spaces', () {
     final cases = <(String, String, String)>[
       ('**Hola **', 'Hola ', AppFlowyRichTextKeys.bold),

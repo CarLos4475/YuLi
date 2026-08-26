@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/material.dart';
 
 import 'yuli_markdown_document.dart';
 
@@ -13,6 +16,10 @@ const yuliLatex = 'yuli_latex';
 const yuliLatexDisplay = 'yuli_latex_display';
 
 final Expando<String> _preferredAlignment = Expando<String>();
+
+final _yuliBlockPrefixPattern = RegExp(
+  r'^(#{1,6}\s+|>\s?|(?:[-+*]|\d+[.)])\s+|[-+*]\s+\[[ xX]\]\s+)',
+);
 
 List<CharacterShortcutEvent> get yuliMarkdownCharacterShortcuts => [
   _insertNewLineWithAlignment,
@@ -41,6 +48,66 @@ List<CharacterShortcutEvent> get yuliMarkdownCharacterShortcuts => [
 ];
 
 List<CommandShortcutEvent> get yuliMarkdownCommandShortcuts => [
+  _tableCellLineBreakCommand(key: 'YuLi table cell newline', command: 'enter'),
+  _tableCellLineBreakCommand(
+    key: 'YuLi table cell shift newline',
+    command: 'shift+enter',
+  ),
+  _wrapMarkdownCommand(
+    key: 'YuLi markdown bold',
+    command: 'ctrl+b',
+    macOSCommand: 'cmd+b',
+    marker: '**',
+  ),
+  _wrapMarkdownCommand(
+    key: 'YuLi markdown italic',
+    command: 'ctrl+i',
+    macOSCommand: 'cmd+i',
+    marker: '*',
+  ),
+  _wrapMarkdownCommand(
+    key: 'YuLi markdown strike',
+    command: 'ctrl+shift+s',
+    macOSCommand: 'cmd+shift+s',
+    marker: '~~',
+  ),
+  _wrapMarkdownCommand(
+    key: 'YuLi markdown code',
+    command: 'ctrl+e',
+    macOSCommand: 'cmd+e',
+    marker: '`',
+  ),
+  _wrapMarkdownCommand(
+    key: 'YuLi markdown highlight',
+    command: 'ctrl+shift+h',
+    macOSCommand: 'cmd+shift+h',
+    marker: '==',
+  ),
+  _lineMarkdownCommand(
+    key: 'YuLi markdown H1',
+    command: 'ctrl+shift+t',
+    macOSCommand: 'cmd+shift+t',
+    prefix: '# ',
+  ),
+  _lineMarkdownCommand(
+    key: 'YuLi markdown H2',
+    command: 'ctrl+shift+g',
+    macOSCommand: 'cmd+shift+g',
+    prefix: '## ',
+  ),
+  _lineMarkdownCommand(
+    key: 'YuLi markdown H3',
+    command: 'ctrl+shift+j',
+    macOSCommand: 'cmd+shift+j',
+    prefix: '### ',
+  ),
+  _lineMarkdownCommand(
+    key: 'YuLi markdown body',
+    command: 'ctrl+shift+b',
+    macOSCommand: 'cmd+shift+b',
+    prefix: '',
+  ),
+  _taskMarkdownCommand,
   ...standardCommandShortcutEvents.where(
     (event) =>
         event != toggleTodoListCommand &&
@@ -55,12 +122,218 @@ List<CommandShortcutEvent> get yuliMarkdownCommandShortcuts => [
   ),
 ];
 
+CommandShortcutEvent _tableCellLineBreakCommand({
+  required String key,
+  required String command,
+}) => CommandShortcutEvent(
+  key: key,
+  command: command,
+  getDescription: null,
+  handler: (editorState) {
+    if (!_isTableCellTextSelection(editorState)) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(insertTableCellLineBreak(editorState));
+    return KeyEventResult.handled;
+  },
+);
+
+bool _isTableCellTextSelection(EditorState editorState) {
+  final selection = editorState.selection?.normalized;
+  if (selection == null || !selection.isSingle) return false;
+  final node = editorState.getNodeAtPath(selection.start.path);
+  return node?.delta != null && node?.parent?.type == TableCellBlockKeys.type;
+}
+
+Future<void> insertTableCellLineBreak(EditorState editorState) async {
+  var selection = editorState.selection?.normalized;
+  if (selection == null || !selection.isSingle) return;
+  if (!selection.isCollapsed) {
+    await editorState.deleteSelection(selection);
+    selection = editorState.selection?.normalized;
+    if (selection == null || !selection.isCollapsed) return;
+  }
+  final node = editorState.getNodeAtPath(selection.start.path);
+  if (node?.delta == null || node?.parent?.type != TableCellBlockKeys.type) {
+    return;
+  }
+  final cell = node!.parent!;
+  final table = cell.parent;
+  final nextText = node.delta!.toPlainText().replaceRange(
+    selection.start.offset,
+    selection.start.offset,
+    '\n',
+  );
+  final transaction =
+      editorState.transaction
+        ..insertText(node, selection.start.offset, '\n')
+        ..afterSelection = Selection.collapsed(
+          Position(path: node.path, offset: selection.start.offset + 1),
+        );
+  if (table != null) {
+    _applyEstimatedTableRowHeight(
+      transaction: transaction,
+      table: table,
+      row: cell.attributes[TableCellBlockKeys.rowPosition] as int,
+      editedCell: cell,
+      editedText: nextText,
+    );
+  }
+  await editorState.apply(transaction);
+}
+
+void _applyEstimatedTableRowHeight({
+  required Transaction transaction,
+  required Node table,
+  required int row,
+  required Node editedCell,
+  required String editedText,
+}) {
+  if (table.type != TableBlockKeys.type) return;
+  final rowsLen = table.attributes[TableBlockKeys.rowsLen] as int? ?? 0;
+  if (rowsLen == 0) return;
+
+  final borderWidth =
+      (table.attributes[TableBlockKeys.borderWidth] as num?)?.toDouble() ??
+      TableDefaults.borderWidth;
+  final defaultHeight =
+      (table.attributes[TableBlockKeys.rowDefaultHeight] as num?)?.toDouble() ??
+      TableDefaults.rowHeight;
+  var maxLines = 1;
+  for (final cell in table.children) {
+    if (cell.type != TableCellBlockKeys.type ||
+        cell.attributes[TableCellBlockKeys.rowPosition] != row) {
+      continue;
+    }
+    final source =
+        identical(cell, editedCell)
+            ? editedText
+            : cell.children.isEmpty
+            ? ''
+            : cell.children.first.delta?.toPlainText() ?? '';
+    maxLines = maxLines < _lineCount(source) ? _lineCount(source) : maxLines;
+  }
+
+  final estimatedHeight = _estimatedTableCellHeight(
+    lines: maxLines,
+    defaultHeight: defaultHeight,
+  );
+  var rowChanged = false;
+  for (final cell in table.children) {
+    if (cell.type != TableCellBlockKeys.type ||
+        cell.attributes[TableCellBlockKeys.rowPosition] != row) {
+      continue;
+    }
+    final current =
+        (cell.attributes[TableCellBlockKeys.height] as num?)?.toDouble() ??
+        defaultHeight;
+    if (current < estimatedHeight) {
+      transaction.updateNode(cell, {
+        TableCellBlockKeys.height: estimatedHeight,
+      });
+      rowChanged = true;
+    }
+  }
+  if (!rowChanged) return;
+
+  var colsHeight = borderWidth;
+  for (var currentRow = 0; currentRow < rowsLen; currentRow++) {
+    Node? firstCell;
+    for (final cell in table.children) {
+      if (cell.type == TableCellBlockKeys.type &&
+          cell.attributes[TableCellBlockKeys.rowPosition] == currentRow) {
+        firstCell = cell;
+        break;
+      }
+    }
+    final height =
+        currentRow == row
+            ? estimatedHeight
+            : (firstCell?.attributes[TableCellBlockKeys.height] as num?)
+                    ?.toDouble() ??
+                defaultHeight;
+    colsHeight += height + borderWidth;
+  }
+  transaction.updateNode(table, {TableBlockKeys.colsHeight: colsHeight});
+}
+
+int _lineCount(String text) => '\n'.allMatches(text).length + 1;
+
+double _estimatedTableCellHeight({
+  required int lines,
+  required double defaultHeight,
+}) {
+  if (lines <= 1) return defaultHeight;
+  return (18 + lines * 26).clamp(defaultHeight, 420).toDouble();
+}
+
 const _yuliBlockedCommandKeys = {
   'toggle into Heading 1',
   'toggle into Heading 2',
   'toggle into Heading 3',
   'toggle Body',
 };
+
+CommandShortcutEvent _wrapMarkdownCommand({
+  required String key,
+  required String command,
+  required String macOSCommand,
+  required String marker,
+}) => CommandShortcutEvent(
+  key: key,
+  command: command,
+  getDescription: null,
+  macOSCommand: macOSCommand,
+  handler: (editorState) {
+    final selection = editorState.selection?.normalized;
+    if (selection == null || !selection.isSingle) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(wrapMarkdownSelection(editorState, marker));
+    return KeyEventResult.handled;
+  },
+);
+
+CommandShortcutEvent _lineMarkdownCommand({
+  required String key,
+  required String command,
+  required String macOSCommand,
+  required String prefix,
+}) => CommandShortcutEvent(
+  key: key,
+  command: command,
+  getDescription: null,
+  macOSCommand: macOSCommand,
+  handler: (editorState) {
+    final selection = editorState.selection?.normalized;
+    if (selection == null || !selection.isSingle) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(
+      applyMarkdownLinePrefix(
+        editorState,
+        prefix,
+        removePattern: _yuliBlockPrefixPattern,
+      ),
+    );
+    return KeyEventResult.handled;
+  },
+);
+
+final CommandShortcutEvent _taskMarkdownCommand = CommandShortcutEvent(
+  key: 'YuLi markdown task',
+  command: 'ctrl+enter',
+  getDescription: null,
+  macOSCommand: 'cmd+enter',
+  handler: (editorState) {
+    final selection = editorState.selection?.normalized;
+    if (selection == null || !selection.isSingle) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(toggleMarkdownTaskAtSelection(editorState));
+    return KeyEventResult.handled;
+  },
+);
 
 String preferredMarkdownAlignment(EditorState editorState) {
   final preferred = _preferredAlignment[editorState];
@@ -378,6 +651,36 @@ Future<void> applyMarkdownLinePrefix(
                     : next.length,
           ),
         );
+  await editorState.apply(transaction);
+}
+
+Future<void> toggleMarkdownTaskAtSelection(EditorState editorState) async {
+  final selection = editorState.selection?.normalized;
+  if (selection == null || !selection.isSingle) return;
+  final node = editorState.getNodeAtPath(selection.start.path);
+  final delta = node?.delta;
+  if (node == null || delta == null) return;
+
+  final source = delta.toPlainText();
+  final task = RegExp(r'^(\s*)[-+*]\s+\[([ xX])\]\s+').firstMatch(source);
+  if (task == null) {
+    await applyMarkdownLinePrefix(
+      editorState,
+      '- [ ] ',
+      removePattern: _yuliBlockPrefixPattern,
+    );
+    return;
+  }
+
+  final checked = task.group(2)!.toLowerCase() == 'x';
+  final nextMarker = '${task.group(1)!}- [${checked ? ' ' : 'x'}] ';
+  final next = source.replaceRange(task.start, task.end, nextMarker);
+  final transaction =
+      editorState.transaction
+        ..updateNode(node, {
+          blockComponentDelta: (Delta()..insert(next)).toJson(),
+        })
+        ..afterSelection = selection;
   await editorState.apply(transaction);
 }
 
