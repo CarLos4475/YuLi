@@ -33,6 +33,7 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/page_background.dart';
 import '../../../domain/repositories/drawing_stroke_repository.dart';
+import '../../../domain/repositories/note_block_repository.dart';
 import 'background_paint.dart';
 import 'background_popup.dart';
 import 'color_picker.dart';
@@ -77,6 +78,17 @@ import '../lab/lab_space_detail_screen.dart';
 // pans inside this via InteractiveViewer. ~10kx10k logical pixels.
 const double _kCanvasW = 10000;
 const double _kCanvasH = 10000;
+
+String _normalizeCanvasName(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return '';
+  return '${trimmed[0].toUpperCase()}${trimmed.substring(1)}';
+}
+
+String _canvasDisplayName(DrawingBlock canvas, int index) {
+  final custom = _normalizeCanvasName(canvas.name ?? '');
+  return custom.isEmpty ? 'PIZARRA ${index + 1}' : custom;
+}
 
 typedef _WhiteboardSnapshot =
     (
@@ -350,8 +362,775 @@ class WhiteboardEditorScreen extends ConsumerStatefulWidget {
       _WhiteboardEditorScreenState();
 }
 
-class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
+class _WhiteboardEditorScreenState
+    extends ConsumerState<WhiteboardEditorScreen> {
+  late final NoteBlockRepository _blockRepo;
+  List<DrawingBlock> _canvases = const [];
+  int? _selectedBlockId;
+  bool _loading = true;
+  bool _drawerOpen = false;
+  bool _mutating = false;
+  GlobalKey<_WhiteboardCanvasEditorState> _canvasKey = GlobalKey();
+
+  Color get _accent => widget.note.color ?? widget.folder.color;
+
+  @override
+  void initState() {
+    super.initState();
+    _blockRepo = ref.read(noteBlockRepositoryProvider);
+    unawaited(_loadCanvases());
+  }
+
+  Future<void> _loadCanvases() async {
+    final blocks = await _blockRepo.getByNote(widget.note.id);
+    var canvases =
+        blocks.whereType<DrawingBlock>().toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
+    if (canvases.isEmpty) {
+      final created =
+          await _blockRepo.insertAtEnd(
+                widget.note.id,
+                NoteBlockType.drawing,
+                payload: {'h': _kCanvasH, 's': [], 'whiteboard': true},
+              )
+              as DrawingBlock;
+      canvases = [created];
+    }
+    if (!mounted) return;
+    setState(() {
+      _canvases = canvases;
+      _selectedBlockId = canvases.first.id;
+      _loading = false;
+    });
+  }
+
+  Future<void> _flushCurrentCanvas() async {
+    await _canvasKey.currentState?.flushBeforeCanvasChange();
+  }
+
+  Future<void> _selectCanvas(int blockId) async {
+    if (_mutating || blockId == _selectedBlockId) {
+      if (_drawerOpen) setState(() => _drawerOpen = false);
+      return;
+    }
+    _mutating = true;
+    await _flushCurrentCanvas();
+    if (!mounted) return;
+    setState(() {
+      _selectedBlockId = blockId;
+      _canvasKey = GlobalKey();
+      _drawerOpen = false;
+    });
+    _mutating = false;
+  }
+
+  Future<void> _addCanvas() async {
+    if (_mutating) return;
+    _mutating = true;
+    await _flushCurrentCanvas();
+    final blocks = await _blockRepo.getByNote(widget.note.id);
+    final canvases =
+        blocks.whereType<DrawingBlock>().toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
+    final source =
+        canvases.where((canvas) => canvas.id == _selectedBlockId).firstOrNull;
+    final created =
+        await _blockRepo.insertAtEnd(
+              widget.note.id,
+              NoteBlockType.drawing,
+              payload: {
+                'h': _kCanvasH,
+                's': const [],
+                if (source?.background != null) 'bg': source!.background,
+                if (source?.bgColor != null) 'bgc': source!.bgColor,
+                'whiteboard': true,
+              },
+            )
+            as DrawingBlock;
+    if (!mounted) return;
+    setState(() {
+      _canvases = [...canvases, created];
+      _selectedBlockId = created.id;
+      _canvasKey = GlobalKey();
+      _drawerOpen = false;
+    });
+    _mutating = false;
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> _renameCanvas(DrawingBlock canvas, int index) async {
+    if (_mutating) return;
+    final controller = TextEditingController(
+      text: _canvasDisplayName(canvas, index),
+    );
+    final result = await showDialog<String>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Renombrar pizarra',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              maxLength: 40,
+              textCapitalization: TextCapitalization.words,
+              style: yBody(size: 14, weight: FontWeight.w600),
+              decoration: InputDecoration(
+                labelText: 'Nombre',
+                labelStyle: yBody(size: 12, color: yMuted),
+                counterText: '',
+                filled: true,
+                fillColor: yCream2,
+                border: const OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                ),
+                enabledBorder: const OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.zero,
+                  borderSide: BorderSide(color: _accent, width: yLineHeavy),
+                ),
+              ),
+              onSubmitted: (value) => Navigator.pop(dialogContext, value),
+            ),
+            actions: [
+              _WhiteboardDialogAction(
+                label: 'Cancelar',
+                accent: _accent,
+                onTap: () => Navigator.pop(dialogContext),
+              ),
+              _WhiteboardDialogAction(
+                label: 'Guardar',
+                accent: _accent,
+                onTap: () => Navigator.pop(dialogContext, controller.text),
+              ),
+            ],
+          ),
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+
+    _mutating = true;
+    if (canvas.id == _selectedBlockId) await _flushCurrentCanvas();
+    final blocks = await _blockRepo.getByNote(widget.note.id);
+    final latest =
+        blocks
+            .whereType<DrawingBlock>()
+            .where((item) => item.id == canvas.id)
+            .firstOrNull;
+    if (latest == null) {
+      _mutating = false;
+      return;
+    }
+    final name = _normalizeCanvasName(result);
+    final payload = latest.payloadJson()..['whiteboard'] = true;
+    if (name.isEmpty) {
+      payload.remove('name');
+    } else {
+      payload['name'] = name;
+    }
+    await _blockRepo.updatePayload(canvas.id, payload);
+    final refreshed =
+        (await _blockRepo.getByNote(
+            widget.note.id,
+          )).whereType<DrawingBlock>().toList()
+          ..sort((a, b) => a.position.compareTo(b.position));
+    if (!mounted) return;
+    setState(() => _canvases = refreshed);
+    _mutating = false;
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> _deleteCanvas(DrawingBlock canvas) async {
+    if (_mutating || _canvases.length <= 1) return;
+    final index = _canvases.indexWhere((item) => item.id == canvas.id);
+    if (index < 0) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            backgroundColor: yCream,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            title: Text(
+              'Eliminar pizarra ${index + 1}',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: Text(
+              'Se eliminará este lienzo y todo su contenido.',
+              style: yBody(size: 13),
+            ),
+            actions: [
+              _WhiteboardDialogAction(
+                label: 'Cancelar',
+                accent: _accent,
+                onTap: () => Navigator.pop(dialogContext, false),
+              ),
+              _WhiteboardDialogAction(
+                label: 'Eliminar',
+                accent: _accent,
+                onTap: () => Navigator.pop(dialogContext, true),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    _mutating = true;
+    final deletingCurrent = canvas.id == _selectedBlockId;
+    if (deletingCurrent) await _flushCurrentCanvas();
+    await _blockRepo.delete(canvas.id);
+    await _deleteCanvasFiles(canvas, deleteLegacyCache: index == 0);
+    if (!mounted) return;
+
+    final remaining = [..._canvases]..removeAt(index);
+    final nextIndex = index.clamp(0, remaining.length - 1);
+    setState(() {
+      _canvases = remaining;
+      if (deletingCurrent) {
+        _selectedBlockId = remaining[nextIndex].id;
+        _canvasKey = GlobalKey();
+      }
+    });
+    _mutating = false;
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> _deleteCanvasFiles(
+    DrawingBlock canvas, {
+    required bool deleteLegacyCache,
+  }) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final base = p.join(dir.path, 'note_images', '${widget.note.id}');
+      final filenames = <String>{
+        for (final raw in jsonDecode(canvas.imagesJson) as List<dynamic>)
+          if (raw is Map && raw['f'] is String) p.basename(raw['f'] as String),
+        'camera_${canvas.id}.json',
+        'overview_${canvas.id}.png',
+        'overview_${canvas.id}.json',
+        if (deleteLegacyCache) ...{
+          'camera.json',
+          'overview.png',
+          'overview.json',
+        },
+      };
+      for (final filename in filenames) {
+        final file = File(p.join(base, filename));
+        if (await file.exists()) await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _selectedBlockId == null) {
+      return Scaffold(
+        backgroundColor: yCream,
+        body: Center(child: CircularProgressIndicator(color: _accent)),
+      );
+    }
+    final selectedIndex = _canvases.indexWhere(
+      (canvas) => canvas.id == _selectedBlockId,
+    );
+    final safeIndex = selectedIndex < 0 ? 0 : selectedIndex;
+    final selected = _canvases[safeIndex];
+    final panelWidth = math.min(390.0, MediaQuery.sizeOf(context).width * 0.88);
+
+    return Stack(
+      children: [
+        _WhiteboardCanvasEditor(
+          key: _canvasKey,
+          note: widget.note,
+          folder: widget.folder,
+          canvasBlockId: selected.id,
+          canvasName: selected.name,
+          canvasOrdinal: safeIndex + 1,
+          canvasCount: _canvases.length,
+          useLegacyCache: _canvases.length == 1 && safeIndex == 0,
+          onOpenCanvases: () => setState(() => _drawerOpen = true),
+        ),
+        if (_drawerOpen)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _drawerOpen = false),
+              child: Container(color: yInk.withValues(alpha: 0.35)),
+            ),
+          ),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          top: 0,
+          bottom: 0,
+          right: _drawerOpen ? 0 : -panelWidth,
+          width: panelWidth,
+          child: _WhiteboardCanvasDrawer(
+            noteId: widget.note.id,
+            canvases: _canvases,
+            selectedBlockId: selected.id,
+            accent: _accent,
+            busy: _mutating,
+            onClose: () => setState(() => _drawerOpen = false),
+            onAdd: _addCanvas,
+            onSelect: _selectCanvas,
+            onRename: _renameCanvas,
+            onDelete: _deleteCanvas,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WhiteboardCanvasDrawer extends StatelessWidget {
+  final int noteId;
+  final List<DrawingBlock> canvases;
+  final int selectedBlockId;
+  final Color accent;
+  final bool busy;
+  final VoidCallback onClose;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onSelect;
+  final void Function(DrawingBlock canvas, int index) onRename;
+  final ValueChanged<DrawingBlock> onDelete;
+
+  const _WhiteboardCanvasDrawer({
+    required this.noteId,
+    required this.canvases,
+    required this.selectedBlockId,
+    required this.accent,
+    required this.busy,
+    required this.onClose,
+    required this.onAdd,
+    required this.onSelect,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: busy,
+      child: DefaultTextStyle(
+        style: ySans().copyWith(decoration: TextDecoration.none),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: yCream,
+            border: Border(
+              left: BorderSide(color: yBorderStrong, width: yLineHeavy),
+            ),
+          ),
+          child: SafeArea(
+            left: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  color: accent,
+                  padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
+                  child: Row(
+                    children: [
+                      const Icon(YuLiIcons.layoutGrid, color: yCream, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'PIZARRAS',
+                          style: ySans(
+                            size: 20,
+                            weight: FontWeight.w800,
+                            color: yCream,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'TOTAL · ${canvases.length}',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                          tracking: 1,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onClose,
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: accent,
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: yLineMid,
+                            ),
+                          ),
+                          child: const Icon(
+                            YuLiIcons.close,
+                            color: yCream,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onAdd,
+                    child: Container(
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: yInk,
+                            offset: Offset(3, 3),
+                            blurRadius: 0,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(YuLiIcons.plus, color: yCream, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'NUEVA PIZARRA',
+                            style: ySans(
+                              size: 13,
+                              weight: FontWeight.w800,
+                              color: yCream,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(14, 2, 14, 18),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    itemCount: canvases.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final canvas = canvases[index];
+                      final selected = canvas.id == selectedBlockId;
+                      final paper =
+                          canvas.bgColor == null
+                              ? const Color(0xFFFFFDF8)
+                              : Color(canvas.bgColor!);
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onSelect(canvas.id),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: selected ? accent : yCream,
+                            border: Border.all(
+                              color: yBorderStrong,
+                              width: selected ? yLineHeavy : yLineMid,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: yInk,
+                                offset: Offset(3, 3),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              _WhiteboardCanvasPreview(
+                                noteId: noteId,
+                                canvas: canvas,
+                                paper: paper,
+                                useLegacyCache:
+                                    canvases.length == 1 && index == 0,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _canvasDisplayName(canvas, index),
+                                  style: ySans(
+                                    size: 15,
+                                    weight: FontWeight.w800,
+                                    color: selected ? yCream : yInk,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => onRename(canvas, index),
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: accent,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineMid,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.pen,
+                                    color: yCream,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                              if (canvases.length > 1) ...[
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => onDelete(canvas),
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: accent,
+                                      border: Border.all(
+                                        color: yBorderStrong,
+                                        width: yLineMid,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      YuLiIcons.trash,
+                                      color: yCream,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WhiteboardCanvasPreview extends StatefulWidget {
+  final int noteId;
+  final DrawingBlock canvas;
+  final Color paper;
+  final bool useLegacyCache;
+
+  const _WhiteboardCanvasPreview({
+    required this.noteId,
+    required this.canvas,
+    required this.paper,
+    required this.useLegacyCache,
+  });
+
+  @override
+  State<_WhiteboardCanvasPreview> createState() =>
+      _WhiteboardCanvasPreviewState();
+}
+
+class _WhiteboardCanvasPreviewState extends State<_WhiteboardCanvasPreview> {
+  late Future<File?> _overviewFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _overviewFile = _findOverviewFile();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WhiteboardCanvasPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.noteId != widget.noteId ||
+        oldWidget.canvas.id != widget.canvas.id ||
+        oldWidget.useLegacyCache != widget.useLegacyCache) {
+      _overviewFile = _findOverviewFile();
+    }
+  }
+
+  Future<File?> _findOverviewFile() async {
+    try {
+      final documents = await getApplicationDocumentsDirectory();
+      final base = p.join(documents.path, 'note_images', '${widget.noteId}');
+      final specific = File(p.join(base, 'overview_${widget.canvas.id}.png'));
+      if (await specific.exists()) return specific;
+      if (!widget.useLegacyCache) return null;
+      final legacy = File(p.join(base, 'overview.png'));
+      return await legacy.exists() ? legacy : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Container(
+        width: 88,
+        height: 66,
+        clipBehavior: Clip.hardEdge,
+        decoration: BoxDecoration(
+          color: widget.paper,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: _WhiteboardPreviewBackgroundPainter(
+                background: PageBackground.fromString(
+                  widget.canvas.background ?? '',
+                ),
+                paper: widget.paper,
+              ),
+            ),
+            FutureBuilder<File?>(
+              future: _overviewFile,
+              builder: (context, snapshot) {
+                final file = snapshot.data;
+                if (file == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Image.file(
+                    file,
+                    cacheWidth: 176,
+                    cacheHeight: 132,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.low,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WhiteboardPreviewBackgroundPainter extends CustomPainter {
+  final PageBackground background;
+  final Color paper;
+
+  const _WhiteboardPreviewBackgroundPainter({
+    required this.background,
+    required this.paper,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    canvas.drawRect(bounds, Paint()..color = paper);
+    paintBgPattern(canvas, bounds, background, bgMark(paper));
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _WhiteboardPreviewBackgroundPainter oldDelegate,
+  ) {
+    return oldDelegate.background != background || oldDelegate.paper != paper;
+  }
+}
+
+class _WhiteboardDialogAction extends StatelessWidget {
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _WhiteboardDialogAction({
+    required this.label,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: accent,
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
+        child: Text(
+          label,
+          style: yBody(size: 12, weight: FontWeight.w700, color: yCream),
+        ),
+      ),
+    );
+  }
+}
+
+class _WhiteboardCanvasEditor extends ConsumerStatefulWidget {
+  final Note note;
+  final Folder folder;
+  final int canvasBlockId;
+  final String? canvasName;
+  final int canvasOrdinal;
+  final int canvasCount;
+  final bool useLegacyCache;
+  final VoidCallback onOpenCanvases;
+
+  const _WhiteboardCanvasEditor({
+    super.key,
+    required this.note,
+    required this.folder,
+    required this.canvasBlockId,
+    required this.canvasName,
+    required this.canvasOrdinal,
+    required this.canvasCount,
+    required this.useLegacyCache,
+    required this.onOpenCanvases,
+  });
+
+  @override
+  ConsumerState<_WhiteboardCanvasEditor> createState() =>
+      _WhiteboardCanvasEditorState();
+}
+
+class _WhiteboardCanvasEditorState
+    extends ConsumerState<_WhiteboardCanvasEditor>
     with TickerProviderStateMixin {
+  late final NoteBlockRepository _blockRepo;
   int? _blockId;
   DrawingData _data = DrawingData();
   final Map<int, int> _loadedStrokePositions = {};
@@ -799,6 +1578,7 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   @override
   void initState() {
     super.initState();
+    _blockRepo = ref.read(noteBlockRepositoryProvider);
     _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
@@ -1277,19 +2057,38 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 
   /// On leaving the canvas, delete image files no longer referenced by the
-  /// canvas data (orphans from inserts that were later removed). Canvas images
-  /// are tracked only in the block payload, so that's the source of truth.
-  /// Safe here because the undo history is discarded on exit.
+  /// canvases in this note. The active block comes from memory because its last
+  /// payload write may still be finishing while the widget is disposed.
   void _reconcileImageFiles() {
     final dirPath = _imageDirPath;
     if (dirPath == null) return;
-    final referenced = _data.images.map((im) => im.filename).toSet();
-    // The disk-cached overview lives in the same dir but isn't a canvas image —
-    // never treat it as an orphan.
-    const keep = {'overview.png', 'overview.json', 'camera.json'};
-    // Fire-and-forget; widget is disposing.
+    final activeBlockId = _blockId;
+    final activeImages = _data.images.map((image) => image.filename).toSet();
     () async {
       try {
+        final blocks = await _blockRepo.getByNote(widget.note.id);
+        final referenced = <String>{};
+        final keep = <String>{'overview.png', 'overview.json', 'camera.json'};
+        for (final block in blocks.whereType<DrawingBlock>()) {
+          keep.addAll({
+            'overview_${block.id}.png',
+            'overview_${block.id}.json',
+            'camera_${block.id}.json',
+          });
+          if (block.id == activeBlockId) {
+            referenced.addAll(activeImages);
+            continue;
+          }
+          try {
+            final rawImages = jsonDecode(block.imagesJson);
+            if (rawImages is! List) continue;
+            for (final raw in rawImages) {
+              if (raw is Map && raw['f'] is String) {
+                referenced.add(p.basename(raw['f'] as String));
+              }
+            }
+          } catch (_) {}
+        }
         final dir = Directory(dirPath);
         if (!await dir.exists()) return;
         await for (final entity in dir.list()) {
@@ -1495,20 +2294,20 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     try {
       final repo = ref.read(noteBlockRepositoryProvider);
       final blocks = await repo.getByNote(widget.note.id);
-      final existing = blocks.whereType<DrawingBlock>().firstOrNull;
-      final canvas =
-          existing ??
-          await repo.insertAtEnd(
-                widget.note.id,
-                NoteBlockType.drawing,
-                payload: {'h': _kCanvasH, 's': [], 'whiteboard': true},
-              )
-              as DrawingBlock;
+      final existing =
+          blocks
+              .whereType<DrawingBlock>()
+              .where((block) => block.id == widget.canvasBlockId)
+              .firstOrNull;
+      if (existing == null) {
+        throw StateError('No existe la pizarra ${widget.canvasBlockId}');
+      }
+      final canvas = existing;
       if (!mounted) return;
       final id = canvas.id;
       CrashLogger.instance.note(
         'PERF abrir-pizarra: note ${widget.note.id}, block $id '
-        '(${existing == null ? 'CREADO nuevo' : 'encontrado'}), '
+        '(encontrado), '
         '${blocks.length} bloques en la nota',
       );
       final data = await _decodeData(canvas);
@@ -1695,6 +2494,18 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     return data;
   }
 
+  Future<void> flushBeforeCanvasChange() async {
+    _persistTimer?.cancel();
+    while (_persisting) {
+      await Future<void>.delayed(const Duration(milliseconds: 12));
+    }
+    if (_persistDirty) await _persistNow();
+    while (_persisting) {
+      await Future<void>.delayed(const Duration(milliseconds: 12));
+    }
+    if (_persistDirty) await _persistNow();
+  }
+
   Future<void> _persistNow() async {
     if (_blockId == null) return;
     // Guard against overlapping runs: a debounce can fire while a previous
@@ -1819,6 +2630,8 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
         'tx': textBlocksPayload,
         'bg': background.toDbString(),
         if (bgColorValue != null) 'bgc': bgColorValue,
+        if (widget.canvasName?.trim().isNotEmpty == true)
+          'name': widget.canvasName!.trim(),
         'whiteboard': true,
       });
       // Save-stats logging only: a DB stats query + point counts purely to feed
@@ -4927,7 +5740,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     try {
       final base = await _overviewDir();
       if (base == null) return null;
-      final f = File(p.join(base, 'camera.json'));
+      var f = File(p.join(base, 'camera_${widget.canvasBlockId}.json'));
+      if (!await f.exists() && widget.useLegacyCache) {
+        f = File(p.join(base, 'camera.json'));
+      }
       if (!await f.exists()) return null;
       final m = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
       final scale = (m['scale'] as num).toDouble();
@@ -4959,7 +5775,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
       final base = await _overviewDir();
       if (base == null) return;
       await Directory(base).create(recursive: true);
-      await File(p.join(base, 'camera.json')).writeAsString(
+      await File(
+        p.join(base, 'camera_${widget.canvasBlockId}.json'),
+      ).writeAsString(
         jsonEncode({
           'scale': m.getMaxScaleOnAxis(),
           'tx': m.storage[12],
@@ -4975,8 +5793,15 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
     try {
       final base = await _overviewDir();
       if (base == null || !mounted) return false;
-      final metaFile = File(p.join(base, 'overview.json'));
-      final imgFile = File(p.join(base, 'overview.png'));
+      var metaFile = File(
+        p.join(base, 'overview_${widget.canvasBlockId}.json'),
+      );
+      var imgFile = File(p.join(base, 'overview_${widget.canvasBlockId}.png'));
+      if ((!await metaFile.exists() || !await imgFile.exists()) &&
+          widget.useLegacyCache) {
+        metaFile = File(p.join(base, 'overview.json'));
+        imgFile = File(p.join(base, 'overview.png'));
+      }
       if (!await metaFile.exists() || !await imgFile.exists()) return false;
       final meta =
           jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>;
@@ -5023,8 +5848,10 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   Future<void> _saveDiskOverview() async {
     final base = await _overviewDir();
     if (base == null) return;
-    final pngFile = File(p.join(base, 'overview.png'));
-    final metaFile = File(p.join(base, 'overview.json'));
+    final pngFile = File(p.join(base, 'overview_${widget.canvasBlockId}.png'));
+    final metaFile = File(
+      p.join(base, 'overview_${widget.canvasBlockId}.json'),
+    );
     final image = _overviewImage;
     final bounds = _overviewBounds;
     final current =
@@ -6371,6 +7198,9 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                         spaces: spaces,
                         accent: _accent,
                         noteTitle: widget.note.title ?? '',
+                        canvasOrdinal: widget.canvasOrdinal,
+                        canvasCount: widget.canvasCount,
+                        onCanvases: widget.onOpenCanvases,
                         onExpand:
                             () => setState(() => _headerCollapsed = false),
                         onReset: _resetView,
@@ -6394,6 +7224,12 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
                                 label: '@${widget.folder.name}',
                                 bg: widget.folder.color,
                                 fg: yCream,
+                              ),
+                              _WhiteboardCanvasSwitchButton(
+                                accent: _accent,
+                                ordinal: widget.canvasOrdinal,
+                                count: widget.canvasCount,
+                                onTap: widget.onOpenCanvases,
                               ),
                               GestureDetector(
                                 behavior: HitTestBehavior.opaque,
@@ -7658,11 +8494,69 @@ class _WhiteboardEditorScreenState extends ConsumerState<WhiteboardEditorScreen>
   }
 }
 
+class _WhiteboardCanvasSwitchButton extends StatelessWidget {
+  final Color accent;
+  final int ordinal;
+  final int count;
+  final bool compact;
+  final VoidCallback onTap;
+
+  const _WhiteboardCanvasSwitchButton({
+    required this.accent,
+    required this.ordinal,
+    required this.count,
+    this.compact = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Pizarras, $ordinal de $count',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: compact ? 32 : 58,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: accent,
+            border: Border.all(color: yBorderStrong, width: yLineMid),
+          ),
+          child:
+              compact
+                  ? const Icon(YuLiIcons.layoutGrid, color: yCream, size: 16)
+                  : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(YuLiIcons.layoutGrid, color: yCream, size: 15),
+                      const SizedBox(width: 5),
+                      Text(
+                        'P $ordinal/$count',
+                        style: yMono(
+                          size: 9,
+                          weight: FontWeight.w800,
+                          color: yCream,
+                        ),
+                      ),
+                    ],
+                  ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CollapsedWhiteboardHeader extends StatelessWidget {
   final Folder folder;
   final List<LabSpace> spaces;
   final Color accent;
   final String noteTitle;
+  final int canvasOrdinal;
+  final int canvasCount;
+  final VoidCallback onCanvases;
   final VoidCallback onExpand;
   final VoidCallback onReset;
   final VoidCallback onZoomToFit;
@@ -7674,6 +8568,9 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
     required this.spaces,
     required this.accent,
     required this.noteTitle,
+    required this.canvasOrdinal,
+    required this.canvasCount,
+    required this.onCanvases,
     required this.onExpand,
     required this.onReset,
     required this.onZoomToFit,
@@ -7727,6 +8624,14 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          _WhiteboardCanvasSwitchButton(
+            accent: accent,
+            ordinal: canvasOrdinal,
+            count: canvasCount,
+            compact: true,
+            onTap: onCanvases,
+          ),
+          const SizedBox(width: 6),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onReset,

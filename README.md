@@ -130,6 +130,7 @@ Lienzo virtual de 10000x10000px con pan + zoom (0.3x–4x). Disenado para pensam
 
 **Herramientas de dibujo:**
 
+- **Múltiples pizarras por nota** — panel lateral para crear, renombrar, cambiar y eliminar lienzos independientes; los nuevos heredan el fondo activo.
 - **Pen** — trazo libre con presion.
 - **Fountain Pen** — simulacion de tinta con variacion de grosor por velocidad.
 - **Highlighter** — marcador semitransparente (BlendMode.multiply).

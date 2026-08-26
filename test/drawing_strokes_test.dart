@@ -78,6 +78,82 @@ void main() {
     expect(rows.map(strokeFromRecord).map((s) => s.dbId).toList(), ids);
   });
 
+  test('multiple whiteboard canvases keep strokes isolated', () async {
+    final folderId = await db
+        .into(db.folders)
+        .insert(FoldersCompanion.insert(name: 'f', color: '#FFFFFF'));
+    final noteId = await db
+        .into(db.notes)
+        .insert(NotesCompanion.insert(folderId: folderId));
+    final first = await blockRepo.insertAtEnd(
+      noteId,
+      NoteBlockType.drawing,
+      payload: {'h': 10000, 's': [], 'whiteboard': true},
+    );
+    final second = await blockRepo.insertAtEnd(
+      noteId,
+      NoteBlockType.drawing,
+      payload: {'h': 10000, 's': [], 'whiteboard': true},
+    );
+    await strokeRepo.insert(first.id, strokeWrite(0, pen(10, 10)));
+    await strokeRepo.insert(second.id, strokeWrite(0, pen(200, 200)));
+
+    await blockRepo.delete(first.id);
+
+    final blocks = await blockRepo.getByNote(noteId);
+    expect(blocks.map((block) => block.id), [second.id]);
+    expect(await strokeRepo.getByBlock(first.id), isEmpty);
+    final remaining = await strokeRepo.getByBlock(second.id);
+    expect(remaining, hasLength(1));
+    expect(
+      strokeFromRecord(remaining.single).points.offset(0),
+      const Offset(200, 200),
+    );
+  });
+
+  test(
+    'whiteboard canvas name round-trips with the complete payload',
+    () async {
+      final folderId = await db
+          .into(db.folders)
+          .insert(FoldersCompanion.insert(name: 'f', color: '#FFFFFF'));
+      final noteId = await db
+          .into(db.notes)
+          .insert(NotesCompanion.insert(folderId: folderId));
+      final inserted = await blockRepo.insertAtEnd(
+        noteId,
+        NoteBlockType.drawing,
+        payload: {
+          'h': 10000,
+          's': const [],
+          'i': const [],
+          't': const [],
+          'tx': const [],
+          'bg': 'grid',
+          'bgc': 0xFFF2EFE6,
+          'name': 'Mapa mental',
+          'whiteboard': true,
+        },
+      );
+
+      final canvas = (await blockRepo.getByNote(noteId)).single as DrawingBlock;
+      expect(canvas.name, 'Mapa mental');
+      expect(canvas.background, 'grid');
+      expect(canvas.bgColor, 0xFFF2EFE6);
+
+      await blockRepo.updatePayload(inserted.id, {
+        ...canvas.payloadJson(),
+        'name': 'Resumen final',
+        'whiteboard': true,
+      });
+      final renamed =
+          (await blockRepo.getByNote(noteId)).single as DrawingBlock;
+      expect(renamed.name, 'Resumen final');
+      expect(renamed.background, 'grid');
+      expect(renamed.bgColor, 0xFFF2EFE6);
+    },
+  );
+
   test('getByBlock returns rows ordered by position', () async {
     final blockId = await makeDrawingBlock();
     // Insert out of order: position 5 then 2.
@@ -105,7 +181,10 @@ void main() {
     final rows = await strokeRepo.getByBlock(blockId);
     expect(rows.length, 1);
     expect(rows.first.id, s.dbId);
-    expect(strokeFromRecord(rows.first).points.offset(0), const Offset(100, 100));
+    expect(
+      strokeFromRecord(rows.first).points.offset(0),
+      const Offset(100, 100),
+    );
   });
 
   test('updateMany mutates several stored strokes in one batch', () async {
