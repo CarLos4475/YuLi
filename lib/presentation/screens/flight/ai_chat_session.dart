@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -48,6 +50,187 @@ const kSynthesizePrompt =
     'formato markdown. Mantén el idioma original. Responde SOLO con la '
     'síntesis, sin comentarios ni encabezados adicionales.';
 
+enum AiResponseLength {
+  brief(768),
+  normal(1536),
+  detailed(3072);
+
+  final int maxTokens;
+  const AiResponseLength(this.maxTokens);
+}
+
+enum AiHistoryDepth {
+  recent(4, 1200),
+  normal(8, 2400),
+  full(null, 4000);
+
+  final int? maxMessages;
+  final int foreignTranscriptBudget;
+  const AiHistoryDepth(this.maxMessages, this.foreignTranscriptBudget);
+}
+
+enum AiChatProfile { savings, balanced, complete, custom }
+
+class AiChatSettings {
+  final AiModel model;
+  final AiResponseLength responseLength;
+  final AiHistoryDepth historyDepth;
+  final bool useNoteContext;
+  final bool useRelatedSources;
+  final bool useTools;
+  final bool useInteractiveReplies;
+  final bool useMemory;
+  final bool useActionDrafts;
+
+  const AiChatSettings({
+    required this.model,
+    required this.responseLength,
+    required this.historyDepth,
+    required this.useNoteContext,
+    required this.useRelatedSources,
+    required this.useTools,
+    required this.useInteractiveReplies,
+    required this.useMemory,
+    required this.useActionDrafts,
+  });
+
+  const AiChatSettings.savings()
+    : this(
+        model: AiModel.flash,
+        responseLength: AiResponseLength.brief,
+        historyDepth: AiHistoryDepth.recent,
+        useNoteContext: true,
+        useRelatedSources: false,
+        useTools: false,
+        useInteractiveReplies: false,
+        useMemory: false,
+        useActionDrafts: false,
+      );
+
+  const AiChatSettings.balanced()
+    : this(
+        model: AiModel.flash,
+        responseLength: AiResponseLength.normal,
+        historyDepth: AiHistoryDepth.normal,
+        useNoteContext: true,
+        useRelatedSources: true,
+        useTools: false,
+        useInteractiveReplies: true,
+        useMemory: false,
+        useActionDrafts: false,
+      );
+
+  const AiChatSettings.complete()
+    : this(
+        model: AiModel.pro,
+        responseLength: AiResponseLength.detailed,
+        historyDepth: AiHistoryDepth.full,
+        useNoteContext: true,
+        useRelatedSources: true,
+        useTools: true,
+        useInteractiveReplies: true,
+        useMemory: true,
+        useActionDrafts: true,
+      );
+
+  AiChatProfile get profile {
+    if (this == const AiChatSettings.savings()) return AiChatProfile.savings;
+    if (this == const AiChatSettings.balanced()) return AiChatProfile.balanced;
+    if (this == const AiChatSettings.complete()) return AiChatProfile.complete;
+    return AiChatProfile.custom;
+  }
+
+  AiChatSettings copyWith({
+    AiModel? model,
+    AiResponseLength? responseLength,
+    AiHistoryDepth? historyDepth,
+    bool? useNoteContext,
+    bool? useRelatedSources,
+    bool? useTools,
+    bool? useInteractiveReplies,
+    bool? useMemory,
+    bool? useActionDrafts,
+  }) => AiChatSettings(
+    model: model ?? this.model,
+    responseLength: responseLength ?? this.responseLength,
+    historyDepth: historyDepth ?? this.historyDepth,
+    useNoteContext: useNoteContext ?? this.useNoteContext,
+    useRelatedSources: useRelatedSources ?? this.useRelatedSources,
+    useTools: useTools ?? this.useTools,
+    useInteractiveReplies: useInteractiveReplies ?? this.useInteractiveReplies,
+    useMemory: useMemory ?? this.useMemory,
+    useActionDrafts: useActionDrafts ?? this.useActionDrafts,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'model': model.name,
+    'responseLength': responseLength.name,
+    'historyDepth': historyDepth.name,
+    'useNoteContext': useNoteContext,
+    'useRelatedSources': useRelatedSources,
+    'useTools': useTools,
+    'useInteractiveReplies': useInteractiveReplies,
+    'useMemory': useMemory,
+    'useActionDrafts': useActionDrafts,
+  };
+
+  factory AiChatSettings.fromJson(Map<String, dynamic> json) {
+    const fallback = AiChatSettings.savings();
+    T byName<T extends Enum>(List<T> values, Object? raw, T value) =>
+        values.where((e) => e.name == raw).firstOrNull ?? value;
+    bool flag(String key, bool value) =>
+        json[key] is bool ? json[key] as bool : value;
+    return AiChatSettings(
+      model: byName(AiModel.values, json['model'], fallback.model),
+      responseLength: byName(
+        AiResponseLength.values,
+        json['responseLength'],
+        fallback.responseLength,
+      ),
+      historyDepth: byName(
+        AiHistoryDepth.values,
+        json['historyDepth'],
+        fallback.historyDepth,
+      ),
+      useNoteContext: flag('useNoteContext', fallback.useNoteContext),
+      useRelatedSources: flag('useRelatedSources', fallback.useRelatedSources),
+      useTools: flag('useTools', fallback.useTools),
+      useInteractiveReplies: flag(
+        'useInteractiveReplies',
+        fallback.useInteractiveReplies,
+      ),
+      useMemory: flag('useMemory', fallback.useMemory),
+      useActionDrafts: flag('useActionDrafts', fallback.useActionDrafts),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is AiChatSettings &&
+      model == other.model &&
+      responseLength == other.responseLength &&
+      historyDepth == other.historyDepth &&
+      useNoteContext == other.useNoteContext &&
+      useRelatedSources == other.useRelatedSources &&
+      useTools == other.useTools &&
+      useInteractiveReplies == other.useInteractiveReplies &&
+      useMemory == other.useMemory &&
+      useActionDrafts == other.useActionDrafts;
+
+  @override
+  int get hashCode => Object.hash(
+    model,
+    responseLength,
+    historyDepth,
+    useNoteContext,
+    useRelatedSources,
+    useTools,
+    useInteractiveReplies,
+    useMemory,
+    useActionDrafts,
+  );
+}
+
 class AiChatMsg {
   final AiRole role;
   final String text;
@@ -78,6 +261,7 @@ class AiChatSession extends ChangeNotifier {
   AiChatSession(this.noteId, {this.scope = 'note'}) {
     _loadAnchor();
     _loadMode();
+    _loadSettings();
   }
 
   static const _kAnchorPrefix = 'ai_ctx_v1_';
@@ -88,9 +272,20 @@ class AiChatSession extends ChangeNotifier {
           : '$_kAnchorPrefix${scope}_$noteId';
 
   String? anchor; // context anchor; null until set
+  String? relatedAnchor;
   final List<AiChatMsg> messages = [];
-  AiModel model = AiModel.flash;
+  AiChatSettings settings = const AiChatSettings.savings();
   bool streaming = false;
+
+  AiModel get model => settings.model;
+  int get _maxOutputTokens =>
+      scope == 'note' ? settings.responseLength.maxTokens : 2048;
+  int? get _maxHistoryMessages =>
+      scope == 'note'
+          ? settings.historyDepth.maxMessages
+          : (model == AiModel.flash ? 8 : 16);
+  int get _foreignTranscriptBudget =>
+      scope == 'note' ? settings.historyDepth.foreignTranscriptBudget : 4000;
 
   /// Selected chat mode (skill). Persisted per session like the anchor; switching
   /// keeps the thread — the new system prompt applies from the next turn on.
@@ -106,17 +301,25 @@ class AiChatSession extends ChangeNotifier {
   int? compactNoticeIndex;
 
   bool get hasAnchor => (anchor?.trim().isNotEmpty) ?? false;
+  bool get hasRelatedAnchor => (relatedAnchor?.trim().isNotEmpty) ?? false;
+  bool get hasActiveContext =>
+      (settings.useNoteContext && hasAnchor) ||
+      (settings.useRelatedSources && hasRelatedAnchor);
   bool get anchorIsLong => (anchor?.length ?? 0) > kAnchorLongChars;
   bool get canUndoCompact => _previousAnchor != null;
 
   Future<void> _loadAnchor() async {
     final p = await SharedPreferences.getInstance();
     final saved = p.getString(_prefKey);
+    final related = p.getString(_relatedPrefKey);
     // Don't clobber an anchor that was set meanwhile (e.g. incoming OCR).
     if (saved != null && saved.isNotEmpty && anchor == null) {
       anchor = saved;
-      notifyListeners();
     }
+    if (related != null && related.isNotEmpty && relatedAnchor == null) {
+      relatedAnchor = related;
+    }
+    notifyListeners();
   }
 
   Future<void> _saveAnchor() async {
@@ -129,8 +332,56 @@ class AiChatSession extends ChangeNotifier {
   }
 
   void setModel(AiModel m) {
-    model = m;
+    setSettings(settings.copyWith(model: m));
+  }
+
+  static const _kRelatedPrefix = 'ai_related_ctx_v1_';
+  static const _kSettingsPrefix = 'ai_chat_settings_v1_';
+
+  String get _relatedPrefKey =>
+      scope == 'note'
+          ? '$_kRelatedPrefix$noteId'
+          : '$_kRelatedPrefix${scope}_$noteId';
+
+  String get _settingsKey =>
+      scope == 'note'
+          ? '$_kSettingsPrefix$noteId'
+          : '$_kSettingsPrefix${scope}_$noteId';
+
+  bool _settingsChanged = false;
+
+  Future<void> _loadSettings() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getString(_settingsKey);
+    if (raw == null || _settingsChanged) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        settings = AiChatSettings.fromJson(Map<String, dynamic>.from(decoded));
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  void setSettings(AiChatSettings value) {
+    if (value == settings) return;
+    final contextPolicyChanged =
+        value.useNoteContext != settings.useNoteContext ||
+        value.useRelatedSources != settings.useRelatedSources;
+    settings = value;
+    _settingsChanged = true;
+    if (contextPolicyChanged && messages.isNotEmpty) {
+      messages.clear();
+      _previousAnchor = null;
+      compactNoticeIndex = null;
+      messages.add(
+        const AiChatMsg(AiRole.system, '✦ Contexto ajustado — empecé de cero.'),
+      );
+    }
     notifyListeners();
+    SharedPreferences.getInstance().then(
+      (p) => p.setString(_settingsKey, jsonEncode(value.toJson())),
+    );
   }
 
   static const _kModePrefix = 'ai_mode_v1_';
@@ -192,6 +443,44 @@ class AiChatSession extends ChangeNotifier {
     _applyAnchor(t.isEmpty ? null : t, compactTried: true);
   }
 
+  void setSyncedContexts({required String primary, required String related}) {
+    final nextPrimary = primary.trim();
+    final nextRelated = related.trim();
+    final primaryChanged = nextPrimary != (anchor ?? '');
+    final relatedChanged = nextRelated != (relatedAnchor ?? '');
+    anchor = nextPrimary.isEmpty ? null : nextPrimary;
+    relatedAnchor = nextRelated.isEmpty ? null : nextRelated;
+    _compactTried = true;
+    final activeChanged =
+        (settings.useNoteContext && primaryChanged) ||
+        (settings.useRelatedSources && relatedChanged);
+    if (activeChanged && messages.isNotEmpty) {
+      messages.clear();
+      _previousAnchor = null;
+      compactNoticeIndex = null;
+      if (hasActiveContext) {
+        messages.add(
+          const AiChatMsg(
+            AiRole.system,
+            '✦ Contexto actualizado — empecé de cero.',
+          ),
+        );
+      }
+    }
+    _saveAnchor();
+    _saveRelatedAnchor();
+    notifyListeners();
+  }
+
+  Future<void> _saveRelatedAnchor() async {
+    final p = await SharedPreferences.getInstance();
+    if (relatedAnchor == null || relatedAnchor!.isEmpty) {
+      await p.remove(_relatedPrefKey);
+    } else {
+      await p.setString(_relatedPrefKey, relatedAnchor!);
+    }
+  }
+
   /// Replace the anchor, resetting the thread if the context actually changed
   /// mid-conversation (the prior turns are about the OLD context and would
   /// mislead the model — it trusts history over the changed anchor; resetting
@@ -231,8 +520,7 @@ class AiChatSession extends ChangeNotifier {
   /// stripped by the caller) into a compact transcript for the mode-switch
   /// reference block. Capped from the FRONT to a char budget so the most recent
   /// foreign turns survive; the assistant is labelled "YuLi" (never the model).
-  static String _foldTranscript(List<AiChatMsg> msgs) {
-    const budget = 4000;
+  static String _foldTranscript(List<AiChatMsg> msgs, {required int budget}) {
     final lines = <String>[];
     for (final m in msgs) {
       final body = m.text.trim();
@@ -255,13 +543,17 @@ class AiChatSession extends ChangeNotifier {
   /// The context anchor as a standalone user message (capped for token cost),
   /// kept SEPARATE from the system prompt so the model distinguishes the
   /// instruction (system) from the content (this).
-  String _anchorContent() {
-    final ctx = anchor ?? '';
+  String _anchorContent(String value, {String kind = 'note'}) {
+    final ctx = value;
     final capped =
         ctx.length > _kAnchorMaxChars
             ? ctx.substring(0, _kAnchorMaxChars)
             : ctx;
-    return '<context_documents>\n$capped\n</context_documents>';
+    if (kind == 'note') {
+      return '<context_documents>\n$capped\n</context_documents>';
+    }
+    return '<related_context_documents>\n$capped\n'
+        '</related_context_documents>';
   }
 
   /// Undo the last AI auto-compaction, restoring the previous context.
@@ -351,7 +643,7 @@ class AiChatSession extends ChangeNotifier {
 
     // Token-shielding: the AI compacts an excessively long context first (and
     // notifies the user in the chat).
-    if (anchorIsLong && !_compactTried) {
+    if (settings.useNoteContext && anchorIsLong && !_compactTried) {
       await _autoCompact(assistant, limiter);
     }
 
@@ -366,13 +658,16 @@ class AiChatSession extends ChangeNotifier {
     final convo = <AiMessage>[
       AiMessage(AiRole.system, mode.systemPrompt),
       if (toolGuidance != null) AiMessage(AiRole.system, toolGuidance),
+      if (settings.useNoteContext && hasAnchor)
+        AiMessage(AiRole.user, _anchorContent(anchor!)),
+      if (settings.useRelatedSources && hasRelatedAnchor)
+        AiMessage(AiRole.user, _anchorContent(relatedAnchor!, kind: 'related')),
       if (knowledgeDocs.isNotEmpty)
         AiMessage(AiRole.system, knowledgeDocs.join('\n\n')),
       if (memoryDocs.isNotEmpty)
         AiMessage(AiRole.system, memoryDocs.join('\n\n')),
       if (widgetDocs.isNotEmpty)
         AiMessage(AiRole.system, widgetDocs.join('\n\n')),
-      if (hasAnchor) AiMessage(AiRole.user, _anchorContent()),
     ];
 
     if (!quickAction) {
@@ -404,7 +699,10 @@ class AiChatSession extends ChangeNotifier {
                 .sublist(0, foreignCutoff)
                 .where((m) => m.role != AiRole.system)
                 .toList();
-        final transcript = _foldTranscript(foreign);
+        final transcript = _foldTranscript(
+          foreign,
+          budget: _foreignTranscriptBudget,
+        );
         if (transcript.isNotEmpty) {
           convo.add(
             AiMessage(
@@ -424,9 +722,9 @@ class AiChatSession extends ChangeNotifier {
               .sublist(foreignCutoff)
               .where((m) => m.role != AiRole.system)
               .toList();
-      final maxHistory = model == AiModel.flash ? 8 : 16;
+      final maxHistory = _maxHistoryMessages;
       final capped =
-          live.length > maxHistory
+          maxHistory != null && live.length > maxHistory
               ? live.sublist(live.length - maxHistory)
               : live;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
@@ -434,9 +732,17 @@ class AiChatSession extends ChangeNotifier {
     convo.add(AiMessage(AiRole.user, t));
 
     if (tools.isNotEmpty && onToolCall != null) {
-      await _streamWithTools(assistant, convo, idx, modeId, tools, onToolCall);
+      await _streamWithTools(
+        assistant,
+        limiter,
+        convo,
+        idx,
+        modeId,
+        tools,
+        onToolCall,
+      );
     } else {
-      await _streamPlain(assistant, convo, idx, modeId);
+      await _streamPlain(assistant, limiter, convo, idx, modeId);
     }
     streaming = false;
     notifyListeners();
@@ -446,6 +752,7 @@ class AiChatSession extends ChangeNotifier {
   /// path; used by the note chat without tools).
   Future<void> _streamPlain(
     AiAssistant assistant,
+    AiUsageLimiter limiter,
     List<AiMessage> convo,
     int idx,
     String modeId,
@@ -458,7 +765,11 @@ class AiChatSession extends ChangeNotifier {
     while (true) {
       var yielded = false;
       try {
-        await for (final tok in assistant.streamReply(convo, model: model)) {
+        await for (final tok in assistant.streamReply(
+          convo,
+          model: model,
+          maxTokens: _maxOutputTokens,
+        )) {
           yielded = true;
           messages[idx] = AiChatMsg(
             AiRole.assistant,
@@ -472,6 +783,16 @@ class AiChatSession extends ChangeNotifier {
         final retryable = e is AiException && e.retryable;
         if (!yielded && retryable && attempt < maxRetries) {
           attempt++;
+          if (!await limiter.canSend()) {
+            messages[idx] = AiChatMsg(
+              AiRole.assistant,
+              '⚠️ Límite diario de IA alcanzado (150/día).',
+              modeId: modeId,
+            );
+            notifyListeners();
+            break;
+          }
+          await limiter.record();
           messages[idx] = AiChatMsg(
             AiRole.assistant,
             '⟳ Reintentando… ($attempt)',
@@ -496,6 +817,7 @@ class AiChatSession extends ChangeNotifier {
   /// round-trip messages (which are NOT shown as chat bubbles).
   Future<void> _streamWithTools(
     AiAssistant assistant,
+    AiUsageLimiter limiter,
     List<AiMessage> convo,
     int idx,
     String modeId,
@@ -504,12 +826,25 @@ class AiChatSession extends ChangeNotifier {
   ) async {
     const maxIters = 4;
     for (var iter = 0; iter < maxIters; iter++) {
+      if (iter > 0) {
+        if (!await limiter.canSend()) {
+          messages[idx] = AiChatMsg(
+            AiRole.assistant,
+            '⚠️ Límite diario de IA alcanzado (150/día).',
+            modeId: modeId,
+          );
+          notifyListeners();
+          return;
+        }
+        await limiter.record();
+      }
       final calls = <AiToolCall>[];
       try {
         await for (final ev in assistant.streamReplyWithTools(
           convo,
           tools: tools,
           model: model,
+          maxTokens: _maxOutputTokens,
         )) {
           if (ev is AiTextDelta) {
             messages[idx] = AiChatMsg(

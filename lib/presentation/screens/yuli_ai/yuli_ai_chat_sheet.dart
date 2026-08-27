@@ -40,7 +40,7 @@ Future<void> showYuliAiChat(
   if (!hasKey) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Configura tu API key de DeepSeek en Ajustes'),
+        content: Text('Configura tu API key de YuLi AI en Ajustes'),
         duration: Duration(seconds: 3),
       ),
     );

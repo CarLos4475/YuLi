@@ -152,7 +152,7 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: AppSectionDivider(label: 'ASISTENTE IA (DEEPSEEK)'),
+              child: AppSectionDivider(label: 'YULI AI'),
             ),
             const SizedBox(height: 12),
             const Padding(
@@ -1478,7 +1478,7 @@ class _AiKeyBlockState extends ConsumerState<_AiKeyBlock> {
           Row(
             children: [
               Text(
-                'DEEPSEEK API KEY',
+                'YULI AI API KEY',
                 style: labelBold.copyWith(
                   color: ink,
                   fontSize: 11,

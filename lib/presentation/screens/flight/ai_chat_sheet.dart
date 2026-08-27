@@ -20,6 +20,7 @@ import '../../../domain/models/canvas_context_source.dart';
 import '../../../data/services/context_cache.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
 import 'ai_chat_session.dart';
+import 'ai_chat_settings_dialog.dart';
 import 'ai_modes.dart';
 import 'mode_builder_screen.dart';
 import 'context_assembler.dart' as ctx;
@@ -66,7 +67,7 @@ Future<void> showAiChat(
   if (!hasKey) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Configura tu API key de DeepSeek en Ajustes'),
+        content: Text('Configura tu API key de YuLi AI en Ajustes'),
         duration: Duration(seconds: 3),
       ),
     );
@@ -474,22 +475,26 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     if (note == null) return;
     final isBlock = note.kind == NoteKind.block;
 
-    final pieces = <String>[];
+    final primaryPieces = <String>[];
+    final relatedPieces = <String>[];
 
     // Block note: own content is always the first (implicit) source.
-    if (isBlock) {
+    if (isBlock && _s.settings.useNoteContext) {
       final blocks = await ref.read(noteBlocksProvider(_s.noteId).future);
       final label =
           (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
       final raw = _extractNoteContext(blocks);
       if (raw.trim().isNotEmpty) {
         final piece = await _compactPiece('note:${note.id}', raw);
-        pieces.add('## $label\n\n$piece');
+        primaryPieces.add('## $label\n\n$piece');
       }
     }
 
     // Additional sources from DB: URLs for block notes; notes + URLs for canvases.
-    final sources = await repo.getContextSources(_s.noteId);
+    final sources =
+        _s.settings.useRelatedSources
+            ? await repo.getContextSources(_s.noteId)
+            : const <CanvasContextSource>[];
     for (final s in sources) {
       if (!s.enabled) continue; // user-toggled off
       if (s.isNote && s.ref == _s.noteId.toString()) continue; // skip self-ref
@@ -521,12 +526,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       }
       if (raw.trim().isEmpty) continue;
       final piece = await _compactPiece(key, raw);
-      pieces.add('## $label\n\n$piece');
+      relatedPieces.add('## $label\n\n$piece');
     }
 
-    if (pieces.isEmpty) return; // empty block note → no anchor yet
+    if (primaryPieces.isEmpty && relatedPieces.isEmpty) return;
 
-    _s.setSyncedAnchor(pieces.join('\n\n---\n\n'));
+    _s.setSyncedContexts(
+      primary:
+          _s.settings.useNoteContext
+              ? primaryPieces.join('\n\n---\n\n')
+              : (_s.anchor ?? ''),
+      related:
+          _s.settings.useRelatedSources
+              ? relatedPieces.join('\n\n---\n\n')
+              : (_s.relatedAnchor ?? ''),
+    );
     if (mounted) setState(() => _syncedAt = DateTime.now());
   }
 
@@ -596,12 +610,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming) return;
     if (!quickAction) _input.clear();
+    final settings = _s.settings;
     final retrievalQuery = _retrievalQuery(text);
     final flightContext =
-        quickAction
+        quickAction ||
+                !(settings.useTools ||
+                    settings.useActionDrafts ||
+                    settings.useMemory)
             ? const _FlightAiContext(prompt: '', folderScope: null)
             : await _flightAiContext();
-    final widgetSpecs =
+    final retrievedWidgets =
         quickAction
             ? const <AiWidgetSpec>[]
             : ref
@@ -610,13 +628,26 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   text,
                   surface: AiWidgetSurface.flight,
                   context: retrievalQuery,
+                  k: 8,
                 );
+    final widgetSpecs =
+        retrievedWidgets
+            .where((spec) {
+              return switch (spec.policy) {
+                AiWidgetPolicy.study => settings.useInteractiveReplies,
+                AiWidgetPolicy.appData => settings.useTools,
+                AiWidgetPolicy.appWrite => settings.useActionDrafts,
+                AiWidgetPolicy.memory => settings.useMemory,
+              };
+            })
+            .take(3)
+            .toList();
     final widgetPrompt = aiWidgetPrompt(
       widgetSpecs,
       surface: AiWidgetSurface.flight,
     );
     final knowledgePrompt =
-        quickAction
+        quickAction || !settings.useRelatedSources
             ? ''
             : aiKnowledgePrompt(
               ref
@@ -625,7 +656,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               surface: AiKnowledgeSurface.flight,
             );
     final memoryPrompt =
-        quickAction
+        quickAction || !settings.useMemory
             ? ''
             : await ref
                 .read(aiMemoryStoreProvider)
@@ -641,9 +672,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       quickAction: quickAction,
       // Same DB tools as YuLi AI, but the note chat only reaches for them when
       // the user EXPLICITLY asks (strict guidance). Off for one-shot actions.
-      tools: quickAction ? const [] : yuliToolDefs,
-      toolGuidance: quickAction ? null : flightToolSystem(),
-      onToolCall: (c) => runYuliTool(ref, c),
+      tools: quickAction || !settings.useTools ? const [] : yuliToolDefs,
+      toolGuidance:
+          quickAction || !settings.useTools ? null : flightToolSystem(),
+      onToolCall:
+          quickAction || !settings.useTools ? null : (c) => runYuliTool(ref, c),
       knowledgeDocs: [
         if (knowledgePrompt.isNotEmpty) knowledgePrompt,
         if (flightContext.prompt.isNotEmpty) flightContext.prompt,
@@ -662,10 +695,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         .reversed
         .join('\n');
     final anchor =
-        _s.hasAnchor
+        _s.settings.useNoteContext && _s.hasAnchor
             ? _s.anchor?.substring(0, math.min(900, _s.anchor!.length)) ?? ''
             : '';
-    return '$anchor\n$recent\n$text';
+    final related =
+        _s.settings.useRelatedSources && _s.hasRelatedAnchor
+            ? _s.relatedAnchor?.substring(
+                  0,
+                  math.min(600, _s.relatedAnchor!.length),
+                ) ??
+                ''
+            : '';
+    return '$anchor\n$related\n$recent\n$text';
   }
 
   Future<_FlightAiContext> _flightAiContext() async {
@@ -1041,6 +1082,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                     overflow: TextOverflow.ellipsis,
                     style: yBody(size: 11, color: yMuted),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _settingsSummary(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yMono(
+                      size: 8,
+                      weight: FontWeight.w700,
+                      tracking: 0.7,
+                      color: widget.accent,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1065,87 +1118,48 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     showDialog<void>(context: context, builder: (_) => _modeCatalogContent());
   }
 
-  /// Conversation-level actions menu (the ⋯). Quiz lands here in v2.1.
-  void _openChatMenu() {
-    showModalBottomSheet<void>(
+  Future<void> _openChatMenu() async {
+    final before = _s.settings;
+    final hostKind =
+        ref.read(noteByIdProvider(_s.noteId)).valueOrNull?.kind ??
+        NoteKind.block;
+    final result = await showDialog<AiChatMenuResult>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetCtx) {
-        final canSummarize = _s.messages.any((m) => m.role != AiRole.system);
-        return Container(
-          decoration: const BoxDecoration(
-            color: yCream,
-            border: Border(
-              top: BorderSide(color: yBorderStrong, width: yLineMid),
-            ),
+      builder:
+          (_) => AiChatSettingsDialog(
+            initial: before,
+            accent: widget.accent,
+            hostKind: hostKind,
+            canSummarize:
+                !_s.streaming &&
+                _s.messages.any((m) => m.role != AiRole.system),
           ),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'CONVERSACIÓN',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap:
-                      !canSummarize || _s.streaming
-                          ? null
-                          : () {
-                            Navigator.pop(sheetCtx);
-                            _send(
-                              'Resume nuestra conversación hasta ahora en 3-4 '
-                              'puntos clave.',
-                            );
-                          },
-                  child: Container(
-                    height: 46,
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: yCream,
-                      border: Border.all(
-                        color: canSummarize ? yBorderStrong : yBorderSoft,
-                        width: yLineMid,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          YuLiIcons.textQuote,
-                          size: 16,
-                          color: canSummarize ? widget.accent : yMuted,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'RESUMIR EL CHAT',
-                          style: yMono(
-                            size: 12,
-                            weight: FontWeight.w700,
-                            tracking: 1.0,
-                            color: canSummarize ? yInk : yMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
+    if (result == null || !mounted) return;
+    _s.setSettings(result.settings);
+    final contextChanged =
+        before.useNoteContext != result.settings.useNoteContext ||
+        before.useRelatedSources != result.settings.useRelatedSources;
+    if (contextChanged) await _resyncFromSources();
+    if (result.summarize && mounted) {
+      _send('Resume nuestra conversación hasta ahora en 3-4 puntos clave.');
+    }
+  }
+
+  String _settingsSummary() {
+    final settings = _s.settings;
+    final model = settings.model == AiModel.flash ? 'FLASH' : 'PRO';
+    final length = switch (settings.responseLength) {
+      AiResponseLength.brief => 'BREVE',
+      AiResponseLength.normal => 'NORMAL',
+      AiResponseLength.detailed => 'DETALLADA',
+    };
+    final history = switch (settings.historyDepth) {
+      AiHistoryDepth.recent => 'RECIENTE',
+      AiHistoryDepth.normal => 'HISTORIAL NORMAL',
+      AiHistoryDepth.full => 'TODO EL CHAT',
+    };
+    return '$model · $length · $history';
   }
 
   /// Gallery of modes (cards) — pick one to switch. A floating centred dialog
@@ -2264,8 +2278,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 }
-
-
 
 /// Review checklist for "Extraer tareas": pick/edit which lines become FIGHT
 /// tasks, then create them linked to the host note.

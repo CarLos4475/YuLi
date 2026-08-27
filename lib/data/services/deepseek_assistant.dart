@@ -197,7 +197,7 @@ class DeepseekAssistant implements AiAssistant {
 
   String _friendlyError(int code) => switch (code) {
         401 => 'API key inválida (revísala en Ajustes).',
-        402 => 'Sin saldo en la cuenta de DeepSeek.',
+        402 => 'Sin saldo disponible para YuLi AI.',
         429 => 'Límite de uso alcanzado, intenta más tarde.',
         _ => 'Error de la API ($code).',
       };
