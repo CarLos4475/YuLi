@@ -46,10 +46,12 @@ import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
 import 'note_cell_model.dart';
 import 'pdf_pin_body.dart';
+import 'pin_dialog.dart';
 import 'pin_recents.dart';
 import 'pinned_snapshots.dart';
 import 'video_pin_body.dart';
 import 'web_pin_body.dart';
+import 'whiteboard_prefs.dart';
 import 'floating_pin_persistence.dart';
 import '../../../data/services/floating_pin_storage.dart';
 import 'popup_reveal.dart';
@@ -396,12 +398,22 @@ class _WhiteboardEditorScreenState
               as DrawingBlock;
       canvases = [created];
     }
+    final remembered = await WhiteboardPrefs.loadLastCanvas(widget.note.id);
+    final selectedId =
+        remembered != null && canvases.any((canvas) => canvas.id == remembered)
+            ? remembered
+            : canvases.first.id;
     if (!mounted) return;
     setState(() {
       _canvases = canvases;
-      _selectedBlockId = canvases.first.id;
+      _selectedBlockId = selectedId;
       _loading = false;
     });
+    unawaited(_rememberCanvas(selectedId));
+  }
+
+  Future<void> _rememberCanvas(int blockId) async {
+    await WhiteboardPrefs.saveLastCanvas(widget.note.id, blockId);
   }
 
   Future<void> _flushCurrentCanvas() async {
@@ -421,6 +433,7 @@ class _WhiteboardEditorScreenState
       _canvasKey = GlobalKey();
       _drawerOpen = false;
     });
+    await _rememberCanvas(blockId);
     _mutating = false;
   }
 
@@ -454,6 +467,7 @@ class _WhiteboardEditorScreenState
       _canvasKey = GlobalKey();
       _drawerOpen = false;
     });
+    await _rememberCanvas(created.id);
     _mutating = false;
     HapticFeedback.lightImpact();
   }
@@ -466,54 +480,52 @@ class _WhiteboardEditorScreenState
     final result = await showDialog<String>(
       context: context,
       builder:
-          (dialogContext) => AlertDialog(
-            backgroundColor: yCream,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.zero,
-            ),
-            title: Text(
-              'Renombrar pizarra',
-              style: ySans(size: 18, weight: FontWeight.w700),
-            ),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              maxLength: 40,
-              textCapitalization: TextCapitalization.words,
-              style: yBody(size: 14, weight: FontWeight.w600),
-              decoration: InputDecoration(
-                labelText: 'Nombre',
-                labelStyle: yBody(size: 12, color: yMuted),
-                counterText: '',
-                filled: true,
-                fillColor: yCream2,
-                border: const OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+          (dialogContext) => PinDialogShell(
+            icon: YuLiIcons.pen,
+            title: 'EDITAR NOMBRE',
+            accent: _accent,
+            footer: Row(
+              children: [
+                const Spacer(),
+                PinGhostButton(
+                  label: 'CANCELAR',
+                  onTap: () => Navigator.pop(dialogContext),
                 ),
-                enabledBorder: const OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                const SizedBox(width: 6),
+                PinPrimaryButton(
+                  label: 'GUARDAR',
+                  icon: YuLiIcons.check,
+                  accent: _accent,
+                  onTap: () => Navigator.pop(dialogContext, controller.text),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: _accent, width: yLineHeavy),
-                ),
-              ),
-              onSubmitted: (value) => Navigator.pop(dialogContext, value),
+              ],
             ),
-            actions: [
-              _WhiteboardDialogAction(
-                label: 'Cancelar',
-                accent: _accent,
-                onTap: () => Navigator.pop(dialogContext),
-              ),
-              _WhiteboardDialogAction(
-                label: 'Guardar',
-                accent: _accent,
-                onTap: () => Navigator.pop(dialogContext, controller.text),
-              ),
-            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'NOMBRE DE LA PIZARRA',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.2,
+                    color: yMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                pinDialogField(
+                  controller: controller,
+                  hint: 'PIZARRA ${index + 1}',
+                  accent: _accent,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.done,
+                  maxLength: 40,
+                  onSubmitted: (value) => Navigator.pop(dialogContext, value),
+                ),
+              ],
+            ),
           ),
     );
     controller.dispose();
@@ -557,31 +569,65 @@ class _WhiteboardEditorScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (dialogContext) => AlertDialog(
-            backgroundColor: yCream,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.zero,
+          (dialogContext) => PinDialogShell(
+            icon: YuLiIcons.trash,
+            title: 'ELIMINAR PIZARRA',
+            accent: _accent,
+            footer: Row(
+              children: [
+                const Spacer(),
+                PinGhostButton(
+                  label: 'CANCELAR',
+                  onTap: () => Navigator.pop(dialogContext, false),
+                ),
+                const SizedBox(width: 6),
+                PinPrimaryButton(
+                  label: 'ELIMINAR',
+                  icon: YuLiIcons.trash,
+                  accent: _accent,
+                  onTap: () => Navigator.pop(dialogContext, true),
+                ),
+              ],
             ),
-            title: Text(
-              'Eliminar pizarra ${index + 1}',
-              style: ySans(size: 18, weight: FontWeight.w700),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _canvasDisplayName(canvas, index),
+                  style: ySans(size: 18, weight: FontWeight.w800, color: yInk),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: yCream2,
+                    border: Border.fromBorderSide(
+                      BorderSide(color: yBorderStrong, width: yLineThin),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(YuLiIcons.triangleAlert, size: 18, color: _accent),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'SE ELIMINARÁ ESTE LIENZO Y TODO SU CONTENIDO.',
+                          style: yMono(
+                            size: 10,
+                            weight: FontWeight.w700,
+                            tracking: 0.7,
+                            color: yInk2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            content: Text(
-              'Se eliminará este lienzo y todo su contenido.',
-              style: yBody(size: 13),
-            ),
-            actions: [
-              _WhiteboardDialogAction(
-                label: 'Cancelar',
-                accent: _accent,
-                onTap: () => Navigator.pop(dialogContext, false),
-              ),
-              _WhiteboardDialogAction(
-                label: 'Eliminar',
-                accent: _accent,
-                onTap: () => Navigator.pop(dialogContext, true),
-              ),
-            ],
           ),
     );
     if (confirmed != true || !mounted) return;
@@ -602,6 +648,9 @@ class _WhiteboardEditorScreenState
         _canvasKey = GlobalKey();
       }
     });
+    if (deletingCurrent) {
+      await _rememberCanvas(remaining[nextIndex].id);
+    }
     _mutating = false;
     HapticFeedback.lightImpact();
   }
@@ -1064,39 +1113,6 @@ class _WhiteboardPreviewBackgroundPainter extends CustomPainter {
     covariant _WhiteboardPreviewBackgroundPainter oldDelegate,
   ) {
     return oldDelegate.background != background || oldDelegate.paper != paper;
-  }
-}
-
-class _WhiteboardDialogAction extends StatelessWidget {
-  final String label;
-  final Color accent;
-  final VoidCallback onTap;
-
-  const _WhiteboardDialogAction({
-    required this.label,
-    required this.accent,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: accent,
-          border: Border.all(color: yBorderStrong, width: yLineMid),
-        ),
-        child: Text(
-          label,
-          style: yBody(size: 12, weight: FontWeight.w700, color: yCream),
-        ),
-      ),
-    );
   }
 }
 

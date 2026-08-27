@@ -55,8 +55,10 @@ class PinDialogShell extends StatelessWidget {
                     height: 26,
                     decoration: BoxDecoration(
                       color: accent,
-                      border:
-                          Border.all(color: yBorderStrong, width: yLineThin),
+                      border: Border.all(
+                        color: yBorderStrong,
+                        width: yLineThin,
+                      ),
                     ),
                     child: Icon(icon, size: 15, color: Colors.white),
                   ),
@@ -105,21 +107,29 @@ Widget pinDialogField({
   required Color accent,
   bool autofocus = false,
   TextInputType? keyboardType,
+  TextCapitalization textCapitalization = TextCapitalization.none,
+  TextInputAction? textInputAction,
+  int? maxLength,
+  ValueChanged<String>? onSubmitted,
 }) {
   return TextField(
     controller: controller,
     autofocus: autofocus,
     keyboardType: keyboardType,
+    textCapitalization: textCapitalization,
+    textInputAction: textInputAction,
+    maxLength: maxLength,
+    onSubmitted: onSubmitted,
     style: yMono(size: 12, color: yInk),
     cursorColor: accent,
     decoration: InputDecoration(
       isDense: true,
       hintText: hint,
       hintStyle: yMono(size: 11, color: yMuted),
+      counterText: maxLength == null ? null : '',
       filled: true,
       fillColor: yCream2,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       border: const OutlineInputBorder(
         borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: yBorderStrong, width: yLineThin),
@@ -164,7 +174,9 @@ class PinPrimaryButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: accent,
           border: Border.all(color: yBorderStrong, width: yLineThin),
-          boxShadow: const [BoxShadow(color: yBorderStrong, offset: Offset(2, 2))],
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(2, 2)),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -246,7 +258,9 @@ class PinBigActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: accent,
           border: Border.all(color: yBorderStrong, width: yLineThin),
-          boxShadow: const [BoxShadow(color: yBorderStrong, offset: Offset(3, 3))],
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
