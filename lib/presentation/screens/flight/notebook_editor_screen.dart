@@ -18,6 +18,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/services/crash_logger.dart';
+import '../../../data/services/ai_chat_image_storage.dart';
 import '../../../domain/models/drawing_stroke_record.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
@@ -3280,36 +3281,46 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     } catch (_) {}
   }
 
-  /// Capture the current lasso selection as a frozen raster cut-out and pin it
-  /// over the canvas (paper, ink, images, blocks) — same boundary the eyedropper
-  /// samples. The window floats fixed in viewport space across page changes.
-  Future<void> _pinSelection() async {
+  Future<({ui.Image image, Rect screenRect})?> _captureVisibleLassoSelection({
+    bool requireFull = false,
+  }) async {
     final bb = _lassoCtrl.boundingBox;
-    if (bb == null) return;
+    if (bb == null) return null;
     final vp = Rect.fromLTWH(0, 0, _viewport.width, _viewport.height);
-    final screenRect = MatrixUtils.transformRect(
-      _viewCtrl.value,
-      bb,
-    ).intersect(vp);
+    final transformed = MatrixUtils.transformRect(_viewCtrl.value, bb);
+    if (requireFull &&
+        (transformed.left < vp.left ||
+            transformed.top < vp.top ||
+            transformed.right > vp.right ||
+            transformed.bottom > vp.bottom)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Deja toda la selección visible para enviarla'),
+          duration: Duration(milliseconds: 1400),
+        ),
+      );
+      return null;
+    }
+    final screenRect = transformed.intersect(vp);
     if (screenRect.width < 8 || screenRect.height < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Acerca la selección para fijarla'),
+          content: Text('Acerca la selección para capturarla'),
           duration: Duration(milliseconds: 1200),
         ),
       );
-      return;
+      return null;
     }
 
     _lassoCtrl.deselect();
     setState(() {});
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
+    if (!mounted) return null;
 
     final boundary =
         _canvasBoundaryKey.currentContext?.findRenderObject()
             as RenderRepaintBoundary?;
-    if (boundary == null) return;
+    if (boundary == null) return null;
     final dpr = MediaQuery.of(context).devicePixelRatio;
     final full = await boundary.toImage(pixelRatio: dpr);
 
@@ -3331,13 +3342,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     full.dispose();
     if (!mounted) {
       cropped.dispose();
-      return;
+      return null;
     }
+    return (image: cropped, screenRect: screenRect);
+  }
+
+  /// Capture the current lasso selection as a frozen raster cut-out and pin it
+  /// over the canvas (paper, ink, images, blocks) — same boundary the eyedropper
+  /// samples. The window floats fixed in viewport space across page changes.
+  Future<void> _pinSelection() async {
+    final capture = await _captureVisibleLassoSelection();
+    if (capture == null) return;
+    final screenRect = capture.screenRect;
 
     final width =
         screenRect.width.clamp(120.0, _viewport.width * 0.6).toDouble();
     _pinController.addSnapshot(
-      image: cropped,
+      image: capture.image,
       rect: Rect.fromLTWH(screenRect.left, screenRect.top, width, 0),
       usableBounds: _pinUsableBounds(),
     );
@@ -6059,15 +6080,36 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     );
   }
 
-  Future<void> _sendSelectionToYuli() async {
-    final strokes = _selectedWritingStrokes();
-    runOcrToYuliFlow(
-      context,
-      ref,
-      strokes,
-      accent: _accent,
-      noteId: widget.note.id,
-    );
+  Future<void> _sendSelectionImageToYuli() async {
+    try {
+      final capture = await _captureVisibleLassoSelection(requireFull: true);
+      if (capture == null) return;
+      final image = capture.image;
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      if (data == null) throw const FormatException();
+      final prepared = await prepareAiChatImageBytes(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+      if (!mounted) {
+        await deleteAiChatImage(prepared);
+        return;
+      }
+      await showAiChat(
+        context,
+        ref,
+        noteId: widget.note.id,
+        pendingImages: [prepared],
+        dockController: _chatDock,
+        accent: _accent,
+      );
+      HapticFeedback.mediumImpact();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pude preparar esa selección.')),
+      );
+    }
   }
 
   Future<void> _sendMathSelectionToYuli() async {
@@ -7374,7 +7416,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final anchor = _canvasOffsetToOverlay(canvasTop);
     final hasCrop = _singleImageSelected;
     const hasPin = true;
-    final hasExtraMenu = _selectionHasWriting;
+    const hasExtraMenu = true;
     final mainWidth = LassoMiniToolbar.mainWidth(
       hasCrop: hasCrop,
       hasPin: hasPin,
@@ -7401,7 +7443,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         },
         onCrop: _singleImageSelected ? _cropSelectedImage : null,
         onRecognizeText: _selectionHasWriting ? _recognizeSelection : null,
-        onSendToYuli: _selectionHasWriting ? _sendSelectionToYuli : null,
+        onSendImageToYuli: _sendSelectionImageToYuli,
         // OCR de matemáticas 100% local (ONNX): disponible siempre que haya trazos.
         onSendMathToYuli:
             _selectionHasWriting ? _sendMathSelectionToYuli : null,

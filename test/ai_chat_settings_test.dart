@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yuli/data/services/ai_usage_limiter.dart';
 import 'package:yuli/domain/models/note.dart';
 import 'package:yuli/domain/services/ai_assistant.dart';
+import 'package:yuli/presentation/screens/flight/ai_chat_sheet.dart';
 import 'package:yuli/presentation/screens/flight/ai_chat_session.dart';
 import 'package:yuli/presentation/screens/flight/ai_chat_settings_dialog.dart';
 
@@ -30,6 +31,41 @@ void main() {
     expect(decoded.useInteractiveReplies, isFalse);
     expect(decoded.useMemory, isFalse);
     expect(decoded.useActionDrafts, isFalse);
+  });
+
+  test('chat dock keeps injected images until the composer takes them', () {
+    final controller = AiChatDockController();
+    const image = AiImageInput(
+      path: 'temporary/lasso-selection.jpg',
+      mediaType: 'image/jpeg',
+    );
+
+    const second = AiImageInput(
+      path: 'temporary/lasso-selection-2.jpg',
+      mediaType: 'image/jpeg',
+    );
+    controller.attachImages([image, second]);
+
+    expect(controller.pendingImages, [image, second]);
+    expect(controller.takeImages(), [image, second]);
+    expect(controller.pendingImages, isEmpty);
+    controller.dispose();
+  });
+
+  test('note chat settings are shared globally between sessions', () {
+    final store = AiChatSettingsStore();
+    final first = AiChatSession(81, settingsStore: store);
+    final second = AiChatSession(82, settingsStore: store);
+    final settings = const AiChatSettings.savings().copyWith(
+      historyDepth: AiHistoryDepth.full,
+      useRelatedSources: true,
+      useTools: true,
+    );
+
+    first.setSettings(settings);
+
+    expect(first.settings, settings);
+    expect(second.settings, settings);
   });
 
   test(
@@ -106,13 +142,13 @@ void main() {
         assistant,
         const AiUsageLimiter(dailyLimit: 50),
         'Mira esta imagen',
-        image: image,
+        images: [image],
       );
 
-      expect(assistant.messages.last.image, same(image));
+      expect(assistant.messages.last.images, [image]);
       expect(
-        session.messages.singleWhere((m) => m.role == AiRole.user).image,
-        same(image),
+        session.messages.singleWhere((m) => m.role == AiRole.user).images,
+        [image],
       );
 
       await session.send(
@@ -124,7 +160,7 @@ void main() {
       final priorTurn = assistant.messages.singleWhere(
         (m) => m.content == 'Mira esta imagen',
       );
-      expect(priorTurn.image, isNull);
+      expect(priorTurn.images, isEmpty);
       expect(assistant.messages.last.content, 'Continúa');
     },
   );
@@ -139,10 +175,9 @@ void main() {
       assistant,
       const AiUsageLimiter(dailyLimit: 50),
       'Mira esta imagen',
-      image: const AiImageInput(
-        path: 'temporary/image.jpg',
-        mediaType: 'image/jpeg',
-      ),
+      images: const [
+        AiImageInput(path: 'temporary/image.jpg', mediaType: 'image/jpeg'),
+      ],
     );
 
     expect(assistant.messages, isEmpty);

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path/path.dart' as p;
@@ -17,6 +18,32 @@ Future<AiImageInput> prepareAiChatImage(String sourcePath) async {
   await directory.create(recursive: true);
   await _cleanupOldChatImages(directory);
 
+  return _compressAiChatImage(directory, sourcePath);
+}
+
+Future<AiImageInput> prepareAiChatImageBytes(Uint8List bytes) async {
+  if (bytes.isEmpty || bytes.length > 20 * 1024 * 1024) {
+    throw const FileSystemException('La imagen es demasiado grande.');
+  }
+  final directory = await _chatImageDirectory();
+  await directory.create(recursive: true);
+  await _cleanupOldChatImages(directory);
+
+  final source = File(p.join(directory.path, '${const Uuid().v4()}.png'));
+  await source.writeAsBytes(bytes, flush: true);
+  try {
+    return await _compressAiChatImage(directory, source.path);
+  } finally {
+    try {
+      if (await source.exists()) await source.delete();
+    } catch (_) {}
+  }
+}
+
+Future<AiImageInput> _compressAiChatImage(
+  Directory directory,
+  String sourcePath,
+) async {
   final destination = p.join(directory.path, '${const Uuid().v4()}.jpg');
   final compressed = await FlutterImageCompress.compressAndGetFile(
     sourcePath,

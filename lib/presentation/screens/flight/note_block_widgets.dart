@@ -26,6 +26,8 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
+import '../../../data/services/ai_chat_image_storage.dart';
+import 'ai_chat_sheet.dart';
 import 'drawing_stroke_persistence.dart';
 import 'drawing_cell.dart';
 import 'note_block_actions.dart';
@@ -83,7 +85,6 @@ class BlockRouter extends StatelessWidget {
     );
   }
 }
-
 // ─── Block shell: gutter + body + delete affordance ───────────────────────
 
 class _BlockShell extends ConsumerStatefulWidget {
@@ -3017,8 +3018,27 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
             folderId: widget.folderId,
             noteId: widget.block.noteId,
           ),
-      onSendToYuli:
-          (strokes) => runOcrToYuliFlow(context, ref, strokes, accent: widget.accent, noteId: widget.block.noteId),
+      onSendImageToYuli: (bytes) async {
+        try {
+          final prepared = await prepareAiChatImageBytes(bytes);
+          if (!context.mounted) {
+            await deleteAiChatImage(prepared);
+            return;
+          }
+          await showAiChat(
+            context,
+            ref,
+            noteId: widget.block.noteId,
+            pendingImages: [prepared],
+            accent: widget.accent,
+          );
+        } catch (_) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No pude preparar esa selección.')),
+          );
+        }
+      },
       onSendMathToYuli:
           kDebugMode
               ? (strokes) =>
@@ -3120,6 +3140,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
   final Color accent;
   final TextStyle? textStyle;
   final EdgeInsets? padding;
+  final bool scrollWideTables;
   const NoteMarkdownPreview({
     super.key,
     required this.data,
@@ -3127,6 +3148,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
     this.accent = yFlight,
     this.textStyle,
     this.padding,
+    this.scrollWideTables = true,
   });
 
   @override
@@ -3211,7 +3233,9 @@ class NoteMarkdownPreview extends ConsumerWidget {
               markdownGenerator: generator,
               config: config,
             );
-    if (!_hasMarkdownTable(md)) return markdown;
+    if (!_hasMarkdownTable(md) || !scrollWideTables) {
+      return SizedBox(width: double.infinity, child: markdown);
+    }
     return ClipRect(
       child: LayoutBuilder(
         builder: (context, constraints) {

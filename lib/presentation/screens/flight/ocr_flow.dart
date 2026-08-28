@@ -55,45 +55,6 @@ Future<void> runOcrFlow(
   );
 }
 
-Future<void> runOcrToYuliFlow(
-  BuildContext context,
-  WidgetRef ref,
-  List<List<Offset>> strokes, {
-  required Color accent,
-  required int noteId,
-}) async {
-  if (strokes.isEmpty) return;
-
-  final candidates = await _recognizeTextCandidates(context, ref, strokes);
-  if (candidates == null || !context.mounted) return;
-
-  final text = candidates.isEmpty ? '' : candidates.first.text.trim();
-  if (text.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('NO SE RECONOCIÓ TEXTO PARA YULI'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-    return;
-  }
-
-  showYuliContextSheet(
-    context,
-    contextText: text,
-    accent: accent,
-    onSend: (t) => _sendOcrContextToYuli(context, ref, noteId, accent, t),
-    onAsk:
-        (t) => showAiChat(
-          context,
-          ref,
-          noteId: noteId,
-          prefillMessage: t,
-          accent: accent,
-        ),
-  );
-}
-
 Future<void> runMathToYuliFlow(
   BuildContext context,
   WidgetRef ref,

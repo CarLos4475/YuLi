@@ -26,7 +26,7 @@ class LassoMiniToolbar extends StatefulWidget {
   final VoidCallback? onPin;
   final VoidCallback? onCrop;
   final VoidCallback? onRecognizeText;
-  final VoidCallback? onSendToYuli;
+  final VoidCallback? onSendImageToYuli;
   final VoidCallback? onSendMathToYuli;
   final List<Color> palette;
   final List<double> widths;
@@ -46,7 +46,7 @@ class LassoMiniToolbar extends StatefulWidget {
     this.onPin,
     this.onCrop,
     this.onRecognizeText,
-    this.onSendToYuli,
+    this.onSendImageToYuli,
     this.onSendMathToYuli,
     required this.palette,
     this.widths = const [3.0, 6.0, 10.0],
@@ -92,7 +92,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
   Widget build(BuildContext context) {
     final hasExtraMenu =
         widget.onRecognizeText != null ||
-        widget.onSendToYuli != null ||
+        widget.onSendImageToYuli != null ||
         widget.onSendMathToYuli != null;
     final toolbar = Column(
       mainAxisSize: MainAxisSize.min,
@@ -294,7 +294,7 @@ class _LassoMiniToolbarState extends State<LassoMiniToolbar> {
       side: widget.extraMenuSide,
       child: _ExtraMenu(
         onRecognizeText: widget.onRecognizeText,
-        onSendToYuli: widget.onSendToYuli,
+        onSendImageToYuli: widget.onSendImageToYuli,
         onSendMathToYuli: widget.onSendMathToYuli,
       ),
     );
@@ -397,12 +397,12 @@ class _ExtraMenuSlot extends StatelessWidget {
 
 class _ExtraMenu extends StatelessWidget {
   final VoidCallback? onRecognizeText;
-  final VoidCallback? onSendToYuli;
+  final VoidCallback? onSendImageToYuli;
   final VoidCallback? onSendMathToYuli;
 
   const _ExtraMenu({
     required this.onRecognizeText,
-    required this.onSendToYuli,
+    required this.onSendImageToYuli,
     required this.onSendMathToYuli,
   });
 
@@ -429,7 +429,7 @@ class _ExtraMenu extends StatelessWidget {
           _ExtraMenuItem(
             icon: YuLiIcons.sparkles,
             label: 'YULI',
-            onTap: onSendToYuli,
+            onTap: onSendImageToYuli,
           ),
           _sep(),
           _ExtraMenuItem(

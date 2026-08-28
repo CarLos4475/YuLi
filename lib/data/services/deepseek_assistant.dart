@@ -50,31 +50,44 @@ class DeepseekAssistant implements AiAssistant {
         ],
       };
     }
-    if (m.image != null) {
+    if (m.images.isNotEmpty) {
       if (m.role != AiRole.user) {
         throw const AiException(
           'Las imágenes solo pueden enviarse en mensajes del usuario.',
         );
       }
-      final file = File(m.image!.path);
-      if (!await file.exists()) {
-        throw const AiException('La imagen adjunta ya no está disponible.');
+      if (m.images.length > kMaxAiImagesPerMessage) {
+        throw const AiException('Solo puedes enviar hasta 4 imágenes a la vez.');
       }
-      if (await file.length() > 20 * 1024 * 1024) {
-        throw const AiException('La imagen adjunta es demasiado grande.');
+      final imageParts = <Map<String, dynamic>>[];
+      var totalBytes = 0;
+      for (final image in m.images) {
+        final file = File(image.path);
+        if (!await file.exists()) {
+          throw const AiException('Una imagen adjunta ya no está disponible.');
+        }
+        final length = await file.length();
+        if (length > 20 * 1024 * 1024) {
+          throw const AiException('Una imagen adjunta es demasiado grande.');
+        }
+        totalBytes += length;
+        if (totalBytes > 40 * 1024 * 1024) {
+          throw const AiException('Las imágenes adjuntas son demasiado grandes.');
+        }
+        final encoded = base64Encode(await file.readAsBytes());
+        imageParts.add({
+          'type': 'image_url',
+          'image_url': {
+            'url': 'data:${image.mediaType};base64,$encoded',
+            'detail': 'auto',
+          },
+        });
       }
-      final encoded = base64Encode(await file.readAsBytes());
       return {
         'role': 'user',
         'content': [
           {'type': 'text', 'text': m.content},
-          {
-            'type': 'image_url',
-            'image_url': {
-              'url': 'data:${m.image!.mediaType};base64,$encoded',
-              'detail': 'auto',
-            },
-          },
+          ...imageParts,
         ],
       };
     }

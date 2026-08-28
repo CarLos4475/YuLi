@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -47,6 +49,8 @@ Future<void> showAiChat(
   required int noteId,
   String? newContext,
   String? prefillMessage,
+  List<AiImageInput> pendingImages = const [],
+  AiChatDockController? dockController,
   required Color accent,
 
   /// When non-null, AI replies show an "Enviar a lienzo" action that drops the
@@ -59,8 +63,12 @@ Future<void> showAiChat(
   void Function(String title)? onApplyTitle,
 }) async {
   final hasKey = await ref.read(aiKeyStoreProvider).hasKey();
-  if (!context.mounted) return;
+  if (!context.mounted) {
+    await Future.wait(pendingImages.map(deleteAiChatImage));
+    return;
+  }
   if (!hasKey) {
+    unawaited(Future.wait(pendingImages.map(deleteAiChatImage)));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Configura tu API key de YuLi AI en Ajustes'),
@@ -78,7 +86,10 @@ Future<void> showAiChat(
     } else if (ctx != session.anchor) {
       // Different incoming context → ask. (Unchanged → just reopen, no prompt.)
       final choice = await _chooseContextAction(context, accent);
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        await Future.wait(pendingImages.map(deleteAiChatImage));
+        return;
+      }
       if (choice == _CtxAction.add) {
         session.appendAnchor(ctx);
       } else if (choice == _CtxAction.replace) {
@@ -88,11 +99,15 @@ Future<void> showAiChat(
     }
   }
 
-  if (!context.mounted) return;
+  if (!context.mounted) {
+    await Future.wait(pendingImages.map(deleteAiChatImage));
+    return;
+  }
   // A note editor mounts a docked panel (AiChatDockScope) → open it in place
   // (note + YuLi side by side). Other contexts (no dock) fall back to the modal.
-  final dock = AiChatDockScope.maybeOf(context);
+  final dock = dockController ?? AiChatDockScope.maybeOf(context);
   if (dock != null) {
+    if (pendingImages.isNotEmpty) dock.attachImages(pendingImages);
     dock.open();
     return;
   }
@@ -105,6 +120,7 @@ Future<void> showAiChat(
           session: session,
           accent: accent,
           prefillMessage: prefillMessage,
+          initialImages: pendingImages,
           onSendToCanvas: onSendToCanvas,
           onApplyTitle: onApplyTitle,
         ),
@@ -209,7 +225,39 @@ Widget _bigChoice(String label, Color accent, bool filled, VoidCallback onTap) {
 /// (same decoupling as the floating pins / palettes).
 class AiChatDockController extends ChangeNotifier {
   bool _open = false;
+  final List<AiImageInput> _pendingImages = [];
   bool get isOpen => _open;
+  List<AiImageInput> get pendingImages => List.unmodifiable(_pendingImages);
+
+  void attachImages(Iterable<AiImageInput> images) {
+    final available = kMaxAiImagesPerMessage - _pendingImages.length;
+    if (available <= 0) {
+      for (final image in images) {
+        unawaited(deleteAiChatImage(image));
+      }
+      return;
+    }
+    final incoming = images.toList();
+    _pendingImages.addAll(incoming.take(available));
+    for (final image in incoming.skip(available)) {
+      unawaited(deleteAiChatImage(image));
+    }
+    notifyListeners();
+  }
+
+  List<AiImageInput> takeImages() {
+    final images = List<AiImageInput>.from(_pendingImages);
+    if (images.isEmpty) return const [];
+    _pendingImages.clear();
+    notifyListeners();
+    return images;
+  }
+
+  void removeImage(AiImageInput image) {
+    if (!_pendingImages.remove(image)) return;
+    notifyListeners();
+    unawaited(deleteAiChatImage(image));
+  }
 
   void open() {
     if (_open) return;
@@ -224,6 +272,14 @@ class AiChatDockController extends ChangeNotifier {
   }
 
   void toggle() => _open ? close() : open();
+
+  @override
+  void dispose() {
+    final images = List<AiImageInput>.from(_pendingImages);
+    _pendingImages.clear();
+    unawaited(Future.wait(images.map(deleteAiChatImage)));
+    super.dispose();
+  }
 }
 
 /// Provides the [AiChatDockController] to descendants so [showAiChat] can find
@@ -324,6 +380,7 @@ class _AiChatDockState extends State<AiChatDock>
                         : _AiChatSheet(
                           session: widget.session,
                           accent: widget.accent,
+                          dockController: widget.controller,
                           onSendToCanvas: widget.onSendToCanvas,
                           embedded: true,
                           onClose: widget.controller.close,
@@ -391,6 +448,8 @@ class _AiChatSheet extends ConsumerStatefulWidget {
   final AiChatSession session;
   final Color accent;
   final String? prefillMessage;
+  final List<AiImageInput> initialImages;
+  final AiChatDockController? dockController;
   final void Function(String markdown)? onSendToCanvas;
   final void Function(String title)? onApplyTitle;
 
@@ -403,6 +462,8 @@ class _AiChatSheet extends ConsumerStatefulWidget {
     required this.session,
     required this.accent,
     this.prefillMessage,
+    this.initialImages = const [],
+    this.dockController,
     this.onSendToCanvas,
     this.onApplyTitle,
     this.embedded = false,
@@ -418,18 +479,23 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   final _anchorInput = TextEditingController();
   final _scroll = ScrollController();
   int? _remaining;
-  AiImageInput? _pendingImage;
+  List<AiImageInput> _pendingImages = [];
   bool _pickingImage = false;
+  bool _stickToBottom = true;
 
   AiChatSession get _s => widget.session;
 
   @override
   void initState() {
     super.initState();
+    _pendingImages = List<AiImageInput>.from(
+      widget.dockController?.pendingImages ?? widget.initialImages,
+    );
+    widget.dockController?.addListener(_onDockDraft);
     _s.addListener(_onSession);
+    _scroll.addListener(_onScroll);
     _loadRemaining();
-    // If there are existing messages, jump to the latest one on first open.
-    if (_s.messages.isNotEmpty) _scrollToBottom();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreScroll());
     final prefill = widget.prefillMessage?.trim();
     if (prefill != null && prefill.isNotEmpty) _input.text = prefill;
     // If this canvas is linked to a source note, resync the context on open.
@@ -557,9 +623,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
 
   @override
   void dispose() {
-    final pendingImage = _pendingImage;
-    if (pendingImage != null) unawaited(deleteAiChatImage(pendingImage));
+    widget.dockController?.removeListener(_onDockDraft);
+    if (widget.dockController == null) {
+      unawaited(Future.wait(_pendingImages.map(deleteAiChatImage)));
+    }
     _s.removeListener(_onSession);
+    _scroll.removeListener(_onScroll);
     _input.dispose();
     _anchorInput.dispose();
     _scroll.dispose();
@@ -567,8 +636,34 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   }
 
   void _onSession() {
-    _scrollToBottom();
+    if (_stickToBottom) _scrollToBottom();
     if (!_s.streaming) _loadRemaining();
+  }
+
+  void _onDockDraft() {
+    final images = widget.dockController?.pendingImages ?? const [];
+    if (!mounted || listEquals(images, _pendingImages)) return;
+    setState(() => _pendingImages = List<AiImageInput>.from(images));
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final atBottom = _scroll.position.maxScrollExtent - _scroll.offset <= 48;
+    _stickToBottom = atBottom;
+    _s.saveChatScroll(_scroll.offset, atBottom: atBottom);
+  }
+
+  void _restoreScroll() {
+    if (!_scroll.hasClients) return;
+    if (_s.chatScrollAtBottom || !_s.hasChatScrollOffset) {
+      _stickToBottom = true;
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      return;
+    }
+    _stickToBottom = false;
+    _scroll.jumpTo(
+      _s.chatScrollOffset.clamp(0, _scroll.position.maxScrollExtent),
+    );
   }
 
   Future<void> _loadRemaining() async {
@@ -598,14 +693,19 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming) return;
     final settings = _s.settings;
-    final image = quickAction ? null : _pendingImage;
-    if (image != null && settings.model == AiModel.pro) {
+    final images = quickAction ? const <AiImageInput>[] : _pendingImages;
+    if (images.isNotEmpty && settings.model == AiModel.pro) {
       _showProImageUnavailable();
       return;
     }
     if (!quickAction) {
+      _stickToBottom = true;
       _input.clear();
-      setState(() => _pendingImage = null);
+      if (widget.dockController != null) {
+        widget.dockController!.takeImages();
+      } else {
+        setState(() => _pendingImages = []);
+      }
     }
     final retrievalQuery = _retrievalQuery(text);
     final flightContext =
@@ -679,7 +779,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       ],
       memoryDocs: memoryPrompt.isEmpty ? const [] : [memoryPrompt],
       widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
-      image: image,
+      images: images,
     );
   }
 
@@ -1761,6 +1861,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       content = NoteMarkdownPreview(
         data: fixMarkdownTables(m.text),
         accent: widget.accent,
+        tight: true,
+        padding: EdgeInsets.zero,
+        scrollWideTables: false,
+        textStyle: yBody(size: 14, color: yInk, height: 1.5),
       );
     }
     final isLast = i == _s.messages.length - 1;
@@ -1842,7 +1946,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   }
 
   Widget _userBubble(AiChatMsg message) {
-    final image = message.image;
+    final images = message.images;
     return Padding(
       padding: const EdgeInsets.only(left: 58, bottom: 22),
       child: Column(
@@ -1861,7 +1965,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             ),
             child: Container(
               padding:
-                  image == null
+                  images.isEmpty
                       ? const EdgeInsets.fromLTRB(15, 11, 15, 12)
                       : const EdgeInsets.all(7),
               decoration: BoxDecoration(
@@ -1873,14 +1977,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (image != null)
-                    _chatImage(image, width: 250, height: 142, radius: 13),
-                  if (image != null && message.text.isNotEmpty)
+                  if (images.isNotEmpty) _messageImageGrid(images),
+                  if (images.isNotEmpty && message.text.isNotEmpty)
                     const SizedBox(height: 8),
                   if (message.text.isNotEmpty)
                     Padding(
                       padding:
-                          image == null
+                          images.isEmpty
                               ? EdgeInsets.zero
                               : const EdgeInsets.fromLTRB(7, 0, 7, 5),
                       child: SelectableText(
@@ -1977,10 +2080,17 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_pendingImage != null) ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _pendingImagePreview(_pendingImage!),
+                if (_pendingImages.isNotEmpty) ...[
+                  SizedBox(
+                    height: 82,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _pendingImages.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 6),
+                      itemBuilder:
+                          (_, index) =>
+                              _pendingImagePreview(_pendingImages[index]),
+                    ),
                   ),
                   const SizedBox(height: 7),
                 ],
@@ -2091,23 +2201,35 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
 
   Future<void> _pickImage() async {
     setState(() => _pickingImage = true);
+    final prepared = <AiImageInput>[];
     try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+      final remaining = kMaxAiImagesPerMessage - _pendingImages.length;
+      if (remaining <= 0) {
+        _showImageLimit();
+        return;
+      }
+      final picked = await ImagePicker().pickMultiImage(
         imageQuality: 95,
         maxWidth: 4096,
         maxHeight: 4096,
       );
-      if (picked == null) return;
-      final prepared = await prepareAiChatImage(picked.path);
+      if (picked.isEmpty) return;
+      final selected = picked.take(remaining).toList();
+      for (final image in selected) {
+        prepared.add(await prepareAiChatImage(image.path));
+      }
       if (!mounted) {
-        await deleteAiChatImage(prepared);
+        await Future.wait(prepared.map(deleteAiChatImage));
         return;
       }
-      final previous = _pendingImage;
-      setState(() => _pendingImage = prepared);
-      if (previous != null) unawaited(deleteAiChatImage(previous));
+      if (widget.dockController != null) {
+        widget.dockController!.attachImages(prepared);
+      } else {
+        setState(() => _pendingImages = [..._pendingImages, ...prepared]);
+      }
+      if (picked.length > remaining) _showImageLimit();
     } catch (_) {
+      await Future.wait(prepared.map(deleteAiChatImage));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No pude preparar esa imagen.')),
@@ -2117,11 +2239,22 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     }
   }
 
-  void _removePendingImage() {
-    final image = _pendingImage;
-    if (image == null) return;
-    setState(() => _pendingImage = null);
-    unawaited(deleteAiChatImage(image));
+  void _removePendingImage(AiImageInput image) {
+    if (widget.dockController != null) {
+      widget.dockController!.removeImage(image);
+    } else {
+      setState(() => _pendingImages.remove(image));
+      unawaited(deleteAiChatImage(image));
+    }
+  }
+
+  void _showImageLimit() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Puedes adjuntar hasta 4 imágenes por mensaje.'),
+      ),
+    );
   }
 
   void _showProImageUnavailable() {
@@ -2146,7 +2279,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             right: 0,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: _removePendingImage,
+              onTap: () => _removePendingImage(image),
               child: Container(
                 width: 29,
                 height: 29,
@@ -2181,22 +2314,117 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     required double height,
     required double radius,
   }) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: Image.file(
-        File(image.path),
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder:
-            (_, _, _) => Container(
-              width: width,
-              height: height,
-              alignment: Alignment.center,
-              color: aiPaperSoft,
-              child: const Icon(YuLiIcons.imageOff, color: aiMuted, size: 24),
-            ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showImagePreview(image),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Image.file(
+          File(image.path),
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder:
+              (_, _, _) => Container(
+                width: width,
+                height: height,
+                alignment: Alignment.center,
+                color: aiPaperSoft,
+                child: const Icon(YuLiIcons.imageOff, color: aiMuted, size: 24),
+              ),
+        ),
       ),
+    );
+  }
+
+  Widget _messageImageGrid(List<AiImageInput> images) {
+    if (images.length == 1) {
+      return _chatImage(images.first, width: 250, height: 142, radius: 13);
+    }
+    return SizedBox(
+      width: 250,
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (final image in images)
+            _chatImage(
+              image,
+              width: 123,
+              height: images.length == 2 ? 142 : 98,
+              radius: 11,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showImagePreview(AiImageInput image) {
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar imagen',
+      barrierColor: Colors.black.withValues(alpha: 0.28),
+      transitionDuration: const Duration(milliseconds: 190),
+      pageBuilder:
+          (dialogContext, _, _) => BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Material(
+              color: Colors.black.withValues(alpha: 0.18),
+              child: SafeArea(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.all(28),
+                        child: InteractiveViewer(
+                          minScale: 0.8,
+                          maxScale: 5,
+                          child: Center(
+                            child: Image.file(
+                              File(image.path),
+                              fit: BoxFit.contain,
+                              errorBuilder:
+                                  (_, _, _) => const Icon(
+                                    YuLiIcons.imageOff,
+                                    color: Colors.white,
+                                    size: 42,
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: AiSoftIconButton(
+                        icon: YuLiIcons.close,
+                        tooltip: 'Cerrar imagen',
+                        color: aiInk,
+                        background: Colors.white.withValues(alpha: 0.72),
+                        onTap: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      transitionBuilder:
+          (_, animation, _, child) => FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.97, end: 1).animate(animation),
+              child: child,
+            ),
+          ),
     );
   }
 

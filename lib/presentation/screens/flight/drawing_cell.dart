@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +34,7 @@ class DrawingCell extends StatefulWidget {
   /// the host (a Consumer) which has the recognizer + note folder. Null hides
   /// the lasso's "→ Texto" action.
   final Future<void> Function(List<List<Offset>> strokes)? onRecognizeText;
-  final Future<void> Function(List<List<Offset>> strokes)? onSendToYuli;
+  final Future<void> Function(Uint8List pngBytes)? onSendImageToYuli;
   final Future<void> Function(List<List<Offset>> strokes)? onSendMathToYuli;
 
   const DrawingCell({
@@ -47,7 +48,7 @@ class DrawingCell extends StatefulWidget {
     this.accent,
     this.header,
     this.onRecognizeText,
-    this.onSendToYuli,
+    this.onSendImageToYuli,
     this.onSendMathToYuli,
   });
 
@@ -627,12 +628,41 @@ class _DrawingCellState extends State<DrawingCell>
     await handler(strokes);
   }
 
-  Future<void> _sendSelectionToYuli() async {
-    final handler = widget.onSendToYuli;
+  Future<void> _sendSelectionImageToYuli() async {
+    final handler = widget.onSendImageToYuli;
     if (handler == null) return;
-    final strokes = _selectedWritingStrokes();
-    if (strokes.isEmpty) return;
-    await handler(strokes);
+    final bb = _lassoCtrl.boundingBox;
+    if (bb == null || _lassoCtrl.selectedIndices.isEmpty) return;
+
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    const maxDimension = 2048.0;
+    var scale = pixelRatio;
+    final longest = math.max(bb.width, bb.height) * scale;
+    if (longest > maxDimension) scale *= maxDimension / longest;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final width = math.max(1, (bb.width * scale).ceil());
+    final height = math.max(1, (bb.height * scale).ceil());
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Paint()..color = yCream,
+    );
+    canvas
+      ..scale(scale)
+      ..translate(-bb.left, -bb.top);
+    for (final i in _lassoCtrl.selectedIndices) {
+      if (i < _data.strokes.length) drawStroke(canvas, _data.strokes[i]);
+    }
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+    picture.dispose();
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    if (data == null) return;
+    await handler(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+    );
   }
 
   Future<void> _sendMathSelectionToYuli() async {
@@ -1229,10 +1259,9 @@ class _DrawingCellState extends State<DrawingCell>
             builder: (context) {
               final bb = _lassoCtrl.boundingBox!;
               final hasExtraMenu =
-                  _selectionHasWriting &&
-                  (widget.onRecognizeText != null ||
-                      widget.onSendToYuli != null ||
-                      widget.onSendMathToYuli != null);
+                  widget.onRecognizeText != null ||
+                  widget.onSendImageToYuli != null ||
+                  widget.onSendMathToYuli != null;
               final placement = _placeLassoToolbar(
                 bb,
                 Size(MediaQuery.sizeOf(context).width, _data.height),
@@ -1250,9 +1279,9 @@ class _DrawingCellState extends State<DrawingCell>
                       (widget.onRecognizeText != null && _selectionHasWriting)
                           ? _recognizeSelection
                           : null,
-                  onSendToYuli:
-                      (widget.onSendToYuli != null && _selectionHasWriting)
-                          ? _sendSelectionToYuli
+                  onSendImageToYuli:
+                      widget.onSendImageToYuli != null
+                          ? _sendSelectionImageToYuli
                           : null,
                   onSendMathToYuli:
                       (widget.onSendMathToYuli != null && _selectionHasWriting)

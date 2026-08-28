@@ -39,8 +39,17 @@ final jinaHasKeyProvider = FutureProvider<bool>(
 /// back keeps the conversation. Only a full app close (process death) clears the
 /// messages — they're in-memory; the context anchor is persisted separately
 /// (SharedPreferences). The chat sheet is just a window over it.
+final aiChatSettingsStoreProvider = Provider<AiChatSettingsStore>((ref) {
+  final store = AiChatSettingsStore();
+  ref.onDispose(store.dispose);
+  return store;
+});
+
 final aiSessionProvider = Provider.family<AiChatSession, int>((ref, noteId) {
-  final session = AiChatSession(noteId);
+  final session = AiChatSession(
+    noteId,
+    settingsStore: ref.watch(aiChatSettingsStoreProvider),
+  );
   ref.onDispose(session.dispose);
   return session;
 });

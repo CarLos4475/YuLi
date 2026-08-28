@@ -10,10 +10,12 @@ class AiImageInput {
   const AiImageInput({required this.path, required this.mediaType});
 }
 
+const kMaxAiImagesPerMessage = 4;
+
 class AiMessage {
   final AiRole role;
   final String content;
-  final AiImageInput? image;
+  final List<AiImageInput> images;
 
   /// Assistant turn requesting one or more tool calls (function calling).
   final List<AiToolCall>? toolCalls;
@@ -25,7 +27,7 @@ class AiMessage {
   const AiMessage(
     this.role,
     this.content, {
-    this.image,
+    this.images = const [],
     this.toolCalls,
     this.toolCallId,
     this.name,

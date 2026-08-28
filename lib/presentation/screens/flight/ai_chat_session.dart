@@ -234,7 +234,7 @@ class AiChatSettings {
 class AiChatMsg {
   final AiRole role;
   final String text;
-  final AiImageInput? image;
+  final List<AiImageInput> images;
 
   /// For assistant replies: the mode active when this reply was produced. Used
   /// to drop OTHER-mode replies from the sent history so the model doesn't
@@ -242,7 +242,53 @@ class AiChatMsg {
   /// system turns and legacy messages.
   final String? modeId;
 
-  const AiChatMsg(this.role, this.text, {this.modeId, this.image});
+  const AiChatMsg(this.role, this.text, {this.modeId, this.images = const []});
+}
+
+class AiChatSettingsStore extends ChangeNotifier {
+  static const _key = 'ai_chat_settings_global_v1';
+
+  AiChatSettings settings = const AiChatSettings.savings();
+  bool _loaded = false;
+  bool _changed = false;
+  Future<void>? _loading;
+
+  Future<void> ensureLoaded({String? legacyKey}) {
+    if (_loaded) return Future.value();
+    return _loading ??= _load(legacyKey);
+  }
+
+  Future<void> _load(String? legacyKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key) ??
+        (legacyKey == null ? null : prefs.getString(legacyKey));
+    if (raw != null && !_changed) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          settings = AiChatSettings.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+          notifyListeners();
+          if (!prefs.containsKey(_key)) {
+            await prefs.setString(_key, jsonEncode(settings.toJson()));
+          }
+        }
+      } catch (_) {}
+    }
+    _loaded = true;
+  }
+
+  void setSettings(AiChatSettings value) {
+    if (value == settings) return;
+    settings = value;
+    _changed = true;
+    _loaded = true;
+    notifyListeners();
+    SharedPreferences.getInstance().then(
+      (prefs) => prefs.setString(_key, jsonEncode(value.toJson())),
+    );
+  }
 }
 
 /// Per-note chat conversation. Lives in a (non-autoDispose) provider keyed by
@@ -253,16 +299,27 @@ class AiChatMsg {
 /// window over this.
 class AiChatSession extends ChangeNotifier {
   final int noteId;
+  final AiChatSettingsStore? _settingsStore;
 
   /// Namespace so different entity kinds (notes vs lab spaces) that share the
   /// same int id don't collide in the session family or the persisted anchor
   /// key. 'note' keeps the legacy prefix; other scopes insert `${scope}_`.
   final String scope;
 
-  AiChatSession(this.noteId, {this.scope = 'note'}) {
+  AiChatSession(
+    this.noteId, {
+    this.scope = 'note',
+    AiChatSettingsStore? settingsStore,
+  }) : _settingsStore = settingsStore {
     _loadAnchor();
     _loadMode();
-    _loadSettings();
+    if (_settingsStore == null) {
+      _loadSettings();
+    } else {
+      settings = _settingsStore.settings;
+      _settingsStore.addListener(_onGlobalSettings);
+      _settingsStore.ensureLoaded(legacyKey: _settingsKey);
+    }
   }
 
   static const _kAnchorPrefix = 'ai_ctx_v1_';
@@ -277,6 +334,9 @@ class AiChatSession extends ChangeNotifier {
   final List<AiChatMsg> messages = [];
   AiChatSettings settings = const AiChatSettings.savings();
   bool streaming = false;
+  double chatScrollOffset = 0;
+  bool hasChatScrollOffset = false;
+  bool chatScrollAtBottom = true;
 
   AiModel get model => settings.model;
   int get _maxOutputTokens =>
@@ -365,6 +425,18 @@ class AiChatSession extends ChangeNotifier {
   }
 
   void setSettings(AiChatSettings value) {
+    if (_settingsStore != null) {
+      _settingsStore.setSettings(value);
+      return;
+    }
+    _applySettings(value, persist: true);
+  }
+
+  void _onGlobalSettings() {
+    _applySettings(_settingsStore!.settings, persist: false);
+  }
+
+  void _applySettings(AiChatSettings value, {required bool persist}) {
     if (value == settings) return;
     final contextPolicyChanged =
         value.useNoteContext != settings.useNoteContext ||
@@ -380,9 +452,17 @@ class AiChatSession extends ChangeNotifier {
       );
     }
     notifyListeners();
-    SharedPreferences.getInstance().then(
-      (p) => p.setString(_settingsKey, jsonEncode(value.toJson())),
-    );
+    if (persist) {
+      SharedPreferences.getInstance().then(
+        (p) => p.setString(_settingsKey, jsonEncode(value.toJson())),
+      );
+    }
+  }
+
+  void saveChatScroll(double offset, {required bool atBottom}) {
+    chatScrollOffset = offset;
+    hasChatScrollOffset = true;
+    chatScrollAtBottom = atBottom;
   }
 
   static const _kModePrefix = 'ai_mode_v1_';
@@ -622,11 +702,12 @@ class AiChatSession extends ChangeNotifier {
     List<String> widgetDocs = const [],
     List<String> knowledgeDocs = const [],
     List<String> memoryDocs = const [],
-    AiImageInput? image,
+    List<AiImageInput> images = const [],
   }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
-    if (image != null && model == AiModel.pro) return;
+    if (images.isNotEmpty && model == AiModel.pro) return;
+    if (images.length > kMaxAiImagesPerMessage) return;
 
     if (!await limiter.canSend()) {
       messages.add(
@@ -652,7 +733,7 @@ class AiChatSession extends ChangeNotifier {
 
     final modeId = mode.id;
     final history = List<AiChatMsg>.from(messages);
-    messages.add(AiChatMsg(AiRole.user, t, image: image));
+    messages.add(AiChatMsg(AiRole.user, t, images: images));
     messages.add(AiChatMsg(AiRole.assistant, '', modeId: modeId));
     notifyListeners();
     await limiter.record();
@@ -732,7 +813,7 @@ class AiChatSession extends ChangeNotifier {
               : live;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
     }
-    convo.add(AiMessage(AiRole.user, t, image: image));
+    convo.add(AiMessage(AiRole.user, t, images: images));
 
     if (tools.isNotEmpty && onToolCall != null) {
       await _streamWithTools(
@@ -921,9 +1002,15 @@ class AiChatSession extends ChangeNotifier {
     }
     if (ui < 0) return;
     final prompt = messages[ui].text;
-    final image = messages[ui].image;
+    final images = messages[ui].images;
     messages.removeRange(ui, messages.length);
     notifyListeners();
-    await send(assistant, limiter, prompt, image: image);
+    await send(assistant, limiter, prompt, images: images);
+  }
+
+  @override
+  void dispose() {
+    _settingsStore?.removeListener(_onGlobalSettings);
+    super.dispose();
   }
 }

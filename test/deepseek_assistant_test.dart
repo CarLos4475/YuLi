@@ -9,10 +9,12 @@ import 'package:yuli/data/services/deepseek_assistant.dart';
 import 'package:yuli/domain/services/ai_assistant.dart';
 
 void main() {
-  test('vision flash sends text and image in one user message', () async {
+  test('vision flash sends text and images in one user message', () async {
     final directory = await Directory.systemTemp.createTemp('yuli_vision_test');
     final file = File('${directory.path}/sample.jpg');
+    final secondFile = File('${directory.path}/sample-2.jpg');
     await file.writeAsBytes([1, 2, 3, 4]);
+    await secondFile.writeAsBytes([5, 6, 7, 8]);
     Map<String, dynamic>? requestBody;
     final client = MockClient((request) async {
       requestBody = jsonDecode(request.body) as Map<String, dynamic>;
@@ -30,7 +32,10 @@ void main() {
           AiMessage(
             AiRole.user,
             'Describe la imagen',
-            image: AiImageInput(path: file.path, mediaType: 'image/jpeg'),
+            images: [
+              AiImageInput(path: file.path, mediaType: 'image/jpeg'),
+              AiImageInput(path: secondFile.path, mediaType: 'image/jpeg'),
+            ],
           ),
         ]).join();
 
@@ -39,9 +44,13 @@ void main() {
     final messages = requestBody?['messages'] as List;
     final content = (messages.single as Map)['content'] as List;
     expect(content.first, {'type': 'text', 'text': 'Describe la imagen'});
-    expect(content.last, {
+    expect(content[1], {
       'type': 'image_url',
       'image_url': {'url': 'data:image/jpeg;base64,AQIDBA==', 'detail': 'auto'},
+    });
+    expect(content[2], {
+      'type': 'image_url',
+      'image_url': {'url': 'data:image/jpeg;base64,BQYHCA==', 'detail': 'auto'},
     });
 
     await directory.delete(recursive: true);
