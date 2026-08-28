@@ -67,6 +67,7 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
         ),
         child: AiFrostedSurface(
           accent: widget.accent,
+          role: AiFrostedSurfaceRole.dialog,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -158,8 +159,9 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
 
   Widget _footer() => Container(
     padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
-    decoration: const BoxDecoration(
-      border: Border(top: BorderSide(color: aiHairline)),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.32),
+      border: const Border(top: BorderSide(color: aiHairline)),
     ),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.end,

@@ -220,6 +220,7 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
         constraints: BoxConstraints(maxWidth: 590, maxHeight: maxH),
         child: AiFrostedSurface(
           accent: widget.accent,
+          role: AiFrostedSurfaceRole.dialog,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

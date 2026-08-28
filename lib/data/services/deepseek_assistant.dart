@@ -20,7 +20,7 @@ class DeepseekAssistant implements AiAssistant {
   static const _base = 'https://api.deepseek.com/v1';
 
   String _modelId(AiModel m) => switch (m) {
-        AiModel.flash => 'deepseek-v4-flash',
+        AiModel.flash => 'deepseek-v4-flash-vision-exp',
         AiModel.pro => 'deepseek-v4-pro',
       };
 

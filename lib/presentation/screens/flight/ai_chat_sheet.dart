@@ -11,7 +11,6 @@ import '../../providers/note_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../../../domain/models/note.dart' show NoteKind;
 import '../../../domain/models/note_block.dart';
@@ -33,14 +32,6 @@ import '../yuli_ai/ai_widget_contracts.dart';
 import '../yuli_ai/ai_widget_renderer.dart';
 import '../yuli_ai/yuli_ai_tools.dart'
     show yuliToolDefs, flightToolSystem, runYuliTool, ConsultingIndicator;
-
-const _kSvgTemplate =
-    '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M25.5932 78V21.7745L5 4V59.0375L25.5932 78Z" fill="{ACCENT}"/>
-<path d="M25.5932 21.7745V21.575H86L64.9492 4L5 4L25.5932 21.7745Z" fill="{ACCENT}"/>
-<path d="M25.5932 21.575V21.7745V78H86V21.575H25.5932Z" fill="{ACCENT}"/>
-<path d="M25.5932 21.575V78M25.5932 21.7745V21.575H86M5 4L64.9492 4L86 21.575V78H25.5932L5 59.0375V4ZM25.5932 78V21.7745M25.5932 21.7745L5 4M68.8922 31.75V49M54.5776 31.75V49M69.5254 31.75V49M53.9661 31.75V49" stroke="black" stroke-width="4" fill="none"/>
-</svg>''';
 
 /// Open the AI chat for a note view. The conversation is the per-note
 /// [AiChatSession] (persists while you're in the view; the sheet is a window).
@@ -419,18 +410,11 @@ class _AiChatSheet extends ConsumerStatefulWidget {
   ConsumerState<_AiChatSheet> createState() => _AiChatSheetState();
 }
 
-class _AiChatSheetState extends ConsumerState<_AiChatSheet>
-    with TickerProviderStateMixin {
+class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   final _input = TextEditingController();
   final _anchorInput = TextEditingController();
   final _scroll = ScrollController();
   int? _remaining;
-  static const _bobCycleMs = 30000;
-  static const _bobs = 3;
-  static const _svgSize = 34.0;
-  late final AnimationController _bobCtrl;
-  double _bob = 0;
-  String _svg = '';
 
   AiChatSession get _s => widget.session;
 
@@ -439,13 +423,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     super.initState();
     _s.addListener(_onSession);
     _loadRemaining();
-    _svg = _kSvgTemplate.replaceAll('{ACCENT}', _accentHex(widget.accent));
-    _bobCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: _bobCycleMs),
-    )..repeat();
-    _bobCtrl.addListener(_onBobTick);
-    _onBobTick();
     // If there are existing messages, jump to the latest one on first open.
     if (_s.messages.isNotEmpty) _scrollToBottom();
     final prefill = widget.prefillMessage?.trim();
@@ -575,8 +552,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   @override
   void dispose() {
-    _bobCtrl.removeListener(_onBobTick);
-    _bobCtrl.dispose();
     _s.removeListener(_onSession);
     _input.dispose();
     _anchorInput.dispose();
@@ -1108,6 +1083,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             constraints: BoxConstraints(maxWidth: 590, maxHeight: maxH),
             child: AiFrostedSurface(
               accent: widget.accent,
+              role: AiFrostedSurfaceRole.dialog,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1594,66 +1570,25 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  String _accentHex(Color c) {
-    final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
-    final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
-    final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
-    return '#$r$g$b';
-  }
-
-  void _onBobTick() {
-    final t =
-        (DateTime.now().millisecondsSinceEpoch % _bobCycleMs) / _bobCycleMs;
-    final bob = math.sin(t * _bobs * 2 * math.pi) * _svgSize * 0.06;
-    if (bob != _bob) {
-      setState(() => _bob = bob);
-    }
-  }
-
-  @override
-  void didUpdateWidget(_AiChatSheet old) {
-    super.didUpdateWidget(old);
-    if (old.accent != widget.accent) {
-      _svg = _kSvgTemplate.replaceAll('{ACCENT}', _accentHex(widget.accent));
-    }
-  }
-
   Widget _aiAvatar() {
     return Container(
-      width: 44,
-      height: 44,
+      width: 34,
+      height: 34,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.72),
-            widget.accent.withValues(alpha: 0.14),
-            Colors.white.withValues(alpha: 0.28),
-          ],
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
+        color: widget.accent,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
         boxShadow: [
           BoxShadow(
-            color: widget.accent.withValues(alpha: 0.2),
-            blurRadius: 20,
-            spreadRadius: -7,
-            offset: const Offset(0, 7),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 14,
-            spreadRadius: -6,
-            offset: const Offset(0, 6),
+            color: widget.accent.withValues(alpha: 0.28),
+            blurRadius: 12,
+            spreadRadius: -5,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
-      child: Transform.translate(
-        offset: Offset(0, _bob),
-        child: SvgPicture.string(_svg, width: _svgSize, height: _svgSize),
-      ),
+      child: const Icon(YuLiIcons.sparkles, size: 17, color: Colors.white),
     );
   }
 
@@ -1704,8 +1639,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    AiGlassMessageSurface(
-                      accent: widget.accent,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, right: 6),
                       child: content,
                     ),
                     if (actions != null && actions.isNotEmpty) ...[
@@ -1907,9 +1842,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
-            child: AiGlassMessageSurface(
-              accent: widget.accent,
-              user: true,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
+              decoration: BoxDecoration(
+                color: widget.accent.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: widget.accent.withValues(alpha: 0.2),
+                ),
+              ),
               child: SelectableText(
                 text,
                 style: yBody(size: 15, weight: FontWeight.w500, color: aiInk),
@@ -2177,6 +2118,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           padding: EdgeInsets.fromLTRB(8, 8, 8, insets + 8),
           child: AiFrostedSurface(
             accent: widget.accent,
+            role: AiFrostedSurfaceRole.dialog,
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
             child: SafeArea(
               top: false,
@@ -2838,6 +2780,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
       padding: const EdgeInsets.all(8),
       child: AiFrostedSurface(
         accent: widget.accent,
+        role: AiFrostedSurfaceRole.dialog,
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
         child: SafeArea(
           top: false,

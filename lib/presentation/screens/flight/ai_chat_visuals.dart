@@ -10,12 +10,15 @@ const aiInk = Color(0xFF171714);
 const aiMuted = Color(0xFF777269);
 const aiHairline = Color(0x24171410);
 
+enum AiFrostedSurfaceRole { panel, dialog }
+
 class AiFrostedSurface extends StatelessWidget {
   final Widget child;
   final BorderRadius borderRadius;
   final bool blur;
   final EdgeInsetsGeometry? padding;
   final Color? accent;
+  final AiFrostedSurfaceRole role;
 
   const AiFrostedSurface({
     super.key,
@@ -24,11 +27,13 @@ class AiFrostedSurface extends StatelessWidget {
     this.blur = true,
     this.padding,
     this.accent,
+    this.role = AiFrostedSurfaceRole.panel,
   });
 
   @override
   Widget build(BuildContext context) {
     final tint = accent ?? aiPaper;
+    final isDialog = role == AiFrostedSurfaceRole.dialog;
     final surface = Stack(
       fit: StackFit.passthrough,
       children: [
@@ -39,18 +44,28 @@ class AiFrostedSurface extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.white.withValues(alpha: 0.32),
-                  aiPaper.withValues(alpha: 0.22),
+                  Colors.white.withValues(alpha: isDialog ? 0.76 : 0.32),
+                  aiPaper.withValues(alpha: isDialog ? 0.68 : 0.22),
                   Color.alphaBlend(
-                    tint.withValues(alpha: accent == null ? 0 : 0.07),
+                    tint.withValues(
+                      alpha: accent == null ? 0 : (isDialog ? 0.035 : 0.07),
+                    ),
                     aiPaper,
-                  ).withValues(alpha: 0.24),
+                  ).withValues(alpha: isDialog ? 0.72 : 0.24),
                 ],
                 stops: const [0, 0.5, 1],
               ),
             ),
           ),
         ),
+        if (isDialog)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: aiPaperSoft.withValues(alpha: 0.2),
+              ),
+            ),
+          ),
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -99,7 +114,10 @@ class AiFrostedSurface extends StatelessWidget {
       child:
           blur
               ? BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                filter: ImageFilter.blur(
+                  sigmaX: isDialog ? 14 : 6,
+                  sigmaY: isDialog ? 14 : 6,
+                ),
                 child: glass,
               )
               : glass,
@@ -123,110 +141,6 @@ class AiFrostedSurface extends StatelessWidget {
         ],
       ),
       child: clipped,
-    );
-  }
-}
-
-class AiGlassMessageSurface extends StatelessWidget {
-  final Widget child;
-  final Color accent;
-  final bool user;
-  final EdgeInsetsGeometry padding;
-
-  const AiGlassMessageSurface({
-    super.key,
-    required this.child,
-    required this.accent,
-    this.user = false,
-    this.padding = const EdgeInsets.fromLTRB(15, 12, 15, 13),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.only(
-      topLeft: Radius.circular(user ? 20 : 7),
-      topRight: Radius.circular(user ? 7 : 20),
-      bottomLeft: const Radius.circular(20),
-      bottomRight: const Radius.circular(20),
-    );
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 20,
-            spreadRadius: -7,
-            offset: const Offset(0, 8),
-          ),
-          if (user)
-            BoxShadow(
-              color: accent.withValues(alpha: 0.12),
-              blurRadius: 18,
-              spreadRadius: -10,
-              offset: const Offset(0, 6),
-            ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors:
-                        user
-                            ? [
-                              accent.withValues(alpha: 0.22),
-                              accent.withValues(alpha: 0.10),
-                              Colors.white.withValues(alpha: 0.18),
-                            ]
-                            : [
-                              Colors.white.withValues(alpha: 0.48),
-                              Colors.white.withValues(alpha: 0.22),
-                              aiPaper.withValues(alpha: 0.18),
-                            ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 12,
-              right: 12,
-              child: Container(
-                height: 1,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.white.withValues(alpha: 0.9),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Container(
-              padding: padding,
-              decoration: BoxDecoration(
-                borderRadius: radius,
-                border: Border.all(
-                  color:
-                      user
-                          ? accent.withValues(alpha: 0.22)
-                          : Colors.white.withValues(alpha: 0.54),
-                ),
-              ),
-              child: child,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
