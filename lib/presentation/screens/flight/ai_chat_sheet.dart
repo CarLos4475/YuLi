@@ -340,7 +340,7 @@ class _AiChatDockState extends State<AiChatDock>
               // icon (rebuilds only this tiny widget on mode change / streaming).
               Positioned(
                 top: h * 0.30,
-                right: _w * t,
+                right: (_w - 8) * t,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: widget.controller.toggle,
@@ -1917,6 +1917,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       hintText: 'Escribe a YuLi…',
                       hintStyle: yBody(size: 14, color: aiMuted),
                       border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
+                      filled: true,
+                      fillColor: Colors.transparent,
                     ),
                   ),
                 ),
