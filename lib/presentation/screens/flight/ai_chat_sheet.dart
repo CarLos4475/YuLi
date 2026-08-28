@@ -1619,9 +1619,37 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   Widget _aiAvatar() {
-    return SizedBox(
-      width: _svgSize,
-      height: _svgSize,
+    return Container(
+      width: 44,
+      height: 44,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.72),
+            widget.accent.withValues(alpha: 0.14),
+            Colors.white.withValues(alpha: 0.28),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
+        boxShadow: [
+          BoxShadow(
+            color: widget.accent.withValues(alpha: 0.2),
+            blurRadius: 20,
+            spreadRadius: -7,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 14,
+            spreadRadius: -6,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: Transform.translate(
         offset: Offset(0, _bob),
         child: SvgPicture.string(_svg, width: _svgSize, height: _svgSize),
@@ -1636,29 +1664,52 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _aiAvatar(),
-          const SizedBox(width: 10),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
                   padding: const EdgeInsets.only(left: 2, bottom: 6),
-                  child: Text(
-                    'YuLi',
-                    style: yBody(
-                      size: 11,
-                      weight: FontWeight.w700,
-                      color: aiMuted,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'YuLi',
+                        style: yBody(
+                          size: 11,
+                          weight: FontWeight.w700,
+                          color: aiMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: widget.accent,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: widget.accent.withValues(alpha: 0.45),
+                              blurRadius: 7,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    content,
+                    AiGlassMessageSurface(
+                      accent: widget.accent,
+                      child: content,
+                    ),
                     if (actions != null && actions.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 9),
                       Wrap(spacing: 6, runSpacing: 6, children: actions),
                     ],
                   ],
@@ -1678,13 +1729,20 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.48),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.38),
+              Colors.white.withValues(alpha: 0.18),
+            ],
+          ),
           borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: aiHairline),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
         ),
         child: Text(
           label,
-          style: yBody(size: 10, weight: FontWeight.w700, color: aiMuted),
+          style: yBody(size: 10, weight: FontWeight.w700, color: aiInk),
         ),
       ),
     );
@@ -1849,15 +1907,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
-              decoration: BoxDecoration(
-                color: widget.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: widget.accent.withValues(alpha: 0.18),
-                ),
-              ),
+            child: AiGlassMessageSurface(
+              accent: widget.accent,
+              user: true,
               child: SelectableText(
                 text,
                 style: yBody(size: 15, weight: FontWeight.w500, color: aiInk),
@@ -1922,14 +1974,23 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           Container(
             padding: const EdgeInsets.fromLTRB(16, 7, 7, 7),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.78),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.56),
+                  Colors.white.withValues(alpha: 0.32),
+                  widget.accent.withValues(alpha: 0.07),
+                ],
+              ),
               borderRadius: BorderRadius.circular(23),
-              border: Border.all(color: aiHairline),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 18,
-                  offset: const Offset(0, 7),
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 20,
+                  spreadRadius: -7,
+                  offset: const Offset(0, 9),
                 ),
               ],
             ),

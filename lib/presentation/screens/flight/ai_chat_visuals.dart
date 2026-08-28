@@ -28,46 +28,204 @@ class AiFrostedSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tintedPaper = Color.alphaBlend(
-      (accent ?? aiPaper).withValues(alpha: accent == null ? 0 : 0.08),
-      aiPaper,
-    ).withValues(alpha: 0.58);
-    final surface = Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.62),
-            aiPaper.withValues(alpha: 0.56),
-            tintedPaper,
-          ],
-          stops: const [0, 0.56, 1],
+    final tint = accent ?? aiPaper;
+    final surface = Stack(
+      fit: StackFit.passthrough,
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.32),
+                  aiPaper.withValues(alpha: 0.22),
+                  Color.alphaBlend(
+                    tint.withValues(alpha: accent == null ? 0 : 0.07),
+                    aiPaper,
+                  ).withValues(alpha: 0.24),
+                ],
+                stops: const [0, 0.5, 1],
+              ),
+            ),
+          ),
         ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.85, -0.92),
+                radius: 1.05,
+                colors: [
+                  tint.withValues(alpha: accent == null ? 0.03 : 0.08),
+                  Colors.transparent,
+                ],
+                stops: const [0, 0.72],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.center,
+                colors: [
+                  Colors.white.withValues(alpha: 0.12),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(padding: padding ?? EdgeInsets.zero, child: child),
+      ],
+    );
+    final glass = Container(
+      decoration: BoxDecoration(
         borderRadius: borderRadius,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.88)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: borderRadius,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+      ),
+      child: surface,
+    );
+    final clipped = ClipRRect(
+      borderRadius: borderRadius,
+      child:
+          blur
+              ? BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                child: glass,
+              )
+              : glass,
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 38,
-            offset: const Offset(0, 18),
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 44,
+            spreadRadius: -8,
+            offset: const Offset(0, 22),
           ),
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.42),
-            blurRadius: 12,
-            offset: const Offset(-3, -3),
+            color: tint.withValues(alpha: accent == null ? 0 : 0.12),
+            blurRadius: 30,
+            spreadRadius: -16,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
-      child: child,
+      child: clipped,
     );
-    if (!blur) return ClipRRect(borderRadius: borderRadius, child: surface);
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: surface,
+  }
+}
+
+class AiGlassMessageSurface extends StatelessWidget {
+  final Widget child;
+  final Color accent;
+  final bool user;
+  final EdgeInsetsGeometry padding;
+
+  const AiGlassMessageSurface({
+    super.key,
+    required this.child,
+    required this.accent,
+    this.user = false,
+    this.padding = const EdgeInsets.fromLTRB(15, 12, 15, 13),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.only(
+      topLeft: Radius.circular(user ? 20 : 7),
+      topRight: Radius.circular(user ? 7 : 20),
+      bottomLeft: const Radius.circular(20),
+      bottomRight: const Radius.circular(20),
+    );
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 20,
+            spreadRadius: -7,
+            offset: const Offset(0, 8),
+          ),
+          if (user)
+            BoxShadow(
+              color: accent.withValues(alpha: 0.12),
+              blurRadius: 18,
+              spreadRadius: -10,
+              offset: const Offset(0, 6),
+            ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors:
+                        user
+                            ? [
+                              accent.withValues(alpha: 0.22),
+                              accent.withValues(alpha: 0.10),
+                              Colors.white.withValues(alpha: 0.18),
+                            ]
+                            : [
+                              Colors.white.withValues(alpha: 0.48),
+                              Colors.white.withValues(alpha: 0.22),
+                              aiPaper.withValues(alpha: 0.18),
+                            ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 12,
+              right: 12,
+              child: Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.white.withValues(alpha: 0.9),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              padding: padding,
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                border: Border.all(
+                  color:
+                      user
+                          ? accent.withValues(alpha: 0.22)
+                          : Colors.white.withValues(alpha: 0.54),
+                ),
+              ),
+              child: child,
+            ),
+          ],
+        ),
       ),
     );
   }
