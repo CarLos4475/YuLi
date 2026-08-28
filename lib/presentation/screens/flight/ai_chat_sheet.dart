@@ -21,6 +21,7 @@ import '../../../data/services/context_cache.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
 import 'ai_chat_session.dart';
 import 'ai_chat_settings_dialog.dart';
+import 'ai_chat_visuals.dart';
 import 'ai_modes.dart';
 import 'mode_builder_screen.dart';
 import 'context_assembler.dart' as ctx;
@@ -33,7 +34,8 @@ import '../yuli_ai/ai_widget_renderer.dart';
 import '../yuli_ai/yuli_ai_tools.dart'
     show yuliToolDefs, flightToolSystem, runYuliTool, ConsultingIndicator;
 
-const _kSvgTemplate = '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
+const _kSvgTemplate =
+    '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M25.5932 78V21.7745L5 4V59.0375L25.5932 78Z" fill="{ACCENT}"/>
 <path d="M25.5932 21.7745V21.575H86L64.9492 4L5 4L25.5932 21.7745Z" fill="{ACCENT}"/>
 <path d="M25.5932 21.575V21.7745V78H86V21.575H25.5932Z" fill="{ACCENT}"/>
@@ -325,23 +327,12 @@ class _AiChatDockState extends State<AiChatDock>
                 child:
                     t < 0.02
                         ? const SizedBox.shrink()
-                        : Container(
-                          decoration: const BoxDecoration(
-                            color: yCream,
-                            border: Border(
-                              left: BorderSide(
-                                color: yBorderStrong,
-                                width: yLineThin,
-                              ),
-                            ),
-                          ),
-                          child: _AiChatSheet(
-                            session: widget.session,
-                            accent: widget.accent,
-                            onSendToCanvas: widget.onSendToCanvas,
-                            embedded: true,
-                            onClose: widget.controller.close,
-                          ),
+                        : _AiChatSheet(
+                          session: widget.session,
+                          accent: widget.accent,
+                          onSendToCanvas: widget.onSendToCanvas,
+                          embedded: true,
+                          onClose: widget.controller.close,
                         ),
               ),
               // The handle rides the panel's left edge: at the screen edge when
@@ -358,9 +349,15 @@ class _AiChatDockState extends State<AiChatDock>
                     height: _handleH,
                     decoration: BoxDecoration(
                       color: widget.accent,
-                      border: Border.all(color: yBorderStrong, width: yLineMid),
-                      boxShadow: const [
-                        BoxShadow(color: yBorderStrong, offset: Offset(-2, 2)),
+                      borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(14),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: widget.accent.withValues(alpha: 0.25),
+                          blurRadius: 12,
+                          offset: const Offset(-4, 4),
+                        ),
                       ],
                     ),
                     child: Column(
@@ -739,50 +736,34 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   @override
   Widget build(BuildContext context) {
     if (widget.embedded) {
-      // Docked panel: fill the dock with its OWN Material (TextFields need one
-      // outside a route). The top safe-area strip is painted accent so it blends
-      // with the accent header bar (instead of leaking the cream body or black).
-      // The bottom Padding lifts the input above the keyboard.
-      final topInset = MediaQuery.of(context).padding.top;
       return Material(
-        color: yCream,
+        color: Colors.transparent,
         child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+          padding: EdgeInsets.fromLTRB(
+            8,
+            8,
+            8,
+            MediaQuery.of(context).viewInsets.bottom + 8,
           ),
-          child: Column(
-            children: [
-              Container(height: topInset, color: widget.accent),
-              Expanded(
-                child: SafeArea(
-                  top: false,
-                  child: AnimatedBuilder(
-                    animation: _s,
-                    builder: (_, _) => _buildChat(),
-                  ),
-                ),
+          child: AiFrostedSurface(
+            child: SafeArea(
+              child: AnimatedBuilder(
+                animation: _s,
+                builder: (_, _) => _buildChat(),
               ),
-            ],
+            ),
           ),
         ),
       );
     }
     final insets = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
-      padding: EdgeInsets.only(bottom: insets),
+      padding: EdgeInsets.fromLTRB(8, 8, 8, insets + 8),
       child: FractionallySizedBox(
-        heightFactor: 0.95,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: yCream,
-            border: Border(
-              top: BorderSide(color: yBorderStrong, width: yLineMid),
-            ),
-          ),
+        heightFactor: 0.94,
+        child: AiFrostedSurface(
           child: SafeArea(
             top: false,
-            // Anchor is now OPTIONAL (modes work as pure dialogue) → always show
-            // the chat; the context bar offers to add context if the user wants.
             child: AnimatedBuilder(
               animation: _s,
               builder: (_, _) => _buildChat(),
@@ -804,9 +785,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     return Column(
       children: [
         _header(),
-        _modeBar(),
-        // Context bar slides in/out (grows/collapses from the top) instead of
-        // popping, so toggling it reads smooth.
         AnimatedSize(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
@@ -819,9 +797,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         Expanded(
           child: ListView(
             controller: _scroll,
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
             children: [
-              // Canned greeting (UI-only, no request) when the thread is empty.
               if (_s.messages.isEmpty) _greeting(),
               for (int i = 0; i < _s.messages.length; i++)
                 _bubble(_s.messages[i], i),
@@ -837,12 +814,52 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   /// show the SINCRONIZADA / CONTEXTO bar as before.
   Widget _contextBar() {
     final hostKind = ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind;
-    if (hostKind == NoteKind.block) return _noteContextBar();
     final sources =
         ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
         const [];
+    if (!_s.settings.useNoteContext) {
+      if (_s.settings.useRelatedSources && sources.isNotEmpty) {
+        return _linkedContextBar(sources.length);
+      }
+      return _disabledContextBar(hostKind ?? NoteKind.block);
+    }
+    if (hostKind == NoteKind.block) return _noteContextBar();
     if (sources.isNotEmpty) return _linkedContextBar(sources.length);
     return _normalContextBar();
+  }
+
+  Widget _disabledContextBar(NoteKind hostKind) {
+    final label = switch (hostKind) {
+      NoteKind.block => 'ESTA NOTA NO SE ENVIARÁ',
+      NoteKind.whiteboard => 'ESTA PIZARRA NO SE ENVIARÁ',
+      NoteKind.notebook => 'ESTE CUADERNO NO SE ENVIARÁ',
+    };
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 3, 12, 5),
+      padding: const EdgeInsets.fromLTRB(12, 7, 7, 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: aiHairline),
+      ),
+      child: Row(
+        children: [
+          const Icon(YuLiIcons.fileText, size: 15, color: aiMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: yBody(size: 10.5, weight: FontWeight.w700, color: aiMuted),
+            ),
+          ),
+          AiStatusPill(
+            label: 'Cambiar',
+            accent: widget.accent,
+            onTap: _openChatMenu,
+          ),
+        ],
+      ),
+    );
   }
 
   /// NOTA COMO CONTEXTO · [N enlaces]   [🔗]
@@ -854,13 +871,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             .length;
     final urlLabel = urls == 0 ? '' : ' · $urls enlaces';
     return Container(
-      decoration: const BoxDecoration(
-        color: yCream2,
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-        ),
+      margin: const EdgeInsets.fromLTRB(12, 3, 12, 5),
+      padding: const EdgeInsets.fromLTRB(12, 7, 7, 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: aiHairline),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
         children: [
           Container(width: 8, height: 8, color: widget.accent),
@@ -884,13 +901,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   /// CONTEXTO ▸ [texto del ancla]  ✎  ✕  🔗
   Widget _normalContextBar() {
     return Container(
-      decoration: const BoxDecoration(
-        color: yCream2,
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-        ),
+      margin: const EdgeInsets.fromLTRB(12, 3, 12, 5),
+      padding: const EdgeInsets.fromLTRB(12, 7, 7, 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: aiHairline),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
         children: [
           Text(
@@ -913,8 +930,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: yCream,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                  color: Colors.white.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: aiHairline),
                 ),
                 child: Text(
                   _s.anchor ?? '',
@@ -945,13 +963,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     final ago = _syncedAt == null ? '' : ' · ${_agoLabel(_syncedAt!)}';
     final label = count == 1 ? '1 fuente' : '$count fuentes';
     return Container(
+      margin: const EdgeInsets.fromLTRB(12, 3, 12, 5),
+      padding: const EdgeInsets.fromLTRB(12, 7, 7, 7),
       decoration: BoxDecoration(
-        color: yCream2,
-        border: const Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-        ),
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: aiHairline),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 9, 10, 10),
       child: Row(
         children: [
           Container(width: 8, height: 8, color: widget.accent),
@@ -1006,112 +1024,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   Widget _ghostIcon(IconData icon, String tip, VoidCallback onTap) {
-    return Tooltip(
-      message: tip,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: yCream,
-            border: Border.all(color: yBorderStrong, width: yLineMid),
-          ),
-          child: Icon(icon, size: 14, color: yInk),
-        ),
-      ),
-    );
-  }
-
-  /// The hero bar under the header: the active mode (the feature's protagonist).
-  /// Tap → mode catalog. Lives in both note and board chats (modes are universal).
-  Widget _modeBar() {
-    final m = _s.mode;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _openModeCatalog,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: yCream2,
-          border: Border(
-            bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-          ),
-        ),
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: widget.accent,
-                border: Border.all(color: yBorderStrong, width: yLineThin),
-              ),
-              child: Icon(m.icon, size: 16, color: yCream),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'MODO ',
-                        style: yMono(size: 9, tracking: 1.4, color: yMuted),
-                      ),
-                      Text(
-                        m.name,
-                        style: yMono(
-                          size: 11,
-                          weight: FontWeight.w800,
-                          tracking: 1.2,
-                          color: yInk,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    m.blurb,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: yBody(size: 11, color: yMuted),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _settingsSummary(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: yMono(
-                      size: 8,
-                      weight: FontWeight.w700,
-                      tracking: 0.7,
-                      color: widget.accent,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'CAMBIAR',
-              style: yMono(
-                size: 9,
-                weight: FontWeight.w700,
-                tracking: 1.0,
-                color: widget.accent,
-              ),
-            ),
-            Icon(YuLiIcons.chevronDown, size: 16, color: widget.accent),
-          ],
-        ),
-      ),
-    );
+    return AiSoftIconButton(icon: icon, tooltip: tip, onTap: onTap, size: 32);
   }
 
   void _openModeCatalog() {
@@ -1456,7 +1369,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   Widget _greeting() {
     final m = _s.mode;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.fromLTRB(2, 8, 2, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1467,10 +1380,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 height: 40,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: widget.accent,
-                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                  color: widget.accent.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                child: Icon(m.icon, size: 22, color: yCream),
+                child: Icon(m.icon, size: 20, color: widget.accent),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1479,16 +1392,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'MODO ${m.name}',
-                      style: yMono(
-                        size: 10,
-                        weight: FontWeight.w800,
-                        tracking: 1.4,
-                        color: yMuted,
+                      m.name,
+                      style: ySans(
+                        size: 15,
+                        weight: FontWeight.w700,
+                        color: aiInk,
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(m.blurb, style: yBody(size: 12, color: yMuted)),
+                    Text(m.blurb, style: yBody(size: 12, color: aiMuted)),
                   ],
                 ),
               ),
@@ -1497,12 +1409,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           const SizedBox(height: 14),
           Text(
             _greetingLine(m.id, _s.hasAnchor),
-            style: const TextStyle(
-              fontSize: 16,
-              height: 1.45,
-              color: yInk,
-              fontWeight: FontWeight.w600,
-            ),
+            style: yBody(
+              size: 16,
+              weight: FontWeight.w600,
+              color: aiInk,
+            ).copyWith(height: 1.45),
           ),
         ],
       ),
@@ -1540,205 +1451,111 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   static const _kDailyCap = 150;
 
-  /// Command bar: ink background, mark + wordmark + FLASH|PRO segmented control
-  /// + usage meter + close. Accent = the note's accent (everything is accent).
   Widget _header() {
     final used =
         _remaining == null
             ? null
             : (_kDailyCap - _remaining!).clamp(0, _kDailyCap);
-    return Container(
-      height: 68,
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-        ),
-      ),
-      child: Stack(
+    final mode = _s.mode;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 8),
+      child: Row(
         children: [
-          Positioned.fill(
-            child: AccentMosaic(accent: widget.accent, animateWave: true),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 34,
-                  alignment: Alignment.center,
-                  child: const Icon(YuLiIcons.box, size: 34, color: yCream),
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: widget.accent,
+              borderRadius: BorderRadius.circular(13),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accent.withValues(alpha: 0.22),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
                 ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'YuLi · AI',
-                            maxLines: 1,
-                            style: ySans(
-                              size: 28,
-                              weight: FontWeight.w700,
-                              color: yCream,
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'ASISTENTE DE NOTAS',
-                            maxLines: 1,
-                            style: ySans(
-                              size: 10,
-                              weight: FontWeight.w500,
-                              letterSpacing: 0.7,
-                              color: yCream.withValues(alpha: 0.92),
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+              ],
+            ),
+            child: const Icon(YuLiIcons.box, size: 21, color: Colors.white),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'YuLi AI',
+                  maxLines: 1,
+                  style: ySans(
+                    size: 18,
+                    weight: FontWeight.w700,
+                    color: aiInk,
+                    height: 1,
                   ),
                 ),
-                if (used != null) ...[
-                  const SizedBox(width: 10),
-                  _headerUsage(used),
-                ],
-                const SizedBox(width: 4),
-                _modeLabels(),
-                const Spacer(),
-                // Context toggle: shows/hides the context bar; accent-filled when the
-                // chat has context backing it (board, anchor, or linked sources).
-                _headerActionButton(
-                  icon: YuLiIcons.link,
-                  filled: true,
-                  onTap: () => setState(() => _showContext = !_showContext),
+                const SizedBox(height: 4),
+                Text(
+                  '${_settingsSummary()}${used == null ? '' : ' · $used/$_kDailyCap'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: yBody(
+                    size: 10.5,
+                    weight: FontWeight.w600,
+                    color: aiMuted,
+                  ),
                 ),
-                const SizedBox(width: 4),
-                _headerActionButton(
-                  icon: YuLiIcons.moreHorizontal,
-                  onTap: _openChatMenu,
-                ),
-                const SizedBox(width: 4),
-                _headerActionButton(icon: YuLiIcons.close, onTap: _dismiss),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _headerUsage(int used) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints.tightFor(width: 56),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '$used/$_kDailyCap',
-            textAlign: TextAlign.center,
-            style: yMono(
-              size: 6.5,
-              weight: FontWeight.w700,
-              tracking: 0.0,
-              color: yCream,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Container(
-            height: 10,
-            padding: const EdgeInsets.all(1),
-            decoration: BoxDecoration(
-              border: Border.all(color: yCream, width: yLineThin),
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: (used / _kDailyCap).clamp(0.0, 1.0),
-                child: Container(color: yCream),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _openModeCatalog,
+            child: Container(
+              height: 34,
+              constraints: const BoxConstraints(maxWidth: 106),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: widget.accent.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: widget.accent.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(mode.icon, size: 14, color: widget.accent),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      mode.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: yBody(
+                        size: 10.5,
+                        weight: FontWeight.w700,
+                        color: widget.accent,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            'LIMITE USO',
-            textAlign: TextAlign.center,
-            style: yMono(
-              size: 5.5,
-              weight: FontWeight.w500,
-              tracking: 0.3,
-              color: yCream.withValues(alpha: 0.92),
-            ),
+          const SizedBox(width: 6),
+          AiSoftIconButton(
+            icon: YuLiIcons.moreHorizontal,
+            tooltip: 'Opciones del chat',
+            onTap: _openChatMenu,
+          ),
+          const SizedBox(width: 4),
+          AiSoftIconButton(
+            icon: YuLiIcons.close,
+            tooltip: 'Cerrar',
+            onTap: _dismiss,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _modeLabels() {
-    final flash = _s.model == AiModel.flash;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _seg('FLASH', flash, () => _s.setModel(AiModel.flash)),
-        const SizedBox(height: 5),
-        _seg('PRO', !flash, () => _s.setModel(AiModel.pro)),
-      ],
-    );
-  }
-
-  Widget _headerActionButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    bool filled = false,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 30,
-        height: 30,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: filled ? yCream : null,
-          border: Border.all(color: yCream, width: yLineMid),
-        ),
-        child: Icon(icon, size: 14, color: filled ? widget.accent : yCream),
-      ),
-    );
-  }
-
-  Widget _seg(String label, bool active, VoidCallback onTap) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: ySans(
-          size: 9,
-          weight: active ? FontWeight.w700 : FontWeight.w500,
-          letterSpacing: 0.1,
-          color: yCream,
-          height: 1.0,
-        ),
       ),
     );
   }
@@ -1778,11 +1595,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// Assistant message frame: mark + "YULI · IA" label + cream bubble (hard
-  /// shadow) holding [content], with optional [actions] under a divider.
   Widget _aiMsgFrame(Widget content, {List<Widget>? actions}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 22),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1795,41 +1610,24 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 Padding(
                   padding: const EdgeInsets.only(left: 2, bottom: 6),
                   child: Text(
-                    'YULI · IA',
-                    style: yMono(
-                      size: 9,
+                    'YuLi',
+                    style: yBody(
+                      size: 11,
                       weight: FontWeight.w700,
-                      tracking: 1.6,
-                      color: yMuted,
+                      color: aiMuted,
                     ),
                   ),
                 ),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
-                  decoration: BoxDecoration(
-                    color: yCream,
-                    border: Border.all(color: yBorderStrong, width: yLineMid),
-                    boxShadow: const [
-                      BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    content,
+                    if (actions != null && actions.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 6, runSpacing: 6, children: actions),
                     ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      content,
-                      if (actions != null && actions.isNotEmpty) ...[
-                        const SizedBox(height: 11),
-                        Container(
-                          height: yLineThin,
-                          color: yInk.withValues(alpha: 0.25),
-                        ),
-                        const SizedBox(height: 11),
-                        Wrap(spacing: 6, runSpacing: 6, children: actions),
-                      ],
-                    ],
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -1844,18 +1642,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          border: Border.all(color: yBorderStrong, width: yLineThin),
+          color: Colors.white.withValues(alpha: 0.48),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: aiHairline),
         ),
         child: Text(
-          label.toUpperCase(),
-          style: yMono(
-            size: 9,
-            weight: FontWeight.w700,
-            tracking: 0.8,
-            color: yInk,
-          ),
+          label,
+          style: yBody(size: 10, weight: FontWeight.w700, color: aiMuted),
         ),
       ),
     );
@@ -1972,7 +1767,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: widget.accent.withValues(alpha: 0.12),
-            border: Border.all(color: widget.accent, width: yLineThin),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: widget.accent.withValues(alpha: 0.28)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -2004,20 +1800,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
 
   Widget _userBubble(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(left: 58, bottom: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Padding(
             padding: const EdgeInsets.only(right: 2, bottom: 6),
             child: Text(
-              'TÚ',
-              style: yMono(
-                size: 9,
-                weight: FontWeight.w700,
-                tracking: 1.6,
-                color: yMuted,
-              ),
+              'Tú',
+              style: yBody(size: 11, weight: FontWeight.w700, color: aiMuted),
             ),
           ),
           ConstrainedBox(
@@ -2027,15 +1818,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             child: Container(
               padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
               decoration: BoxDecoration(
-                color: widget.accent,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-                boxShadow: const [
-                  BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
-                ],
+                color: widget.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: widget.accent.withValues(alpha: 0.18),
+                ),
               ),
               child: SelectableText(
                 text,
-                style: yBody(size: 15, weight: FontWeight.w500, color: yCream),
+                style: yBody(size: 15, weight: FontWeight.w500, color: aiInk),
               ),
             ),
           ),
@@ -2086,57 +1877,186 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
   }
 
   Widget _inputBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _input,
-              minLines: 1,
-              maxLines: 4,
-              enabled: !_s.streaming,
-              style: yBody(size: 15, color: yInk),
-              onSubmitted: _s.streaming ? null : _send,
-              textInputAction: TextInputAction.send,
-              decoration: _fieldDeco('Escribe a YuLi…'),
+          _composerContextStrip(),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 7, 7, 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(23),
+              border: Border.all(color: aiHairline),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 18,
+                  offset: const Offset(0, 7),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    minLines: 1,
+                    maxLines: 5,
+                    enabled: !_s.streaming,
+                    style: yBody(size: 15, color: aiInk),
+                    onSubmitted: _s.streaming ? null : _send,
+                    textInputAction: TextInputAction.send,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      hintText: 'Escribe a YuLi…',
+                      hintStyle: yBody(size: 14, color: aiMuted),
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _s.streaming ? null : () => _send(_input.text),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _s.streaming ? aiMuted : widget.accent,
+                      shape: BoxShape.circle,
+                      boxShadow:
+                          _s.streaming
+                              ? null
+                              : [
+                                BoxShadow(
+                                  color: widget.accent.withValues(alpha: 0.26),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                    ),
+                    child:
+                        _s.streaming
+                            ? const SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                            : const Icon(
+                              YuLiIcons.arrowUp,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _s.streaming ? null : () => _send(_input.text),
-            child: Container(
-              width: 52,
-              height: 52,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _s.streaming ? yMuted : widget.accent,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-                boxShadow:
-                    _s.streaming
-                        ? null
-                        : const [
-                          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
-                        ],
-              ),
-              child:
-                  _s.streaming
-                      ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: yCream,
-                        ),
-                      )
-                      : const Icon(YuLiIcons.arrowUp, color: yCream, size: 22),
+        ],
+      ),
+    );
+  }
+
+  Widget _composerContextStrip() {
+    final hostKind =
+        ref.watch(noteByIdProvider(_s.noteId)).valueOrNull?.kind ??
+        NoteKind.block;
+    final sources =
+        ref.watch(canvasContextSourcesProvider(_s.noteId)).valueOrNull ??
+        const <CanvasContextSource>[];
+    final contextLabel = switch (hostKind) {
+      NoteKind.block => 'Esta nota',
+      NoteKind.whiteboard => 'Esta pizarra',
+      NoteKind.notebook => 'Este cuaderno',
+    };
+    final effectiveContextLabel =
+        _s.settings.useNoteContext
+            ? contextLabel
+            : _s.settings.useRelatedSources
+            ? 'Sólo fuentes'
+            : 'Sin contexto';
+    final historyLabel = switch (_s.settings.historyDepth) {
+      AiHistoryDepth.recent => 'Reciente',
+      AiHistoryDepth.normal => 'Normal',
+      AiHistoryDepth.full => 'Todo el chat',
+    };
+    final lengthLabel = switch (_s.settings.responseLength) {
+      AiResponseLength.brief => 'Breve',
+      AiResponseLength.normal => 'Respuesta media',
+      AiResponseLength.detailed => 'Detallada',
+    };
+    final costScore =
+        (_s.settings.model == AiModel.pro ? 2 : 0) +
+        (_s.settings.responseLength == AiResponseLength.detailed ? 2 : 0) +
+        (_s.settings.historyDepth == AiHistoryDepth.full ? 2 : 0) +
+        (_s.settings.useRelatedSources ? 1 : 0) +
+        (_s.settings.useTools ? 1 : 0);
+    final costLabel =
+        costScore >= 5
+            ? 'Gasto alto'
+            : costScore >= 2
+            ? 'Gasto medio'
+            : 'Gasto bajo';
+    return SizedBox(
+      height: 30,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          AiStatusPill(
+            icon: YuLiIcons.fileText,
+            label: effectiveContextLabel,
+            accent: widget.accent,
+            active: _s.settings.useNoteContext || _s.settings.useRelatedSources,
+            onTap: () => setState(() => _showContext = !_showContext),
+          ),
+          const SizedBox(width: 6),
+          if (sources.isNotEmpty) ...[
+            AiStatusPill(
+              icon: YuLiIcons.link,
+              label:
+                  sources.length == 1
+                      ? '1 fuente'
+                      : '${sources.length} fuentes',
+              accent: widget.accent,
+              active: _s.settings.useRelatedSources,
+              highImpact: _s.settings.useRelatedSources,
+              onTap: _showSourcesSheet,
             ),
+            const SizedBox(width: 6),
+          ],
+          AiStatusPill(
+            icon: YuLiIcons.clock,
+            label: historyLabel,
+            accent: widget.accent,
+            highImpact: _s.settings.historyDepth == AiHistoryDepth.full,
+            onTap: _openChatMenu,
+          ),
+          const SizedBox(width: 6),
+          AiStatusPill(
+            icon: YuLiIcons.textQuote,
+            label: lengthLabel,
+            accent: widget.accent,
+            highImpact: _s.settings.responseLength == AiResponseLength.detailed,
+            onTap: _openChatMenu,
+          ),
+          const SizedBox(width: 6),
+          AiStatusPill(
+            label: costLabel,
+            accent: widget.accent,
+            active: costScore >= 5,
+            highImpact: costScore >= 2,
+            onTap: _openChatMenu,
           ),
         ],
       ),
