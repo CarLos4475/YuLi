@@ -57,7 +57,9 @@ class DeepseekAssistant implements AiAssistant {
         );
       }
       if (m.images.length > kMaxAiImagesPerMessage) {
-        throw const AiException('Solo puedes enviar hasta 4 imágenes a la vez.');
+        throw const AiException(
+          'Solo puedes enviar hasta 4 imágenes a la vez.',
+        );
       }
       final imageParts = <Map<String, dynamic>>[];
       var totalBytes = 0;
@@ -72,7 +74,9 @@ class DeepseekAssistant implements AiAssistant {
         }
         totalBytes += length;
         if (totalBytes > 40 * 1024 * 1024) {
-          throw const AiException('Las imágenes adjuntas son demasiado grandes.');
+          throw const AiException(
+            'Las imágenes adjuntas son demasiado grandes.',
+          );
         }
         final encoded = base64Encode(await file.readAsBytes());
         imageParts.add({
@@ -96,6 +100,23 @@ class DeepseekAssistant implements AiAssistant {
 
   @override
   Stream<String> streamReply(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  }) async* {
+    await for (final event in streamReplyEvents(
+      messages,
+      model: model,
+      maxTokens: maxTokens,
+      temperature: temperature,
+    )) {
+      if (event is AiTextDelta) yield event.text;
+    }
+  }
+
+  @override
+  Stream<AiStreamEvent> streamReplyEvents(
     List<AiMessage> messages, {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
@@ -136,6 +157,7 @@ class DeepseekAssistant implements AiAssistant {
       throw AiException(_friendlyError(resp.statusCode), retryable: retryable);
     }
 
+    String? finishReason;
     await for (final line in resp.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
@@ -147,13 +169,22 @@ class DeepseekAssistant implements AiAssistant {
         final json = jsonDecode(data) as Map<String, dynamic>;
         final choices = json['choices'] as List?;
         if (choices == null || choices.isEmpty) continue;
-        final delta = (choices.first as Map)['delta'] as Map?;
+        final choice = choices.first as Map;
+        final reason = choice['finish_reason'];
+        if (reason is String && reason.isNotEmpty) finishReason = reason;
+        final delta = choice['delta'] as Map?;
         final content = delta?['content'];
-        if (content is String && content.isNotEmpty) yield content;
+        if (content is String && content.isNotEmpty) {
+          yield AiTextDelta(content);
+        }
       } catch (_) {
         // Ignore keep-alive / malformed lines.
       }
     }
+    yield AiStreamComplete(
+      truncated: finishReason == 'length',
+      finishReason: finishReason,
+    );
   }
 
   @override
@@ -198,6 +229,7 @@ class DeepseekAssistant implements AiAssistant {
 
     // tool_calls stream in fragments keyed by `index`; assemble per index.
     final partial = <int, _PartialCall>{};
+    String? finishReason;
     await for (final line in resp.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
@@ -209,7 +241,10 @@ class DeepseekAssistant implements AiAssistant {
         final json = jsonDecode(data) as Map<String, dynamic>;
         final choices = json['choices'] as List?;
         if (choices == null || choices.isEmpty) continue;
-        final delta = (choices.first as Map)['delta'] as Map?;
+        final choice = choices.first as Map;
+        final reason = choice['finish_reason'];
+        if (reason is String && reason.isNotEmpty) finishReason = reason;
+        final delta = choice['delta'] as Map?;
         final content = delta?['content'];
         if (content is String && content.isNotEmpty) yield AiTextDelta(content);
         final tcs = delta?['tool_calls'] as List?;
@@ -230,6 +265,11 @@ class DeepseekAssistant implements AiAssistant {
         // Ignore keep-alive / malformed lines.
       }
     }
+
+    yield AiStreamComplete(
+      truncated: finishReason == 'length',
+      finishReason: finishReason,
+    );
 
     if (partial.isNotEmpty) {
       final keys = partial.keys.toList()..sort();

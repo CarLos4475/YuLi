@@ -81,6 +81,13 @@ class AiTextDelta extends AiStreamEvent {
   const AiTextDelta(this.text);
 }
 
+class AiStreamComplete extends AiStreamEvent {
+  final bool truncated;
+  final String? finishReason;
+
+  const AiStreamComplete({this.truncated = false, this.finishReason});
+}
+
 class AiToolCallRequest extends AiStreamEvent {
   final List<AiToolCall> calls;
   const AiToolCallRequest(this.calls);
@@ -101,6 +108,23 @@ abstract class AiAssistant {
     int maxTokens = 2048,
     double temperature = 0.3,
   });
+
+  Stream<AiStreamEvent> streamReplyEvents(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  }) async* {
+    await for (final text in streamReply(
+      messages,
+      model: model,
+      maxTokens: maxTokens,
+      temperature: temperature,
+    )) {
+      yield AiTextDelta(text);
+    }
+    yield const AiStreamComplete();
+  }
 
   /// Like [streamReply] but with function calling: the model may emit text
   /// (as [AiTextDelta]) and/or request [tools] (as [AiToolCallRequest] at the

@@ -57,6 +57,32 @@ enum AiResponseLength {
 
   final int maxTokens;
   const AiResponseLength(this.maxTokens);
+
+  String get semanticInstruction => switch (this) {
+    brief =>
+      'POLÍTICA DE EXTENSIÓN (OBLIGATORIA): responde de forma breve y '
+          'directa. Resuelve la petición con lo esencial, normalmente en 1 a 3 '
+          'párrafos y unas 80 a 180 palabras. La personalidad puede cambiar el '
+          'tono y el formato, pero no alargar esta respuesta. Prioriza antes de '
+          'añadir detalles y reserva espacio para cerrar la última idea; nunca '
+          'termines voluntariamente a mitad de frase, lista, tabla o bloque.',
+    normal =>
+      'POLÍTICA DE EXTENSIÓN (OBLIGATORIA): responde con una extensión '
+          'equilibrada. Explica lo necesario con estructura clara y ejemplos '
+          'solo cuando aporten valor, normalmente en unas 250 a 500 palabras. '
+          'La personalidad puede cambiar el tono y el formato, pero no alargar '
+          'innecesariamente la respuesta. Reserva espacio para una conclusión '
+          'completa; nunca termines voluntariamente a mitad de frase, lista, '
+          'tabla o bloque.',
+    detailed =>
+      'POLÍTICA DE EXTENSIÓN (OBLIGATORIA): desarrolla una respuesta completa '
+          'y profunda. Incluye estructura, razonamiento, matices y ejemplos '
+          'útiles cuando correspondan, normalmente en unas 700 a 1200 palabras. '
+          'No agregues relleno si la petición es simple. La personalidad puede '
+          'cambiar el tono y el formato, pero debe conservar esta profundidad. '
+          'Reserva espacio para cerrar la respuesta; nunca termines '
+          'voluntariamente a mitad de frase, lista, tabla o bloque.',
+  };
 }
 
 enum AiHistoryDepth {
@@ -235,6 +261,7 @@ class AiChatMsg {
   final AiRole role;
   final String text;
   final List<AiImageInput> images;
+  final bool truncated;
 
   /// For assistant replies: the mode active when this reply was produced. Used
   /// to drop OTHER-mode replies from the sent history so the model doesn't
@@ -242,7 +269,13 @@ class AiChatMsg {
   /// system turns and legacy messages.
   final String? modeId;
 
-  const AiChatMsg(this.role, this.text, {this.modeId, this.images = const []});
+  const AiChatMsg(
+    this.role,
+    this.text, {
+    this.modeId,
+    this.images = const [],
+    this.truncated = false,
+  });
 }
 
 class AiChatSettingsStore extends ChangeNotifier {
@@ -260,7 +293,8 @@ class AiChatSettingsStore extends ChangeNotifier {
 
   Future<void> _load(String? legacyKey) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key) ??
+    final raw =
+        prefs.getString(_key) ??
         (legacyKey == null ? null : prefs.getString(legacyKey));
     if (raw != null && !_changed) {
       try {
@@ -746,6 +780,10 @@ class AiChatSession extends ChangeNotifier {
         AiMessage(AiRole.user, _anchorContent(anchor!)),
       if (settings.useRelatedSources && hasRelatedAnchor)
         AiMessage(AiRole.user, _anchorContent(relatedAnchor!, kind: 'related')),
+      // Keep this canonical policy inside the stable prefix. Per-turn retrieval
+      // docs and the growing transcript follow it, so they cannot spoil its hit.
+      if (scope == 'note')
+        AiMessage(AiRole.system, settings.responseLength.semanticInstruction),
       if (knowledgeDocs.isNotEmpty)
         AiMessage(AiRole.system, knowledgeDocs.join('\n\n')),
       if (memoryDocs.isNotEmpty)
@@ -848,20 +886,26 @@ class AiChatSession extends ChangeNotifier {
     var attempt = 0;
     while (true) {
       var yielded = false;
+      var truncated = false;
       try {
-        await for (final tok in assistant.streamReply(
+        await for (final event in assistant.streamReplyEvents(
           convo,
           model: model,
           maxTokens: _maxOutputTokens,
         )) {
-          yielded = true;
-          messages[idx] = AiChatMsg(
-            AiRole.assistant,
-            messages[idx].text + tok,
-            modeId: modeId,
-          );
-          notifyListeners();
+          if (event is AiTextDelta) {
+            yielded = true;
+            messages[idx] = AiChatMsg(
+              AiRole.assistant,
+              messages[idx].text + event.text,
+              modeId: modeId,
+            );
+            notifyListeners();
+          } else if (event is AiStreamComplete) {
+            truncated = event.truncated;
+          }
         }
+        if (truncated) _markTruncated(idx, modeId);
         break; // completed cleanly
       } catch (e) {
         final retryable = e is AiException && e.retryable;
@@ -887,6 +931,10 @@ class AiChatSession extends ChangeNotifier {
           messages[idx] = AiChatMsg(AiRole.assistant, '', modeId: modeId);
           notifyListeners();
           continue; // retry
+        }
+        if (yielded) {
+          _markTruncated(idx, modeId);
+          break;
         }
         messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e', modeId: modeId);
         notifyListeners();
@@ -923,6 +971,7 @@ class AiChatSession extends ChangeNotifier {
         await limiter.record();
       }
       final calls = <AiToolCall>[];
+      var truncated = false;
       try {
         await for (final ev in assistant.streamReplyWithTools(
           convo,
@@ -939,14 +988,27 @@ class AiChatSession extends ChangeNotifier {
             notifyListeners();
           } else if (ev is AiToolCallRequest) {
             calls.addAll(ev.calls);
+          } else if (ev is AiStreamComplete) {
+            truncated = ev.truncated;
           }
         }
       } catch (e) {
+        final hasPartial =
+            messages[idx].text.trim().isNotEmpty &&
+            messages[idx].text != kConsultingLabel;
+        if (hasPartial) {
+          _markTruncated(idx, modeId);
+          return;
+        }
         messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e', modeId: modeId);
         notifyListeners();
         return;
       }
 
+      if (truncated) {
+        _markTruncated(idx, modeId);
+        return;
+      }
       if (calls.isEmpty) return; // model answered with text → done
 
       // Surface the lookup, then run the tools and feed results back.
@@ -980,6 +1042,19 @@ class AiChatSession extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  void _markTruncated(int index, String modeId) {
+    final current = messages[index].text;
+    messages[index] = AiChatMsg(
+      AiRole.assistant,
+      current.trim().isEmpty
+          ? 'La respuesta alcanzó el límite antes de poder mostrarse.'
+          : current,
+      modeId: modeId,
+      truncated: true,
+    );
+    notifyListeners();
   }
 
   /// Regenerate the assistant reply at [assistantIndex]: drop it and everything

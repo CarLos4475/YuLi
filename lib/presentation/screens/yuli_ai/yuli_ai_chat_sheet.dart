@@ -12,6 +12,7 @@ import '../../widgets/yuli_design.dart';
 import '../../../domain/services/ai_assistant.dart';
 import '../flight/ai_chat_session.dart'
     show AiChatMsg, AiChatSession, kConsultingLabel;
+import '../flight/ai_chat_visuals.dart' show AiThinkingIndicator;
 import '../flight/note_block_widgets.dart'
     show NoteMarkdownPreview, fixMarkdownTables;
 import 'ai_knowledge_contracts.dart';
@@ -82,7 +83,8 @@ class _YuliAssistantBubbleMark extends StatefulWidget {
       _YuliAssistantBubbleMarkState();
 }
 
-const _kSvgTemplate = '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
+const _kSvgTemplate =
+    '''<svg width="91" height="82" viewBox="0 0 91 82" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M25.5932 78V21.7745L5 4V59.0375L25.5932 78Z" fill="{ACCENT}"/>
 <path d="M25.5932 21.7745V21.575H86L64.9492 4L5 4L25.5932 21.7745Z" fill="{ACCENT}"/>
 <path d="M25.5932 21.575V21.7745V78H86V21.575H25.5932Z" fill="{ACCENT}"/>
@@ -107,8 +109,7 @@ class _YuliAssistantBubbleMarkState extends State<_YuliAssistantBubbleMark>
   }
 
   void _onTick() {
-    final t =
-        (DateTime.now().millisecondsSinceEpoch % _cycleMs) / _cycleMs;
+    final t = (DateTime.now().millisecondsSinceEpoch % _cycleMs) / _cycleMs;
     final bob = math.sin(t * _bobs * 2 * math.pi) * _size * 0.06;
     if (bob != _bob) {
       setState(() => _bob = bob);
@@ -149,11 +150,7 @@ class _YuliAssistantBubbleMarkState extends State<_YuliAssistantBubbleMark>
       height: _size,
       child: Transform.translate(
         offset: Offset(0, _bob),
-        child: SvgPicture.string(
-          _svg,
-          width: _size,
-          height: _size,
-        ),
+        child: SvgPicture.string(_svg, width: _size, height: _size),
       ),
     );
   }
@@ -891,13 +888,15 @@ class _YuliAiChatState extends ConsumerState<_YuliAiChat> {
     if (m.text == kConsultingLabel) {
       content = ConsultingIndicator(accent: widget.accent);
     } else if (m.text.isEmpty && streaming) {
-      content = Text('…', style: yBody(size: 14, color: yInk));
+      content = AiThinkingIndicator(accent: widget.accent);
     } else if (streaming) {
       final visible = AiWidgetParser.stripStreamingWidgetDraft(m.text);
       content =
           AiWidgetParser.isStreamingWidgetDraft(m.text)
               ? _streamingWidgetPreview(visible)
               : SelectableText(m.text, style: yBody(size: 14, color: yInk));
+    } else if (m.truncated) {
+      content = SelectableText(m.text, style: yBody(size: 14, color: yInk));
     } else if (AiWidgetParser.hasWidgets(m.text)) {
       content = AiWidgetRenderer(
         text: m.text,

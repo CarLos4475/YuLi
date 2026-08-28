@@ -1836,18 +1836,20 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
 
     // Assistant.
     final streaming = _s.streaming && i == _s.messages.length - 1;
-    final Widget content;
+    Widget content;
 
     if (m.text == kConsultingLabel) {
       content = ConsultingIndicator(accent: widget.accent);
     } else if (m.text.isEmpty && streaming) {
-      content = Text('…', style: yBody(size: 14, color: yInk));
+      content = AiThinkingIndicator(accent: widget.accent);
     } else if (streaming) {
       final visible = AiWidgetParser.stripStreamingWidgetDraft(m.text);
       content =
           AiWidgetParser.isStreamingWidgetDraft(m.text)
               ? _streamingWidgetPreview(visible)
               : SelectableText(m.text, style: yBody(size: 14, color: yInk));
+    } else if (m.truncated) {
+      content = SelectableText(m.text, style: yBody(size: 14, color: yInk));
     } else if (AiWidgetParser.hasWidgets(m.text)) {
       content = AiWidgetRenderer(
         text: m.text,
@@ -1865,6 +1867,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         padding: EdgeInsets.zero,
         scrollWideTables: false,
         textStyle: yBody(size: 14, color: yInk, height: 1.5),
+      );
+    }
+    if (!streaming && m.truncated) {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [content, const SizedBox(height: 10), _truncatedNotice()],
       );
     }
     final isLast = i == _s.messages.length - 1;
@@ -1900,6 +1908,63 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             ]
             : null;
     return _aiMsgFrame(content, actions: actions);
+  }
+
+  Widget _truncatedNotice() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: widget.accent.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: widget.accent.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        children: [
+          Icon(YuLiIcons.triangleAlert, size: 15, color: widget.accent),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              'Respuesta incompleta',
+              style: yBody(size: 11, weight: FontWeight.w700, color: aiInk),
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap:
+                () => _send(
+                  'Continúa exactamente desde donde terminó tu respuesta '
+                  'anterior, sin repetir lo que ya mostraste.',
+                ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+              decoration: BoxDecoration(
+                color: widget.accent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Continuar',
+                    style: yBody(
+                      size: 10,
+                      weight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    YuLiIcons.arrowRight,
+                    size: 12,
+                    color: Colors.white,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _streamingWidgetPreview(String visible) {

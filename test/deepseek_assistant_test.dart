@@ -55,6 +55,29 @@ void main() {
 
     await directory.delete(recursive: true);
   });
+
+  test('stream reports when the provider stops because of length', () async {
+    final client = MockClient((_) async {
+      return http.Response(
+        'data: {"choices":[{"delta":{"content":"Parcial"},'
+        '"finish_reason":null}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'
+        'data: [DONE]\n\n',
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    });
+    final assistant = DeepseekAssistant(_FakeAiKeyStore(), client: client);
+
+    final events =
+        await assistant.streamReplyEvents([
+          const AiMessage(AiRole.user, 'Explica'),
+        ]).toList();
+
+    expect(events.whereType<AiTextDelta>().single.text, 'Parcial');
+    expect(events.whereType<AiStreamComplete>().single.truncated, isTrue);
+    expect(events.whereType<AiStreamComplete>().single.finishReason, 'length');
+  });
 }
 
 class _FakeAiKeyStore extends AiKeyStore {

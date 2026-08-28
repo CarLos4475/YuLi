@@ -8,6 +8,7 @@ import 'package:yuli/domain/services/ai_assistant.dart';
 import 'package:yuli/presentation/screens/flight/ai_chat_sheet.dart';
 import 'package:yuli/presentation/screens/flight/ai_chat_session.dart';
 import 'package:yuli/presentation/screens/flight/ai_chat_settings_dialog.dart';
+import 'package:yuli/presentation/screens/flight/ai_chat_visuals.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,23 @@ void main() {
     expect(second.settings, settings);
   });
 
+  testWidgets('thinking indicator renders and advances its animation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(body: AiThinkingIndicator(accent: Color(0xFF2D3F8C))),
+        ),
+      ),
+    );
+
+    expect(find.text('Pensando'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test(
     'savings caps output, keeps short history and omits related context',
     () async {
@@ -125,6 +143,74 @@ void main() {
         assistant.messages.any((m) => m.content.contains('OTRA FUENTE')),
         isTrue,
       );
+    },
+  );
+
+  test(
+    'response length policy is canonical and precedes the transcript',
+    () async {
+      for (final length in AiResponseLength.values) {
+        final assistant = _CapturingAssistant();
+        final session = AiChatSession(90 + length.index);
+        session.setSettings(
+          const AiChatSettings.savings().copyWith(responseLength: length),
+        );
+
+        await session.send(
+          assistant,
+          const AiUsageLimiter(dailyLimit: 50),
+          'Explica el tema',
+        );
+
+        expect(assistant.messages.last.role, AiRole.user);
+        expect(assistant.messages.last.content, 'Explica el tema');
+        expect(
+          assistant.messages[assistant.messages.length - 2].role,
+          AiRole.system,
+        );
+        expect(
+          assistant.messages[assistant.messages.length - 2].content,
+          length.semanticInstruction,
+        );
+
+        await session.send(
+          assistant,
+          const AiUsageLimiter(dailyLimit: 50),
+          'Continúa',
+          knowledgeDocs: const ['DOCUMENTO DINÁMICO'],
+        );
+        final policyIndex = assistant.messages.indexWhere(
+          (message) => message.content == length.semanticInstruction,
+        );
+        final previousTurnIndex = assistant.messages.indexWhere(
+          (message) => message.content == 'Explica el tema',
+        );
+        final dynamicDocIndex = assistant.messages.indexWhere(
+          (message) => message.content == 'DOCUMENTO DINÁMICO',
+        );
+        expect(policyIndex, greaterThan(0));
+        expect(policyIndex, lessThan(dynamicDocIndex));
+        expect(policyIndex, lessThan(previousTurnIndex));
+        expect(assistant.messages.last.content, 'Continúa');
+      }
+    },
+  );
+
+  test(
+    'a length finish keeps the partial answer and marks it incomplete',
+    () async {
+      final session = AiChatSession(94);
+
+      await session.send(
+        _TruncatedAssistant(),
+        const AiUsageLimiter(dailyLimit: 50),
+        'Respuesta larga',
+      );
+
+      final response = session.messages.last;
+      expect(response.role, AiRole.assistant);
+      expect(response.text, 'Parte útil de la respuesta');
+      expect(response.truncated, isTrue);
     },
   );
 
@@ -378,7 +464,7 @@ void main() {
   );
 }
 
-class _CapturingAssistant implements AiAssistant {
+class _CapturingAssistant extends AiAssistant {
   List<AiMessage> messages = const [];
   AiModel? model;
   int? maxTokens;
@@ -430,5 +516,18 @@ class _ToolLoopAssistant extends _CapturingAssistant {
       return;
     }
     yield const AiTextDelta('Listo');
+  }
+}
+
+class _TruncatedAssistant extends _CapturingAssistant {
+  @override
+  Stream<AiStreamEvent> streamReplyEvents(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  }) async* {
+    yield const AiTextDelta('Parte útil de la respuesta');
+    yield const AiStreamComplete(truncated: true, finishReason: 'length');
   }
 }
