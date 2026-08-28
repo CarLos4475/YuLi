@@ -15,6 +15,7 @@ class AiFrostedSurface extends StatelessWidget {
   final BorderRadius borderRadius;
   final bool blur;
   final EdgeInsetsGeometry? padding;
+  final Color? accent;
 
   const AiFrostedSurface({
     super.key,
@@ -22,26 +23,40 @@ class AiFrostedSurface extends StatelessWidget {
     this.borderRadius = const BorderRadius.all(Radius.circular(24)),
     this.blur = true,
     this.padding,
+    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tintedPaper = Color.alphaBlend(
+      (accent ?? aiPaper).withValues(alpha: accent == null ? 0 : 0.08),
+      aiPaper,
+    ).withValues(alpha: 0.58);
     final surface = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: aiPaper.withValues(alpha: 0.91),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.62),
+            aiPaper.withValues(alpha: 0.56),
+            tintedPaper,
+          ],
+          stops: const [0, 0.56, 1],
+        ),
         borderRadius: borderRadius,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.88)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 30,
-            offset: const Offset(0, 14),
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 38,
+            offset: const Offset(0, 18),
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 3,
-            offset: const Offset(0, 1),
+            color: Colors.white.withValues(alpha: 0.42),
+            blurRadius: 12,
+            offset: const Offset(-3, -3),
           ),
         ],
       ),
@@ -51,7 +66,7 @@ class AiFrostedSurface extends StatelessWidget {
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: surface,
       ),
     );

@@ -66,6 +66,7 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
           maxHeight: MediaQuery.sizeOf(context).height * 0.90,
         ),
         child: AiFrostedSurface(
+          accent: widget.accent,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

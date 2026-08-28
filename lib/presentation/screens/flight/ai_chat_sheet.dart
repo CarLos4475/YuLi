@@ -560,6 +560,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             folderId: note.folderId,
             accent: widget.accent,
             onChanged: _resyncFromSources,
+            onEditAnchor:
+                note.kind == NoteKind.block
+                    ? null
+                    : () {
+                      Navigator.of(context).pop();
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _editContext();
+                      });
+                    },
           ),
     );
   }
@@ -746,6 +755,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             MediaQuery.of(context).viewInsets.bottom + 8,
           ),
           child: AiFrostedSurface(
+            accent: widget.accent,
             child: SafeArea(
               child: AnimatedBuilder(
                 animation: _s,
@@ -762,6 +772,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       child: FractionallySizedBox(
         heightFactor: 0.94,
         child: AiFrostedSurface(
+          accent: widget.accent,
           child: SafeArea(
             top: false,
             child: AnimatedBuilder(
@@ -1086,59 +1097,76 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         final store = ref.watch(customModesStoreProvider);
         final modes = [...kAiModes, ...store.modes];
         final size = MediaQuery.of(context).size;
-        final maxH = size.height * 0.8 < 620 ? size.height * 0.8 : 620.0;
+        final maxH = size.height * 0.84 < 680 ? size.height * 0.84 : 680.0;
         return Dialog(
           backgroundColor: Colors.transparent,
           insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
+            horizontal: 18,
+            vertical: 20,
           ),
           child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 570, maxHeight: maxH),
-            child: Container(
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-                boxShadow: const [
-                  BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
-                ],
-              ),
+            constraints: BoxConstraints(maxWidth: 590, maxHeight: maxH),
+            child: AiFrostedSurface(
+              accent: widget.accent,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header (fixed).
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    padding: const EdgeInsets.fromLTRB(18, 16, 12, 12),
+                    child: Row(
                       children: [
-                        Text(
-                          'ELEGIR MODO',
-                          style: yMono(
-                            size: 11,
-                            weight: FontWeight.w700,
-                            tracking: 1.6,
-                            color: yInk,
+                        Container(
+                          width: 42,
+                          height: 42,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: widget.accent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            YuLiIcons.sparkles,
+                            size: 20,
+                            color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'El modo es CÓMO te ayuda YuLi; el contexto es SOBRE QUÉ.',
-                          style: yBody(size: 12, color: yMuted),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'PERSONALIDAD',
+                                style: ySans(
+                                  size: 18,
+                                  weight: FontWeight.w700,
+                                  color: aiInk,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Elige cómo quieres que te responda YuLi.',
+                                style: yBody(size: 11.5, color: aiMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        AiSoftIconButton(
+                          icon: YuLiIcons.close,
+                          tooltip: 'Cerrar',
+                          onTap: () => Navigator.of(context).pop(),
                         ),
                       ],
                     ),
                   ),
-                  // Cards (scroll). Card width is derived from the real inner
-                  // width (LayoutBuilder) so it's always exactly two columns with
-                  // no dead space, robust to the dialog border eating a few px.
                   Flexible(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      padding: const EdgeInsets.fromLTRB(18, 2, 18, 16),
                       child: LayoutBuilder(
                         builder: (context, c) {
-                          final cardW = (c.maxWidth - 10) / 2;
+                          final columns = c.maxWidth < 430 ? 1 : 2;
+                          final cardW =
+                              columns == 1 ? c.maxWidth : (c.maxWidth - 10) / 2;
                           return Wrap(
                             spacing: 10,
                             runSpacing: 10,
@@ -1150,15 +1178,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                       ),
                     ),
                   ),
-                  // "CREAR MODO" (fixed footer).
                   Container(
                     width: double.infinity,
                     decoration: const BoxDecoration(
-                      border: Border(
-                        top: BorderSide(color: yBorderStrong, width: yLineMid),
-                      ),
+                      border: Border(top: BorderSide(color: aiHairline)),
                     ),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
                     child: _createModeButton(),
                   ),
                 ],
@@ -1170,31 +1195,35 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  /// "+ CREAR MODO" — launches the guided builder dialog. On save it returns the
-  /// new mode; we switch to it right away.
   Widget _createModeButton() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _openModeBuilder,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(
-          color: yCream,
-          border: Border.all(color: yBorderStrong, width: yLineMid),
+          color: widget.accent,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: widget.accent.withValues(alpha: 0.24),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(YuLiIcons.plus, size: 16, color: widget.accent),
+            const Icon(YuLiIcons.plus, size: 17, color: Colors.white),
             const SizedBox(width: 8),
             Text(
-              'CREAR MODO',
-              style: yMono(
-                size: 11,
+              'CREAR PERSONALIDAD',
+              style: yBody(
+                size: 11.5,
                 weight: FontWeight.w800,
-                tracking: 1.4,
-                color: yInk,
+                color: Colors.white,
               ),
             ),
           ],
@@ -1241,11 +1270,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             backgroundColor: yCream,
             shape: const RoundedRectangleBorder(),
             title: Text(
-              'BORRAR MODO',
+              'BORRAR PERSONALIDAD',
               style: yMono(size: 13, weight: FontWeight.w800, color: yInk),
             ),
             content: Text(
-              '¿Borrar el modo "${m.name}"? No se puede deshacer.',
+              '¿Borrar la personalidad "${m.name}"? No se puede deshacer.',
               style: yBody(size: 14, color: yInk),
             ),
             actions: [
@@ -1283,12 +1312,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       },
       child: Container(
         width: width,
-        height: 140,
+        height: 136,
         decoration: BoxDecoration(
-          color: selected ? widget.accent.withValues(alpha: 0.10) : yCream,
+          color:
+              selected
+                  ? widget.accent.withValues(alpha: 0.12)
+                  : Colors.white.withValues(alpha: 0.46),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? widget.accent : yBorderStrong,
-            width: selected ? yLineMid : yLineThin,
+            color:
+                selected ? widget.accent.withValues(alpha: 0.48) : aiHairline,
           ),
         ),
         padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
@@ -1303,10 +1336,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   height: 30,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: widget.accent,
-                    border: Border.all(color: yBorderStrong, width: yLineThin),
+                    color: widget.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(m.icon, size: 16, color: yCream),
+                  child: Icon(m.icon, size: 16, color: widget.accent),
                 ),
                 const SizedBox(width: 9),
                 Expanded(
@@ -1314,11 +1347,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                     m.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: yMono(
+                    style: yBody(
                       size: 12,
                       weight: FontWeight.w800,
-                      tracking: 1.1,
-                      color: yInk,
+                      color: aiInk,
                     ),
                   ),
                 ),
@@ -1326,16 +1358,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                   Icon(YuLiIcons.check, size: 16, color: widget.accent),
                 if (m.custom) ...[
                   const SizedBox(width: 8),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  AiSoftIconButton(
+                    icon: YuLiIcons.pen,
+                    tooltip: 'Editar personalidad',
                     onTap: () => _editMode(m),
-                    child: const Icon(YuLiIcons.pen, size: 14, color: yMuted),
+                    size: 28,
                   ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  const SizedBox(width: 4),
+                  AiSoftIconButton(
+                    icon: YuLiIcons.trash,
+                    tooltip: 'Borrar personalidad',
                     onTap: () => _deleteMode(m),
-                    child: const Icon(YuLiIcons.trash, size: 15, color: yMuted),
+                    size: 28,
                   ),
                 ],
               ],
@@ -1345,7 +1379,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               m.blurb,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: yBody(size: 12, color: yInk),
+              style: yBody(size: 12, color: aiInk),
             ),
             const SizedBox(height: 6),
             Text(
@@ -1354,7 +1388,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
               overflow: TextOverflow.ellipsis,
               style: yBody(
                 size: 11,
-                color: yMuted,
+                color: aiMuted,
               ).copyWith(fontStyle: FontStyle.italic),
             ),
           ],
@@ -2028,20 +2062,20 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
             onTap: () => setState(() => _showContext = !_showContext),
           ),
           const SizedBox(width: 6),
-          if (sources.isNotEmpty) ...[
-            AiStatusPill(
-              icon: YuLiIcons.link,
-              label:
-                  sources.length == 1
-                      ? '1 fuente'
-                      : '${sources.length} fuentes',
-              accent: widget.accent,
-              active: _s.settings.useRelatedSources,
-              highImpact: _s.settings.useRelatedSources,
-              onTap: _showSourcesSheet,
-            ),
-            const SizedBox(width: 6),
-          ],
+          AiStatusPill(
+            icon: YuLiIcons.link,
+            label:
+                sources.isEmpty
+                    ? 'Gestionar contexto'
+                    : sources.length == 1
+                    ? '1 fuente'
+                    : '${sources.length} fuentes',
+            accent: widget.accent,
+            active: _s.settings.useRelatedSources && sources.isNotEmpty,
+            highImpact: _s.settings.useRelatedSources && sources.isNotEmpty,
+            onTap: _showSourcesSheet,
+          ),
+          const SizedBox(width: 6),
           AiStatusPill(
             icon: YuLiIcons.clock,
             label: historyLabel,
@@ -2079,15 +2113,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
       builder: (sheetCtx) {
         final insets = MediaQuery.of(sheetCtx).viewInsets.bottom;
         return Padding(
-          padding: EdgeInsets.only(bottom: insets),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: yCream,
-              border: Border(
-                top: BorderSide(color: yBorderStrong, width: yLineMid),
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          padding: EdgeInsets.fromLTRB(8, 8, 8, insets + 8),
+          child: AiFrostedSurface(
+            accent: widget.accent,
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
             child: SafeArea(
               top: false,
               child: Column(
@@ -2095,22 +2124,38 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'CONTEXTO',
-                    style: yMono(
-                      size: 11,
+                    'EDITAR CONTEXTO',
+                    style: ySans(
+                      size: 18,
                       weight: FontWeight.w700,
-                      tracking: 1.4,
-                      color: yInk,
+                      color: aiInk,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  ConstrainedBox(
+                  const SizedBox(height: 4),
+                  Text(
+                    'Escribe información que YuLi debe tener presente en esta conversación.',
+                    style: yBody(size: 12, color: aiMuted),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
                     constraints: const BoxConstraints(maxHeight: 240),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.52),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: aiHairline),
+                    ),
                     child: TextField(
                       controller: _anchorInput,
                       maxLines: null,
-                      style: yBody(size: 14, color: yInk),
-                      decoration: _fieldDeco('Contexto de la conversación'),
+                      style: yBody(size: 14, color: aiInk),
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.all(14),
+                        hintText: 'Contexto de la conversación',
+                        hintStyle: yBody(size: 14, color: aiMuted),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -2134,11 +2179,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: yCream,
-                            border: Border.all(
-                              color: yBorderStrong,
-                              width: yLineMid,
-                            ),
+                            color: Colors.white.withValues(alpha: 0.48),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: aiHairline),
                           ),
                           child: Text(
                             'LIMPIAR',
@@ -2146,7 +2189,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
                               size: 11,
                               weight: FontWeight.w700,
                               tracking: 1.2,
-                              color: yInk,
+                              color: aiInk,
                             ),
                           ),
                         ),
@@ -2162,25 +2205,6 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
     );
   }
 
-  InputDecoration _fieldDeco(String hint) => InputDecoration(
-    isDense: true,
-    contentPadding: const EdgeInsets.all(10),
-    hintText: hint,
-    hintStyle: yBody(size: 14, color: yMuted),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
-    ),
-  );
-
   Widget _primaryButton(String label, VoidCallback onTap) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -2190,7 +2214,14 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet>
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: widget.accent,
-          border: Border.all(color: yBorderStrong, width: yLineMid),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: widget.accent.withValues(alpha: 0.2),
+              blurRadius: 16,
+              offset: const Offset(0, 7),
+            ),
+          ],
         ),
         child: Text(
           label,
@@ -2497,11 +2528,13 @@ class _SourcesSheet extends ConsumerStatefulWidget {
   final int folderId;
   final Color accent;
   final Future<void> Function() onChanged;
+  final VoidCallback? onEditAnchor;
   const _SourcesSheet({
     required this.canvasNoteId,
     required this.folderId,
     required this.accent,
     required this.onChanged,
+    this.onEditAnchor,
   });
 
   @override
@@ -2740,71 +2773,155 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
             .watch(canvasContextSourcesProvider(widget.canvasNoteId))
             .valueOrNull ??
         const [];
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'FUENTES DE CONTEXTO',
-                  style: yMono(
-                    size: 11,
-                    weight: FontWeight.w700,
-                    tracking: 1.4,
-                    color: yInk,
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: AiFrostedSurface(
+        accent: widget.accent,
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: widget.accent.withValues(alpha: 0.13),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(
+                        color: widget.accent.withValues(alpha: 0.26),
+                      ),
+                    ),
+                    child: Icon(YuLiIcons.link, size: 18, color: widget.accent),
                   ),
-                ),
-                const Spacer(),
-                if (_busy)
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'GESTIONAR CONTEXTO',
+                          style: ySans(
+                            size: 17,
+                            weight: FontWeight.w700,
+                            color: aiInk,
+                          ),
+                        ),
+                        Text(
+                          'Elige qué información puede consultar YuLi.',
+                          style: yBody(size: 12, color: aiMuted),
+                        ),
+                      ],
+                    ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'El chat usa estas fuentes como contexto. Las notas se '
-              'sincronizan al abrir; los enlaces se leen una vez y se '
-              'actualizan solo con su ↻.',
-              style: yBody(size: 12, color: yMuted),
-            ),
-            const SizedBox(height: 12),
-            if (sources.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'Sin fuentes. Agrega una nota o un enlace.',
-                  style: yBody(size: 13, color: yMuted),
-                ),
-              )
-            else
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [for (final s in sources) _sourceRow(s)],
-                ),
+                  if (_busy)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: widget.accent,
+                        ),
+                      ),
+                    ),
+                  AiSoftIconButton(
+                    icon: YuLiIcons.close,
+                    tooltip: 'Cerrar',
+                    size: 34,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                ],
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: _addBtn(YuLiIcons.fileText, 'Nota', _addNote)),
-                const SizedBox(width: 8),
-                Expanded(child: _addBtn(YuLiIcons.link, 'Enlace', _addUrl)),
+              const SizedBox(height: 14),
+              if (widget.onEditAnchor != null) ...[
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onEditAnchor,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: widget.accent.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: widget.accent.withValues(alpha: 0.24),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(YuLiIcons.pencil, size: 17, color: widget.accent),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'EDITAR CONTEXTO MANUAL',
+                                style: ySans(
+                                  size: 13,
+                                  weight: FontWeight.w700,
+                                  color: aiInk,
+                                ),
+                              ),
+                              Text(
+                                'Escribe instrucciones o datos que no están en una nota.',
+                                style: yBody(size: 11, color: aiMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          YuLiIcons.chevronRight,
+                          size: 17,
+                          color: widget.accent,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
               ],
-            ),
-          ],
+              if (sources.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.36),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: aiHairline),
+                  ),
+                  child: Text(
+                    widget.onEditAnchor == null
+                        ? 'Agrega una nota o un enlace para darle más información a YuLi.'
+                        : 'Agrega una nota, un enlace o escribe contexto manual.',
+                    style: yBody(size: 13, color: aiMuted),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [for (final s in sources) _sourceRow(s)],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _addBtn(YuLiIcons.fileText, 'Nota', _addNote),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: _addBtn(YuLiIcons.link, 'Enlace', _addUrl)),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2886,11 +3003,12 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
       behavior: HitTestBehavior.opaque,
       onTap: _busy ? null : () => _viewSource(s),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: yBorderStrong, width: yLineThin),
-          ),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: aiHairline),
         ),
         child: Row(
           children: [
@@ -2923,7 +3041,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
                     style: ySans(
                       size: 14,
                       weight: FontWeight.w700,
-                      color: s.enabled ? yInk : yMuted,
+                      color: s.enabled ? aiInk : aiMuted,
                     ),
                   ),
                   if (s.isUrl)
@@ -2931,7 +3049,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
                       '${s.ref}  ·  ${_ago(s.fetchedAt)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: yMono(size: 9, tracking: 0.3, color: yMuted),
+                      style: yMono(size: 9, tracking: 0.3, color: aiMuted),
                     ),
                 ],
               ),
@@ -2961,9 +3079,16 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Icon(icon, size: 16, color: onTap == null ? yMuted : yInk),
+      child: Container(
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.46),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: aiHairline),
+        ),
+        child: Icon(icon, size: 14, color: onTap == null ? aiMuted : aiInk),
       ),
     ),
   );
@@ -2976,13 +3101,14 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
           height: 46,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: yCream,
-            border: Border.all(color: widget.accent, width: yLineMid),
+            color: widget.accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(23),
+            border: Border.all(color: widget.accent.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: yInk),
+              Icon(icon, size: 16, color: widget.accent),
               const SizedBox(width: 8),
               Text(
                 label.toUpperCase(),
@@ -2990,7 +3116,7 @@ class _SourcesSheetState extends ConsumerState<_SourcesSheet> {
                   size: 12,
                   weight: FontWeight.w700,
                   tracking: 1.2,
-                  color: yInk,
+                  color: aiInk,
                 ),
               ),
             ],

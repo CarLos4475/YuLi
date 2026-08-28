@@ -7,6 +7,7 @@ import '../../../domain/services/ai_assistant.dart';
 import '../../providers/ai_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import 'ai_chat_visuals.dart';
 import 'ai_modes.dart';
 import 'mode_builder.dart';
 
@@ -211,20 +212,14 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final maxH = size.height * 0.82 < 660 ? size.height * 0.82 : 660.0;
+    final maxH = size.height * 0.86 < 700 ? size.height * 0.86 : 700.0;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: 560, maxHeight: maxH),
-        child: Container(
-          decoration: BoxDecoration(
-            color: yCream,
-            border: Border.all(color: yBorderStrong, width: yLineMid),
-            boxShadow: const [
-              BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
-            ],
-          ),
+        constraints: BoxConstraints(maxWidth: 590, maxHeight: maxH),
+        child: AiFrostedSurface(
+          accent: widget.accent,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -233,7 +228,7 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
                 child: ListView(
                   controller: _scroll,
                   shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
                   children: [
                     for (final m in _messages)
                       if (!m.hidden) _bubble(m),
@@ -251,94 +246,73 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     );
   }
 
-  /// YuLi-branded header: dark bar with the accent diamond mark, "YuLi" and a
-  /// contextual subtitle (NUEVO MODO / EDITANDO · NAME), plus the close X.
   Widget _header() {
     final ed = widget.editing;
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-        ),
-      ),
-      child: Stack(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
+      child: Row(
         children: [
-          Positioned.fill(child: AccentMosaic(accent: widget.accent)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-            child: Row(
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: widget.accent,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              YuLiIcons.sparkles,
+              size: 20,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _mark(size: 34, onAccent: true),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'YuLi',
-                        style: ySans(
-                          size: 18,
-                          weight: FontWeight.w700,
-                          color: yCream,
-                        ),
-                      ),
-                      Text(
-                        ed != null ? 'EDITANDO · ${ed.name}' : 'NUEVO MODO',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: yMono(
-                          size: 8,
-                          tracking: 1.6,
-                          color: yCream.withValues(alpha: 0.78),
-                        ),
-                      ),
-                    ],
-                  ),
+                Text(
+                  ed != null ? 'EDITAR PERSONALIDAD' : 'NUEVA PERSONALIDAD',
+                  style: ySans(size: 18, weight: FontWeight.w700, color: aiInk),
                 ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).maybePop(),
-                  child: Container(
-                    width: 34,
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: yCream, width: yLineMid),
-                    ),
-                    child: const Icon(YuLiIcons.close, color: yCream, size: 16),
-                  ),
+                const SizedBox(height: 2),
+                Text(
+                  ed != null
+                      ? 'Cuéntale a YuLi qué quieres cambiar de ${ed.name}.'
+                      : 'Diseñen juntos cómo quieres que te responda.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: yBody(size: 11.5, color: aiMuted),
                 ),
               ],
             ),
+          ),
+          AiSoftIconButton(
+            icon: YuLiIcons.close,
+            tooltip: 'Cerrar',
+            onTap: () => Navigator.of(context).maybePop(),
           ),
         ],
       ),
     );
   }
 
-  /// YuLi's signature: a rotated diamond mark. On cream (bubbles) it's an accent
-  /// square with a cream diamond; [onAccent] inverts it (cream square, accent
-  /// diamond) so it reads against the accent header bar.
-  Widget _mark({double size = 30, bool onAccent = false}) {
+  Widget _mark({double size = 30}) {
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: onAccent ? yCream : widget.accent,
-        border:
-            onAccent
-                ? null
-                : Border.all(color: yBorderStrong, width: yLineThin),
+        color: widget.accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(size * 0.34),
       ),
       child: Transform.rotate(
         angle: math.pi / 4,
         child: Container(
           width: size * 0.36,
           height: size * 0.36,
-          color: onAccent ? widget.accent : yCream,
+          color: widget.accent,
         ),
       ),
     );
@@ -351,8 +325,6 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     return _yuliBubble(display);
   }
 
-  /// YuLi's turn: diamond mark + "YULI" label + a bordered cream bubble with the
-  /// brutalist drop shadow (mirrors the main chat's assistant frame).
   Widget _yuliBubble(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -368,27 +340,15 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
                 Padding(
                   padding: const EdgeInsets.only(left: 2, bottom: 5),
                   child: Text(
-                    'YULI',
-                    style: yMono(
-                      size: 9,
+                    'YuLi',
+                    style: yBody(
+                      size: 11,
                       weight: FontWeight.w700,
-                      tracking: 1.6,
-                      color: yMuted,
+                      color: aiMuted,
                     ),
                   ),
                 ),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(14, 11, 14, 12),
-                  decoration: BoxDecoration(
-                    color: yCream,
-                    border: Border.all(color: yBorderStrong, width: yLineMid),
-                    boxShadow: const [
-                      BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
-                    ],
-                  ),
-                  child: Text(text, style: yBody(size: 14, color: yInk)),
-                ),
+                Text(text, style: yBody(size: 14, color: aiInk)),
               ],
             ),
           ),
@@ -397,7 +357,6 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
     );
   }
 
-  /// User's turn: right-aligned "TÚ" + accent bubble with drop shadow.
   Widget _userBubble(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -407,13 +366,8 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
           Padding(
             padding: const EdgeInsets.only(right: 2, bottom: 5),
             child: Text(
-              'TÚ',
-              style: yMono(
-                size: 9,
-                weight: FontWeight.w700,
-                tracking: 1.6,
-                color: yMuted,
-              ),
+              'Tú',
+              style: yBody(size: 11, weight: FontWeight.w700, color: aiMuted),
             ),
           ),
           ConstrainedBox(
@@ -421,15 +375,15 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
             child: Container(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
               decoration: BoxDecoration(
-                color: widget.accent,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-                boxShadow: const [
-                  BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
-                ],
+                color: widget.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(
+                  color: widget.accent.withValues(alpha: 0.18),
+                ),
               ),
               child: Text(
                 text,
-                style: yBody(size: 14, weight: FontWeight.w500, color: yCream),
+                style: yBody(size: 14, weight: FontWeight.w500, color: aiInk),
               ),
             ),
           ),
@@ -459,10 +413,11 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
           Container(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 11),
             decoration: BoxDecoration(
-              color: yCream,
-              border: Border.all(color: yBorderStrong, width: yLineMid),
+              color: Colors.white.withValues(alpha: 0.46),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: aiHairline),
             ),
-            child: Text('escribiendo…', style: yBody(size: 13, color: yMuted)),
+            child: Text('Escribiendo…', style: yBody(size: 13, color: aiMuted)),
           ),
         ],
       ),
@@ -474,23 +429,16 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
       decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: widget.accent, width: yLineMid),
-        boxShadow: const [
-          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
-        ],
+        color: Colors.white.withValues(alpha: 0.50),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: widget.accent.withValues(alpha: 0.30)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'YULI PROPONE',
-            style: yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              tracking: 1.6,
-              color: yMuted,
-            ),
+            style: yBody(size: 11, weight: FontWeight.w700, color: aiMuted),
           ),
           const SizedBox(height: 8),
           Row(
@@ -500,23 +448,27 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
                 height: 32,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: widget.accent,
-                  border: Border.all(color: yBorderStrong, width: yLineThin),
+                  color: widget.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(iconForKey(_iconKey), size: 17, color: yCream),
+                child: Icon(
+                  iconForKey(_iconKey),
+                  size: 17,
+                  color: widget.accent,
+                ),
               ),
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
                   d.name,
-                  style: yMono(size: 14, weight: FontWeight.w800, color: yInk),
+                  style: ySans(size: 16, weight: FontWeight.w700, color: aiInk),
                 ),
               ),
             ],
           ),
           if (d.blurb.isNotEmpty) ...[
             const SizedBox(height: 9),
-            Text(d.blurb, style: yBody(size: 13, color: yInk)),
+            Text(d.blurb, style: yBody(size: 13, color: aiInk)),
           ],
           if (d.sample.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -524,19 +476,14 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
               d.sample,
               style: yBody(
                 size: 12,
-                color: yMuted,
+                color: aiMuted,
               ).copyWith(fontStyle: FontStyle.italic),
             ),
           ],
           const SizedBox(height: 12),
           Text(
             'ÍCONO',
-            style: yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yMuted,
-            ),
+            style: yBody(size: 10.5, weight: FontWeight.w700, color: aiMuted),
           ),
           const SizedBox(height: 6),
           Wrap(
@@ -550,15 +497,10 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
           const SizedBox(height: 12),
           Text(
             'PERSONA',
-            style: yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yMuted,
-            ),
+            style: yBody(size: 10.5, weight: FontWeight.w700, color: aiMuted),
           ),
           const SizedBox(height: 4),
-          Text(d.persona, style: yBody(size: 12, color: yInk)),
+          Text(d.persona, style: yBody(size: 12, color: aiInk)),
         ],
       ),
     );
@@ -574,13 +516,12 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
         height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? widget.accent : yCream,
-          border: Border.all(
-            color: selected ? widget.accent : yBorderStrong,
-            width: selected ? yLineMid : yLineThin,
-          ),
+          color:
+              selected ? widget.accent : Colors.white.withValues(alpha: 0.46),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? widget.accent : aiHairline),
         ),
-        child: Icon(icon, size: 18, color: selected ? yCream : yInk),
+        child: Icon(icon, size: 18, color: selected ? Colors.white : aiInk),
       ),
     );
   }
@@ -588,14 +529,17 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
   Widget _errorBanner(String msg) {
     return Container(
       width: double.infinity,
-      color: yCream2,
+      decoration: BoxDecoration(
+        color: widget.accent.withValues(alpha: 0.08),
+        border: const Border(top: BorderSide(color: aiHairline)),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(YuLiIcons.triangleAlert, size: 16, color: yInk),
+          Icon(YuLiIcons.triangleAlert, size: 16, color: widget.accent),
           const SizedBox(width: 8),
-          Expanded(child: Text(msg, style: yBody(size: 13, color: yInk))),
+          Expanded(child: Text(msg, style: yBody(size: 13, color: aiInk))),
         ],
       ),
     );
@@ -604,10 +548,9 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
   Widget _proposalActions() {
     return Container(
       decoration: const BoxDecoration(
-        color: yCream,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+        border: Border(top: BorderSide(color: aiHairline)),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
       child: Row(
         children: [
           Expanded(
@@ -645,19 +588,19 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
         decoration: BoxDecoration(
           color:
               disabled
-                  ? yMuted
+                  ? aiMuted
                   : filled
                   ? widget.accent
-                  : yCream,
-          border: Border.all(color: yBorderStrong, width: yLineMid),
+                  : Colors.white.withValues(alpha: 0.48),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: filled ? widget.accent : aiHairline),
         ),
         child: Text(
           label,
-          style: yMono(
+          style: yBody(
             size: 12,
             weight: FontWeight.w800,
-            tracking: 1.1,
-            color: filled || disabled ? yCream : yInk,
+            color: filled || disabled ? Colors.white : aiInk,
           ),
         ),
       ),
@@ -667,48 +610,40 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
   Widget _inputBar() {
     return Container(
       decoration: const BoxDecoration(
-        color: yCream,
-        border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+        border: Border(top: BorderSide(color: aiHairline)),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
-              controller: _input,
-              minLines: 1,
-              maxLines: 4,
-              enabled: !_busy,
-              style: yBody(size: 15, color: yInk),
-              onSubmitted: _busy ? null : (v) => _send(v),
-              textInputAction: TextInputAction.send,
-              decoration: InputDecoration(
-                hintText: 'Responde a YuLi…',
-                hintStyle: yBody(size: 15, color: yMuted),
-                filled: true,
-                fillColor: yCream,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 11,
-                ),
-                enabledBorder: const OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(
-                    color: yBorderStrong,
-                    width: yLineThin,
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: widget.accent, width: yLineMid),
-                ),
-                disabledBorder: const OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(
-                    color: yBorderStrong,
-                    width: yLineThin,
-                  ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.56),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: aiHairline),
+              ),
+              child: TextField(
+                controller: _input,
+                minLines: 1,
+                maxLines: 4,
+                enabled: !_busy,
+                style: yBody(size: 15, color: aiInk),
+                onSubmitted: _busy ? null : (v) => _send(v),
+                textInputAction: TextInputAction.send,
+                decoration: InputDecoration(
+                  hintText: 'Responde a YuLi…',
+                  hintStyle: yBody(size: 15, color: aiMuted),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  filled: true,
+                  fillColor: Colors.transparent,
                 ),
               ),
             ),
@@ -718,14 +653,18 @@ class _ModeBuilderDialogState extends ConsumerState<ModeBuilderDialog> {
             behavior: HitTestBehavior.opaque,
             onTap: _busy ? null : () => _send(_input.text),
             child: Container(
-              width: 52,
-              height: 52,
+              width: 46,
+              height: 46,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _busy ? yMuted : widget.accent,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
+                color: _busy ? aiMuted : widget.accent,
+                shape: BoxShape.circle,
               ),
-              child: const Icon(YuLiIcons.arrowRight, color: yCream, size: 20),
+              child: const Icon(
+                YuLiIcons.arrowRight,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ),
         ],
