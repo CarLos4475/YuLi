@@ -3,9 +3,17 @@
 /// that requested it via [AiMessage.toolCalls]).
 enum AiRole { system, user, assistant, tool }
 
+class AiImageInput {
+  final String path;
+  final String mediaType;
+
+  const AiImageInput({required this.path, required this.mediaType});
+}
+
 class AiMessage {
   final AiRole role;
   final String content;
+  final AiImageInput? image;
 
   /// Assistant turn requesting one or more tool calls (function calling).
   final List<AiToolCall>? toolCalls;
@@ -17,6 +25,7 @@ class AiMessage {
   const AiMessage(
     this.role,
     this.content, {
+    this.image,
     this.toolCalls,
     this.toolCallId,
     this.name,
@@ -37,13 +46,13 @@ class AiToolDef {
   });
 
   Map<String, dynamic> toJson() => {
-        'type': 'function',
-        'function': {
-          'name': name,
-          'description': description,
-          'parameters': parameters,
-        },
-      };
+    'type': 'function',
+    'function': {
+      'name': name,
+      'description': description,
+      'parameters': parameters,
+    },
+  };
 }
 
 /// A function call requested by the model. [arguments] is a raw JSON string.
@@ -84,9 +93,12 @@ abstract class AiAssistant {
   /// Stream the assistant's reply token-by-token for [messages].
   /// [maxTokens] caps each reply's length/cost.
   /// Throws [AiException] on missing key / network / API errors.
-  Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash, int maxTokens = 2048,
-      double temperature = 0.3});
+  Stream<String> streamReply(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  });
 
   /// Like [streamReply] but with function calling: the model may emit text
   /// (as [AiTextDelta]) and/or request [tools] (as [AiToolCallRequest] at the

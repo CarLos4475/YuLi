@@ -234,6 +234,7 @@ class AiChatSettings {
 class AiChatMsg {
   final AiRole role;
   final String text;
+  final AiImageInput? image;
 
   /// For assistant replies: the mode active when this reply was produced. Used
   /// to drop OTHER-mode replies from the sent history so the model doesn't
@@ -241,7 +242,7 @@ class AiChatMsg {
   /// system turns and legacy messages.
   final String? modeId;
 
-  const AiChatMsg(this.role, this.text, {this.modeId});
+  const AiChatMsg(this.role, this.text, {this.modeId, this.image});
 }
 
 /// Per-note chat conversation. Lives in a (non-autoDispose) provider keyed by
@@ -621,9 +622,11 @@ class AiChatSession extends ChangeNotifier {
     List<String> widgetDocs = const [],
     List<String> knowledgeDocs = const [],
     List<String> memoryDocs = const [],
+    AiImageInput? image,
   }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
+    if (image != null && model == AiModel.pro) return;
 
     if (!await limiter.canSend()) {
       messages.add(
@@ -649,7 +652,7 @@ class AiChatSession extends ChangeNotifier {
 
     final modeId = mode.id;
     final history = List<AiChatMsg>.from(messages);
-    messages.add(AiChatMsg(AiRole.user, t));
+    messages.add(AiChatMsg(AiRole.user, t, image: image));
     messages.add(AiChatMsg(AiRole.assistant, '', modeId: modeId));
     notifyListeners();
     await limiter.record();
@@ -729,7 +732,7 @@ class AiChatSession extends ChangeNotifier {
               : live;
       convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
     }
-    convo.add(AiMessage(AiRole.user, t));
+    convo.add(AiMessage(AiRole.user, t, image: image));
 
     if (tools.isNotEmpty && onToolCall != null) {
       await _streamWithTools(
@@ -918,8 +921,9 @@ class AiChatSession extends ChangeNotifier {
     }
     if (ui < 0) return;
     final prompt = messages[ui].text;
+    final image = messages[ui].image;
     messages.removeRange(ui, messages.length);
     notifyListeners();
-    await send(assistant, limiter, prompt);
+    await send(assistant, limiter, prompt, image: image);
   }
 }

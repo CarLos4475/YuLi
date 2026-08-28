@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -13,21 +14,21 @@ class DeepseekAssistant implements AiAssistant {
   final http.Client _client;
 
   DeepseekAssistant(this.keyStore, {http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   // Documented OpenAI-compatible path. Both `/chat/completions` and
   // `/v1/chat/completions` work; we use the documented `/v1` to be safe.
   static const _base = 'https://api.deepseek.com/v1';
 
   String _modelId(AiModel m) => switch (m) {
-        AiModel.flash => 'deepseek-v4-flash-vision-exp',
-        AiModel.pro => 'deepseek-v4-pro',
-      };
+    AiModel.flash => 'deepseek-v4-flash-vision-exp',
+    AiModel.pro => 'deepseek-v4-pro',
+  };
 
   /// OpenAI-compatible message JSON, including tool-calling fields. A plain
   /// chat turn is just role+content; an assistant turn that requested tools
   /// carries `tool_calls`; a `tool` turn carries its `tool_call_id`.
-  Map<String, dynamic> _msgJson(AiMessage m) {
+  Future<Map<String, dynamic>> _msgJson(AiMessage m) async {
     if (m.role == AiRole.tool) {
       return {
         'role': 'tool',
@@ -49,30 +50,63 @@ class DeepseekAssistant implements AiAssistant {
         ],
       };
     }
+    if (m.image != null) {
+      if (m.role != AiRole.user) {
+        throw const AiException(
+          'Las imágenes solo pueden enviarse en mensajes del usuario.',
+        );
+      }
+      final file = File(m.image!.path);
+      if (!await file.exists()) {
+        throw const AiException('La imagen adjunta ya no está disponible.');
+      }
+      if (await file.length() > 20 * 1024 * 1024) {
+        throw const AiException('La imagen adjunta es demasiado grande.');
+      }
+      final encoded = base64Encode(await file.readAsBytes());
+      return {
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': m.content},
+          {
+            'type': 'image_url',
+            'image_url': {
+              'url': 'data:${m.image!.mediaType};base64,$encoded',
+              'detail': 'auto',
+            },
+          },
+        ],
+      };
+    }
     return {'role': m.role.name, 'content': m.content};
   }
 
   @override
-  Stream<String> streamReply(List<AiMessage> messages,
-      {AiModel model = AiModel.flash, int maxTokens = 2048,
-      double temperature = 0.3}) async* {
+  Stream<String> streamReply(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  }) async* {
     final key = (await keyStore.read())?.trim();
     if (key == null || key.isEmpty) {
       throw const AiException('Falta la API key (configúrala en Ajustes).');
     }
+    final messageJson = await Future.wait(messages.map(_msgJson));
 
-    final req = http.Request('POST', Uri.parse('$_base/chat/completions'))
-      ..headers['Authorization'] = 'Bearer $key'
-      ..headers['Content-Type'] = 'application/json'
-      ..body = jsonEncode({
-        'model': _modelId(model),
-        'stream': true,
-        'max_tokens': maxTokens,
-        // Lower temperature → more deterministic (good for summarize/clean/
-        // extract-tasks, less drift).
-        'temperature': temperature,
-        'messages': messages.map(_msgJson).toList(),
-      });
+    final req =
+        http.Request('POST', Uri.parse('$_base/chat/completions'))
+          ..headers['Authorization'] = 'Bearer $key'
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({
+            'model': _modelId(model),
+            'stream': true,
+            'max_tokens': maxTokens,
+            // Lower temperature → more deterministic (good for summarize/clean/
+            // extract-tasks, less drift).
+            'temperature': temperature,
+            'messages': messageJson,
+          });
 
     http.StreamedResponse resp;
     try {
@@ -121,19 +155,21 @@ class DeepseekAssistant implements AiAssistant {
     if (key == null || key.isEmpty) {
       throw const AiException('Falta la API key (configúrala en Ajustes).');
     }
+    final messageJson = await Future.wait(messages.map(_msgJson));
 
-    final req = http.Request('POST', Uri.parse('$_base/chat/completions'))
-      ..headers['Authorization'] = 'Bearer $key'
-      ..headers['Content-Type'] = 'application/json'
-      ..body = jsonEncode({
-        'model': _modelId(model),
-        'stream': true,
-        'max_tokens': maxTokens,
-        'temperature': temperature,
-        'messages': messages.map(_msgJson).toList(),
-        'tools': tools.map((t) => t.toJson()).toList(),
-        'tool_choice': 'auto',
-      });
+    final req =
+        http.Request('POST', Uri.parse('$_base/chat/completions'))
+          ..headers['Authorization'] = 'Bearer $key'
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({
+            'model': _modelId(model),
+            'stream': true,
+            'max_tokens': maxTokens,
+            'temperature': temperature,
+            'messages': messageJson,
+            'tools': tools.map((t) => t.toJson()).toList(),
+            'tool_choice': 'auto',
+          });
 
     http.StreamedResponse resp;
     try {
@@ -196,11 +232,11 @@ class DeepseekAssistant implements AiAssistant {
   }
 
   String _friendlyError(int code) => switch (code) {
-        401 => 'API key inválida (revísala en Ajustes).',
-        402 => 'Sin saldo disponible para YuLi AI.',
-        429 => 'Límite de uso alcanzado, intenta más tarde.',
-        _ => 'Error de la API ($code).',
-      };
+    401 => 'API key inválida (revísala en Ajustes).',
+    402 => 'Sin saldo disponible para YuLi AI.',
+    429 => 'Límite de uso alcanzado, intenta más tarde.',
+    _ => 'Error de la API ($code).',
+  };
 }
 
 /// Accumulator for one tool call streamed across SSE fragments.

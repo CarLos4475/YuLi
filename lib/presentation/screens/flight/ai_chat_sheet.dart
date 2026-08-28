@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
@@ -17,6 +19,7 @@ import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
 import '../../../domain/models/canvas_context_source.dart';
 import '../../../data/services/context_cache.dart';
+import '../../../data/services/ai_chat_image_storage.dart';
 import '../../../data/services/web_reader.dart' show WebReaderException;
 import 'ai_chat_session.dart';
 import 'ai_chat_settings_dialog.dart';
@@ -415,6 +418,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   final _anchorInput = TextEditingController();
   final _scroll = ScrollController();
   int? _remaining;
+  AiImageInput? _pendingImage;
+  bool _pickingImage = false;
 
   AiChatSession get _s => widget.session;
 
@@ -552,6 +557,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
 
   @override
   void dispose() {
+    final pendingImage = _pendingImage;
+    if (pendingImage != null) unawaited(deleteAiChatImage(pendingImage));
     _s.removeListener(_onSession);
     _input.dispose();
     _anchorInput.dispose();
@@ -590,8 +597,16 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     // hasAnchor — that silently blocked sending on a canvas with no linked
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming) return;
-    if (!quickAction) _input.clear();
     final settings = _s.settings;
+    final image = quickAction ? null : _pendingImage;
+    if (image != null && settings.model == AiModel.pro) {
+      _showProImageUnavailable();
+      return;
+    }
+    if (!quickAction) {
+      _input.clear();
+      setState(() => _pendingImage = null);
+    }
     final retrievalQuery = _retrievalQuery(text);
     final flightContext =
         quickAction ||
@@ -646,7 +661,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                   noteScope: 'note:${_s.noteId}',
                   folderScope: flightContext.folderScope,
                 );
-    _s.send(
+    await _s.send(
       ref.read(aiAssistantProvider),
       ref.read(aiUsageLimiterProvider),
       text,
@@ -664,6 +679,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       ],
       memoryDocs: memoryPrompt.isEmpty ? const [] : [memoryPrompt],
       widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
+      image: image,
     );
   }
 
@@ -1716,7 +1732,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
 
   Widget _bubble(AiChatMsg m, int i) {
     if (m.role == AiRole.system) return _systemNotice(m, i);
-    if (m.role == AiRole.user) return _userBubble(m.text);
+    if (m.role == AiRole.user) return _userBubble(m);
 
     // Assistant.
     final streaming = _s.streaming && i == _s.messages.length - 1;
@@ -1825,7 +1841,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     );
   }
 
-  Widget _userBubble(String text) {
+  Widget _userBubble(AiChatMsg message) {
+    final image = message.image;
     return Padding(
       padding: const EdgeInsets.only(left: 58, bottom: 22),
       child: Column(
@@ -1843,17 +1860,39 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
               maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(15, 11, 15, 12),
+              padding:
+                  image == null
+                      ? const EdgeInsets.fromLTRB(15, 11, 15, 12)
+                      : const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 color: widget.accent.withValues(alpha: 0.13),
                 borderRadius: BorderRadius.circular(17),
-                border: Border.all(
-                  color: widget.accent.withValues(alpha: 0.2),
-                ),
+                border: Border.all(color: widget.accent.withValues(alpha: 0.2)),
               ),
-              child: SelectableText(
-                text,
-                style: yBody(size: 15, weight: FontWeight.w500, color: aiInk),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (image != null)
+                    _chatImage(image, width: 250, height: 142, radius: 13),
+                  if (image != null && message.text.isNotEmpty)
+                    const SizedBox(height: 8),
+                  if (message.text.isNotEmpty)
+                    Padding(
+                      padding:
+                          image == null
+                              ? EdgeInsets.zero
+                              : const EdgeInsets.fromLTRB(7, 0, 7, 5),
+                      child: SelectableText(
+                        message.text,
+                        style: yBody(
+                          size: 15,
+                          weight: FontWeight.w500,
+                          color: aiInk,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -1935,78 +1974,228 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                 ),
               ],
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _input,
-                    minLines: 1,
-                    maxLines: 5,
-                    enabled: !_s.streaming,
-                    style: yBody(size: 15, color: aiInk),
-                    onSubmitted: _s.streaming ? null : _send,
-                    textInputAction: TextInputAction.send,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                      hintText: 'Escribe a YuLi…',
-                      hintStyle: yBody(size: 14, color: aiMuted),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
-                      errorBorder: InputBorder.none,
-                      focusedErrorBorder: InputBorder.none,
-                      filled: true,
-                      fillColor: Colors.transparent,
-                    ),
+                if (_pendingImage != null) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _pendingImagePreview(_pendingImage!),
                   ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _s.streaming ? null : () => _send(_input.text),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 42,
-                    height: 42,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _s.streaming ? aiMuted : widget.accent,
-                      shape: BoxShape.circle,
-                      boxShadow:
-                          _s.streaming
-                              ? null
-                              : [
-                                BoxShadow(
-                                  color: widget.accent.withValues(alpha: 0.26),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
+                  const SizedBox(height: 7),
+                ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _input,
+                        minLines: 1,
+                        maxLines: 5,
+                        enabled: !_s.streaming,
+                        style: yBody(size: 15, color: aiInk),
+                        onSubmitted: _s.streaming ? null : _send,
+                        textInputAction: TextInputAction.send,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                          hintText: 'Escribe a YuLi…',
+                          hintStyle: yBody(size: 14, color: aiMuted),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          filled: true,
+                          fillColor: Colors.transparent,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AiSoftIconButton(
+                      icon: YuLiIcons.image,
+                      tooltip: 'Adjuntar imagen',
+                      color:
+                          _s.streaming ||
+                                  _pickingImage ||
+                                  _s.settings.model == AiModel.pro
+                              ? aiMuted
+                              : widget.accent,
+                      background: Colors.white.withValues(alpha: 0.42),
+                      onTap:
+                          _s.streaming || _pickingImage ? null : _onImageButton,
+                      size: 42,
+                    ),
+                    const SizedBox(width: 7),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _s.streaming ? null : () => _send(_input.text),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _s.streaming ? aiMuted : widget.accent,
+                          shape: BoxShape.circle,
+                          boxShadow:
+                              _s.streaming
+                                  ? null
+                                  : [
+                                    BoxShadow(
+                                      color: widget.accent.withValues(
+                                        alpha: 0.26,
+                                      ),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                        ),
+                        child:
+                            _s.streaming
+                                ? const SizedBox(
+                                  width: 17,
+                                  height: 17,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Icon(
+                                  YuLiIcons.arrowUp,
+                                  color: Colors.white,
+                                  size: 20,
                                 ),
-                              ],
+                      ),
                     ),
-                    child:
-                        _s.streaming
-                            ? const SizedBox(
-                              width: 17,
-                              height: 17,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                            : const Icon(
-                              YuLiIcons.arrowUp,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                  ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _onImageButton() {
+    if (_s.settings.model == AiModel.pro) {
+      _showProImageUnavailable();
+      return;
+    }
+    unawaited(_pickImage());
+  }
+
+  Future<void> _pickImage() async {
+    setState(() => _pickingImage = true);
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 95,
+        maxWidth: 4096,
+        maxHeight: 4096,
+      );
+      if (picked == null) return;
+      final prepared = await prepareAiChatImage(picked.path);
+      if (!mounted) {
+        await deleteAiChatImage(prepared);
+        return;
+      }
+      final previous = _pendingImage;
+      setState(() => _pendingImage = prepared);
+      if (previous != null) unawaited(deleteAiChatImage(previous));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pude preparar esa imagen.')),
+      );
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+  }
+
+  void _removePendingImage() {
+    final image = _pendingImage;
+    if (image == null) return;
+    setState(() => _pendingImage = null);
+    unawaited(deleteAiChatImage(image));
+  }
+
+  void _showProImageUnavailable() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Por el momento, el modo Pro no admite imágenes.'),
+        duration: Duration(milliseconds: 1800),
+      ),
+    );
+  }
+
+  Widget _pendingImagePreview(AiImageInput image) {
+    return SizedBox(
+      width: 126,
+      height: 82,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          _chatImage(image, width: 118, height: 74, radius: 14),
+          Positioned(
+            top: -4,
+            right: 0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _removePendingImage,
+              child: Container(
+                width: 29,
+                height: 29,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.92),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: widget.accent.withValues(alpha: 0.25),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 10,
+                      spreadRadius: -4,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(YuLiIcons.close, size: 16, color: widget.accent),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chatImage(
+    AiImageInput image, {
+    required double width,
+    required double height,
+    required double radius,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Image.file(
+        File(image.path),
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder:
+            (_, _, _) => Container(
+              width: width,
+              height: height,
+              alignment: Alignment.center,
+              color: aiPaperSoft,
+              child: const Icon(YuLiIcons.imageOff, color: aiMuted, size: 24),
+            ),
       ),
     );
   }

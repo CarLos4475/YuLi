@@ -92,6 +92,63 @@ void main() {
     },
   );
 
+  test(
+    'image is sent with its flash turn but not repeated in history',
+    () async {
+      final assistant = _CapturingAssistant();
+      final session = AiChatSession(75);
+      const image = AiImageInput(
+        path: 'temporary/image.jpg',
+        mediaType: 'image/jpeg',
+      );
+
+      await session.send(
+        assistant,
+        const AiUsageLimiter(dailyLimit: 50),
+        'Mira esta imagen',
+        image: image,
+      );
+
+      expect(assistant.messages.last.image, same(image));
+      expect(
+        session.messages.singleWhere((m) => m.role == AiRole.user).image,
+        same(image),
+      );
+
+      await session.send(
+        assistant,
+        const AiUsageLimiter(dailyLimit: 50),
+        'Continúa',
+      );
+
+      final priorTurn = assistant.messages.singleWhere(
+        (m) => m.content == 'Mira esta imagen',
+      );
+      expect(priorTurn.image, isNull);
+      expect(assistant.messages.last.content, 'Continúa');
+    },
+  );
+
+  test('pro rejects image input before calling the assistant', () async {
+    final assistant = _CapturingAssistant();
+    final session = AiChatSession(
+      76,
+    )..setSettings(const AiChatSettings.savings().copyWith(model: AiModel.pro));
+
+    await session.send(
+      assistant,
+      const AiUsageLimiter(dailyLimit: 50),
+      'Mira esta imagen',
+      image: const AiImageInput(
+        path: 'temporary/image.jpg',
+        mediaType: 'image/jpeg',
+      ),
+    );
+
+    expect(assistant.messages, isEmpty);
+    expect(session.messages, isEmpty);
+  });
+
   testWidgets('dialog exposes profiles and returns the selected settings', (
     tester,
   ) async {
