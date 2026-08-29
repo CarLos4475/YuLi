@@ -36,9 +36,7 @@ void main() {
     await _disposePreview(tester);
   });
 
-  testWidgets('display math exposes clean LaTeX and pinnable markdown', (
-    tester,
-  ) async {
+  testWidgets('display math exposes clean LaTeX and pinnable markdown', (tester) async {
     String? copied;
     String? pinned;
 
@@ -62,6 +60,39 @@ void main() {
 
     await tester.tap(find.byTooltip('Pinear en lienzo'));
     expect(pinned, '\$\$\nx^2 + y^2 = z^2\n\$\$');
+
+    await _disposePreview(tester);
+  });
+
+  testWidgets('tables expose copy and pin actions for each table', (tester) async {
+    String? copied;
+    String? pinned;
+    const firstTable = '| Nombre | Valor |\n|---|---|\n| Alfa | 1 |';
+    const secondTable = '| Día | Tarea |\n|---|---|\n| Lunes | Leer |';
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: NoteMarkdownPreview(
+              data: '$firstTable\n\n$secondTable',
+              onCopyBlock: (value) => copied = value,
+              onPinBlock: (value) => pinned = value,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Copiar bloque'), findsNWidgets(2));
+    expect(find.byTooltip('Pinear en lienzo'), findsNWidgets(2));
+
+    await tester.tap(find.byTooltip('Copiar bloque').first);
+    expect(copied, firstTable);
+
+    await tester.tap(find.byTooltip('Pinear en lienzo').last);
+    expect(pinned, secondTable);
 
     await _disposePreview(tester);
   });

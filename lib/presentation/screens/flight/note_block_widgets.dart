@@ -3073,13 +3073,40 @@ String fixMarkdownTables(String md) {
 }
 
 bool _hasMarkdownTable(String md) {
-  if (!md.contains('|')) return false;
+  return _extractMarkdownTables(md).isNotEmpty;
+}
+
+List<String> _extractMarkdownTables(String md) {
+  if (!md.contains('|')) return const [];
   final lines = md.split('\n');
-  final sepRe = RegExp(r'^\s*\|?[\s:|-]*-[\s:|-]*\|[\s:|-]*\s*$');
-  for (var i = 1; i < lines.length; i++) {
-    if (sepRe.hasMatch(lines[i]) && lines[i - 1].contains('|')) return true;
+  final tables = <String>[];
+  final separator = RegExp(r'^\s*\|?[\s:|-]*-[\s:|-]*\|[\s:|-]*\s*$');
+  String? activeFence;
+
+  for (var i = 0; i < lines.length - 1; i++) {
+    final trimmed = lines[i].trimLeft();
+    if (activeFence != null) {
+      if (trimmed.startsWith(activeFence)) activeFence = null;
+      continue;
+    }
+    if (trimmed.startsWith('```')) {
+      activeFence = '```';
+      continue;
+    }
+    if (trimmed.startsWith('~~~')) {
+      activeFence = '~~~';
+      continue;
+    }
+    if (!lines[i].contains('|') || !separator.hasMatch(lines[i + 1])) continue;
+
+    var end = i + 2;
+    while (end < lines.length && lines[end].trim().isNotEmpty && lines[end].contains('|')) {
+      end++;
+    }
+    tables.add(lines.sublist(i, end).join('\n').trimRight());
+    i = end - 1;
   }
-  return false;
+  return tables;
 }
 
 double _markdownTableWidth(String md, double viewportWidth) {
@@ -3150,6 +3177,8 @@ class NoteMarkdownPreview extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final md = fixMarkdownTables(data);
+    final tableMarkdown = onCopyBlock == null && onPinBlock == null ? const <String>[] : _extractMarkdownTables(md);
+    var renderedTableIndex = 0;
     SpanNode? customTextGenerator(m.Node node, MarkdownConfig config, WidgetVisitor visitor) {
       return null;
     }
@@ -3213,6 +3242,29 @@ class NoteMarkdownPreview extends ConsumerWidget {
                     child: MarkdownBlockActions(
                       accent: accent,
                       onCopy: onCopyBlock == null ? null : () => onCopyBlock!(cleanCode),
+                      onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        if (tableMarkdown.isNotEmpty)
+          TableConfig(
+            wrapper: (child) {
+              final markdown = tableMarkdown[renderedTableIndex % tableMarkdown.length];
+              renderedTableIndex++;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  child,
+                  const SizedBox(height: 5),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: MarkdownBlockActions(
+                      accent: accent,
+                      onCopy: onCopyBlock == null ? null : () => onCopyBlock!(markdown),
                       onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
                     ),
                   ),
