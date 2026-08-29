@@ -35,6 +35,22 @@ void main() {
     expect(decoded.useActionDrafts, isFalse);
   });
 
+  test('response lengths use aligned budgets without flattening YuLi tone', () {
+    expect(AiResponseLength.brief.maxTokens, 384);
+    expect(AiResponseLength.normal.maxTokens, 896);
+    expect(AiResponseLength.detailed.maxTokens, 1792);
+
+    for (final length in AiResponseLength.values) {
+      expect(length.semanticInstruction, contains('personalidad activa'));
+      expect(length.semanticInstruction, isNot(contains('OBLIGATORIA')));
+      expect(length.semanticInstruction, contains('complet'));
+    }
+    expect(
+      AiResponseLength.brief.semanticInstruction,
+      contains('no significa sonar cortante'),
+    );
+  });
+
   test('chat dock keeps injected images until the composer takes them', () {
     final controller = AiChatDockController();
     const image = AiImageInput(

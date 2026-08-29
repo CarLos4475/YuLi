@@ -51,37 +51,36 @@ const kSynthesizePrompt =
     'síntesis, sin comentarios ni encabezados adicionales.';
 
 enum AiResponseLength {
-  brief(768),
-  normal(1536),
-  detailed(3072);
+  brief(384),
+  normal(896),
+  detailed(1792);
 
   final int maxTokens;
   const AiResponseLength(this.maxTokens);
 
   String get semanticInstruction => switch (this) {
     brief =>
-      'POLÍTICA DE EXTENSIÓN (OBLIGATORIA): responde de forma breve y '
-          'directa. Resuelve la petición con lo esencial, normalmente en 1 a 3 '
-          'párrafos y unas 80 a 180 palabras. La personalidad puede cambiar el '
-          'tono y el formato, pero no alargar esta respuesta. Prioriza antes de '
-          'añadir detalles y reserva espacio para cerrar la última idea; nunca '
-          'termines voluntariamente a mitad de frase, lista, tabla o bloque.',
+      'Guía de extensión: responde con la calidez y naturalidad de tu '
+          'personalidad activa, de forma breve y directa. Ahorrar espacio no '
+          'significa sonar cortante. Resuelve primero lo esencial, normalmente '
+          'en 1 a 3 párrafos y unas 80 a 160 palabras. Si el tema necesita más '
+          'espacio, entrega una síntesis útil y ofrece profundizar después. '
+          'Procura cerrar por completo cualquier frase, lista, tabla o bloque.',
     normal =>
-      'POLÍTICA DE EXTENSIÓN (OBLIGATORIA): responde con una extensión '
-          'equilibrada. Explica lo necesario con estructura clara y ejemplos '
-          'solo cuando aporten valor, normalmente en unas 250 a 500 palabras. '
-          'La personalidad puede cambiar el tono y el formato, pero no alargar '
-          'innecesariamente la respuesta. Reserva espacio para una conclusión '
-          'completa; nunca termines voluntariamente a mitad de frase, lista, '
-          'tabla o bloque.',
+      'Guía de extensión: responde con equilibrio, calidez y claridad, '
+          'conservando el tono natural de tu personalidad activa. Explica lo '
+          'necesario con una estructura cómoda de leer y usa ejemplos solo '
+          'cuando aporten valor, normalmente en unas 250 a 450 palabras. Si '
+          'hiciera falta más espacio, prioriza una respuesta completa y ofrece '
+          'continuar. Procura cerrar cualquier frase, lista, tabla o bloque.',
     detailed =>
-      'POLÍTICA DE EXTENSIÓN (OBLIGATORIA): desarrolla una respuesta completa '
-          'y profunda. Incluye estructura, razonamiento, matices y ejemplos '
-          'útiles cuando correspondan, normalmente en unas 700 a 1200 palabras. '
-          'No agregues relleno si la petición es simple. La personalidad puede '
-          'cambiar el tono y el formato, pero debe conservar esta profundidad. '
-          'Reserva espacio para cerrar la respuesta; nunca termines '
-          'voluntariamente a mitad de frase, lista, tabla o bloque.',
+      'Guía de extensión: desarrolla una respuesta amplia, cercana y bien '
+          'estructurada, conservando la personalidad activa. Incluye '
+          'razonamiento, matices y ejemplos útiles cuando correspondan, '
+          'normalmente en unas 600 a 900 palabras. Si la petición es simple, '
+          'resuélvela con naturalidad sin añadir relleno. Prioriza terminar bien '
+          'cada idea y ofrece continuar si todavía queda algo valioso por '
+          'profundizar; no dejes frases, listas, tablas o bloques incompletos.',
   };
 }
 
