@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 
 const aiPaper = Color(0xFFF7F4EC);
@@ -12,6 +11,62 @@ const aiPaperSoft = Color(0xFFF0ECE2);
 const aiInk = Color(0xFF171714);
 const aiMuted = Color(0xFF777269);
 const aiHairline = Color(0x24171410);
+
+LinearGradient aiAccentMetalGradient(Color accent) => LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [
+    Color.lerp(accent, Colors.white, 0.28)!,
+    accent,
+    Color.lerp(accent, Colors.black, 0.16)!,
+  ],
+  stops: const [0, 0.52, 1],
+);
+
+List<BoxShadow> aiAccentMetalShadow(Color accent) => [
+  BoxShadow(
+    color: accent.withValues(alpha: 0.30),
+    blurRadius: 12,
+    spreadRadius: -3,
+    offset: const Offset(0, 5),
+  ),
+  BoxShadow(
+    color: Colors.white.withValues(alpha: 0.20),
+    blurRadius: 2,
+    offset: const Offset(0, -1),
+  ),
+];
+
+LinearGradient aiSilverGlassGradient(Color accent) => LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [
+    Colors.white.withValues(alpha: 0.58),
+    Color.lerp(const Color(0xFFD8DBDF), accent, 0.10)!.withValues(alpha: 0.46),
+    Color.lerp(const Color(0xFFB9BEC4), accent, 0.15)!.withValues(alpha: 0.36),
+  ],
+  stops: const [0, 0.56, 1],
+);
+
+List<BoxShadow> aiSilverGlassShadow(Color accent) => [
+  BoxShadow(
+    color: Colors.black.withValues(alpha: 0.11),
+    blurRadius: 9,
+    spreadRadius: -5,
+    offset: const Offset(0, 4),
+  ),
+  BoxShadow(
+    color: accent.withValues(alpha: 0.09),
+    blurRadius: 12,
+    spreadRadius: -7,
+    offset: const Offset(0, 4),
+  ),
+  BoxShadow(
+    color: Colors.white.withValues(alpha: 0.32),
+    blurRadius: 2,
+    offset: const Offset(0, -1),
+  ),
+];
 
 enum AiFrostedSurfaceRole { panel, dialog }
 
@@ -29,7 +84,7 @@ class _AiThinkingIndicatorState extends ConsumerState<AiThinkingIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: const Duration(milliseconds: 1350),
   )..repeat();
 
   @override
@@ -47,90 +102,31 @@ class _AiThinkingIndicatorState extends ConsumerState<AiThinkingIndicator>
         animation: _controller,
         builder: (context, _) {
           final phase = _controller.value * math.pi * 2;
-          final pulse = 0.5 + math.sin(phase) * 0.5;
-          return Container(
-            padding: const EdgeInsets.fromLTRB(9, 7, 12, 7),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.52),
-                  widget.accent.withValues(alpha: 0.09 + pulse * 0.04),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: widget.accent.withValues(alpha: 0.18 + pulse * 0.12),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: widget.accent.withValues(alpha: 0.1 + pulse * 0.06),
-                  blurRadius: 16,
-                  spreadRadius: -7,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Transform.scale(
-                        scale: 0.82 + pulse * 0.22,
-                        child: Container(
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: widget.accent.withValues(
-                              alpha: 0.08 + pulse * 0.08,
-                            ),
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var index = 0; index < 3; index++) ...[
+                Builder(
+                  builder: (_) {
+                    final wave = (math.sin(phase - index * 0.9) + 1) / 2;
+                    return Transform.translate(
+                      offset: Offset(0, -2 * wave),
+                      child: Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: widget.accent.withValues(
+                            alpha: 0.28 + wave * 0.62,
                           ),
                         ),
                       ),
-                      Transform.rotate(
-                        angle: phase * 0.16,
-                        child: Icon(
-                          YuLiIcons.sparkles,
-                          size: 14,
-                          color: widget.accent,
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'Pensando',
-                  style: yBody(size: 12, weight: FontWeight.w700, color: aiInk),
-                ),
-                const SizedBox(width: 7),
-                for (var index = 0; index < 3; index++) ...[
-                  Transform.translate(
-                    offset: Offset(0, -2.5 * math.sin(phase - index * 0.75)),
-                    child: Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: widget.accent.withValues(
-                          alpha:
-                              0.35 +
-                              0.65 * ((math.sin(phase - index * 0.75) + 1) / 2),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (index < 2) const SizedBox(width: 4),
-                ],
+                if (index < 2) const SizedBox(width: 5),
               ],
-            ),
+            ],
           );
         },
       ),
@@ -319,6 +315,7 @@ class AiStatusPill extends StatelessWidget {
   final VoidCallback? onTap;
   final bool active;
   final bool highImpact;
+  final bool accented;
 
   const AiStatusPill({
     super.key,
@@ -328,53 +325,82 @@ class AiStatusPill extends StatelessWidget {
     this.onTap,
     this.active = false,
     this.highImpact = false,
+    this.accented = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final foreground =
+        accented
+            ? Colors.white
+            : Color.lerp(const Color(0xFF3D4248), accent, 0.18)!;
+    final radius = BorderRadius.circular(15);
+    final content = Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        gradient:
+            accented
+                ? aiAccentMetalGradient(accent)
+                : aiSilverGlassGradient(accent),
+        borderRadius: radius,
+        border: Border.all(
+          color:
+              accented
+                  ? Colors.white.withValues(alpha: 0.46)
+                  : Color.lerp(
+                    Colors.white,
+                    accent,
+                    0.10,
+                  )!.withValues(alpha: 0.64),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (highImpact) ...[
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: accented ? Colors.white : accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ] else if (icon != null) ...[
+            Icon(icon, size: 13, color: foreground),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: yBody(size: 11, weight: FontWeight.w700, color: foreground),
+          ),
+        ],
+      ),
+    );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         height: 30,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color:
-              active
-                  ? accent.withValues(alpha: 0.12)
-                  : Colors.white.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: active ? accent.withValues(alpha: 0.42) : aiHairline,
-          ),
+          borderRadius: radius,
+          boxShadow:
+              accented
+                  ? aiAccentMetalShadow(accent)
+                  : aiSilverGlassShadow(accent),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (highImpact) ...[
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ] else if (icon != null) ...[
-              Icon(icon, size: 13, color: active ? accent : aiMuted),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: yBody(
-                size: 11,
-                weight: FontWeight.w700,
-                color: active ? accent : aiMuted,
-              ),
-            ),
-          ],
+        child: ClipRRect(
+          borderRadius: radius,
+          child:
+              accented
+                  ? content
+                  : BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+                    child: content,
+                  ),
         ),
       ),
     );

@@ -101,6 +101,7 @@ class AiChatSettings {
   final AiModel model;
   final AiResponseLength responseLength;
   final AiHistoryDepth historyDepth;
+  final bool includeImagesInHistory;
   final bool useNoteContext;
   final bool useRelatedSources;
   final bool useTools;
@@ -112,6 +113,7 @@ class AiChatSettings {
     required this.model,
     required this.responseLength,
     required this.historyDepth,
+    required this.includeImagesInHistory,
     required this.useNoteContext,
     required this.useRelatedSources,
     required this.useTools,
@@ -125,6 +127,7 @@ class AiChatSettings {
         model: AiModel.flash,
         responseLength: AiResponseLength.brief,
         historyDepth: AiHistoryDepth.recent,
+        includeImagesInHistory: false,
         useNoteContext: true,
         useRelatedSources: false,
         useTools: false,
@@ -138,6 +141,7 @@ class AiChatSettings {
         model: AiModel.flash,
         responseLength: AiResponseLength.normal,
         historyDepth: AiHistoryDepth.normal,
+        includeImagesInHistory: false,
         useNoteContext: true,
         useRelatedSources: true,
         useTools: false,
@@ -151,6 +155,7 @@ class AiChatSettings {
         model: AiModel.pro,
         responseLength: AiResponseLength.detailed,
         historyDepth: AiHistoryDepth.full,
+        includeImagesInHistory: true,
         useNoteContext: true,
         useRelatedSources: true,
         useTools: true,
@@ -170,6 +175,7 @@ class AiChatSettings {
     AiModel? model,
     AiResponseLength? responseLength,
     AiHistoryDepth? historyDepth,
+    bool? includeImagesInHistory,
     bool? useNoteContext,
     bool? useRelatedSources,
     bool? useTools,
@@ -180,6 +186,8 @@ class AiChatSettings {
     model: model ?? this.model,
     responseLength: responseLength ?? this.responseLength,
     historyDepth: historyDepth ?? this.historyDepth,
+    includeImagesInHistory:
+        includeImagesInHistory ?? this.includeImagesInHistory,
     useNoteContext: useNoteContext ?? this.useNoteContext,
     useRelatedSources: useRelatedSources ?? this.useRelatedSources,
     useTools: useTools ?? this.useTools,
@@ -192,6 +200,7 @@ class AiChatSettings {
     'model': model.name,
     'responseLength': responseLength.name,
     'historyDepth': historyDepth.name,
+    'includeImagesInHistory': includeImagesInHistory,
     'useNoteContext': useNoteContext,
     'useRelatedSources': useRelatedSources,
     'useTools': useTools,
@@ -218,6 +227,10 @@ class AiChatSettings {
         json['historyDepth'],
         fallback.historyDepth,
       ),
+      includeImagesInHistory: flag(
+        'includeImagesInHistory',
+        fallback.includeImagesInHistory,
+      ),
       useNoteContext: flag('useNoteContext', fallback.useNoteContext),
       useRelatedSources: flag('useRelatedSources', fallback.useRelatedSources),
       useTools: flag('useTools', fallback.useTools),
@@ -236,6 +249,7 @@ class AiChatSettings {
       model == other.model &&
       responseLength == other.responseLength &&
       historyDepth == other.historyDepth &&
+      includeImagesInHistory == other.includeImagesInHistory &&
       useNoteContext == other.useNoteContext &&
       useRelatedSources == other.useRelatedSources &&
       useTools == other.useTools &&
@@ -248,6 +262,7 @@ class AiChatSettings {
     model,
     responseLength,
     historyDepth,
+    includeImagesInHistory,
     useNoteContext,
     useRelatedSources,
     useTools,
@@ -262,6 +277,7 @@ class AiChatMsg {
   final String text;
   final List<AiImageInput> images;
   final bool truncated;
+  final bool emptyTruncated;
 
   /// For assistant replies: the mode active when this reply was produced. Used
   /// to drop OTHER-mode replies from the sent history so the model doesn't
@@ -275,6 +291,7 @@ class AiChatMsg {
     this.modeId,
     this.images = const [],
     this.truncated = false,
+    this.emptyTruncated = false,
   });
 }
 
@@ -544,6 +561,24 @@ class AiChatSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<AiImageInput> clearConversation() {
+    if (streaming || messages.isEmpty) return const [];
+    final imagesByPath = <String, AiImageInput>{};
+    for (final message in messages) {
+      for (final image in message.images) {
+        imagesByPath[image.path] = image;
+      }
+    }
+    messages.clear();
+    compactNoticeIndex = null;
+    _previousAnchor = null;
+    chatScrollOffset = 0;
+    hasChatScrollOffset = false;
+    chatScrollAtBottom = true;
+    notifyListeners();
+    return imagesByPath.values.toList(growable: false);
+  }
+
   void setAnchor(String value) {
     final t = value.trim();
     _applyAnchor(t.isEmpty ? null : t, compactTried: false);
@@ -737,6 +772,7 @@ class AiChatSession extends ChangeNotifier {
     List<String> knowledgeDocs = const [],
     List<String> memoryDocs = const [],
     List<AiImageInput> images = const [],
+    bool displayUserMessage = true,
   }) async {
     final t = text.trim();
     if (streaming || t.isEmpty) return;
@@ -767,7 +803,9 @@ class AiChatSession extends ChangeNotifier {
 
     final modeId = mode.id;
     final history = List<AiChatMsg>.from(messages);
-    messages.add(AiChatMsg(AiRole.user, t, images: images));
+    if (displayUserMessage) {
+      messages.add(AiChatMsg(AiRole.user, t, images: images));
+    }
     messages.add(AiChatMsg(AiRole.assistant, '', modeId: modeId));
     notifyListeners();
     await limiter.record();
@@ -842,14 +880,27 @@ class AiChatSession extends ChangeNotifier {
       final live =
           history
               .sublist(foreignCutoff)
-              .where((m) => m.role != AiRole.system)
+              .where((m) => m.role != AiRole.system && !m.emptyTruncated)
               .toList();
       final maxHistory = _maxHistoryMessages;
       final capped =
           maxHistory != null && live.length > maxHistory
               ? live.sublist(live.length - maxHistory)
               : live;
-      convo.addAll(capped.map((m) => AiMessage(m.role, m.text)));
+      final keepHistoryImages =
+          settings.includeImagesInHistory && model == AiModel.flash;
+      convo.addAll(
+        capped.map(
+          (m) => AiMessage(
+            m.role,
+            m.text,
+            images:
+                keepHistoryImages && m.role == AiRole.user
+                    ? m.images
+                    : const [],
+          ),
+        ),
+      );
     }
     convo.add(AiMessage(AiRole.user, t, images: images));
 
@@ -1046,13 +1097,13 @@ class AiChatSession extends ChangeNotifier {
 
   void _markTruncated(int index, String modeId) {
     final current = messages[index].text;
+    final empty = current.trim().isEmpty;
     messages[index] = AiChatMsg(
       AiRole.assistant,
-      current.trim().isEmpty
-          ? 'La respuesta alcanzó el límite antes de poder mostrarse.'
-          : current,
+      empty ? 'No pude generar la respuesta.' : current,
       modeId: modeId,
       truncated: true,
+      emptyTruncated: empty,
     );
     notifyListeners();
   }

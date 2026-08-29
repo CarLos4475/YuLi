@@ -26,6 +26,7 @@ void main() {
     expect(decoded.model, AiModel.flash);
     expect(decoded.responseLength, AiResponseLength.brief);
     expect(decoded.historyDepth, AiHistoryDepth.recent);
+    expect(decoded.includeImagesInHistory, isFalse);
     expect(decoded.useNoteContext, isTrue);
     expect(decoded.useRelatedSources, isFalse);
     expect(decoded.useTools, isFalse);
@@ -69,6 +70,30 @@ void main() {
     expect(second.settings, settings);
   });
 
+  test(
+    'clearing a conversation keeps context and returns attached images',
+    () async {
+      final session = AiChatSession(83)..setAnchor('CONTEXTO CONSERVADO');
+      const image = AiImageInput(
+        path: 'temporary/chat-image.jpg',
+        mediaType: 'image/jpeg',
+      );
+      await session.send(
+        _CapturingAssistant(),
+        const AiUsageLimiter(dailyLimit: 50),
+        'Pregunta puntual',
+        images: [image],
+      );
+
+      final removedImages = session.clearConversation();
+
+      expect(session.messages, isEmpty);
+      expect(session.anchor, 'CONTEXTO CONSERVADO');
+      expect(session.settings, const AiChatSettings.savings());
+      expect(removedImages, [image]);
+    },
+  );
+
   testWidgets('thinking indicator renders and advances its animation', (
     tester,
   ) async {
@@ -80,7 +105,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Pensando'), findsOneWidget);
+    expect(find.text('Pensando'), findsNothing);
+    expect(find.bySemanticsLabel('YuLi está pensando'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 450));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -251,6 +277,84 @@ void main() {
     },
   );
 
+  test('enabled image history resends prior images with flash', () async {
+    final assistant = _CapturingAssistant();
+    final session = AiChatSession(95)..setSettings(
+      const AiChatSettings.savings().copyWith(includeImagesInHistory: true),
+    );
+    const image = AiImageInput(
+      path: 'temporary/image.jpg',
+      mediaType: 'image/jpeg',
+    );
+
+    await session.send(
+      assistant,
+      const AiUsageLimiter(dailyLimit: 50),
+      'Mira esta imagen',
+      images: [image],
+    );
+    await session.send(
+      assistant,
+      const AiUsageLimiter(dailyLimit: 50),
+      '¿Qué detalle ves?',
+    );
+
+    final priorTurn = assistant.messages.singleWhere(
+      (message) => message.content == 'Mira esta imagen',
+    );
+    expect(priorTurn.images, [image]);
+  });
+
+  test(
+    'empty length finish is retryable without inventing model text',
+    () async {
+      final session = AiChatSession(96);
+
+      await session.send(
+        _EmptyTruncatedAssistant(),
+        const AiUsageLimiter(dailyLimit: 50),
+        'Explica la imagen',
+      );
+
+      final response = session.messages.last;
+      expect(response.text, 'No pude generar la respuesta.');
+      expect(response.truncated, isTrue);
+      expect(response.emptyTruncated, isTrue);
+    },
+  );
+
+  test('internal retry stays hidden and resends source images', () async {
+    final session = AiChatSession(97);
+    const image = AiImageInput(
+      path: 'temporary/image.jpg',
+      mediaType: 'image/jpeg',
+    );
+    await session.send(
+      _EmptyTruncatedAssistant(),
+      const AiUsageLimiter(dailyLimit: 50),
+      'Explica la imagen',
+      images: [image],
+    );
+    final assistant = _CapturingAssistant();
+
+    await session.send(
+      assistant,
+      const AiUsageLimiter(dailyLimit: 50),
+      'Responde de nuevo a la petición anterior.',
+      images: [image],
+      displayUserMessage: false,
+    );
+
+    expect(session.messages.where((m) => m.role == AiRole.user), hasLength(1));
+    expect(assistant.messages.last.images, [image]);
+    expect(
+      assistant.messages.any(
+        (m) => m.content == 'No pude generar la respuesta.',
+      ),
+      isFalse,
+    );
+  });
+
   test('pro rejects image input before calling the assistant', () async {
     final assistant = _CapturingAssistant();
     final session = AiChatSession(
@@ -310,7 +414,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('MÁS GASTO'), findsNWidgets(3));
+    expect(find.text('MÁS GASTO'), findsNWidgets(4));
+    expect(find.text('RECORDAR IMÁGENES'), findsOneWidget);
 
     await tester.tap(find.text('EQUILIBRADO'));
     await tester.ensureVisible(find.text('CONTEXTO DE ESTA NOTA'));
@@ -391,6 +496,42 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('dialog exposes the clear conversation action', (tester) async {
+    AiChatMenuResult? result;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Builder(
+            builder:
+                (context) => TextButton(
+                  onPressed: () async {
+                    result = await showDialog<AiChatMenuResult>(
+                      context: context,
+                      builder:
+                          (_) => const AiChatSettingsDialog(
+                            initial: AiChatSettings.savings(),
+                            accent: Color(0xFF2D3F8C),
+                            canSummarize: false,
+                            canClearConversation: true,
+                          ),
+                    );
+                  },
+                  child: const Text('ABRIR'),
+                ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('ABRIR'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('LIMPIAR CONVERSACIÓN'));
+    await tester.pumpAndSettle();
+
+    expect(result?.clearConversation, isTrue);
+    expect(result?.summarize, isFalse);
   });
 
   testWidgets('context label follows the host editor kind', (tester) async {
@@ -528,6 +669,18 @@ class _TruncatedAssistant extends _CapturingAssistant {
     double temperature = 0.3,
   }) async* {
     yield const AiTextDelta('Parte útil de la respuesta');
+    yield const AiStreamComplete(truncated: true, finishReason: 'length');
+  }
+}
+
+class _EmptyTruncatedAssistant extends _CapturingAssistant {
+  @override
+  Stream<AiStreamEvent> streamReplyEvents(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+  }) async* {
     yield const AiStreamComplete(truncated: true, finishReason: 'length');
   }
 }

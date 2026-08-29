@@ -475,9 +475,18 @@ class _AiChatSheet extends ConsumerStatefulWidget {
 }
 
 class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
+  static const _emptyPrompts = [
+    '¿Qué quieres explorar?',
+    '¿En qué estás pensando?',
+    'Comencemos con una idea',
+    'Pregúntale algo a YuLi',
+  ];
+
   final _input = TextEditingController();
   final _anchorInput = TextEditingController();
   final _scroll = ScrollController();
+  Timer? _emptyPromptTimer;
+  int _emptyPromptIndex = 0;
   int? _remaining;
   List<AiImageInput> _pendingImages = [];
   bool _pickingImage = false;
@@ -494,6 +503,12 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     widget.dockController?.addListener(_onDockDraft);
     _s.addListener(_onSession);
     _scroll.addListener(_onScroll);
+    _emptyPromptTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted || _s.messages.isNotEmpty) return;
+      setState(() {
+        _emptyPromptIndex = (_emptyPromptIndex + 1) % _emptyPrompts.length;
+      });
+    });
     _loadRemaining();
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreScroll());
     final prefill = widget.prefillMessage?.trim();
@@ -629,6 +644,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     }
     _s.removeListener(_onSession);
     _scroll.removeListener(_onScroll);
+    _emptyPromptTimer?.cancel();
     _input.dispose();
     _anchorInput.dispose();
     _scroll.dispose();
@@ -687,18 +703,25 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     unawaited(_sendAsync(text, quickAction: quickAction));
   }
 
-  Future<void> _sendAsync(String text, {bool quickAction = false}) async {
+  Future<void> _sendAsync(
+    String text, {
+    bool quickAction = false,
+    bool internalAction = false,
+    List<AiImageInput>? overrideImages,
+  }) async {
     // Anchor is OPTIONAL in v2 (modes work as pure dialogue), so DON'T gate on
     // hasAnchor — that silently blocked sending on a canvas with no linked
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming) return;
     final settings = _s.settings;
-    final images = quickAction ? const <AiImageInput>[] : _pendingImages;
+    final images =
+        overrideImages ??
+        (quickAction ? const <AiImageInput>[] : _pendingImages);
     if (images.isNotEmpty && settings.model == AiModel.pro) {
       _showProImageUnavailable();
       return;
     }
-    if (!quickAction) {
+    if (!quickAction && !internalAction) {
       _stickToBottom = true;
       _input.clear();
       if (widget.dockController != null) {
@@ -707,16 +730,18 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         setState(() => _pendingImages = []);
       }
     }
+    if (internalAction) _stickToBottom = true;
+    final skipEnhancements = quickAction || internalAction;
     final retrievalQuery = _retrievalQuery(text);
     final flightContext =
-        quickAction ||
+        skipEnhancements ||
                 !(settings.useTools ||
                     settings.useActionDrafts ||
                     settings.useMemory)
             ? const _FlightAiContext(prompt: '', folderScope: null)
             : await _flightAiContext();
     final retrievedWidgets =
-        quickAction
+        skipEnhancements
             ? const <AiWidgetSpec>[]
             : ref
                 .read(aiWidgetRetrieverProvider)
@@ -743,7 +768,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       surface: AiWidgetSurface.flight,
     );
     final knowledgePrompt =
-        quickAction || !settings.useRelatedSources
+        skipEnhancements || !settings.useRelatedSources
             ? ''
             : aiKnowledgePrompt(
               ref
@@ -752,7 +777,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
               surface: AiKnowledgeSurface.flight,
             );
     final memoryPrompt =
-        quickAction || !settings.useMemory
+        skipEnhancements || !settings.useMemory
             ? ''
             : await ref
                 .read(aiMemoryStoreProvider)
@@ -768,11 +793,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       quickAction: quickAction,
       // Same DB tools as YuLi AI, but the note chat only reaches for them when
       // the user EXPLICITLY asks (strict guidance). Off for one-shot actions.
-      tools: quickAction || !settings.useTools ? const [] : yuliToolDefs,
+      tools: skipEnhancements || !settings.useTools ? const [] : yuliToolDefs,
       toolGuidance:
-          quickAction || !settings.useTools ? null : flightToolSystem(),
+          skipEnhancements || !settings.useTools ? null : flightToolSystem(),
       onToolCall:
-          quickAction || !settings.useTools ? null : (c) => runYuliTool(ref, c),
+          skipEnhancements || !settings.useTools
+              ? null
+              : (c) => runYuliTool(ref, c),
       knowledgeDocs: [
         if (knowledgePrompt.isNotEmpty) knowledgePrompt,
         if (flightContext.prompt.isNotEmpty) flightContext.prompt,
@@ -780,6 +807,38 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       memoryDocs: memoryPrompt.isEmpty ? const [] : [memoryPrompt],
       widgetDocs: widgetPrompt.isEmpty ? const [] : [widgetPrompt],
       images: images,
+      displayUserMessage: !internalAction,
+    );
+  }
+
+  void _finishTruncatedReply(int assistantIndex, {required bool retry}) {
+    if (_s.streaming || assistantIndex < 0) return;
+    var userIndex = -1;
+    for (var i = assistantIndex - 1; i >= 0; i--) {
+      if (_s.messages[i].role == AiRole.user) {
+        userIndex = i;
+        break;
+      }
+    }
+    final sourceImages =
+        userIndex < 0 ? const <AiImageInput>[] : _s.messages[userIndex].images;
+    final resendImages =
+        _s.settings.includeImagesInHistory
+            ? const <AiImageInput>[]
+            : sourceImages;
+    final instruction =
+        retry
+            ? 'Responde de nuevo a la petición anterior. Ve directo a la '
+                'respuesta final, evita razonamiento extenso y no menciones '
+                'estas instrucciones.'
+            : 'Continúa exactamente desde donde terminó tu respuesta anterior, '
+                'sin repetir lo que ya mostraste. No menciones esta instrucción.';
+    unawaited(
+      _sendAsync(
+        instruction,
+        internalAction: true,
+        overrideImages: resendImages,
+      ),
     );
   }
 
@@ -897,14 +956,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                   : const SizedBox(width: double.infinity),
         ),
         Expanded(
-          child: ListView(
-            controller: _scroll,
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-            children: [
-              if (_s.messages.isEmpty) _greeting(),
-              for (int i = 0; i < _s.messages.length; i++)
-                _bubble(_s.messages[i], i),
-            ],
+          child: LayoutBuilder(
+            builder:
+                (_, constraints) => ListView(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                  children: [
+                    if (_s.messages.isEmpty)
+                      SizedBox(
+                        height: math.max(0.0, constraints.maxHeight - 32),
+                        child: _greeting(),
+                      ),
+                    for (int i = 0; i < _s.messages.length; i++)
+                      _bubble(_s.messages[i], i),
+                  ],
+                ),
           ),
         ),
         _inputBar(),
@@ -1148,9 +1214,23 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             canSummarize:
                 !_s.streaming &&
                 _s.messages.any((m) => m.role != AiRole.system),
+            canClearConversation: !_s.streaming && _s.messages.isNotEmpty,
           ),
     );
     if (result == null || !mounted) return;
+    if (result.clearConversation) {
+      final confirmed = await _confirmClearConversation();
+      if (!confirmed || !mounted) return;
+      final images = _s.clearConversation();
+      unawaited(Future.wait(images.map(deleteAiChatImage)));
+      HapticFeedback.selectionClick();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conversación limpia'),
+          duration: Duration(milliseconds: 900),
+        ),
+      );
+    }
     _s.setSettings(result.settings);
     final contextChanged =
         before.useNoteContext != result.settings.useNoteContext ||
@@ -1159,6 +1239,120 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     if (result.summarize && mounted) {
       _send('Resume nuestra conversación hasta ahora en 3-4 puntos clave.');
     }
+  }
+
+  Future<bool> _confirmClearConversation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 22,
+              vertical: 24,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: AiFrostedSurface(
+                accent: widget.accent,
+                role: AiFrostedSurfaceRole.dialog,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: aiAccentMetalGradient(widget.accent),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            YuLiIcons.trash,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Text(
+                            'LIMPIAR CONVERSACIÓN',
+                            style: ySans(
+                              size: 17,
+                              weight: FontWeight.w700,
+                              color: aiInk,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 13),
+                    Text(
+                      'Se eliminarán los mensajes y las imágenes de este chat. '
+                      'El contexto, la personalidad y tus ajustes se conservarán.',
+                      style: yBody(size: 13, color: aiMuted, height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Navigator.of(dialogContext).pop(false),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 9,
+                            ),
+                            child: Text(
+                              'CANCELAR',
+                              style: yBody(
+                                size: 11,
+                                weight: FontWeight.w700,
+                                color: aiMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Navigator.of(dialogContext).pop(true),
+                          child: Container(
+                            height: 38,
+                            padding: const EdgeInsets.symmetric(horizontal: 15),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: aiAccentMetalGradient(widget.accent),
+                              borderRadius: BorderRadius.circular(19),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.46),
+                              ),
+                              boxShadow: aiAccentMetalShadow(widget.accent),
+                            ),
+                            child: Text(
+                              'LIMPIAR',
+                              style: yBody(
+                                size: 11,
+                                weight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+    );
+    return confirmed ?? false;
   }
 
   String _settingsSummary() {
@@ -1489,90 +1683,66 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     );
   }
 
-  /// Mode-aware empty-state hero shown when the thread is empty: the active mode
-  /// presents itself + an invitation that depends on the mode and whether
-  /// there's context.
   Widget _greeting() {
-    final m = _s.mode;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 8, 2, 20),
+    return Center(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: widget.accent.withValues(alpha: 0.11),
-                  borderRadius: BorderRadius.circular(13),
+          Container(
+            width: 68,
+            height: 68,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: aiAccentMetalGradient(widget.accent),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accent.withValues(alpha: 0.24),
+                  blurRadius: 24,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 10),
                 ),
-                child: Icon(m.icon, size: 20, color: widget.accent),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      m.name,
-                      style: ySans(
-                        size: 15,
-                        weight: FontWeight.w700,
-                        color: aiInk,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(m.blurb, style: yBody(size: 12, color: aiMuted)),
-                  ],
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.28),
+                  blurRadius: 6,
+                  offset: const Offset(0, -2),
                 ),
-              ),
-            ],
+              ],
+            ),
+            child: const Icon(YuLiIcons.box, size: 31, color: Colors.white),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 24),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 360),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final slide = Tween<Offset>(
+                begin: const Offset(0, 0.12),
+                end: Offset.zero,
+              ).animate(animation);
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(position: slide, child: child),
+              );
+            },
+            child: Text(
+              _emptyPrompts[_emptyPromptIndex],
+              key: ValueKey(_emptyPromptIndex),
+              textAlign: TextAlign.center,
+              style: ySans(size: 22, weight: FontWeight.w700, color: aiInk),
+            ),
+          ),
+          const SizedBox(height: 8),
           Text(
-            _greetingLine(m.id, _s.hasAnchor),
-            style: yBody(
-              size: 16,
-              weight: FontWeight.w600,
-              color: aiInk,
-            ).copyWith(height: 1.45),
+            'Escribe una pregunta para comenzar.',
+            textAlign: TextAlign.center,
+            style: yBody(size: 13, color: aiMuted),
           ),
         ],
       ),
     );
-  }
-
-  String _greetingLine(String modeId, bool hasCtx) {
-    switch (modeId) {
-      case 'tutor':
-        return hasCtx
-            ? 'Listo para guiarte sobre esto. ¿Por dónde empezamos?'
-            : '¿Qué quieres aprender? Te guío — la respuesta la encuentras tú.';
-      case 'socratic':
-        return hasCtx
-            ? 'Dame tu postura sobre esto y la ponemos a prueba.'
-            : 'Tírame una afirmación y la ponemos a prueba.';
-      case 'clarity':
-        return hasCtx
-            ? '¿Qué parte de esto quieres que te explique simple?'
-            : '¿Qué quieres que te explique desde cero?';
-      case 'examiner':
-        return hasCtx
-            ? 'Cuando digas, te empiezo a examinar sobre esto.'
-            : 'Dime el tema y te empiezo a preguntar.';
-      case 'expert':
-        return hasCtx
-            ? 'Contexto cargado. ¿Qué quieres profundizar?'
-            : '¿Sobre qué vamos a fondo?';
-      default:
-        return hasCtx
-            ? 'Tengo tu contexto cargado. ¿Qué hacemos con él?'
-            : '¿En qué te ayudo?';
-    }
   }
 
   static const _kDailyCap = 150;
@@ -1642,16 +1812,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
               constraints: const BoxConstraints(maxWidth: 106),
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
-                color: widget.accent.withValues(alpha: 0.10),
+                gradient: aiAccentMetalGradient(widget.accent),
                 borderRadius: BorderRadius.circular(17),
-                border: Border.all(
-                  color: widget.accent.withValues(alpha: 0.25),
-                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.46)),
+                boxShadow: aiAccentMetalShadow(widget.accent),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(mode.icon, size: 14, color: widget.accent),
+                  Icon(mode.icon, size: 14, color: Colors.white),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Text(
@@ -1661,7 +1830,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                       style: yBody(
                         size: 10.5,
                         weight: FontWeight.w700,
-                        color: widget.accent,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -1780,20 +1949,14 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.38),
-              Colors.white.withValues(alpha: 0.18),
-            ],
-          ),
+          gradient: aiAccentMetalGradient(widget.accent),
           borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.46)),
+          boxShadow: aiAccentMetalShadow(widget.accent),
         ),
         child: Text(
           label,
-          style: yBody(size: 10, weight: FontWeight.w700, color: aiInk),
+          style: yBody(size: 10, weight: FontWeight.w700, color: Colors.white),
         ),
       ),
     );
@@ -1836,6 +1999,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
 
     // Assistant.
     final streaming = _s.streaming && i == _s.messages.length - 1;
+    final isLast = i == _s.messages.length - 1;
     Widget content;
 
     if (m.text == kConsultingLabel) {
@@ -1870,14 +2034,21 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       );
     }
     if (!streaming && m.truncated) {
-      content = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [content, const SizedBox(height: 10), _truncatedNotice()],
+      final notice = _truncatedNotice(
+        i,
+        empty: m.emptyTruncated,
+        canAct: isLast,
       );
+      content =
+          m.emptyTruncated
+              ? notice
+              : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [content, const SizedBox(height: 10), notice],
+              );
     }
-    final isLast = i == _s.messages.length - 1;
     final actions =
-        (!streaming && m.text.isNotEmpty)
+        (!streaming && m.text.isNotEmpty && !m.truncated)
             ? <Widget>[
               // Mode-flavored follow-ups: only on the latest reply (where
               // "profundiza/ejemplo" unambiguously refers to it). The active
@@ -1910,7 +2081,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     return _aiMsgFrame(content, actions: actions);
   }
 
-  Widget _truncatedNotice() {
+  Widget _truncatedNotice(
+    int assistantIndex, {
+    required bool empty,
+    required bool canAct,
+  }) {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
       decoration: BoxDecoration(
@@ -1924,44 +2099,41 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           const SizedBox(width: 7),
           Expanded(
             child: Text(
-              'Respuesta incompleta',
+              empty ? 'No se generó una respuesta' : 'Respuesta incompleta',
               style: yBody(size: 11, weight: FontWeight.w700, color: aiInk),
             ),
           ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap:
-                () => _send(
-                  'Continúa exactamente desde donde terminó tu respuesta '
-                  'anterior, sin repetir lo que ya mostraste.',
+          if (canAct)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _finishTruncatedReply(assistantIndex, retry: empty),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: widget.accent,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-              decoration: BoxDecoration(
-                color: widget.accent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Continuar',
-                    style: yBody(
-                      size: 10,
-                      weight: FontWeight.w800,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      empty ? 'Reintentar' : 'Continuar',
+                      style: yBody(
+                        size: 10,
+                        weight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      empty ? YuLiIcons.refresh : YuLiIcons.arrowRight,
+                      size: 12,
                       color: Colors.white,
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(
-                    YuLiIcons.arrowRight,
-                    size: 12,
-                    color: Colors.white,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -2525,6 +2697,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         (_s.settings.model == AiModel.pro ? 2 : 0) +
         (_s.settings.responseLength == AiResponseLength.detailed ? 2 : 0) +
         (_s.settings.historyDepth == AiHistoryDepth.full ? 2 : 0) +
+        (_s.settings.includeImagesInHistory ? 2 : 0) +
         (_s.settings.useRelatedSources ? 1 : 0) +
         (_s.settings.useTools ? 1 : 0);
     final costLabel =
@@ -2534,9 +2707,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             ? 'Gasto medio'
             : 'Gasto bajo';
     return SizedBox(
-      height: 30,
+      height: 42,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: const EdgeInsets.symmetric(vertical: 6),
         children: [
           AiStatusPill(
             icon: YuLiIcons.fileText,
@@ -2557,6 +2732,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             accent: widget.accent,
             active: _s.settings.useRelatedSources && sources.isNotEmpty,
             highImpact: _s.settings.useRelatedSources && sources.isNotEmpty,
+            accented: false,
             onTap: _showSourcesSheet,
           ),
           const SizedBox(width: 6),
@@ -2565,6 +2741,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             label: historyLabel,
             accent: widget.accent,
             highImpact: _s.settings.historyDepth == AiHistoryDepth.full,
+            accented: false,
             onTap: _openChatMenu,
           ),
           const SizedBox(width: 6),
@@ -2573,6 +2750,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             label: lengthLabel,
             accent: widget.accent,
             highImpact: _s.settings.responseLength == AiResponseLength.detailed,
+            accented: false,
             onTap: _openChatMenu,
           ),
           const SizedBox(width: 6),
@@ -2581,6 +2759,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             accent: widget.accent,
             active: costScore >= 5,
             highImpact: costScore >= 2,
+            accented: false,
             onTap: _openChatMenu,
           ),
         ],

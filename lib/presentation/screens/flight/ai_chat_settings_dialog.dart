@@ -11,14 +11,20 @@ import 'ai_chat_visuals.dart';
 class AiChatMenuResult {
   final AiChatSettings settings;
   final bool summarize;
+  final bool clearConversation;
 
-  const AiChatMenuResult({required this.settings, this.summarize = false});
+  const AiChatMenuResult({
+    required this.settings,
+    this.summarize = false,
+    this.clearConversation = false,
+  });
 }
 
 class AiChatSettingsDialog extends ConsumerStatefulWidget {
   final AiChatSettings initial;
   final Color accent;
   final bool canSummarize;
+  final bool canClearConversation;
   final NoteKind hostKind;
 
   const AiChatSettingsDialog({
@@ -26,6 +32,7 @@ class AiChatSettingsDialog extends ConsumerStatefulWidget {
     required this.initial,
     required this.accent,
     required this.canSummarize,
+    this.canClearConversation = false,
     this.hostKind = NoteKind.block,
   });
 
@@ -50,10 +57,15 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
 
   void _set(AiChatSettings value) => setState(() => _draft = value);
 
-  void _finish({bool summarize = false}) => Navigator.pop(
-    context,
-    AiChatMenuResult(settings: _draft, summarize: summarize),
-  );
+  void _finish({bool summarize = false, bool clearConversation = false}) =>
+      Navigator.pop(
+        context,
+        AiChatMenuResult(
+          settings: _draft,
+          summarize: summarize,
+          clearConversation: clearConversation,
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -79,9 +91,10 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _impactLegend(),
-                      if (widget.canSummarize) ...[
+                      if (widget.canSummarize ||
+                          widget.canClearConversation) ...[
                         const SizedBox(height: 10),
-                        _summaryAction(),
+                        _conversationActions(),
                       ],
                       const SizedBox(height: 18),
                       _sectionLabel('PERFIL'),
@@ -311,6 +324,26 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
         ),
         const SizedBox(height: 7),
         _helperText(_historyDetail),
+        const SizedBox(height: 12),
+        _divider(),
+        _toggle(
+          icon: YuLiIcons.image,
+          title: 'RECORDAR IMÁGENES',
+          detail:
+              'Vuelve a enviar las imágenes del historial con Flash. Es más cómodo, pero puede aumentar mucho el gasto.',
+          value: _draft.includeImagesInHistory,
+          highImpact: true,
+          onChanged:
+              (value) => _set(_draft.copyWith(includeImagesInHistory: value)),
+        ),
+        if (_draft.model == AiModel.pro)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 0, 12, 12),
+            child: Text(
+              'Pro no admite imágenes por el momento. La opción se aplicará al volver a Flash.',
+              style: yBody(size: 10.5, color: aiMuted),
+            ),
+          ),
       ],
     ),
   );
@@ -548,9 +581,47 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
     ),
   );
 
-  Widget _summaryAction() => GestureDetector(
+  Widget _conversationActions() => LayoutBuilder(
+    builder: (context, constraints) {
+      final summarize = _conversationAction(
+        icon: YuLiIcons.textQuote,
+        label: 'RESUMIR EL CHAT',
+        onTap: () => _finish(summarize: true),
+      );
+      final clear = _conversationAction(
+        icon: YuLiIcons.trash,
+        label: 'LIMPIAR CONVERSACIÓN',
+        onTap: () => _finish(clearConversation: true),
+      );
+      if (constraints.maxWidth < 430) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.canSummarize) summarize,
+            if (widget.canSummarize && widget.canClearConversation)
+              const SizedBox(height: 8),
+            if (widget.canClearConversation) clear,
+          ],
+        );
+      }
+      return Row(
+        children: [
+          if (widget.canSummarize) Expanded(child: summarize),
+          if (widget.canSummarize && widget.canClearConversation)
+            const SizedBox(width: 8),
+          if (widget.canClearConversation) Expanded(child: clear),
+        ],
+      );
+    },
+  );
+
+  Widget _conversationAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) => GestureDetector(
     behavior: HitTestBehavior.opaque,
-    onTap: () => _finish(summarize: true),
+    onTap: onTap,
     child: Container(
       height: 42,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -561,13 +632,16 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
       ),
       child: Row(
         children: [
-          Icon(YuLiIcons.textQuote, size: 16, color: widget.accent),
+          Icon(icon, size: 16, color: widget.accent),
           const SizedBox(width: 9),
-          Text(
-            'RESUMIR EL CHAT',
-            style: yBody(size: 11, weight: FontWeight.w800, color: aiInk),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: yBody(size: 10.5, weight: FontWeight.w800, color: aiInk),
+            ),
           ),
-          const Spacer(),
           const Icon(YuLiIcons.arrowRight, size: 15, color: aiMuted),
         ],
       ),
