@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_contracts.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_renderer.dart';
+import 'package:yuli/presentation/screens/flight/ai_chat_visuals.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
 import 'package:yuli/presentation/widgets/yuli_design.dart';
 
@@ -517,6 +518,63 @@ void main() {
     await tester.pump();
 
     expect(result, 'Listo, guardé esa memoria.');
+  });
+
+  testWidgets('long interactive responses expand and collapse', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:CHECKLIST v=1\n'
+              '{"title":"Plan completo","items":['
+              '{"label":"Paso 1"},{"label":"Paso 2"},'
+              '{"label":"Paso 3"},{"label":"Paso 4"},'
+              '{"label":"Paso 5"},{"label":"Paso 6"},'
+              '{"label":"Paso 7"},{"label":"Paso 8"}]}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ver completo'), findsOneWidget);
+    final compactHeight =
+        tester.getSize(find.byType(AiInteractiveSurface)).height;
+
+    await tester.tap(find.text('Ver completo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Contraer'), findsOneWidget);
+    final expandedHeight =
+        tester.getSize(find.byType(AiInteractiveSurface)).height;
+    expect(expandedHeight, greaterThan(compactHeight));
+
+    await tester.tap(find.text('Contraer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ver completo'), findsOneWidget);
+  });
+
+  testWidgets('short interactive responses stay compact without a control', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:CONCEPT_CARD v=1\n'
+              '{"title":"Inercia","definition":"Resistencia al cambio."}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ver completo'), findsNothing);
+    expect(find.text('Contraer'), findsNothing);
   });
 }
 

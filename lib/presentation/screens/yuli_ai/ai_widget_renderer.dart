@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +17,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/ai_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import '../flight/ai_chat_visuals.dart';
 import '../flight/note_block_widgets.dart'
     show MarkdownBlockActions, NoteMarkdownPreview, fixMarkdownTables;
 import 'ai_widget_contracts.dart';
@@ -2073,7 +2077,10 @@ class _GraphSketchWidget extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: CustomPaint(
-                    painter: _GraphSketchPainter(color: accent),
+                    painter: _GraphSketchPainter(
+                      color: accent,
+                      description: '$title $description',
+                    ),
                   ),
                 ),
                 Positioned(
@@ -2116,8 +2123,9 @@ class _GraphSketchWidget extends StatelessWidget {
 
 class _GraphSketchPainter extends CustomPainter {
   final Color color;
+  final String description;
 
-  const _GraphSketchPainter({required this.color});
+  const _GraphSketchPainter({required this.color, required this.description});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2128,29 +2136,84 @@ class _GraphSketchPainter extends CustomPainter {
     final curve =
         Paint()
           ..color = color
-          ..strokeWidth = 4
+          ..strokeWidth = 3.5
+          ..strokeCap = StrokeCap.round
           ..style = PaintingStyle.stroke;
     final origin = Offset(20, size.height - 22);
     canvas.drawLine(Offset(origin.dx, 8), origin, axis);
     canvas.drawLine(origin, Offset(size.width - 8, origin.dy), axis);
-    final path =
-        Path()
-          ..moveTo(origin.dx + 4, origin.dy - 8)
-          ..cubicTo(
-            size.width * 0.35,
-            size.height * 0.85,
-            size.width * 0.48,
-            size.height * 0.22,
-            size.width - 18,
-            size.height * 0.28,
-          );
+    final path = _graphPath(size, origin, description.toLowerCase());
     canvas.drawPath(path, curve);
   }
 
   @override
   bool shouldRepaint(covariant _GraphSketchPainter oldDelegate) {
-    return oldDelegate.color != color;
+    return oldDelegate.color != color || oldDelegate.description != description;
   }
+}
+
+Path _graphPath(Size size, Offset origin, String description) {
+  final left = origin.dx + 4;
+  final right = size.width - 18;
+  final top = 16.0;
+  final bottom = origin.dy - 7;
+  if (description.contains('parábola') ||
+      description.contains('parabola') ||
+      description.contains('cuadrát')) {
+    return Path()
+      ..moveTo(left, top + 8)
+      ..quadraticBezierTo(size.width * 0.5, bottom, right, top + 8);
+  }
+  if (description.contains('decrec') ||
+      description.contains('negativa') ||
+      description.contains('descendente')) {
+    return Path()
+      ..moveTo(left, top + 8)
+      ..lineTo(right, bottom);
+  }
+  if (description.contains('recta') ||
+      description.contains('lineal') ||
+      description.contains('pendiente')) {
+    return Path()
+      ..moveTo(left, bottom)
+      ..lineTo(right, top + 8);
+  }
+  if (description.contains('seno') ||
+      description.contains('coseno') ||
+      description.contains('ond')) {
+    final path = Path()..moveTo(left, size.height * 0.5);
+    final width = right - left;
+    for (var i = 1; i <= 36; i++) {
+      final progress = i / 36;
+      path.lineTo(
+        left + width * progress,
+        size.height * 0.5 - math.sin(progress * math.pi * 2) * 34,
+      );
+    }
+    return path;
+  }
+  if (description.contains('exponencial')) {
+    return Path()
+      ..moveTo(left, bottom)
+      ..cubicTo(
+        size.width * 0.5,
+        bottom,
+        size.width * 0.72,
+        size.height * 0.62,
+        right,
+        top,
+      );
+  }
+  return Path()
+    ..moveTo(left, bottom - 2)
+    ..cubicTo(
+      size.width * 0.35,
+      size.height * 0.85,
+      size.width * 0.48,
+      size.height * 0.22,
+      right,
+      size.height * 0.28,
+    );
 }
 
 class _AxisLabel extends StatelessWidget {
@@ -4021,7 +4084,8 @@ class _TapHintIcon extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: accent.withValues(alpha: 0.14),
-          border: Border.all(color: accent, width: yLineThin),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: accent.withValues(alpha: 0.28)),
         ),
         child: Icon(YuLiIcons.search, size: 12, color: accent),
       ),
@@ -4029,7 +4093,7 @@ class _TapHintIcon extends StatelessWidget {
   }
 }
 
-class _WidgetFrame extends StatelessWidget {
+class _WidgetFrame extends ConsumerStatefulWidget {
   final String title;
   final IconData icon;
   final Color accent;
@@ -4043,50 +4107,289 @@ class _WidgetFrame extends StatelessWidget {
   });
 
   @override
+  ConsumerState<_WidgetFrame> createState() => _WidgetFrameState();
+}
+
+class _WidgetFrameState extends ConsumerState<_WidgetFrame> {
+  static const _compactHeight = 248.0;
+  bool _expanded = false;
+  bool _overflow = false;
+
+  void _setOverflow(bool value) {
+    if (!mounted || value == _overflow) return;
+    setState(() => _overflow = value);
+  }
+
+  void _toggleExpanded() {
+    setState(() => _expanded = !_expanded);
+    HapticFeedback.selectionClick();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: yBorderStrong, width: yLineMid),
-        boxShadow: const [
-          BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
-        ],
-      ),
+    return AiInteractiveSurface(
+      accent: widget.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-            decoration: BoxDecoration(
-              color: accent,
-              border: const Border(
-                bottom: BorderSide(color: yBorderStrong, width: yLineMid),
-              ),
-            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
             child: Row(
               children: [
-                Icon(icon, size: 16, color: yCream),
-                const SizedBox(width: 8),
-                Text(
-                  title.toUpperCase(),
-                  style: yMono(
-                    size: 10,
-                    weight: FontWeight.w800,
-                    tracking: 1.2,
-                    color: yCream,
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: aiAccentMetalGradient(widget.accent),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.48),
+                    ),
+                    boxShadow: aiAccentMetalShadow(widget.accent),
+                  ),
+                  child: Icon(widget.icon, size: 16, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.title.toUpperCase(),
+                        style: yBody(
+                          size: 13,
+                          weight: FontWeight.w800,
+                          color: aiInk,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        'Respuesta interactiva',
+                        style: yBody(
+                          size: 10,
+                          weight: FontWeight.w600,
+                          color: aiMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                if (_overflow)
+                  Semantics(
+                    button: true,
+                    expanded: _expanded,
+                    label:
+                        _expanded
+                            ? 'Contraer respuesta'
+                            : 'Ver respuesta completa',
+                    child: GestureDetector(
+                      key: ValueKey('ai_widget_header_expand_${widget.title}'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _toggleExpanded,
+                      child: Padding(
+                        padding: const EdgeInsets.all(7),
+                        child: Icon(
+                          _expanded
+                              ? YuLiIcons.chevronUp
+                              : YuLiIcons.chevronDown,
+                          size: 17,
+                          color: widget.accent,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 13),
-            child: child,
+          Container(height: 1, color: Colors.white.withValues(alpha: 0.58)),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: Stack(
+              children: [
+                _ExpandableWidgetClip(
+                  compactHeight: _compactHeight,
+                  expanded: _expanded,
+                  onOverflowChanged: _setOverflow,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(13, 13, 13, 14),
+                    child: widget.child,
+                  ),
+                ),
+                if (_overflow && !_expanded)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        height: 54,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0),
+                              Color.alphaBlend(
+                                widget.accent.withValues(alpha: 0.06),
+                                aiPaper,
+                              ).withValues(alpha: 0.92),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
+          if (_overflow) _expandAction(),
         ],
       ),
     );
+  }
+
+  Widget _expandAction() {
+    return Semantics(
+      button: true,
+      expanded: _expanded,
+      child: GestureDetector(
+        key: ValueKey('ai_widget_expand_${widget.title}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleExpanded,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.28),
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.62)),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _expanded ? 'Contraer' : 'Ver completo',
+                style: yBody(
+                  size: 11,
+                  weight: FontWeight.w800,
+                  color: widget.accent,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                _expanded ? YuLiIcons.chevronUp : YuLiIcons.chevronDown,
+                size: 14,
+                color: widget.accent,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpandableWidgetClip extends SingleChildRenderObjectWidget {
+  final double compactHeight;
+  final bool expanded;
+  final ValueChanged<bool> onOverflowChanged;
+
+  const _ExpandableWidgetClip({
+    required this.compactHeight,
+    required this.expanded,
+    required this.onOverflowChanged,
+    required super.child,
+  });
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderExpandableWidgetClip(
+        compactHeight: compactHeight,
+        expanded: expanded,
+        onOverflowChanged: onOverflowChanged,
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderExpandableWidgetClip renderObject,
+  ) {
+    renderObject
+      ..compactHeight = compactHeight
+      ..expanded = expanded
+      ..onOverflowChanged = onOverflowChanged;
+  }
+}
+
+class _RenderExpandableWidgetClip extends RenderProxyBox {
+  double _compactHeight;
+  bool _expanded;
+  ValueChanged<bool> _onOverflowChanged;
+  bool? _lastOverflow;
+
+  _RenderExpandableWidgetClip({
+    required double compactHeight,
+    required bool expanded,
+    required ValueChanged<bool> onOverflowChanged,
+  }) : _compactHeight = compactHeight,
+       _expanded = expanded,
+       _onOverflowChanged = onOverflowChanged;
+
+  set compactHeight(double value) {
+    if (_compactHeight == value) return;
+    _compactHeight = value;
+    markNeedsLayout();
+  }
+
+  set expanded(bool value) {
+    if (_expanded == value) return;
+    _expanded = value;
+    markNeedsLayout();
+  }
+
+  set onOverflowChanged(ValueChanged<bool> value) {
+    _onOverflowChanged = value;
+  }
+
+  @override
+  void performLayout() {
+    final currentChild = child;
+    if (currentChild == null) {
+      size = constraints.smallest;
+      return;
+    }
+    currentChild.layout(
+      constraints.copyWith(minHeight: 0, maxHeight: double.infinity),
+      parentUsesSize: true,
+    );
+    final overflows = currentChild.size.height > _compactHeight + 0.5;
+    final visibleHeight =
+        _expanded
+            ? currentChild.size.height
+            : math.min(currentChild.size.height, _compactHeight);
+    size = constraints.constrain(Size(currentChild.size.width, visibleHeight));
+    if (_lastOverflow != overflows) {
+      _lastOverflow = overflows;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _onOverflowChanged(overflows);
+      });
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final currentChild = child;
+    if (currentChild == null) return;
+    if (currentChild.size.height <= size.height + 0.5) {
+      super.paint(context, offset);
+      return;
+    }
+    context.pushClipRect(needsCompositing, offset, offset & size, super.paint);
   }
 }
 
@@ -4120,8 +4423,9 @@ class _MiniBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: yBorderStrong, width: yLineThin),
+        gradient: aiAccentMetalGradient(color),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -4161,8 +4465,9 @@ class _CalloutStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        border: Border.all(color: yBorderStrong, width: yLineThin),
+        color: Colors.white.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4172,8 +4477,9 @@ class _CalloutStrip extends StatelessWidget {
             height: 26,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color,
-              border: Border.all(color: yBorderStrong, width: yLineThin),
+              gradient: aiAccentMetalGradient(color),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
             ),
             child: Icon(icon, size: 14, color: yCream),
           ),
@@ -4360,7 +4666,8 @@ class _StatusStrip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        border: Border.all(color: color, width: yLineThin),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Text(
         _sentence(text),
@@ -4430,8 +4737,10 @@ class _MiniActionButton extends StatelessWidget {
         height: 34,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: yCream,
-          border: Border.all(color: yBorderStrong, width: yLineThin),
+          gradient: aiSilverGlassGradient(color),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
+          boxShadow: aiSilverGlassShadow(color),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -4481,14 +4790,14 @@ class _ActionButton extends StatelessWidget {
         height: 38,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: fill ? color : yCream,
-          border: Border.all(color: yBorderStrong, width: yLineThin),
-          boxShadow:
+          gradient:
               fill
-                  ? const [
-                    BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
-                  ]
-                  : null,
+                  ? aiAccentMetalGradient(color)
+                  : aiSilverGlassGradient(color),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
+          boxShadow:
+              fill ? aiAccentMetalShadow(color) : aiSilverGlassShadow(color),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
