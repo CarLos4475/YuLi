@@ -15,7 +15,7 @@ import '../../providers/ai_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../flight/note_block_widgets.dart'
-    show NoteMarkdownPreview, fixMarkdownTables;
+    show MarkdownBlockActions, NoteMarkdownPreview, fixMarkdownTables;
 import 'ai_widget_contracts.dart';
 
 class AiWidgetRenderer extends ConsumerWidget {
@@ -24,6 +24,8 @@ class AiWidgetRenderer extends ConsumerWidget {
   final AiWidgetSurface surface;
   final void Function(String message)? onSendMessage;
   final void Function(String message)? onActionResult;
+  final ValueChanged<String>? onCopyBlock;
+  final ValueChanged<String>? onPinBlock;
   final int? noteId;
 
   const AiWidgetRenderer({
@@ -33,6 +35,8 @@ class AiWidgetRenderer extends ConsumerWidget {
     required this.surface,
     this.onSendMessage,
     this.onActionResult,
+    this.onCopyBlock,
+    this.onPinBlock,
     this.noteId,
   });
 
@@ -56,6 +60,8 @@ class AiWidgetRenderer extends ConsumerWidget {
       return NoteMarkdownPreview(
         data: fixMarkdownTables(part.text),
         accent: accent,
+        onCopyBlock: onCopyBlock,
+        onPinBlock: onPinBlock,
       );
     }
     if (part is! AiWidgetBlockPart) return const SizedBox.shrink();
@@ -76,7 +82,12 @@ class AiWidgetRenderer extends ConsumerWidget {
       'FLASHCARD' ||
       'FLASH_CARD' => _FlashcardsWidget(data: part.data, accent: accent),
       'CHECKLIST' => _ChecklistWidget(data: part.data, accent: accent),
-      'FORMULA_CARD' => _FormulaCardWidget(data: part.data, accent: accent),
+      'FORMULA_CARD' => _FormulaCardWidget(
+        data: part.data,
+        accent: accent,
+        onCopyBlock: onCopyBlock,
+        onPinBlock: onPinBlock,
+      ),
       'MISTAKE_CHECK' => _MistakeCheckWidget(data: part.data, accent: accent),
       'MINI_PROOF' => _MiniProofWidget(
         data: part.data,
@@ -894,8 +905,15 @@ class _ChecklistWidgetState extends State<_ChecklistWidget> {
 class _FormulaCardWidget extends StatelessWidget {
   final Map<String, dynamic> data;
   final Color accent;
+  final ValueChanged<String>? onCopyBlock;
+  final ValueChanged<String>? onPinBlock;
 
-  const _FormulaCardWidget({required this.data, required this.accent});
+  const _FormulaCardWidget({
+    required this.data,
+    required this.accent,
+    this.onCopyBlock,
+    this.onPinBlock,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -904,6 +922,7 @@ class _FormulaCardWidget extends StatelessWidget {
     final variables = _list(data['variables']);
     final whenToUse = _string(data['whenToUse'] ?? data['use'], '');
     final example = _string(data['example'], '');
+    final cleanFormula = _formulaArtifactContent(formula);
     return _WidgetFrame(
       title: 'Formula',
       icon: YuLiIcons.sigma,
@@ -933,6 +952,24 @@ class _FormulaCardWidget extends StatelessWidget {
                 formula: true,
               ),
             ),
+            if (cleanFormula.isNotEmpty &&
+                (onCopyBlock != null || onPinBlock != null)) ...[
+              const SizedBox(height: 5),
+              Align(
+                alignment: Alignment.centerRight,
+                child: MarkdownBlockActions(
+                  accent: accent,
+                  onCopy:
+                      onCopyBlock == null
+                          ? null
+                          : () => onCopyBlock!(cleanFormula),
+                  onPin:
+                      onPinBlock == null
+                          ? null
+                          : () => onPinBlock!('\$\$\n$cleanFormula\n\$\$'),
+                ),
+              ),
+            ],
           ],
           if (variables.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -5193,6 +5230,15 @@ _LatexBlock? _extractLatexBlock(String text) {
 String? _extractInlineLatex(String text) {
   final match = RegExp(r'^\$([^$]+)\$$').firstMatch(text.trim());
   return match?.group(1)?.trim();
+}
+
+String _formulaArtifactContent(String formula) {
+  final clean = _sentence(_stripWidgetHtml(formula));
+  final block = _extractLatexBlock(clean);
+  if (block != null) return block.latex;
+  final inline = _extractInlineLatex(clean);
+  if (inline != null) return inline;
+  return clean.trim();
 }
 
 String _trimFormulaLabel(String text) {

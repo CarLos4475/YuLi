@@ -1688,29 +1688,37 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 68,
-            height: 68,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: aiAccentMetalGradient(widget.accent),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-              boxShadow: [
-                BoxShadow(
+          SizedBox(
+            width: 78,
+            height: 78,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  YuLiIcons.box,
+                  size: 57,
                   color: widget.accent.withValues(alpha: 0.24),
-                  blurRadius: 24,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 10),
+                  shadows: [
+                    Shadow(
+                      color: widget.accent.withValues(alpha: 0.62),
+                      blurRadius: 28,
+                    ),
+                  ],
                 ),
-                BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.28),
-                  blurRadius: 6,
-                  offset: const Offset(0, -2),
+                ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback:
+                      (bounds) => aiAccentMetalGradient(
+                        widget.accent,
+                      ).createShader(bounds),
+                  child: const Icon(
+                    YuLiIcons.box,
+                    size: 54,
+                    color: Colors.white,
+                  ),
                 ),
               ],
             ),
-            child: const Icon(YuLiIcons.box, size: 31, color: Colors.white),
           ),
           const SizedBox(height: 24),
           AnimatedSwitcher(
@@ -1984,6 +1992,19 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     _dismiss();
   }
 
+  void _pinBlockToCanvas(String markdown) {
+    final send = widget.onSendToCanvas;
+    if (send == null) return;
+    send(markdown.trim());
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Pineado en el lienzo'),
+        duration: Duration(milliseconds: 900),
+      ),
+    );
+  }
+
   /// Close the chat: in the docked panel slide it shut; as a modal, pop.
   void _dismiss() {
     if (widget.onClose != null) {
@@ -2021,6 +2042,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         surface: AiWidgetSurface.flight,
         onSendMessage: (message) => _send(message),
         onActionResult: _s.addLocalAssistant,
+        onCopyBlock: _copy,
+        onPinBlock: widget.onSendToCanvas == null ? null : _pinBlockToCanvas,
         noteId: _s.noteId,
       );
     } else {
@@ -2031,6 +2054,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         padding: EdgeInsets.zero,
         scrollWideTables: false,
         textStyle: yBody(size: 14, color: yInk, height: 1.5),
+        onCopyBlock: _copy,
+        onPinBlock: widget.onSendToCanvas == null ? null : _pinBlockToCanvas,
       );
     }
     if (!streaming && m.truncated) {

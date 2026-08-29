@@ -3025,18 +3025,10 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
             await deleteAiChatImage(prepared);
             return;
           }
-          await showAiChat(
-            context,
-            ref,
-            noteId: widget.block.noteId,
-            pendingImages: [prepared],
-            accent: widget.accent,
-          );
+          await showAiChat(context, ref, noteId: widget.block.noteId, pendingImages: [prepared], accent: widget.accent);
         } catch (_) {
           if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No pude preparar esa selección.')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No pude preparar esa selección.')));
         }
       },
       onSendMathToYuli:
@@ -3141,6 +3133,8 @@ class NoteMarkdownPreview extends ConsumerWidget {
   final TextStyle? textStyle;
   final EdgeInsets? padding;
   final bool scrollWideTables;
+  final ValueChanged<String>? onCopyBlock;
+  final ValueChanged<String>? onPinBlock;
   const NoteMarkdownPreview({
     super.key,
     required this.data,
@@ -3149,6 +3143,8 @@ class NoteMarkdownPreview extends ConsumerWidget {
     this.textStyle,
     this.padding,
     this.scrollWideTables = true,
+    this.onCopyBlock,
+    this.onPinBlock,
   });
 
   @override
@@ -3166,7 +3162,15 @@ class NoteMarkdownPreview extends ConsumerWidget {
       generators: [
         SpanNodeGeneratorWithTag(
           tag: 'latex',
-          generator: (e, config, visitor) => _LatexNode(e.attributes, e.textContent, config),
+          generator:
+              (e, config, visitor) => _LatexNode(
+                e.attributes,
+                e.textContent,
+                config,
+                accent: accent,
+                onCopyBlock: onCopyBlock,
+                onPinBlock: onPinBlock,
+              ),
         ),
         SpanNodeGeneratorWithTag(
           tag: 'align',
@@ -3193,6 +3197,29 @@ class NoteMarkdownPreview extends ConsumerWidget {
               ),
         ),
         CodeConfig(style: yMono(size: 12, color: yInk, tracking: 0.5).copyWith(backgroundColor: yCream2)),
+        if (onCopyBlock != null || onPinBlock != null)
+          PreConfig(
+            wrapper: (child, code, language) {
+              final cleanCode = code.trimRight();
+              final cleanLanguage = language.trim();
+              final markdown = '```$cleanLanguage\n$cleanCode\n```';
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  child,
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: MarkdownBlockActions(
+                      accent: accent,
+                      onCopy: onCopyBlock == null ? null : () => onCopyBlock!(cleanCode),
+                      onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         BlockquoteConfig(textColor: yMuted, sideColor: accent),
         ImgConfig(
           builder: (url, attributes) {
@@ -3251,14 +3278,82 @@ class NoteMarkdownPreview extends ConsumerWidget {
   }
 }
 
+class MarkdownBlockActions extends StatelessWidget {
+  final Color accent;
+  final VoidCallback? onCopy;
+  final VoidCallback? onPin;
+
+  const MarkdownBlockActions({super.key, required this.accent, this.onCopy, this.onPin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.72),
+            Color.lerp(Colors.white, accent, 0.10)!.withValues(alpha: 0.58),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.11),
+            blurRadius: 10,
+            spreadRadius: -6,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (onCopy != null) _action(icon: YuLiIcons.copy, label: 'Copiar bloque', onTap: onCopy!),
+          if (onCopy != null && onPin != null) const SizedBox(width: 2),
+          if (onPin != null) _action(icon: YuLiIcons.pin, label: 'Pinear en lienzo', onTap: onPin!),
+        ],
+      ),
+    );
+  }
+
+  Widget _action({required IconData icon, required String label, required VoidCallback onTap}) {
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: SizedBox(width: 28, height: 28, child: Icon(icon, size: 14, color: accent)),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── LaTeX support ───────────────────────────────────────────────────────
 
 class _LatexNode extends SpanNode {
   final Map<String, String> attributes;
   final String textContent;
   final MarkdownConfig config;
+  final Color accent;
+  final ValueChanged<String>? onCopyBlock;
+  final ValueChanged<String>? onPinBlock;
 
-  _LatexNode(this.attributes, this.textContent, this.config);
+  _LatexNode(
+    this.attributes,
+    this.textContent,
+    this.config, {
+    this.accent = yFlight,
+    this.onCopyBlock,
+    this.onPinBlock,
+  });
 
   @override
   InlineSpan build() {
@@ -3275,9 +3370,29 @@ class _LatexNode extends SpanNode {
       textStyle: style,
       onErrorFallback: (err) => Text(_normalizeLatexContent(textContent), style: style.copyWith(color: yInk)),
     );
+    final rendered = isInline ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: math) : math;
+    if (isInline || (onCopyBlock == null && onPinBlock == null)) {
+      return WidgetSpan(alignment: PlaceholderAlignment.middle, child: rendered);
+    }
+    final markdown = '\$\$\n$normalizedContent\n\$\$';
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
-      child: isInline ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: math) : math,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          rendered,
+          const SizedBox(height: 5),
+          Align(
+            alignment: Alignment.centerRight,
+            child: MarkdownBlockActions(
+              accent: accent,
+              onCopy: onCopyBlock == null ? null : () => onCopyBlock!(normalizedContent),
+              onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
