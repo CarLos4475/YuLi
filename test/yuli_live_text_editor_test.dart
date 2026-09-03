@@ -1439,6 +1439,9 @@ class _FakeNoteBlockRepository implements NoteBlockRepository {
   Future<List<NoteBlock>> getByNote(int noteId) async => const [];
 
   @override
+  Future<List<NoteBlock>> getByNoteIds(List<int> noteIds) async => const [];
+
+  @override
   Future<NoteBlock> insertAfter(
     int noteId,
     int afterPosition,

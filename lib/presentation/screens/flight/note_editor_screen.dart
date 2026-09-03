@@ -9,7 +9,9 @@ import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../providers/note_providers.dart';
+import '../../providers/flight_workspace_providers.dart';
 import '../../utils/pdf_export.dart';
+import '../../widgets/flight_workspace.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/status_bar_flood.dart';
@@ -25,6 +27,7 @@ import 'block_insert_panels.dart';
 import 'canvas_export_sheet.dart';
 import 'drawing_stroke_persistence.dart';
 import 'format_toolbar.dart';
+import 'flight_workspace_route.dart';
 import 'note_block_widgets.dart';
 import 'note_cell_model.dart';
 import 'note_export_view.dart';
@@ -61,11 +64,17 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
   Color get _accent => widget.note.color ?? widget.folder.color;
 
+  FlightWorkspaceTarget get _workspaceTarget => flightWorkspaceTarget(
+    note: widget.note.copyWith(title: _titleCtrl.text.trim()),
+    folder: widget.folder,
+  );
+
   @override
   void initState() {
     super.initState();
     _titleCtrl = TextEditingController(text: widget.note.title ?? '');
     _titleCtrl.addListener(_onTitleChanged);
+    ref.read(flightWorkspaceTabsProvider.notifier).open(_workspaceTarget);
   }
 
   @override
@@ -92,7 +101,42 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     }
     final updated = widget.note.copyWith(title: newTitle);
     await ref.read(noteRepositoryProvider).update(updated);
-    if (mounted) setState(() => _dirty = false);
+    if (mounted) {
+      ref.read(flightWorkspaceTabsProvider.notifier).open(_workspaceTarget);
+      setState(() => _dirty = false);
+    }
+  }
+
+  void _showWorkspace() {
+    _captureInsertionAnchor();
+    showFlightWorkspace(
+      context: context,
+      ref: ref,
+      current: _workspaceTarget,
+      accent: _accent,
+      onOpen: (target) => openFlightWorkspaceTarget(context, ref, target),
+      onInsertLink: (syntax) => unawaited(_insertWorkspaceLink(syntax)),
+    );
+  }
+
+  Future<void> _insertWorkspaceLink(String syntax) async {
+    final editorState =
+        _insertEditorState ?? _lastEditorState ?? _activeEditorState;
+    final selection = _insertSelection ?? editorState?.selection;
+    if (editorState != null && selection != null) {
+      await _insertSyntax(syntax);
+      return;
+    }
+    final block = await ref
+        .read(noteBlockRepositoryProvider)
+        .insertAtEnd(
+          widget.note.id,
+          NoteBlockType.text,
+          payload: {'md': syntax},
+        );
+    if (!mounted) return;
+    setState(() => _pendingFocusBlockId = block.id);
+    _revealBlock(block.id);
   }
 
   Future<void> _addBlock(NoteBlockType type) async {
@@ -412,6 +456,14 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         ),
                       ),
                     ],
+                    FlightWorkspaceTabsBar(
+                      current: _workspaceTarget,
+                      accent: _accent,
+                      onOpen:
+                          (target) =>
+                              openFlightWorkspaceTarget(context, ref, target),
+                      onExplore: _showWorkspace,
+                    ),
                     Expanded(
                       child: Container(
                         color: yCream,

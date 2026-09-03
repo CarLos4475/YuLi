@@ -29,6 +29,8 @@ import '../../../domain/repositories/drawing_stroke_repository.dart';
 import '../../../domain/repositories/note_block_repository.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
+import '../../providers/flight_workspace_providers.dart';
+import '../../widgets/flight_workspace.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -66,6 +68,7 @@ import 'pinned_snapshots.dart';
 import 'video_pin_body.dart';
 import 'web_pin_body.dart';
 import 'floating_pin_persistence.dart';
+import 'flight_workspace_route.dart';
 import '../../../data/services/floating_pin_storage.dart';
 import 'notebook_constants.dart';
 import 'notebook_page_drawer.dart';
@@ -579,6 +582,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   void initState() {
     super.initState();
+    ref
+        .read(flightWorkspaceTabsProvider.notifier)
+        .open(flightWorkspaceTarget(note: widget.note, folder: widget.folder));
     _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
@@ -6486,6 +6492,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   Color get _accent => widget.note.color ?? widget.folder.color;
 
+  FlightWorkspaceTarget get _workspaceTarget =>
+      flightWorkspaceTarget(note: widget.note, folder: widget.folder);
+
+  void _showWorkspace() {
+    showFlightWorkspace(
+      context: context,
+      ref: ref,
+      current: _workspaceTarget,
+      accent: _accent,
+      onOpen: (target) => openFlightWorkspaceTarget(context, ref, target),
+      onInsertLink: _insertTextBlock,
+    );
+  }
+
   Widget _buildNotebookBackgroundLayer(Size viewport, Size canvasSize) {
     return AnimatedBuilder(
       animation: Listenable.merge([_viewCtrl, _lassoPhaseTick]),
@@ -7693,6 +7713,14 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                       if (linkedSpaces.isNotEmpty)
                         _LinkedSpacesBar(spaces: linkedSpaces),
                     ],
+                    FlightWorkspaceTabsBar(
+                      current: _workspaceTarget,
+                      accent: _accent,
+                      onOpen:
+                          (target) =>
+                              openFlightWorkspaceTarget(context, ref, target),
+                      onExplore: _showWorkspace,
+                    ),
                     Expanded(
                       child:
                           _pageBlockIds.isEmpty

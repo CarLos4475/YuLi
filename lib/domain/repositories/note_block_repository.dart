@@ -3,15 +3,22 @@ import '../models/note_block.dart';
 abstract class NoteBlockRepository {
   Stream<List<NoteBlock>> watchByNote(int noteId);
   Future<List<NoteBlock>> getByNote(int noteId);
+  Future<List<NoteBlock>> getByNoteIds(List<int> noteIds);
 
   /// Insert a new block. If `afterPosition` is null, appends. Returns the
   /// stored block (with id assigned). Shifts subsequent blocks if needed.
-  Future<NoteBlock> insertAtEnd(int noteId, NoteBlockType type,
-      {Map<String, dynamic> payload = const {}});
+  Future<NoteBlock> insertAtEnd(
+    int noteId,
+    NoteBlockType type, {
+    Map<String, dynamic> payload = const {},
+  });
 
-  Future<NoteBlock> insertAfter(int noteId, int afterPosition,
-      NoteBlockType type,
-      {Map<String, dynamic> payload = const {}});
+  Future<NoteBlock> insertAfter(
+    int noteId,
+    int afterPosition,
+    NoteBlockType type, {
+    Map<String, dynamic> payload = const {},
+  });
 
   /// REEMPLAZA el payload completo del bloque (no mergea). Cada caller debe
   /// pasar el payload ENTERO de su tipo de bloque — una llamada parcial borra

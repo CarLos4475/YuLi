@@ -112,6 +112,36 @@ void main() {
   });
 
   test(
+    'workspace loads blocks from several notes in one ordered query',
+    () async {
+      final folderId = await db
+          .into(db.folders)
+          .insert(FoldersCompanion.insert(name: 'f', color: '#FFFFFF'));
+      final firstNoteId = await db
+          .into(db.notes)
+          .insert(NotesCompanion.insert(folderId: folderId));
+      final secondNoteId = await db
+          .into(db.notes)
+          .insert(NotesCompanion.insert(folderId: folderId));
+      await blockRepo.insertAtEnd(
+        secondNoteId,
+        NoteBlockType.text,
+        payload: {'md': 'Segundo'},
+      );
+      await blockRepo.insertAtEnd(
+        firstNoteId,
+        NoteBlockType.text,
+        payload: {'md': 'Primero'},
+      );
+
+      final blocks = await blockRepo.getByNoteIds([secondNoteId, firstNoteId]);
+
+      expect(blocks, hasLength(2));
+      expect(blocks.map((block) => block.noteId), [firstNoteId, secondNoteId]);
+    },
+  );
+
+  test(
     'whiteboard canvas name round-trips with the complete payload',
     () async {
       final folderId = await db

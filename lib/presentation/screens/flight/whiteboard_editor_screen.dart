@@ -22,6 +22,8 @@ import '../../../data/services/crash_logger.dart';
 import '../../../data/services/ai_chat_image_storage.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/note_providers.dart';
+import '../../providers/flight_workspace_providers.dart';
+import '../../widgets/flight_workspace.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
@@ -54,6 +56,7 @@ import 'video_pin_body.dart';
 import 'web_pin_body.dart';
 import 'whiteboard_prefs.dart';
 import 'floating_pin_persistence.dart';
+import 'flight_workspace_route.dart';
 import '../../../data/services/floating_pin_storage.dart';
 import 'popup_reveal.dart';
 import 'shape_recognizer.dart';
@@ -353,11 +356,13 @@ class _WhiteboardChunkOverlayPainter extends CustomPainter {
 class WhiteboardEditorScreen extends ConsumerStatefulWidget {
   final Note note;
   final Folder folder;
+  final int? initialCanvasBlockId;
 
   const WhiteboardEditorScreen({
     super.key,
     required this.note,
     required this.folder,
+    this.initialCanvasBlockId,
   });
 
   @override
@@ -401,7 +406,13 @@ class _WhiteboardEditorScreenState
     }
     final remembered = await WhiteboardPrefs.loadLastCanvas(widget.note.id);
     final selectedId =
-        remembered != null && canvases.any((canvas) => canvas.id == remembered)
+        widget.initialCanvasBlockId != null &&
+                canvases.any(
+                  (canvas) => canvas.id == widget.initialCanvasBlockId,
+                )
+            ? widget.initialCanvasBlockId!
+            : remembered != null &&
+                canvases.any((canvas) => canvas.id == remembered)
             ? remembered
             : canvases.first.id;
     if (!mounted) return;
@@ -410,6 +421,19 @@ class _WhiteboardEditorScreenState
       _selectedBlockId = selectedId;
       _loading = false;
     });
+    final selectedIndex = canvases.indexWhere(
+      (canvas) => canvas.id == selectedId,
+    );
+    ref
+        .read(flightWorkspaceTabsProvider.notifier)
+        .open(
+          flightWorkspaceTarget(
+            note: widget.note,
+            folder: widget.folder,
+            canvas: canvases[selectedIndex],
+            canvasOrdinal: selectedIndex + 1,
+          ),
+        );
     unawaited(_rememberCanvas(selectedId));
   }
 
@@ -434,6 +458,19 @@ class _WhiteboardEditorScreenState
       _canvasKey = GlobalKey();
       _drawerOpen = false;
     });
+    final index = _canvases.indexWhere((canvas) => canvas.id == blockId);
+    if (index >= 0) {
+      ref
+          .read(flightWorkspaceTabsProvider.notifier)
+          .open(
+            flightWorkspaceTarget(
+              note: widget.note,
+              folder: widget.folder,
+              canvas: _canvases[index],
+              canvasOrdinal: index + 1,
+            ),
+          );
+    }
     await _rememberCanvas(blockId);
     _mutating = false;
   }
@@ -468,6 +505,16 @@ class _WhiteboardEditorScreenState
       _canvasKey = GlobalKey();
       _drawerOpen = false;
     });
+    ref
+        .read(flightWorkspaceTabsProvider.notifier)
+        .open(
+          flightWorkspaceTarget(
+            note: widget.note,
+            folder: widget.folder,
+            canvas: created,
+            canvasOrdinal: canvases.length + 1,
+          ),
+        );
     await _rememberCanvas(created.id);
     _mutating = false;
     HapticFeedback.lightImpact();
@@ -559,6 +606,19 @@ class _WhiteboardEditorScreenState
           ..sort((a, b) => a.position.compareTo(b.position));
     if (!mounted) return;
     setState(() => _canvases = refreshed);
+    final refreshedIndex = refreshed.indexWhere((item) => item.id == canvas.id);
+    if (refreshedIndex >= 0) {
+      ref
+          .read(flightWorkspaceTabsProvider.notifier)
+          .refresh(
+            flightWorkspaceTarget(
+              note: widget.note,
+              folder: widget.folder,
+              canvas: refreshed[refreshedIndex],
+              canvasOrdinal: refreshedIndex + 1,
+            ),
+          );
+    }
     _mutating = false;
     HapticFeedback.lightImpact();
   }
@@ -640,6 +700,17 @@ class _WhiteboardEditorScreenState
     await _deleteCanvasFiles(canvas, deleteLegacyCache: index == 0);
     if (!mounted) return;
 
+    ref
+        .read(flightWorkspaceTabsProvider.notifier)
+        .close(
+          flightWorkspaceTarget(
+            note: widget.note,
+            folder: widget.folder,
+            canvas: canvas,
+            canvasOrdinal: index + 1,
+          ),
+        );
+
     final remaining = [..._canvases]..removeAt(index);
     final nextIndex = index.clamp(0, remaining.length - 1);
     setState(() {
@@ -651,6 +722,16 @@ class _WhiteboardEditorScreenState
     });
     if (deletingCurrent) {
       await _rememberCanvas(remaining[nextIndex].id);
+      ref
+          .read(flightWorkspaceTabsProvider.notifier)
+          .open(
+            flightWorkspaceTarget(
+              note: widget.note,
+              folder: widget.folder,
+              canvas: remaining[nextIndex],
+              canvasOrdinal: nextIndex + 1,
+            ),
+          );
     }
     _mutating = false;
     HapticFeedback.lightImpact();
@@ -695,6 +776,12 @@ class _WhiteboardEditorScreenState
     );
     final safeIndex = selectedIndex < 0 ? 0 : selectedIndex;
     final selected = _canvases[safeIndex];
+    final workspaceTarget = flightWorkspaceTarget(
+      note: widget.note,
+      folder: widget.folder,
+      canvas: selected,
+      canvasOrdinal: safeIndex + 1,
+    );
     final panelWidth = math.min(390.0, MediaQuery.sizeOf(context).width * 0.88);
 
     return Stack(
@@ -709,6 +796,21 @@ class _WhiteboardEditorScreenState
           canvasCount: _canvases.length,
           useLegacyCache: _canvases.length == 1 && safeIndex == 0,
           onOpenCanvases: () => setState(() => _drawerOpen = true),
+          workspaceTarget: workspaceTarget,
+          onOpenWorkspaceTarget:
+              (target) => openFlightWorkspaceTarget(context, ref, target),
+          onOpenWorkspace:
+              () => showFlightWorkspace(
+                context: context,
+                ref: ref,
+                current: workspaceTarget,
+                accent: _accent,
+                onOpen:
+                    (target) => openFlightWorkspaceTarget(context, ref, target),
+                onInsertLink:
+                    (syntax) =>
+                        _canvasKey.currentState?._insertTextBlock(syntax),
+              ),
         ),
         if (_drawerOpen)
           Positioned.fill(
@@ -1126,6 +1228,9 @@ class _WhiteboardCanvasEditor extends ConsumerStatefulWidget {
   final int canvasCount;
   final bool useLegacyCache;
   final VoidCallback onOpenCanvases;
+  final FlightWorkspaceTarget workspaceTarget;
+  final ValueChanged<FlightWorkspaceTarget> onOpenWorkspaceTarget;
+  final VoidCallback onOpenWorkspace;
 
   const _WhiteboardCanvasEditor({
     super.key,
@@ -1137,6 +1242,9 @@ class _WhiteboardCanvasEditor extends ConsumerStatefulWidget {
     required this.canvasCount,
     required this.useLegacyCache,
     required this.onOpenCanvases,
+    required this.workspaceTarget,
+    required this.onOpenWorkspaceTarget,
+    required this.onOpenWorkspace,
   });
 
   @override
@@ -7402,6 +7510,12 @@ class _WhiteboardCanvasEditorState
                         ],
                       ),
                     ],
+                    FlightWorkspaceTabsBar(
+                      current: widget.workspaceTarget,
+                      accent: _accent,
+                      onOpen: widget.onOpenWorkspaceTarget,
+                      onExplore: widget.onOpenWorkspace,
+                    ),
                     Expanded(
                       child: LayoutBuilder(
                         builder: (ctx, c) {

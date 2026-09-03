@@ -111,5 +111,6 @@ Never edit `.g.dart` files manually.
 - **Canvas ↔ Source note link (AI context):** `note_canvas_links` — el OCR redirigido escribe en la nota fuente.
 - **Schedule ↔ Flight:** Schedule blocks linkean a carpetas Flight. Widget "Próxima clase" en home y folder detail.
 - **AI context system:** `space_context_sources` + `canvas_context_sources` (notas, carpetas, URLs vía Jina Reader). Caché por hash de contenido en `context_cache.dart`.
+- **Flight workspace:** Explorador jerárquico de carpetas/notas/pizarras hijas y pestañas persistidas en `SharedPreferences`. Cambiar de pestaña usa `pushReplacement`, por lo que solo el documento activo permanece montado. Las conexiones `[[Nota]]` / `[[Nota#Pizarra]]` y backlinks se derivan al abrir el explorador mediante una lectura agrupada de `note_blocks`; no hay indexación continua ni cambio de esquema.
 - **Graph (force-directed):** Conexiones cross-mode visualizadas como grafo. 5 tipos de nodo (space, card, folder, note, task), 3 aristas (structure, bridge, AI). Assembly via `GraphAssembler`, simulación D3-like en `GraphSimulation`.
 - **Reminder system:** `ReminderCoordinator` + `LocalReminderScheduler` (flutter_local_notifications). Presets programables, resumen diario, exact reminders. Sincronización con due dates de tasks/cards.

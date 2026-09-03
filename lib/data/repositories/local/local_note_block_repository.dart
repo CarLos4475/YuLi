@@ -23,6 +23,12 @@ class LocalNoteBlockRepository implements NoteBlockRepository {
   }
 
   @override
+  Future<List<NoteBlock>> getByNoteIds(List<int> noteIds) async {
+    final rows = await _db.noteBlocksDao.getByNoteIds(noteIds);
+    return rows.map(_rowToBlock).toList();
+  }
+
+  @override
   Future<NoteBlock> insertAtEnd(
     int noteId,
     NoteBlockType type, {
