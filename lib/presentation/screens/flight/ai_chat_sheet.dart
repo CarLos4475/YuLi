@@ -1368,7 +1368,8 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       AiHistoryDepth.normal => 'HISTORIAL NORMAL',
       AiHistoryDepth.full => 'TODO EL CHAT',
     };
-    return '$model · $length · $history';
+    final reasoning = settings.useDeepReasoning ? ' · RAZONAMIENTO' : '';
+    return '$model · $length$reasoning · $history';
   }
 
   /// Gallery of modes (cards) — pick one to switch. A floating centred dialog
@@ -2063,6 +2064,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
         i,
         empty: m.emptyTruncated,
         canAct: isLast,
+        interruption: m.interruption ?? AiReplyInterruption.outputLimit,
       );
       content =
           m.emptyTruncated
@@ -2110,7 +2112,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     int assistantIndex, {
     required bool empty,
     required bool canAct,
+    required AiReplyInterruption interruption,
   }) {
+    final connection = interruption == AiReplyInterruption.connection;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
       decoration: BoxDecoration(
@@ -2124,7 +2128,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           const SizedBox(width: 7),
           Expanded(
             child: Text(
-              empty ? 'No se generó una respuesta' : 'Respuesta incompleta',
+              empty
+                  ? 'No se generó una respuesta'
+                  : connection
+                  ? 'La conexión se interrumpió'
+                  : 'La respuesta alcanzó el límite',
               style: yBody(size: 11, weight: FontWeight.w700, color: aiInk),
             ),
           ),
@@ -2142,7 +2150,11 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      empty ? 'Reintentar' : 'Continuar',
+                      empty
+                          ? 'Reintentar'
+                          : connection
+                          ? 'Retomar'
+                          : 'Continuar',
                       style: yBody(
                         size: 10,
                         weight: FontWeight.w800,
@@ -2720,6 +2732,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     };
     final costScore =
         (_s.settings.model == AiModel.pro ? 2 : 0) +
+        (_s.settings.useDeepReasoning ? 3 : 0) +
         (_s.settings.responseLength == AiResponseLength.detailed ? 2 : 0) +
         (_s.settings.historyDepth == AiHistoryDepth.full ? 2 : 0) +
         (_s.settings.includeImagesInHistory ? 2 : 0) +

@@ -40,6 +40,8 @@ class DeepseekAssistant implements AiAssistant {
       return {
         'role': 'assistant',
         'content': m.content.isEmpty ? null : m.content,
+        if (m.reasoningContent?.isNotEmpty ?? false)
+          'reasoning_content': m.reasoningContent,
         'tool_calls': [
           for (final c in m.toolCalls!)
             {
@@ -95,7 +97,13 @@ class DeepseekAssistant implements AiAssistant {
         ],
       };
     }
-    return {'role': m.role.name, 'content': m.content};
+    return {
+      'role': m.role.name,
+      'content': m.content,
+      if (m.role == AiRole.assistant &&
+          (m.reasoningContent?.isNotEmpty ?? false))
+        'reasoning_content': m.reasoningContent,
+    };
   }
 
   @override
@@ -104,12 +112,14 @@ class DeepseekAssistant implements AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     await for (final event in streamReplyEvents(
       messages,
       model: model,
       maxTokens: maxTokens,
       temperature: temperature,
+      deepReasoning: deepReasoning,
     )) {
       if (event is AiTextDelta) yield event.text;
     }
@@ -121,6 +131,7 @@ class DeepseekAssistant implements AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     final key = (await keyStore.read())?.trim();
     if (key == null || key.isEmpty) {
@@ -135,7 +146,10 @@ class DeepseekAssistant implements AiAssistant {
           ..body = jsonEncode({
             'model': _modelId(model),
             'stream': true,
+            'stream_options': {'include_usage': true},
             'max_tokens': maxTokens,
+            'thinking': {'type': deepReasoning ? 'enabled' : 'disabled'},
+            if (deepReasoning) 'reasoning_effort': 'high',
             // Lower temperature → more deterministic (good for summarize/clean/
             // extract-tasks, less drift).
             'temperature': temperature,
@@ -158,6 +172,7 @@ class DeepseekAssistant implements AiAssistant {
     }
 
     String? finishReason;
+    AiTokenUsage? usage;
     await for (final line in resp.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
@@ -167,12 +182,17 @@ class DeepseekAssistant implements AiAssistant {
       if (data == '[DONE]') break;
       try {
         final json = jsonDecode(data) as Map<String, dynamic>;
+        usage = _usageFromJson(json['usage']) ?? usage;
         final choices = json['choices'] as List?;
         if (choices == null || choices.isEmpty) continue;
         final choice = choices.first as Map;
         final reason = choice['finish_reason'];
         if (reason is String && reason.isNotEmpty) finishReason = reason;
         final delta = choice['delta'] as Map?;
+        final reasoning = delta?['reasoning_content'];
+        if (reasoning is String && reasoning.isNotEmpty) {
+          yield AiReasoningDelta(reasoning);
+        }
         final content = delta?['content'];
         if (content is String && content.isNotEmpty) {
           yield AiTextDelta(content);
@@ -182,8 +202,11 @@ class DeepseekAssistant implements AiAssistant {
       }
     }
     yield AiStreamComplete(
-      truncated: finishReason == 'length',
+      truncated:
+          finishReason == 'length' ||
+          finishReason == 'insufficient_system_resource',
       finishReason: finishReason,
+      usage: usage,
     );
   }
 
@@ -194,6 +217,7 @@ class DeepseekAssistant implements AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     final key = (await keyStore.read())?.trim();
     if (key == null || key.isEmpty) {
@@ -208,7 +232,10 @@ class DeepseekAssistant implements AiAssistant {
           ..body = jsonEncode({
             'model': _modelId(model),
             'stream': true,
+            'stream_options': {'include_usage': true},
             'max_tokens': maxTokens,
+            'thinking': {'type': deepReasoning ? 'enabled' : 'disabled'},
+            if (deepReasoning) 'reasoning_effort': 'high',
             'temperature': temperature,
             'messages': messageJson,
             'tools': tools.map((t) => t.toJson()).toList(),
@@ -230,6 +257,7 @@ class DeepseekAssistant implements AiAssistant {
     // tool_calls stream in fragments keyed by `index`; assemble per index.
     final partial = <int, _PartialCall>{};
     String? finishReason;
+    AiTokenUsage? usage;
     await for (final line in resp.stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())) {
@@ -239,12 +267,17 @@ class DeepseekAssistant implements AiAssistant {
       if (data == '[DONE]') break;
       try {
         final json = jsonDecode(data) as Map<String, dynamic>;
+        usage = _usageFromJson(json['usage']) ?? usage;
         final choices = json['choices'] as List?;
         if (choices == null || choices.isEmpty) continue;
         final choice = choices.first as Map;
         final reason = choice['finish_reason'];
         if (reason is String && reason.isNotEmpty) finishReason = reason;
         final delta = choice['delta'] as Map?;
+        final reasoning = delta?['reasoning_content'];
+        if (reasoning is String && reasoning.isNotEmpty) {
+          yield AiReasoningDelta(reasoning);
+        }
         final content = delta?['content'];
         if (content is String && content.isNotEmpty) yield AiTextDelta(content);
         final tcs = delta?['tool_calls'] as List?;
@@ -267,8 +300,11 @@ class DeepseekAssistant implements AiAssistant {
     }
 
     yield AiStreamComplete(
-      truncated: finishReason == 'length',
+      truncated:
+          finishReason == 'length' ||
+          finishReason == 'insufficient_system_resource',
       finishReason: finishReason,
+      usage: usage,
     );
 
     if (partial.isNotEmpty) {
@@ -290,6 +326,19 @@ class DeepseekAssistant implements AiAssistant {
     429 => 'Límite de uso alcanzado, intenta más tarde.',
     _ => 'Error de la API ($code).',
   };
+
+  AiTokenUsage? _usageFromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final details = raw['completion_tokens_details'];
+    int value(Object? input) => input is num ? input.toInt() : 0;
+    return AiTokenUsage(
+      promptTokens: value(raw['prompt_tokens']),
+      promptCacheHitTokens: value(raw['prompt_cache_hit_tokens']),
+      promptCacheMissTokens: value(raw['prompt_cache_miss_tokens']),
+      completionTokens: value(raw['completion_tokens']),
+      reasoningTokens: details is Map ? value(details['reasoning_tokens']) : 0,
+    );
+  }
 }
 
 /// Accumulator for one tool call streamed across SSE fragments.

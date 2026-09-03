@@ -50,6 +50,7 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
     super.initState();
     _draft = widget.initial;
     _capabilitiesOpen =
+        _draft.useDeepReasoning ||
         _draft.useInteractiveReplies ||
         _draft.useMemory ||
         _draft.useActionDrafts;
@@ -438,6 +439,18 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
                     children: [
                       _divider(),
                       _toggle(
+                        icon: YuLiIcons.lightbulb,
+                        title: 'RAZONAMIENTO PROFUNDO',
+                        detail:
+                            'Dedica más tokens a problemas difíciles antes de responder. Actívalo sólo cuando realmente necesites más análisis.',
+                        value: _draft.useDeepReasoning,
+                        highImpact: true,
+                        onChanged:
+                            (value) =>
+                                _set(_draft.copyWith(useDeepReasoning: value)),
+                      ),
+                      _divider(),
+                      _toggle(
                         icon: YuLiIcons.sparkles,
                         title: 'RESPUESTAS INTERACTIVAS',
                         detail:
@@ -480,6 +493,7 @@ class _AiChatSettingsDialogState extends ConsumerState<AiChatSettingsDialog> {
   String get _capabilitiesSummary {
     final active =
         [
+          _draft.useDeepReasoning,
           _draft.useInteractiveReplies,
           _draft.useMemory,
           _draft.useActionDrafts,

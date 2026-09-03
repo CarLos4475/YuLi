@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_contracts.dart';
 import 'package:yuli/presentation/screens/yuli_ai/ai_widget_renderer.dart';
-import 'package:yuli/presentation/screens/flight/ai_chat_visuals.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
 import 'package:yuli/presentation/widgets/yuli_design.dart';
 
@@ -279,6 +278,13 @@ void main() {
     expect(sent.single, contains('Resuelve este ejercicio paso a paso'));
     expect(sent.single, contains('2x=0'));
 
+    await tester.tap(find.text('Ver pista'), warnIfMissed: false);
+    await tester.pump();
+
+    expect(find.text('Divide entre 2'), findsOneWidget);
+    expect(find.text('Ocultar pista'), findsOneWidget);
+    expect(sent, hasLength(1));
+
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 600));
   });
@@ -418,6 +424,34 @@ void main() {
     expect(find.text('Proceso aleatorio continuo'), findsOneWidget);
   });
 
+  testWidgets('FLASHCARDS navigates one card at a time', (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        const AiWidgetRenderer(
+          text:
+              '<!--YULI_WIDGET:FLASHCARDS v=1\n'
+              '{"title":"repaso","cards":['
+              '{"front":"primera","back":"uno"},'
+              '{"front":"segunda","back":"dos"}]}'
+              '-->',
+          accent: yFlight,
+          surface: AiWidgetSurface.flight,
+        ),
+      ),
+    );
+
+    expect(find.text('Primera'), findsOneWidget);
+    expect(find.text('Segunda'), findsNothing);
+    expect(find.text('1 DE 2'), findsOneWidget);
+
+    await tester.tap(find.byIcon(YuLiIcons.chevronRight));
+    await tester.pump();
+
+    expect(find.text('Primera'), findsNothing);
+    expect(find.text('Segunda'), findsOneWidget);
+    expect(find.text('2 DE 2'), findsOneWidget);
+  });
+
   testWidgets('QUIZ accepts choices and correctAnswer aliases', (tester) async {
     await tester.pumpWidget(
       _wrap(
@@ -486,11 +520,13 @@ void main() {
     expect(find.text('Plan de estudio'), findsOneWidget);
     expect(find.text('Repasar formulas'), findsOneWidget);
     expect(find.text('Resolver ejercicios'), findsOneWidget);
+    expect(find.text('1 DE 2 LISTOS'), findsOneWidget);
 
     await tester.tap(find.text('Repasar formulas'), warnIfMissed: false);
     await tester.pump();
 
     expect(find.byIcon(YuLiIcons.squareCheck), findsNWidgets(3));
+    expect(find.text('2 DE 2 LISTOS'), findsOneWidget);
   });
 
   testWidgets('MEMORY_SUGGESTION emits local action result after save', (
@@ -520,7 +556,7 @@ void main() {
     expect(result, 'Listo, guardé esa memoria.');
   });
 
-  testWidgets('long interactive responses expand and collapse', (tester) async {
+  testWidgets('long interactive responses render completely', (tester) async {
     await tester.pumpWidget(
       _wrap(
         const AiWidgetRenderer(
@@ -539,40 +575,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ver completo'), findsOneWidget);
-    final compactHeight =
-        tester.getSize(find.byType(AiInteractiveSurface)).height;
-
-    await tester.tap(find.text('Ver completo'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Contraer'), findsOneWidget);
-    final expandedHeight =
-        tester.getSize(find.byType(AiInteractiveSurface)).height;
-    expect(expandedHeight, greaterThan(compactHeight));
-
-    await tester.tap(find.text('Contraer'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ver completo'), findsOneWidget);
-  });
-
-  testWidgets('short interactive responses stay compact without a control', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _wrap(
-        const AiWidgetRenderer(
-          text:
-              '<!--YULI_WIDGET:CONCEPT_CARD v=1\n'
-              '{"title":"Inercia","definition":"Resistencia al cambio."}'
-              '-->',
-          accent: yFlight,
-          surface: AiWidgetSurface.flight,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
+    expect(find.text('Paso 8'), findsOneWidget);
     expect(find.text('Ver completo'), findsNothing);
     expect(find.text('Contraer'), findsNothing);
   });

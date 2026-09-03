@@ -3190,6 +3190,10 @@ class NoteMarkdownPreview extends ConsumerWidget {
       blockSyntaxList: [const _DefinitionListSyntax(), const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
       generators: [
         SpanNodeGeneratorWithTag(
+          tag: 'hr',
+          generator: (e, config, visitor) => _MarkdownHorizontalRuleNode(accent),
+        ),
+        SpanNodeGeneratorWithTag(
           tag: 'latex',
           generator:
               (e, config, visitor) => _LatexNode(
@@ -3330,6 +3334,23 @@ class NoteMarkdownPreview extends ConsumerWidget {
   }
 }
 
+class _MarkdownHorizontalRuleNode extends SpanNode {
+  final Color accent;
+
+  _MarkdownHorizontalRuleNode(this.accent);
+
+  @override
+  InlineSpan build() {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Container(height: 2, color: accent),
+      ),
+    );
+  }
+}
+
 class MarkdownBlockActions extends StatelessWidget {
   final Color accent;
   final VoidCallback? onCopy;
@@ -3423,27 +3444,34 @@ class _LatexNode extends SpanNode {
       onErrorFallback: (err) => Text(_normalizeLatexContent(textContent), style: style.copyWith(color: yInk)),
     );
     final rendered = isInline ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: math) : math;
-    if (isInline || (onCopyBlock == null && onPinBlock == null)) {
+    if (isInline) {
       return WidgetSpan(alignment: PlaceholderAlignment.middle, child: rendered);
     }
     final markdown = '\$\$\n$normalizedContent\n\$\$';
+    final block =
+        onCopyBlock == null && onPinBlock == null
+            ? rendered
+            : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                rendered,
+                const SizedBox(height: 5),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: MarkdownBlockActions(
+                    accent: accent,
+                    onCopy: onCopyBlock == null ? null : () => onCopyBlock!(normalizedContent),
+                    onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+                  ),
+                ),
+              ],
+            );
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          rendered,
-          const SizedBox(height: 5),
-          Align(
-            alignment: Alignment.centerRight,
-            child: MarkdownBlockActions(
-              accent: accent,
-              onCopy: onCopyBlock == null ? null : () => onCopyBlock!(normalizedContent),
-              onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
-            ),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: block,
       ),
     );
   }

@@ -46,6 +46,48 @@ void main() {
     },
   );
 
+  testWidgets('Separadores y formulas de bloque usan espacio simetrico', (
+    WidgetTester tester,
+  ) async {
+    const accent = Color(0xFF8A5A22);
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: NoteMarkdownPreview(
+              data:
+                  'Texto anterior\n\n---\n\nTexto siguiente\n\n\$\$\nx^2\n\$\$',
+              accent: accent,
+              tight: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final accentRules = tester
+        .widgetList<Container>(find.byType(Container))
+        .where(
+          (container) =>
+              container.color == accent &&
+              container.constraints?.maxHeight == 2,
+        );
+    expect(accentRules, hasLength(1));
+    final symmetricBlocks = tester
+        .widgetList<Padding>(find.byType(Padding))
+        .where(
+          (padding) =>
+              padding.padding == const EdgeInsets.symmetric(vertical: 10),
+        );
+    expect(symmetricBlocks.length, greaterThanOrEqualTo(2));
+    expect(find.byType(Math), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
   testWidgets('Markdown tables render inside horizontal scroll', (
     WidgetTester tester,
   ) async {

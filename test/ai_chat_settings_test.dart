@@ -26,6 +26,7 @@ void main() {
     expect(decoded.model, AiModel.flash);
     expect(decoded.responseLength, AiResponseLength.brief);
     expect(decoded.historyDepth, AiHistoryDepth.recent);
+    expect(decoded.useDeepReasoning, isFalse);
     expect(decoded.includeImagesInHistory, isFalse);
     expect(decoded.useNoteContext, isTrue);
     expect(decoded.useRelatedSources, isFalse);
@@ -36,9 +37,9 @@ void main() {
   });
 
   test('response lengths use aligned budgets without flattening YuLi tone', () {
-    expect(AiResponseLength.brief.maxTokens, 384);
-    expect(AiResponseLength.normal.maxTokens, 896);
-    expect(AiResponseLength.detailed.maxTokens, 1792);
+    expect(AiResponseLength.brief.maxTokens, 512);
+    expect(AiResponseLength.normal.maxTokens, 1280);
+    expect(AiResponseLength.detailed.maxTokens, 2560);
 
     for (final length in AiResponseLength.values) {
       expect(length.semanticInstruction, contains('personalidad activa'));
@@ -145,6 +146,7 @@ void main() {
 
       expect(assistant.maxTokens, AiResponseLength.brief.maxTokens);
       expect(assistant.model, AiModel.flash);
+      expect(assistant.deepReasoning, isFalse);
       expect(
         assistant.messages.any((m) => m.content.contains('NOTA BASE')),
         isTrue,
@@ -158,6 +160,27 @@ void main() {
       expect(assistant.messages.last.content, 'Cuatro');
     },
   );
+
+  test('deep reasoning uses one high ceiling for every response length', () async {
+    for (final length in AiResponseLength.values) {
+      final assistant = _CapturingAssistant();
+      final session = AiChatSession(98 + length.index)..setSettings(
+        const AiChatSettings.savings().copyWith(
+          responseLength: length,
+          useDeepReasoning: true,
+        ),
+      );
+
+      await session.send(
+        assistant,
+        const AiUsageLimiter(dailyLimit: 50),
+        'Analiza el problema',
+      );
+
+      expect(assistant.deepReasoning, isTrue);
+      expect(assistant.maxTokens, kDeepReasoningMaxOutputTokens);
+    }
+  });
 
   test(
     'enabled related context and detailed output reach the request',
@@ -253,8 +276,25 @@ void main() {
       expect(response.role, AiRole.assistant);
       expect(response.text, 'Parte útil de la respuesta');
       expect(response.truncated, isTrue);
+      expect(response.interruption, AiReplyInterruption.outputLimit);
     },
   );
+
+  test('a mid-stream network failure is identified separately', () async {
+    final session = AiChatSession(99);
+
+    await session.send(
+      _InterruptedAssistant(),
+      const AiUsageLimiter(dailyLimit: 50),
+      'Explica con detalle',
+    );
+
+    final response = session.messages.last;
+    expect(response.text, 'Parte recibida');
+    expect(response.truncated, isTrue);
+    expect(response.interruption, AiReplyInterruption.connection);
+    expect(session.lastFinishReason, 'connection_interrupted');
+  });
 
   test(
     'image is sent with its flash turn but not repeated in history',
@@ -432,7 +472,13 @@ void main() {
     );
     expect(find.text('MÁS GASTO'), findsNWidgets(4));
     expect(find.text('RECORDAR IMÁGENES'), findsOneWidget);
+    await tester.ensureVisible(find.text('FUNCIONES ADICIONALES'));
+    await tester.tap(find.text('FUNCIONES ADICIONALES'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('RAZONAMIENTO PROFUNDO'));
+    expect(find.text('RAZONAMIENTO PROFUNDO'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('EQUILIBRADO'));
     await tester.tap(find.text('EQUILIBRADO'));
     await tester.ensureVisible(find.text('CONTEXTO DE ESTA NOTA'));
     await tester.tap(find.text('CONTEXTO DE ESTA NOTA'));
@@ -601,6 +647,37 @@ void main() {
     expect(await limiter.remaining(), 48);
   });
 
+  test('deep reasoning is preserved across tool-call rounds', () async {
+    final assistant = _ReasoningToolLoopAssistant();
+    final session = AiChatSession(100)..setSettings(
+      const AiChatSettings.savings().copyWith(
+        useDeepReasoning: true,
+        useTools: true,
+      ),
+    );
+
+    await session.send(
+      assistant,
+      const AiUsageLimiter(dailyLimit: 50),
+      'Consulta',
+      tools: const [
+        AiToolDef(
+          name: 'lookup',
+          description: 'Consulta datos.',
+          parameters: {'type': 'object', 'properties': <String, dynamic>{}},
+        ),
+      ],
+      onToolCall: (_) async => '{"result":"ok"}',
+    );
+
+    final toolTurn = assistant.secondRequest.singleWhere(
+      (message) => message.toolCalls?.isNotEmpty ?? false,
+    );
+    expect(toolTurn.reasoningContent, 'Necesito consultar');
+    expect(assistant.deepReasoningEnabled, isTrue);
+    expect(session.messages.last.text, 'Resultado final');
+  });
+
   test(
     'changing context access clears history from the next request',
     () async {
@@ -625,6 +702,7 @@ class _CapturingAssistant extends AiAssistant {
   List<AiMessage> messages = const [];
   AiModel? model;
   int? maxTokens;
+  bool? deepReasoning;
 
   @override
   Stream<String> streamReply(
@@ -632,10 +710,12 @@ class _CapturingAssistant extends AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     this.messages = List.of(messages);
     this.model = model;
     this.maxTokens = maxTokens;
+    this.deepReasoning = deepReasoning;
     yield 'Listo';
   }
 
@@ -646,10 +726,12 @@ class _CapturingAssistant extends AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     this.messages = List.of(messages);
     this.model = model;
     this.maxTokens = maxTokens;
+    this.deepReasoning = deepReasoning;
     yield const AiTextDelta('Listo');
   }
 }
@@ -664,6 +746,7 @@ class _ToolLoopAssistant extends _CapturingAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     calls++;
     if (calls == 1) {
@@ -683,6 +766,7 @@ class _TruncatedAssistant extends _CapturingAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     yield const AiTextDelta('Parte útil de la respuesta');
     yield const AiStreamComplete(truncated: true, finishReason: 'length');
@@ -696,7 +780,52 @@ class _EmptyTruncatedAssistant extends _CapturingAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     yield const AiStreamComplete(truncated: true, finishReason: 'length');
+  }
+}
+
+class _InterruptedAssistant extends _CapturingAssistant {
+  @override
+  Stream<AiStreamEvent> streamReplyEvents(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+    bool deepReasoning = false,
+  }) async* {
+    yield const AiTextDelta('Parte recibida');
+    throw const AiException('Sin conexión o error de red.', retryable: true);
+  }
+}
+
+class _ReasoningToolLoopAssistant extends _CapturingAssistant {
+  int calls = 0;
+  List<AiMessage> secondRequest = const [];
+  bool deepReasoningEnabled = false;
+
+  @override
+  Stream<AiStreamEvent> streamReplyWithTools(
+    List<AiMessage> messages, {
+    required List<AiToolDef> tools,
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+    bool deepReasoning = false,
+  }) async* {
+    calls++;
+    deepReasoningEnabled = deepReasoning;
+    if (calls == 1) {
+      yield const AiReasoningDelta('Necesito consultar');
+      yield const AiStreamComplete(finishReason: 'tool_calls');
+      yield const AiToolCallRequest([
+        AiToolCall(id: 'call_1', name: 'lookup', arguments: '{}'),
+      ]);
+      return;
+    }
+    secondRequest = List.of(messages);
+    yield const AiTextDelta('Resultado final');
+    yield const AiStreamComplete(finishReason: 'stop');
   }
 }

@@ -16,6 +16,7 @@ class AiMessage {
   final AiRole role;
   final String content;
   final List<AiImageInput> images;
+  final String? reasoningContent;
 
   /// Assistant turn requesting one or more tool calls (function calling).
   final List<AiToolCall>? toolCalls;
@@ -28,6 +29,7 @@ class AiMessage {
     this.role,
     this.content, {
     this.images = const [],
+    this.reasoningContent,
     this.toolCalls,
     this.toolCallId,
     this.name,
@@ -81,11 +83,37 @@ class AiTextDelta extends AiStreamEvent {
   const AiTextDelta(this.text);
 }
 
+class AiReasoningDelta extends AiStreamEvent {
+  final String text;
+  const AiReasoningDelta(this.text);
+}
+
+class AiTokenUsage {
+  final int promptTokens;
+  final int promptCacheHitTokens;
+  final int promptCacheMissTokens;
+  final int completionTokens;
+  final int reasoningTokens;
+
+  const AiTokenUsage({
+    required this.promptTokens,
+    required this.promptCacheHitTokens,
+    required this.promptCacheMissTokens,
+    required this.completionTokens,
+    required this.reasoningTokens,
+  });
+}
+
 class AiStreamComplete extends AiStreamEvent {
   final bool truncated;
   final String? finishReason;
+  final AiTokenUsage? usage;
 
-  const AiStreamComplete({this.truncated = false, this.finishReason});
+  const AiStreamComplete({
+    this.truncated = false,
+    this.finishReason,
+    this.usage,
+  });
 }
 
 class AiToolCallRequest extends AiStreamEvent {
@@ -107,6 +135,7 @@ abstract class AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   });
 
   Stream<AiStreamEvent> streamReplyEvents(
@@ -114,12 +143,14 @@ abstract class AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   }) async* {
     await for (final text in streamReply(
       messages,
       model: model,
       maxTokens: maxTokens,
       temperature: temperature,
+      deepReasoning: deepReasoning,
     )) {
       yield AiTextDelta(text);
     }
@@ -136,6 +167,7 @@ abstract class AiAssistant {
     AiModel model = AiModel.flash,
     int maxTokens = 2048,
     double temperature = 0.3,
+    bool deepReasoning = false,
   });
 }
 

@@ -50,10 +50,12 @@ const kSynthesizePrompt =
     'formato markdown. Mantén el idioma original. Responde SOLO con la '
     'síntesis, sin comentarios ni encabezados adicionales.';
 
+const kDeepReasoningMaxOutputTokens = 32768;
+
 enum AiResponseLength {
-  brief(384),
-  normal(896),
-  detailed(1792);
+  brief(512),
+  normal(1280),
+  detailed(2560);
 
   final int maxTokens;
   const AiResponseLength(this.maxTokens);
@@ -63,21 +65,21 @@ enum AiResponseLength {
       'Guía de extensión: responde con la calidez y naturalidad de tu '
           'personalidad activa, de forma breve y directa. Ahorrar espacio no '
           'significa sonar cortante. Resuelve primero lo esencial, normalmente '
-          'en 1 a 3 párrafos y unas 80 a 160 palabras. Si el tema necesita más '
+          'en 1 a 3 párrafos y unas 80 a 140 palabras. Si el tema necesita más '
           'espacio, entrega una síntesis útil y ofrece profundizar después. '
           'Procura cerrar por completo cualquier frase, lista, tabla o bloque.',
     normal =>
       'Guía de extensión: responde con equilibrio, calidez y claridad, '
           'conservando el tono natural de tu personalidad activa. Explica lo '
           'necesario con una estructura cómoda de leer y usa ejemplos solo '
-          'cuando aporten valor, normalmente en unas 250 a 450 palabras. Si '
+          'cuando aporten valor, normalmente en unas 220 a 380 palabras. Si '
           'hiciera falta más espacio, prioriza una respuesta completa y ofrece '
           'continuar. Procura cerrar cualquier frase, lista, tabla o bloque.',
     detailed =>
       'Guía de extensión: desarrolla una respuesta amplia, cercana y bien '
           'estructurada, conservando la personalidad activa. Incluye '
           'razonamiento, matices y ejemplos útiles cuando correspondan, '
-          'normalmente en unas 600 a 900 palabras. Si la petición es simple, '
+          'normalmente en unas 500 a 750 palabras. Si la petición es simple, '
           'resuélvela con naturalidad sin añadir relleno. Prioriza terminar bien '
           'cada idea y ofrece continuar si todavía queda algo valioso por '
           'profundizar; no dejes frases, listas, tablas o bloques incompletos.',
@@ -100,6 +102,7 @@ class AiChatSettings {
   final AiModel model;
   final AiResponseLength responseLength;
   final AiHistoryDepth historyDepth;
+  final bool useDeepReasoning;
   final bool includeImagesInHistory;
   final bool useNoteContext;
   final bool useRelatedSources;
@@ -112,6 +115,7 @@ class AiChatSettings {
     required this.model,
     required this.responseLength,
     required this.historyDepth,
+    required this.useDeepReasoning,
     required this.includeImagesInHistory,
     required this.useNoteContext,
     required this.useRelatedSources,
@@ -126,6 +130,7 @@ class AiChatSettings {
         model: AiModel.flash,
         responseLength: AiResponseLength.brief,
         historyDepth: AiHistoryDepth.recent,
+        useDeepReasoning: false,
         includeImagesInHistory: false,
         useNoteContext: true,
         useRelatedSources: false,
@@ -140,6 +145,7 @@ class AiChatSettings {
         model: AiModel.flash,
         responseLength: AiResponseLength.normal,
         historyDepth: AiHistoryDepth.normal,
+        useDeepReasoning: false,
         includeImagesInHistory: false,
         useNoteContext: true,
         useRelatedSources: true,
@@ -154,6 +160,7 @@ class AiChatSettings {
         model: AiModel.pro,
         responseLength: AiResponseLength.detailed,
         historyDepth: AiHistoryDepth.full,
+        useDeepReasoning: true,
         includeImagesInHistory: true,
         useNoteContext: true,
         useRelatedSources: true,
@@ -174,6 +181,7 @@ class AiChatSettings {
     AiModel? model,
     AiResponseLength? responseLength,
     AiHistoryDepth? historyDepth,
+    bool? useDeepReasoning,
     bool? includeImagesInHistory,
     bool? useNoteContext,
     bool? useRelatedSources,
@@ -185,6 +193,7 @@ class AiChatSettings {
     model: model ?? this.model,
     responseLength: responseLength ?? this.responseLength,
     historyDepth: historyDepth ?? this.historyDepth,
+    useDeepReasoning: useDeepReasoning ?? this.useDeepReasoning,
     includeImagesInHistory:
         includeImagesInHistory ?? this.includeImagesInHistory,
     useNoteContext: useNoteContext ?? this.useNoteContext,
@@ -199,6 +208,7 @@ class AiChatSettings {
     'model': model.name,
     'responseLength': responseLength.name,
     'historyDepth': historyDepth.name,
+    'useDeepReasoning': useDeepReasoning,
     'includeImagesInHistory': includeImagesInHistory,
     'useNoteContext': useNoteContext,
     'useRelatedSources': useRelatedSources,
@@ -226,6 +236,7 @@ class AiChatSettings {
         json['historyDepth'],
         fallback.historyDepth,
       ),
+      useDeepReasoning: flag('useDeepReasoning', fallback.useDeepReasoning),
       includeImagesInHistory: flag(
         'includeImagesInHistory',
         fallback.includeImagesInHistory,
@@ -248,6 +259,7 @@ class AiChatSettings {
       model == other.model &&
       responseLength == other.responseLength &&
       historyDepth == other.historyDepth &&
+      useDeepReasoning == other.useDeepReasoning &&
       includeImagesInHistory == other.includeImagesInHistory &&
       useNoteContext == other.useNoteContext &&
       useRelatedSources == other.useRelatedSources &&
@@ -261,6 +273,7 @@ class AiChatSettings {
     model,
     responseLength,
     historyDepth,
+    useDeepReasoning,
     includeImagesInHistory,
     useNoteContext,
     useRelatedSources,
@@ -271,12 +284,16 @@ class AiChatSettings {
   );
 }
 
+enum AiReplyInterruption { outputLimit, connection }
+
 class AiChatMsg {
   final AiRole role;
   final String text;
   final List<AiImageInput> images;
   final bool truncated;
   final bool emptyTruncated;
+  final AiReplyInterruption? interruption;
+  final String? reasoningContent;
 
   /// For assistant replies: the mode active when this reply was produced. Used
   /// to drop OTHER-mode replies from the sent history so the model doesn't
@@ -291,6 +308,8 @@ class AiChatMsg {
     this.images = const [],
     this.truncated = false,
     this.emptyTruncated = false,
+    this.interruption,
+    this.reasoningContent,
   });
 }
 
@@ -387,10 +406,14 @@ class AiChatSession extends ChangeNotifier {
   double chatScrollOffset = 0;
   bool hasChatScrollOffset = false;
   bool chatScrollAtBottom = true;
+  AiTokenUsage? lastUsage;
+  String? lastFinishReason;
 
   AiModel get model => settings.model;
   int get _maxOutputTokens =>
-      scope == 'note' ? settings.responseLength.maxTokens : 2048;
+      settings.useDeepReasoning
+          ? kDeepReasoningMaxOutputTokens
+          : (scope == 'note' ? settings.responseLength.maxTokens : 2048);
   int? get _maxHistoryMessages =>
       scope == 'note'
           ? settings.historyDepth.maxMessages
@@ -574,6 +597,8 @@ class AiChatSession extends ChangeNotifier {
     chatScrollOffset = 0;
     hasChatScrollOffset = false;
     chatScrollAtBottom = true;
+    lastUsage = null;
+    lastFinishReason = null;
     notifyListeners();
     return imagesByPath.values.toList(growable: false);
   }
@@ -893,6 +918,10 @@ class AiChatSession extends ChangeNotifier {
           (m) => AiMessage(
             m.role,
             m.text,
+            reasoningContent:
+                tools.isNotEmpty && settings.useDeepReasoning
+                    ? m.reasoningContent
+                    : null,
             images:
                 keepHistoryImages && m.role == AiRole.user
                     ? m.images
@@ -937,11 +966,14 @@ class AiChatSession extends ChangeNotifier {
     while (true) {
       var yielded = false;
       var truncated = false;
+      var interruption = AiReplyInterruption.outputLimit;
+      final reasoning = StringBuffer();
       try {
         await for (final event in assistant.streamReplyEvents(
           convo,
           model: model,
           maxTokens: _maxOutputTokens,
+          deepReasoning: settings.useDeepReasoning,
         )) {
           if (event is AiTextDelta) {
             yielded = true;
@@ -951,11 +983,27 @@ class AiChatSession extends ChangeNotifier {
               modeId: modeId,
             );
             notifyListeners();
+          } else if (event is AiReasoningDelta) {
+            reasoning.write(event.text);
           } else if (event is AiStreamComplete) {
             truncated = event.truncated;
+            lastUsage = event.usage;
+            lastFinishReason = event.finishReason;
+            if (event.truncated && event.finishReason != 'length') {
+              interruption = AiReplyInterruption.connection;
+            }
           }
         }
-        if (truncated) _markTruncated(idx, modeId);
+        if (truncated) {
+          _markTruncated(
+            idx,
+            modeId,
+            interruption: interruption,
+            reasoningContent: reasoning.toString(),
+          );
+        } else {
+          _attachReasoning(idx, modeId, reasoning.toString());
+        }
         break; // completed cleanly
       } catch (e) {
         final retryable = e is AiException && e.retryable;
@@ -983,7 +1031,13 @@ class AiChatSession extends ChangeNotifier {
           continue; // retry
         }
         if (yielded) {
-          _markTruncated(idx, modeId);
+          lastFinishReason = 'connection_interrupted';
+          _markTruncated(
+            idx,
+            modeId,
+            interruption: AiReplyInterruption.connection,
+            reasoningContent: reasoning.toString(),
+          );
           break;
         }
         messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e', modeId: modeId);
@@ -1022,24 +1076,36 @@ class AiChatSession extends ChangeNotifier {
       }
       final calls = <AiToolCall>[];
       var truncated = false;
+      var interruption = AiReplyInterruption.outputLimit;
+      final reasoning = StringBuffer();
+      final assistantText = StringBuffer();
       try {
         await for (final ev in assistant.streamReplyWithTools(
           convo,
           tools: tools,
           model: model,
           maxTokens: _maxOutputTokens,
+          deepReasoning: settings.useDeepReasoning,
         )) {
           if (ev is AiTextDelta) {
+            assistantText.write(ev.text);
             messages[idx] = AiChatMsg(
               AiRole.assistant,
               messages[idx].text + ev.text,
               modeId: modeId,
             );
             notifyListeners();
+          } else if (ev is AiReasoningDelta) {
+            reasoning.write(ev.text);
           } else if (ev is AiToolCallRequest) {
             calls.addAll(ev.calls);
           } else if (ev is AiStreamComplete) {
             truncated = ev.truncated;
+            lastUsage = ev.usage;
+            lastFinishReason = ev.finishReason;
+            if (ev.truncated && ev.finishReason != 'length') {
+              interruption = AiReplyInterruption.connection;
+            }
           }
         }
       } catch (e) {
@@ -1047,7 +1113,13 @@ class AiChatSession extends ChangeNotifier {
             messages[idx].text.trim().isNotEmpty &&
             messages[idx].text != kConsultingLabel;
         if (hasPartial) {
-          _markTruncated(idx, modeId);
+          lastFinishReason = 'connection_interrupted';
+          _markTruncated(
+            idx,
+            modeId,
+            interruption: AiReplyInterruption.connection,
+            reasoningContent: reasoning.toString(),
+          );
           return;
         }
         messages[idx] = AiChatMsg(AiRole.assistant, '⚠️ $e', modeId: modeId);
@@ -1056,10 +1128,18 @@ class AiChatSession extends ChangeNotifier {
       }
 
       if (truncated) {
-        _markTruncated(idx, modeId);
+        _markTruncated(
+          idx,
+          modeId,
+          interruption: interruption,
+          reasoningContent: reasoning.toString(),
+        );
         return;
       }
-      if (calls.isEmpty) return; // model answered with text → done
+      if (calls.isEmpty) {
+        _attachReasoning(idx, modeId, reasoning.toString());
+        return;
+      }
 
       // Surface the lookup, then run the tools and feed results back.
       messages[idx] = AiChatMsg(
@@ -1071,7 +1151,14 @@ class AiChatSession extends ChangeNotifier {
       // Ensure the indicator paints at least one frame before we run tools
       // (SQLite queries are near-instant and would otherwise flash invisible).
       await Future.delayed(const Duration(milliseconds: 400));
-      convo.add(AiMessage(AiRole.assistant, '', toolCalls: calls));
+      convo.add(
+        AiMessage(
+          AiRole.assistant,
+          assistantText.toString(),
+          reasoningContent: reasoning.toString(),
+          toolCalls: calls,
+        ),
+      );
       for (final c in calls) {
         final result = await onToolCall(c);
         convo.add(
@@ -1094,7 +1181,12 @@ class AiChatSession extends ChangeNotifier {
     }
   }
 
-  void _markTruncated(int index, String modeId) {
+  void _markTruncated(
+    int index,
+    String modeId, {
+    required AiReplyInterruption interruption,
+    String? reasoningContent,
+  }) {
     final current = messages[index].text;
     final empty = current.trim().isEmpty;
     messages[index] = AiChatMsg(
@@ -1103,8 +1195,26 @@ class AiChatSession extends ChangeNotifier {
       modeId: modeId,
       truncated: true,
       emptyTruncated: empty,
+      interruption: interruption,
+      reasoningContent:
+          reasoningContent?.isEmpty ?? true ? null : reasoningContent,
     );
     notifyListeners();
+  }
+
+  void _attachReasoning(int index, String modeId, String reasoningContent) {
+    if (reasoningContent.isEmpty) return;
+    final current = messages[index];
+    messages[index] = AiChatMsg(
+      current.role,
+      current.text,
+      modeId: modeId,
+      images: current.images,
+      truncated: current.truncated,
+      emptyTruncated: current.emptyTruncated,
+      interruption: current.interruption,
+      reasoningContent: reasoningContent,
+    );
   }
 
   /// Regenerate the assistant reply at [assistantIndex]: drop it and everything
