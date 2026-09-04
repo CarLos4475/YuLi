@@ -795,6 +795,13 @@ class _GraphPainter extends CustomPainter {
             gap: 4);
       case GraphEdgeKind.ai:
         _aiEdge(canvas, a, b);
+      case GraphEdgeKind.mention:
+        canvas.drawLine(
+            a,
+            b,
+            Paint()
+              ..color = yFlight.withValues(alpha: 0.5)
+              ..strokeWidth = 1.7);
     }
   }
 
@@ -1372,6 +1379,7 @@ class _GraphFilterSheetState extends State<_GraphFilterSheet> {
       GraphEdgeKind.structure => (_SwatchKind.solid, yInk),
       GraphEdgeKind.bridge => (_SwatchKind.dashed, yInk),
       GraphEdgeKind.ai => (_SwatchKind.dashed, yFlight),
+      GraphEdgeKind.mention => (_SwatchKind.solid, yFlight),
     };
     return SizedBox(
       width: 18,

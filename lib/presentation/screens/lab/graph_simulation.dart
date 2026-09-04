@@ -3,6 +3,8 @@ import 'dart:ui' show Offset;
 
 import '../../../domain/models/graph.dart';
 
+enum GraphLayoutMode { solar, knowledge }
+
 /// Visual radius (world units) of a node by kind. Shared by the simulation
 /// (collision) and the painter so spacing and drawing stay consistent.
 double graphNodeRadius(GraphNodeKind k) => switch (k) {
@@ -25,7 +27,10 @@ class GraphSimulation {
   /// [previous] carries over positions from an earlier simulation (real-time
   /// data updates): nodes that still exist keep their place and the layout only
   /// nudges (low [alpha]) instead of re-exploding from scratch.
-  GraphSimulation(this.data, {int seed = 7, Map<String, Offset>? previous}) {
+  GraphSimulation(this.data,
+      {int seed = 7,
+      Map<String, Offset>? previous,
+      this.layout = GraphLayoutMode.solar}) {
     final rnd = math.Random(seed);
     for (final n in data.nodes) {
       _kind[n.id] = n.kind;
@@ -62,13 +67,17 @@ class GraphSimulation {
       final key = anchorId ?? '_root';
       final idx = sib[key] = (sib[key] ?? 0) + 1;
       final ang = 2 * math.pi * 0.618 * idx + rnd.nextDouble() * 0.4;
-      final rr = _seedRadius(n.kind) + (rnd.nextDouble() - 0.5) * 24;
+      final rr = layout == GraphLayoutMode.knowledge
+          ? 54 + math.sqrt(idx) * 28 + rnd.nextDouble() * 18
+          : _seedRadius(n.kind) + (rnd.nextDouble() - 0.5) * 24;
       _bodies[n.id] = _Body(base + Offset(math.cos(ang), math.sin(ang)) * rr);
     }
     // The structured seed already looks right (separated regions). Use a LOW
     // alpha so the settle only relaxes overlaps via collision instead of a full
     // re-layout that collapses everything inward. Carry-over relaxes even less.
-    alpha = previous != null ? 0.28 : 0.42;
+    alpha = previous != null
+        ? (layout == GraphLayoutMode.knowledge ? 0.34 : 0.28)
+        : (layout == GraphLayoutMode.knowledge ? 0.58 : 0.42);
   }
 
   static int _seedDepth(GraphNodeKind k) => switch (k) {
@@ -88,6 +97,7 @@ class GraphSimulation {
       };
 
   final GraphData data;
+  final GraphLayoutMode layout;
   final Map<String, _Body> _bodies = {};
   final Map<String, double> _radius = {};
   final Map<String, GraphNodeKind> _kind = {};
@@ -112,6 +122,7 @@ class GraphSimulation {
   /// Per-edge rest length: long spokes from the sun (so folders get their own
   /// neighbourhood), short links inside a folder's cluster.
   double _linkDistFor(GraphEdge e) {
+    if (layout == GraphLayoutMode.knowledge) return 108;
     final a = _kind[e.from];
     final b = _kind[e.to];
     bool has(GraphNodeKind k) => a == k || b == k;
@@ -127,6 +138,12 @@ class GraphSimulation {
   /// folder/card → the sun; note → its folder (else sun); task → its folder
   /// (else its note, else its card). Drives the cluster-gravity force.
   void _computeAnchors() {
+    if (layout == GraphLayoutMode.knowledge) {
+      for (final n in data.nodes) {
+        _anchor[n.id] = null;
+      }
+      return;
+    }
     final adj = <String, List<String>>{
       for (final n in data.nodes) n.id: <String>[]
     };
@@ -204,7 +221,9 @@ class GraphSimulation {
             d2 = 16;
           }
           final d = math.sqrt(d2);
-          final f = _charge * alpha / d2;
+          final charge =
+              layout == GraphLayoutMode.knowledge ? 7200.0 : _charge;
+          final f = charge * alpha / d2;
           a.vel += Offset(dx / d * f, dy / d * f);
           b.vel -= Offset(dx / d * f, dy / d * f);
         }
@@ -243,7 +262,9 @@ class GraphSimulation {
                 (_clusterPull * alpha);
           }
         }
-        b.vel += Offset(-b.pos.dx, -b.pos.dy) * (_gravity * alpha);
+        final gravity =
+            layout == GraphLayoutMode.knowledge ? 0.007 : _gravity;
+        b.vel += Offset(-b.pos.dx, -b.pos.dy) * (gravity * alpha);
       }
       var v = b.vel * _velocityDecay;
       v = Offset(v.dx.clamp(-_maxVel, _maxVel), v.dy.clamp(-_maxVel, _maxVel));

@@ -28,6 +28,7 @@ import 'note_editor_screen.dart';
 import 'new_note_picker.dart';
 import 'notebook_editor_screen.dart';
 import 'whiteboard_editor_screen.dart';
+import 'knowledge_graph_screen.dart';
 
 class FolderDetailScreen extends ConsumerStatefulWidget {
   final Folder folder;
@@ -178,6 +179,18 @@ class _FolderDetailScreenState extends ConsumerState<FolderDetailScreen> {
                 grid: _grid,
                 onToggleView: () => setState(() => _grid = !_grid),
                 onCreateNote: _createNote,
+                onOpenGraph:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (_) => KnowledgeGraphScreen(
+                              folderId: widget.folder.id,
+                              scopeLabel: widget.folder.name,
+                              accent: widget.folder.color,
+                            ),
+                      ),
+                    ),
               ),
               Expanded(
                 child: Container(
@@ -230,6 +243,7 @@ class _FolderHero extends StatelessWidget {
   final bool grid;
   final VoidCallback onToggleView;
   final VoidCallback onCreateNote;
+  final VoidCallback onOpenGraph;
   final VoidCallback onBack;
 
   const _FolderHero({
@@ -240,6 +254,7 @@ class _FolderHero extends StatelessWidget {
     required this.grid,
     required this.onToggleView,
     required this.onCreateNote,
+    required this.onOpenGraph,
     required this.onBack,
   });
 
@@ -350,6 +365,13 @@ class _FolderHero extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+                ViewToggleBtn(
+                  icon: YuLiIcons.gitGraph,
+                  active: false,
+                  accentColor: folder.color,
+                  onTap: onOpenGraph,
+                ),
+                const SizedBox(width: 4),
                 ViewToggleBtn(
                   icon: YuLiIcons.layoutGrid,
                   active: grid,

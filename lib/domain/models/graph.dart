@@ -16,11 +16,12 @@ enum NoteVariant { block, whiteboard, notebook }
 /// Done/trash tasks are omitted from the graph (their card carries the done state).
 enum TaskGraphState { fresca, urgente, ayer, fantasma }
 
-/// 3 visual edge families:
+/// Visual edge families:
 /// - [structure]: "contains / lives in" (space→card, folder→note, space→source…)
 /// - [bridge]: cross-mode "became / derived from" (card↔task, card→note, note→task, task→folder)
 /// - [ai]: "feeds the AI context of" (note↔note/folder/url) — rendered with glow.
-enum GraphEdgeKind { structure, bridge, ai }
+/// - [mention]: a directed Flight `[[reference]]` between documents.
+enum GraphEdgeKind { structure, bridge, ai, mention }
 
 class GraphNode {
   /// Stable string id, e.g. `space:1`, `card:3`, `note:5`, `url:https://…`.
@@ -103,7 +104,8 @@ class GraphData {
   Set<String> get aiSourceNodeIds {
     final eligibleKinds = {
       for (final n in nodes)
-        if (n.kind == GraphNodeKind.note || n.kind == GraphNodeKind.folder) n.id,
+        if (n.kind == GraphNodeKind.note || n.kind == GraphNodeKind.folder)
+          n.id,
     };
     final ids = <String>{};
     for (final e in edges) {

@@ -20,6 +20,7 @@ import 'note_editor_screen.dart';
 import 'notebook_editor_screen.dart';
 import 'whiteboard_editor_screen.dart';
 import 'new_folder_dialog.dart';
+import 'knowledge_graph_screen.dart';
 import '../../widgets/edit_item_dialog.dart';
 
 class FlightScreen extends ConsumerStatefulWidget {
@@ -154,7 +155,15 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
                 ),
               ],
             ),
-            const _Toolbar(),
+            _Toolbar(
+              onOpenGraph:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const KnowledgeGraphScreen(),
+                    ),
+                  ),
+            ),
             Expanded(
               child: Container(
                 color: yCream,
@@ -237,7 +246,9 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
 // ─── Toolbar ──────────────────────────────────────────────────────────────
 
 class _Toolbar extends ConsumerWidget {
-  const _Toolbar();
+  final VoidCallback onOpenGraph;
+
+  const _Toolbar({required this.onOpenGraph});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -282,6 +293,34 @@ class _Toolbar extends ConsumerWidget {
                       weight: FontWeight.w700,
                       color: yCream,
                     ).copyWith(letterSpacing: 1.2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onOpenGraph,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(YuLiIcons.gitGraph, size: 15, color: yInk),
+                  const SizedBox(width: 7),
+                  Text(
+                    'MAPA',
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.2,
+                      color: yInk,
+                    ),
                   ),
                 ],
               ),

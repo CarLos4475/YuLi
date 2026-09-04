@@ -266,6 +266,7 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
   final _queryController = TextEditingController();
   Offset? _dragPointerStart;
   double _dragDistance = 0;
+  bool _workspaceDragActive = false;
   _WorkspaceNotice? _notice;
 
   @override
@@ -989,7 +990,10 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
         maxSimultaneousDrags: 1,
         onDragStarted: () {
           HapticFeedback.mediumImpact();
-          setState(() => _notice = null);
+          setState(() {
+            _workspaceDragActive = true;
+            _notice = null;
+          });
         },
         onDragUpdate: (details) {
           final start = _dragPointerStart;
@@ -1003,6 +1007,7 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
           final shouldManage = !details.wasAccepted && _dragDistance < 12;
           _dragPointerStart = null;
           _dragDistance = 0;
+          if (mounted) setState(() => _workspaceDragActive = false);
           if (shouldManage) _manageWorkspaceChild(note.id);
         },
         feedback: _WorkspaceDragFeedback(
@@ -1039,7 +1044,7 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
                 : rejectedData.isNotEmpty
                 ? rejectedData.first
                 : null;
-        final active = drag != null;
+        final active = _workspaceDragActive && drag != null;
         final validity =
             drag == null
                 ? null
@@ -1052,7 +1057,7 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
           return AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOutCubic,
-            height: active ? 30 : 8,
+            height: active ? 30 : (_workspaceDragActive ? 8 : 0),
             margin: EdgeInsets.only(left: 14 + indent, right: 14),
             padding:
                 active
