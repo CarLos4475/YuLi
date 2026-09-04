@@ -6,6 +6,7 @@ import '../../providers/ai_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/flight_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../providers/flight_workspace_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_action_sheet.dart';
@@ -1037,6 +1038,9 @@ void _showFolderContextMenu(
                         },
                         onDelete: () async {
                           await repo.softDelete(folder.id);
+                          ref
+                              .read(flightWorkspaceTabsProvider.notifier)
+                              .closeFolder(folder.id);
                         },
                       ),
                 );
@@ -1104,7 +1108,12 @@ void _showFolderContextMenu(
                         ],
                       ),
                 );
-                if (ok == true) await repo.softDelete(folder.id);
+                if (ok == true) {
+                  await repo.softDelete(folder.id);
+                  ref
+                      .read(flightWorkspaceTabsProvider.notifier)
+                      .closeFolder(folder.id);
+                }
               },
             ),
           ],

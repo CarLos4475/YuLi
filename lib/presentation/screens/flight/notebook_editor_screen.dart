@@ -59,7 +59,6 @@ import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
 import 'lasso_mini_toolbar.dart';
 import 'ocr_flow.dart';
-import '../lab/lab_space_detail_screen.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'pdf_pin_body.dart';
@@ -316,7 +315,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   bool _gestureChanged = false;
   bool _isDrawing = false;
   bool _stylusActive = false;
-  bool _headerCollapsed = true;
   final Set<int> _activePointers = {};
   Timer? _holdTimer;
   Timer? _deferredDecodeTimer;
@@ -5995,12 +5993,20 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             key: ValueKey(b.id),
             block: b,
             accent: _accent,
-            // Text blocks are ONLY interactive (tap = edit, drag = move) in text
-            // mode. Inert (IgnorePointer) in pen/lasso: the lasso transforms
-            // them by geometry, pens never touch them. Avoids a multi-touch
-            // crash (finger on block + 2-finger zoom).
-            interactive: !selected && !gesture && _tool == DrawTool.text,
+            // Editing and moving remain tool-specific; wiki links handle their
+            // own double tap in every tool.
+            interactive:
+                !selected &&
+                !gesture &&
+                (_tool == DrawTool.text || _tool == DrawTool.lasso),
             movable: !selected && !gesture && _tool == DrawTool.text,
+            onWikiLinkTap:
+                (label) => openFlightWikiLink(
+                  context,
+                  ref,
+                  sourceNoteId: widget.note.id,
+                  label: label,
+                ),
             onPersist: () async {
               _persistPage(pageIndex, dbOnly: true);
             },
@@ -6502,7 +6508,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       current: _workspaceTarget,
       accent: _accent,
       onOpen: (target) => openFlightWorkspaceTarget(context, ref, target),
-      onInsertLink: _insertTextBlock,
     );
   }
 
@@ -7599,17 +7604,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             ?.isNotEmpty) ??
         false;
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
-    final linkedCards =
-        ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
-    final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
-    final linkedSpaces =
-        spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
     return _wrapWithChatDock(
       linked: aiLinked,
       Scaffold(
         backgroundColor: yCream,
         body: StatusBarFlood(
-          color: _headerCollapsed ? yCream2 : _accent,
+          color: yCream2,
           child: SafeArea(
             top: false,
             child: Stack(
@@ -7618,101 +7618,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_headerCollapsed)
-                      _CollapsedNotebookHeader(
-                        folder: widget.folder,
-                        pageCount: _pageBlockIds.length,
-                        background: _currentBg,
-                        accent: _accent,
-                        noteTitle: widget.note.title ?? '',
-                        onExpand:
-                            () => setState(() => _headerCollapsed = false),
-                        onOpenPages: _togglePageDrawer,
-                      )
-                    else ...[
-                      ModeHeader(
-                        mode: 'CUADERNO',
-                        subtitle:
-                            (widget.note.title?.trim().isNotEmpty == true)
-                                ? 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label} · ${widget.note.title!.trim()}'
-                                : 'A4 · ${_pageBlockIds.length} PÁGINAS · ${_currentBg.label}',
-                        color: _accent,
-                        onBack: () => Navigator.pop(context),
-                        headerRight: [
-                          YBadge(
-                            label: '@${widget.folder.name}',
-                            bg: widget.folder.color,
-                            fg: yCream,
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _togglePageDrawer,
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: yCream,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
-                                ),
-                              ),
-                              child: const Icon(
-                                YuLiIcons.bookOpen,
-                                color: yInk,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _linkToLab(spaces),
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: yLab,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
-                                ),
-                              ),
-                              child: const Icon(
-                                YuLiIcons.infinity,
-                                color: yCream,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap:
-                                () => setState(() => _headerCollapsed = true),
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: yCream,
-                                border: Border.all(
-                                  color: yBorderStrong,
-                                  width: yLineMid,
-                                ),
-                              ),
-                              child: const Icon(
-                                YuLiIcons.chevronUp,
-                                color: yInk,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (linkedSpaces.isNotEmpty)
-                        _LinkedSpacesBar(spaces: linkedSpaces),
-                    ],
+                    _CollapsedNotebookHeader(
+                      folder: widget.folder,
+                      pageCount: _pageBlockIds.length,
+                      background: _currentBg,
+                      accent: _accent,
+                      noteTitle: widget.note.title ?? '',
+                      onOpenPages: _togglePageDrawer,
+                      onLink: () => _linkToLab(spaces),
+                    ),
                     FlightWorkspaceTabsBar(
                       current: _workspaceTarget,
                       accent: _accent,
@@ -9047,77 +8961,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 }
 
-class _LinkedSpacesBar extends ConsumerWidget {
-  final List<LabSpace> spaces;
-  const _LinkedSpacesBar({required this.spaces});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream2,
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineThin),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      child: Row(
-        children: [
-          Text(
-            'VINCULADA A',
-            style: yMono(
-              size: 9,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yMuted,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final s in spaces) ...[
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) => LabSpaceDetailScreen(space: s),
-                          ),
-                          (route) => route.isFirst,
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
-                        decoration: BoxDecoration(
-                          color: s.accentColor,
-                          border: Border.all(color: yBorderStrong, width: 1.5),
-                        ),
-                        child: Text(
-                          '→ ${s.name.toUpperCase()}',
-                          style: yMono(
-                            size: 9,
-                            weight: FontWeight.w700,
-                            tracking: 1.2,
-                            color: yCream,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _SpacePickerDialog extends StatelessWidget {
   final List<LabSpace> spaces;
   const _SpacePickerDialog({required this.spaces});
@@ -9185,8 +9028,8 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final PageBackground background;
   final Color accent;
   final String noteTitle;
-  final VoidCallback onExpand;
   final VoidCallback onOpenPages;
+  final VoidCallback onLink;
 
   const _CollapsedNotebookHeader({
     required this.folder,
@@ -9194,8 +9037,8 @@ class _CollapsedNotebookHeader extends StatelessWidget {
     required this.background,
     required this.accent,
     required this.noteTitle,
-    required this.onExpand,
     required this.onOpenPages,
+    required this.onLink,
   });
 
   @override
@@ -9207,15 +9050,15 @@ class _CollapsedNotebookHeader extends StatelessWidget {
           bottom: BorderSide(color: yBorderStrong, width: yLineMid),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => Navigator.pop(context),
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
@@ -9224,16 +9067,16 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
             ),
           ),
-          const SizedBox(width: 10),
-          Container(width: 4, height: 24, color: accent),
-          const SizedBox(width: 8),
+          const SizedBox(width: 7),
+          Container(width: 3, height: 20, color: accent),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               noteTitle.trim().isEmpty
                   ? 'CUADERNO · @${folder.name} · $pageCount PÁG'
                   : 'CUADERNO · @${folder.name} · $pageCount PÁG · ${noteTitle.trim()}',
               style: ySans(
-                size: 15,
+                size: 14,
                 weight: FontWeight.w700,
                 letterSpacing: -0.3,
                 color: accent,
@@ -9243,34 +9086,34 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onOpenPages,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(YuLiIcons.bookOpen, color: yInk, size: 16),
+              child: const Icon(YuLiIcons.bookOpen, color: yInk, size: 15),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: onExpand,
+            onTap: onLink,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: yCream,
+                color: accent,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
-              child: const Icon(YuLiIcons.chevronDown, color: yInk, size: 18),
+              child: const Icon(YuLiIcons.infinity, color: yCream, size: 15),
             ),
           ),
         ],

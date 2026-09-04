@@ -8,11 +8,11 @@ enum NoteKind {
   String toDbString() => name;
 
   static NoteKind fromString(String value) => switch (value) {
-        'block' => NoteKind.block,
-        'whiteboard' => NoteKind.whiteboard,
-        'notebook' => NoteKind.notebook,
-        _ => NoteKind.block,
-      };
+    'block' => NoteKind.block,
+    'whiteboard' => NoteKind.whiteboard,
+    'notebook' => NoteKind.notebook,
+    _ => NoteKind.block,
+  };
 }
 
 class Note {
@@ -26,6 +26,10 @@ class Note {
   final DateTime? deletedAt;
   final Color? color;
   final NoteKind kind;
+  final int? parentNoteId;
+  final int? parentCanvasBlockId;
+  final int workspaceOrder;
+  final bool createdFromWiki;
 
   const Note({
     required this.id,
@@ -38,6 +42,10 @@ class Note {
     this.deletedAt,
     this.color,
     this.kind = NoteKind.block,
+    this.parentNoteId,
+    this.parentCanvasBlockId,
+    this.workspaceOrder = 0,
+    this.createdFromWiki = false,
   });
 
   String get displayTitle {
@@ -47,6 +55,8 @@ class Note {
   }
 
   bool get isActive => deletedAt == null;
+  bool get isWorkspaceChild => parentNoteId != null;
+  bool get isWikiCreated => createdFromWiki;
 
   Note copyWith({
     int? id,
@@ -62,6 +72,12 @@ class Note {
     Color? color,
     bool clearColor = false,
     NoteKind? kind,
+    int? parentNoteId,
+    bool clearParentNoteId = false,
+    int? parentCanvasBlockId,
+    bool clearParentCanvasBlockId = false,
+    int? workspaceOrder,
+    bool? createdFromWiki,
   }) {
     return Note(
       id: id ?? this.id,
@@ -74,6 +90,14 @@ class Note {
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
       color: clearColor ? null : (color ?? this.color),
       kind: kind ?? this.kind,
+      parentNoteId:
+          clearParentNoteId ? null : (parentNoteId ?? this.parentNoteId),
+      parentCanvasBlockId:
+          clearParentCanvasBlockId
+              ? null
+              : (parentCanvasBlockId ?? this.parentCanvasBlockId),
+      workspaceOrder: workspaceOrder ?? this.workspaceOrder,
+      createdFromWiki: createdFromWiki ?? this.createdFromWiki,
     );
   }
 }

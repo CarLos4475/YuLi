@@ -6,7 +6,9 @@ import 'package:drift/native.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:yuli/data/local/database.dart';
 import 'package:yuli/presentation/providers/database_providers.dart';
+import 'package:yuli/presentation/screens/flight/canvas_text_block.dart';
 import 'package:yuli/presentation/screens/flight/note_block_widgets.dart';
+import 'package:yuli/presentation/screens/flight/note_cell_model.dart';
 
 void main() {
   // Crear cards/tareas dispara la sincronización de recordatorios, que lee
@@ -87,6 +89,48 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 600));
   });
+
+  testWidgets(
+    'Enlaces wiki del canvas navegan con doble toque en cualquier herramienta',
+    (WidgetTester tester) async {
+      var opened = 0;
+      final block = CanvasTextBlock(
+        x: 0,
+        y: 0,
+        w: 260,
+        h: 100,
+        markdown: 'Consulta [[Derivadas]]',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: CanvasTextBlockOverlay(
+                block: block,
+                accent: const Color(0xFF2D3F8C),
+                interactive: false,
+                onPersist: () async {},
+                onChanged: () {},
+                onHeightMeasured: (_) {},
+                onWikiLinkTap: (_) => opened++,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Derivadas'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(opened, 0);
+
+      await tester.tap(find.text('Derivadas'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('Derivadas'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(opened, 1);
+    },
+  );
 
   testWidgets('Markdown tables render inside horizontal scroll', (
     WidgetTester tester,

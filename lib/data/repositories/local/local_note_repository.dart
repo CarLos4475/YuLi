@@ -5,6 +5,7 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/canvas_context_source.dart';
 import '../../../domain/repositories/note_repository.dart';
 import '../../local/database.dart';
+import '../../services/context_cache.dart';
 
 class LocalNoteRepository implements NoteRepository {
   final AppDatabase _db;
@@ -12,8 +13,9 @@ class LocalNoteRepository implements NoteRepository {
   LocalNoteRepository(this._db);
 
   @override
-  Stream<List<Note>> watchByFolder(int folderId) =>
-      _db.notesDao.watchByFolder(folderId).map((rows) => rows.map(_rowToNote).toList());
+  Stream<List<Note>> watchByFolder(int folderId) => _db.notesDao
+      .watchByFolder(folderId)
+      .map((rows) => rows.map(_rowToNote).toList());
 
   @override
   Future<List<Note>> getByFolder(int folderId) async {
@@ -28,11 +30,23 @@ class LocalNoteRepository implements NoteRepository {
   }
 
   @override
-  Future<Note> create(int folderId,
-      {String? title,
-      String rawMarkdown = '',
-      Color? color,
-      NoteKind kind = NoteKind.block}) async {
+  Future<Note> create(
+    int folderId, {
+    String? title,
+    String rawMarkdown = '',
+    Color? color,
+    NoteKind kind = NoteKind.block,
+    int? parentNoteId,
+    int? parentCanvasBlockId,
+  }) async {
+    final workspaceOrder =
+        parentNoteId == null
+            ? 0
+            : await _db.nextWorkspaceOrder(
+              folderId: folderId,
+              parentNoteId: parentNoteId,
+              parentCanvasBlockId: parentCanvasBlockId,
+            );
     final row = await _db.notesDao.insertNote(
       NotesCompanion.insert(
         folderId: folderId,
@@ -41,6 +55,10 @@ class LocalNoteRepository implements NoteRepository {
         sizeBytes: Value(rawMarkdown.length),
         color: Value(color != null ? _colorToHex(color) : null),
         kind: Value(kind.toDbString()),
+        parentNoteId: Value(parentNoteId),
+        parentCanvasBlockId: Value(parentCanvasBlockId),
+        workspaceOrder: Value(workspaceOrder),
+        createdFromWiki: Value(parentNoteId != null),
       ),
     );
     return _rowToNote(row);
@@ -59,6 +77,10 @@ class LocalNoteRepository implements NoteRepository {
         deletedAt: Value(note.deletedAt),
         color: Value(note.color != null ? _colorToHex(note.color!) : null),
         kind: Value(note.kind.toDbString()),
+        parentNoteId: Value(note.parentNoteId),
+        parentCanvasBlockId: Value(note.parentCanvasBlockId),
+        workspaceOrder: Value(note.workspaceOrder),
+        createdFromWiki: Value(note.createdFromWiki),
       ),
     );
   }
@@ -68,17 +90,49 @@ class LocalNoteRepository implements NoteRepository {
     await _db.notesDao.softDelete(id);
     // Trashing a note removes it as a context source from any canvas.
     await _db.notesDao.removeNoteSourceRefs(id);
+    await clearCompactCache('note:$id');
   }
 
   @override
-  Future<void> restore(int id) => _db.notesDao.restore(id);
+  Future<List<int>> softDeleteBranch(int id) async {
+    final noteIds = await _db.softDeleteNoteBranch(id);
+    for (final noteId in noteIds) {
+      await clearCompactCache('note:$noteId');
+    }
+    return noteIds;
+  }
+
+  @override
+  Future<void> softDeleteKeepingChildren(int id) async {
+    await _db.softDeleteNoteKeepingChildren(id);
+    await clearCompactCache('note:$id');
+  }
+
+  @override
+  Future<List<int>> moveWorkspaceBranch(
+    int id, {
+    required int folderId,
+    int? parentNoteId,
+    int? parentCanvasBlockId,
+    int? beforeNoteId,
+  }) => _db.moveWorkspaceNoteBranch(
+    id,
+    folderId: folderId,
+    parentNoteId: parentNoteId,
+    parentCanvasBlockId: parentCanvasBlockId,
+    beforeNoteId: beforeNoteId,
+  );
+
+  @override
+  Future<void> restore(int id) => _db.restoreNoteBranch(id);
 
   @override
   Future<void> hardDelete(int id) => _db.hardDeleteNoteCascade(id);
 
   @override
-  Stream<List<Note>> watchAllActive() =>
-      _db.notesDao.watchAllActive().map((rows) => rows.map(_rowToNote).toList());
+  Stream<List<Note>> watchAllActive() => _db.notesDao.watchAllActive().map(
+    (rows) => rows.map(_rowToNote).toList(),
+  );
 
   @override
   Stream<List<Note>> watchDeleted() =>
@@ -105,7 +159,11 @@ class LocalNoteRepository implements NoteRepository {
 
   @override
   Future<NoteImage> addImage(
-      int noteId, String filename, String filePath, int sizeBytes) async {
+    int noteId,
+    String filename,
+    String filePath,
+    int sizeBytes,
+  ) async {
     final row = await _db.notesDao.insertImage(
       NoteImagesCompanion.insert(
         noteId: noteId,
@@ -145,10 +203,19 @@ class LocalNoteRepository implements NoteRepository {
       _db.notesDao.getLinkedNoteIds(taskId);
 
   @override
-  Future<void> addContextSource(int canvasNoteId, CanvasSourceKind kind,
-          String ref, {String? label, DateTime? fetchedAt}) =>
-      _db.notesDao.addContextSource(canvasNoteId, kind.toDbString(), ref,
-          label: label, fetchedAt: fetchedAt);
+  Future<void> addContextSource(
+    int canvasNoteId,
+    CanvasSourceKind kind,
+    String ref, {
+    String? label,
+    DateTime? fetchedAt,
+  }) => _db.notesDao.addContextSource(
+    canvasNoteId,
+    kind.toDbString(),
+    ref,
+    label: label,
+    fetchedAt: fetchedAt,
+  );
 
   @override
   Future<void> removeContextSource(int id) =>
@@ -159,16 +226,21 @@ class LocalNoteRepository implements NoteRepository {
       _db.notesDao.setContextSourceEnabled(id, enabled);
 
   @override
-  Future<void> updateContextSourceFetch(int id,
-          {String? label, DateTime? fetchedAt}) =>
-      _db.notesDao
-          .updateContextSourceFetch(id, label: label, fetchedAt: fetchedAt);
+  Future<void> updateContextSourceFetch(
+    int id, {
+    String? label,
+    DateTime? fetchedAt,
+  }) => _db.notesDao.updateContextSourceFetch(
+    id,
+    label: label,
+    fetchedAt: fetchedAt,
+  );
 
   @override
-  Stream<List<CanvasContextSource>> watchContextSources(int canvasNoteId) =>
-      _db.notesDao
-          .watchContextSources(canvasNoteId)
-          .map((rows) => rows.map(_rowToSource).toList());
+  Stream<List<CanvasContextSource>> watchContextSources(int canvasNoteId) => _db
+      .notesDao
+      .watchContextSources(canvasNoteId)
+      .map((rows) => rows.map(_rowToSource).toList());
 
   @override
   Future<List<CanvasContextSource>> getContextSources(int canvasNoteId) async {
@@ -177,8 +249,10 @@ class LocalNoteRepository implements NoteRepository {
   }
 
   @override
-  Future<void> removeNoteSourceRefs(int noteId) =>
-      _db.notesDao.removeNoteSourceRefs(noteId);
+  Future<void> removeNoteSourceRefs(int noteId) async {
+    await _db.notesDao.removeNoteSourceRefs(noteId);
+    await clearCompactCache('note:$noteId');
+  }
 
   CanvasContextSource _rowToSource(CanvasContextSourceRow row) =>
       CanvasContextSource(
@@ -193,17 +267,21 @@ class LocalNoteRepository implements NoteRepository {
       );
 
   Note _rowToNote(NoteRow row) => Note(
-        id: row.id,
-        folderId: row.folderId,
-        title: row.title,
-        rawMarkdown: row.rawMarkdown,
-        sizeBytes: row.sizeBytes,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        deletedAt: row.deletedAt,
-        color: row.color != null ? _hexToColor(row.color!) : null,
-        kind: NoteKind.fromString(row.kind),
-      );
+    id: row.id,
+    folderId: row.folderId,
+    title: row.title,
+    rawMarkdown: row.rawMarkdown,
+    sizeBytes: row.sizeBytes,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
+    color: row.color != null ? _hexToColor(row.color!) : null,
+    kind: NoteKind.fromString(row.kind),
+    parentNoteId: row.parentNoteId,
+    parentCanvasBlockId: row.parentCanvasBlockId,
+    workspaceOrder: row.workspaceOrder,
+    createdFromWiki: row.createdFromWiki,
+  );
 
   Color _hexToColor(String hex) {
     final val = hex.replaceFirst('#', '');
@@ -215,18 +293,18 @@ class LocalNoteRepository implements NoteRepository {
   }
 
   NoteVersion _rowToVersion(NoteVersionRow row) => NoteVersion(
-        id: row.id,
-        noteId: row.noteId,
-        rawMarkdown: row.rawMarkdown,
-        savedAt: row.savedAt,
-      );
+    id: row.id,
+    noteId: row.noteId,
+    rawMarkdown: row.rawMarkdown,
+    savedAt: row.savedAt,
+  );
 
   NoteImage _rowToImage(NoteImageRow row) => NoteImage(
-        id: row.id,
-        noteId: row.noteId,
-        filename: row.filename,
-        filePath: row.filePath,
-        sizeBytes: row.sizeBytes,
-        createdAt: row.createdAt,
-      );
+    id: row.id,
+    noteId: row.noteId,
+    filename: row.filename,
+    filePath: row.filePath,
+    sizeBytes: row.sizeBytes,
+    createdAt: row.createdAt,
+  );
 }

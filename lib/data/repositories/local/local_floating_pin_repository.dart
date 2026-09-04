@@ -14,17 +14,17 @@ class LocalFloatingPinRepository implements FloatingPinRepository {
   LocalFloatingPinRepository(this._db);
 
   FloatingPinRecord _toRecord(FloatingPinRow r) => FloatingPinRecord(
-        id: r.id,
-        noteId: r.noteId,
-        kind: r.kind,
-        left: r.left,
-        top: r.top,
-        width: r.width,
-        height: r.height,
-        collapsed: r.collapsed,
-        sortOrder: r.sortOrder,
-        metadata: _decodeMeta(r.metadataJson),
-      );
+    id: r.id,
+    noteId: r.noteId,
+    kind: r.kind,
+    left: r.left,
+    top: r.top,
+    width: r.width,
+    height: r.height,
+    collapsed: r.collapsed,
+    sortOrder: r.sortOrder,
+    metadata: _decodeMeta(r.metadataJson),
+  );
 
   Map<String, dynamic> _decodeMeta(String json) {
     try {
@@ -41,36 +41,46 @@ class LocalFloatingPinRepository implements FloatingPinRepository {
 
   @override
   Future<int> insert(FloatingPinRecord record) => _dao.insertRow(
-        FloatingPinsCompanion.insert(
-          noteId: record.noteId,
-          kind: record.kind,
-          left: record.left,
-          top: record.top,
-          width: record.width,
-          height: record.height,
-          collapsed: Value(record.collapsed),
-          sortOrder: Value(record.sortOrder),
-          metadataJson: Value(jsonEncode(record.metadata)),
-        ),
-      );
+    FloatingPinsCompanion.insert(
+      noteId: record.noteId,
+      kind: record.kind,
+      left: record.left,
+      top: record.top,
+      width: record.width,
+      height: record.height,
+      collapsed: Value(record.collapsed),
+      sortOrder: Value(record.sortOrder),
+      metadataJson: Value(jsonEncode(record.metadata)),
+    ),
+  );
 
   @override
   Future<void> update(FloatingPinRecord record) => _dao.updateRow(
-        record.id,
-        FloatingPinsCompanion(
-          left: Value(record.left),
-          top: Value(record.top),
-          width: Value(record.width),
-          height: Value(record.height),
-          collapsed: Value(record.collapsed),
-          sortOrder: Value(record.sortOrder),
-          metadataJson: Value(jsonEncode(record.metadata)),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+    record.id,
+    FloatingPinsCompanion(
+      left: Value(record.left),
+      top: Value(record.top),
+      width: Value(record.width),
+      height: Value(record.height),
+      collapsed: Value(record.collapsed),
+      sortOrder: Value(record.sortOrder),
+      metadataJson: Value(jsonEncode(record.metadata)),
+      updatedAt: Value(DateTime.now()),
+    ),
+  );
 
   @override
   Future<void> delete(int id) => _dao.deleteRow(id);
+
+  @override
+  Future<void> deleteForCanvas(int noteId, int canvasBlockId) async {
+    final records = await forNote(noteId);
+    for (final record in records) {
+      if (record.canvasBlockId == canvasBlockId) {
+        await _dao.deleteRow(record.id);
+      }
+    }
+  }
 
   @override
   Future<void> setOrder(List<int> idsInOrder) {

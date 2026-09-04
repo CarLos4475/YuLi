@@ -12,6 +12,8 @@ abstract class FloatingPinRepository {
 
   Future<void> delete(int id);
 
+  Future<void> deleteForCanvas(int noteId, int canvasBlockId);
+
   /// Persists the z-order: [idsInOrder] front-most last.
   Future<void> setOrder(List<int> idsInOrder);
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -10,10 +11,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../providers/database_providers.dart';
+import '../../providers/flight_workspace_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/repositories/note_block_repository.dart';
+import 'flight_wiki_links.dart';
 import 'yuli_code_language_picker.dart';
 import 'yuli_markdown_commands.dart';
 import 'yuli_markdown_document.dart';
@@ -73,6 +77,14 @@ TextStyle applyYuliLiveTextStyle(
   if (attributes[yuliHighlight] == true) {
     style = style.copyWith(backgroundColor: accent.withValues(alpha: 0.24));
   }
+  if (attributes[yuliWikiLink] == true) {
+    style = style.copyWith(
+      color: accent,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.underline,
+      decorationColor: accent.withValues(alpha: 0.55),
+    );
+  }
   return style;
 }
 
@@ -82,6 +94,7 @@ class YuliLiveTextEditor extends ConsumerStatefulWidget {
   final YuliEditorFocusChanged? onFocusChanged;
   final bool autofocus;
   final Future<String?> Function()? debugPickImagePath;
+  final ValueChanged<FlightWorkspaceTarget>? onOpenWorkspaceTarget;
 
   const YuliLiveTextEditor({
     super.key,
@@ -90,6 +103,7 @@ class YuliLiveTextEditor extends ConsumerStatefulWidget {
     this.onFocusChanged,
     this.autofocus = false,
     this.debugPickImagePath,
+    this.onOpenWorkspaceTarget,
   });
 
   @override
@@ -103,6 +117,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   late final NoteBlockRepository _repository;
   StreamSubscription<EditorTransactionValue>? _transactionSubscription;
   Timer? _saveTimer;
+  final Map<String, DoubleTapGestureRecognizer> _wikiLinkRecognizers = {};
   bool _pendingSave = false;
   bool _focused = false;
   bool? _reportedActive;
@@ -116,6 +131,8 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   final Set<String> _editingImages = {};
   final Set<String> _editingLatex = {};
   final Set<String> _editingCode = {};
+  _WikiDraft? _wikiDraft;
+  Future<List<FlightWorkspaceTarget>>? _wikiMatches;
 
   @override
   void initState() {
@@ -137,6 +154,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     _transactionSubscription = _editorState.transactionStream.listen((event) {
       if (event.$1 == TransactionTime.after) {
         _scheduleLiveStyleSync();
+        _refreshWikiDraft();
         _pendingSave = true;
         _saveTimer?.cancel();
         _saveTimer = Timer(const Duration(seconds: 2), _persist);
@@ -160,6 +178,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     }
     _transactionSubscription?.cancel();
     _editorState.selectionNotifier.removeListener(_onSelectionChanged);
+    for (final recognizer in _wikiLinkRecognizers.values) {
+      recognizer.dispose();
+    }
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();
@@ -181,6 +202,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
 
   void _onSelectionChanged() {
     if (_snapHiddenMarkdownMarkerSelection()) return;
+    _refreshWikiDraft();
     if (_selectionRefreshScheduled) return;
     _selectionRefreshScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -196,6 +218,117 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         );
       }
     });
+  }
+
+  void _refreshWikiDraft() {
+    final selection = _editorState.selection?.normalized;
+    _WikiDraft? next;
+    if (_focusNode.hasFocus &&
+        selection != null &&
+        selection.isCollapsed &&
+        selection.start.path.equals(selection.end.path)) {
+      final node = _editorState.getNodeAtPath(selection.start.path);
+      final source = node?.delta?.toPlainText();
+      final cursor = selection.start.offset;
+      if (node != null &&
+          source != null &&
+          cursor >= 0 &&
+          cursor <= source.length) {
+        final before = source.substring(0, cursor);
+        final start = before.lastIndexOf('[[');
+        if (start >= 0) {
+          final query = before.substring(start + 2);
+          if (!query.contains(']]') &&
+              !query.contains('\n') &&
+              query.length <= 120) {
+            next = _WikiDraft(
+              path: [...node.path],
+              start: start,
+              end: cursor,
+              query: query,
+            );
+          }
+        }
+      }
+    }
+    if (next == _wikiDraft) return;
+    if (!mounted) return;
+    setState(() {
+      _wikiDraft = next;
+      _wikiMatches =
+          next == null
+              ? null
+              : findFlightWikiTargets(
+                ref,
+                sourceNoteId: widget.block.noteId,
+                query: next.query,
+              );
+    });
+  }
+
+  Future<void> _commitWikiTarget(FlightWorkspaceTarget target) async {
+    await _replaceWikiDraft(target.label);
+    if (!mounted) return;
+    widget.onOpenWorkspaceTarget?.call(target);
+  }
+
+  Future<void> _createWikiTarget(NoteKind kind) async {
+    final draft = _wikiDraft;
+    if (draft == null || draft.query.trim().isEmpty) return;
+    final target = await resolveFlightWikiTarget(
+      ref,
+      sourceNoteId: widget.block.noteId,
+      label: draft.query,
+      createKind: kind,
+    );
+    if (target == null || !mounted) return;
+    await _commitWikiTarget(target);
+  }
+
+  DoubleTapGestureRecognizer _wikiLinkRecognizer(String label) {
+    return _wikiLinkRecognizers.putIfAbsent(
+      label,
+      () =>
+          DoubleTapGestureRecognizer()
+            ..onDoubleTap = () => unawaited(_openWikiLink(label)),
+    );
+  }
+
+  Future<void> _openWikiLink(String label) async {
+    final target = await resolveFlightWikiTarget(
+      ref,
+      sourceNoteId: widget.block.noteId,
+      label: label,
+      createKind: NoteKind.block,
+    );
+    if (target == null || !mounted) return;
+    widget.onOpenWorkspaceTarget?.call(target);
+  }
+
+  Future<void> _replaceWikiDraft(String label) async {
+    final draft = _wikiDraft;
+    if (draft == null) return;
+    final node = _editorState.getNodeAtPath(draft.path);
+    final source = node?.delta?.toPlainText();
+    if (node == null || source == null || draft.end > source.length) return;
+    final clean = label.replaceAll(RegExp(r'[\[\]\r\n]'), ' ').trim();
+    final replacement = '[[$clean]]';
+    final updated = source.replaceRange(draft.start, draft.end, replacement);
+    final transaction =
+        _editorState.transaction
+          ..updateNode(node, {
+            blockComponentDelta: (Delta()..insert(updated)).toJson(),
+          })
+          ..afterSelection = Selection.collapsed(
+            Position(path: node.path, offset: draft.start + replacement.length),
+          );
+    setState(() {
+      _wikiDraft = null;
+      _wikiMatches = null;
+    });
+    await _editorState.apply(transaction);
+    _pendingSave = true;
+    await _persist();
   }
 
   bool _snapHiddenMarkdownMarkerSelection() {
@@ -450,7 +583,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   bool _containsLiveMarkdownSource(String text) {
     if (text.isEmpty) return false;
     return RegExp(
-      r'(^|\n)\s*(#{1,6}\s|>\s?|[-+*]\s+\[[ xX]\]\s+|[-+*]\s+|\d+[.)]\s+)|(\*\*|__|~~|==|`|\$|\*[^*\n]+\*|_[^_\n]+_)',
+      r'(^|\n)\s*(#{1,6}\s|>\s?|[-+*]\s+\[[ xX]\]\s+|[-+*]\s+|\d+[.)]\s+)|(\[\[[^\]\n]{1,120}\]\]|\*\*|__|~~|==|`|\$|\*[^*\n]+\*|_[^_\n]+_)',
     ).hasMatch(text);
   }
 
@@ -463,7 +596,8 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       key == yuliQuoteText ||
       key == yuliHighlight ||
       key == yuliLatex ||
-      key == yuliLatexDisplay;
+      key == yuliLatexDisplay ||
+      key == yuliWikiLink;
 
   Future<void> _persist() async {
     _saveTimer?.cancel();
@@ -815,6 +949,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       );
       final attrs = text.attributes ?? const <String, dynamic>{};
       final base = link.recognizer == null ? after : link;
+      final wikiLabel = attrs[yuliWikiLink] == true ? text.text.trim() : '';
       var style = applyYuliLiveTextStyle(
         after.style ?? const TextStyle(),
         attrs,
@@ -849,7 +984,10 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       return TextSpan(
         text: base.text,
         children: base.children,
-        recognizer: base.recognizer,
+        recognizer:
+            wikiLabel.isNotEmpty && widget.onOpenWorkspaceTarget != null
+                ? _wikiLinkRecognizer(wikiLabel)
+                : base.recognizer,
         mouseCursor: base.mouseCursor,
         semanticsLabel: base.semanticsLabel,
         locale: base.locale,
@@ -1231,7 +1369,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       ),
       textSpanDecorator: markdownDecorator,
     );
-    return AnimatedContainer(
+    final editor = AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       decoration: BoxDecoration(
         border:
@@ -1270,8 +1408,188 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         ),
       ),
     );
+    if (_wikiDraft == null || _wikiMatches == null) return editor;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        editor,
+        _WikiLinkSuggestions(
+          query: _wikiDraft!.query,
+          matches: _wikiMatches!,
+          accent: widget.accent,
+          onSelect: _commitWikiTarget,
+          onCreate: _createWikiTarget,
+        ),
+      ],
+    );
   }
 }
+
+class _WikiDraft {
+  final List<int> path;
+  final int start;
+  final int end;
+  final String query;
+
+  const _WikiDraft({
+    required this.path,
+    required this.start,
+    required this.end,
+    required this.query,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is _WikiDraft &&
+      other.start == start &&
+      other.end == end &&
+      other.query == query &&
+      _samePath(other.path, path);
+
+  @override
+  int get hashCode => Object.hash(Object.hashAll(path), start, end, query);
+}
+
+bool _samePath(List<int> left, List<int> right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}
+
+class _WikiLinkSuggestions extends StatelessWidget {
+  final String query;
+  final Future<List<FlightWorkspaceTarget>> matches;
+  final Color accent;
+  final ValueChanged<FlightWorkspaceTarget> onSelect;
+  final ValueChanged<NoteKind> onCreate;
+
+  const _WikiLinkSuggestions({
+    required this.query,
+    required this.matches,
+    required this.accent,
+    required this.onSelect,
+    required this.onCreate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4, right: 20),
+      decoration: BoxDecoration(
+        color: yCream,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
+      ),
+      child: FutureBuilder<List<FlightWorkspaceTarget>>(
+        future: matches,
+        builder: (context, snapshot) {
+          final targets = snapshot.data ?? const <FlightWorkspaceTarget>[];
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final target in targets)
+                _WikiSuggestionRow(
+                  icon: _wikiKindIcon(target.kind),
+                  title: target.label,
+                  subtitle: target.folderLabel,
+                  accent: accent,
+                  onTap: () => onSelect(target),
+                ),
+              if (query.trim().isNotEmpty) ...[
+                _WikiSuggestionRow(
+                  icon: YuLiIcons.fileText,
+                  title: 'Crear nota “${query.trim()}”',
+                  subtitle: 'NOTA EN ESTA CARPETA',
+                  accent: accent,
+                  onTap: () => onCreate(NoteKind.block),
+                ),
+                _WikiSuggestionRow(
+                  icon: YuLiIcons.layoutGrid,
+                  title: 'Crear pizarra “${query.trim()}”',
+                  subtitle: 'PIZARRA EN ESTA CARPETA',
+                  accent: accent,
+                  onTap: () => onCreate(NoteKind.whiteboard),
+                ),
+                _WikiSuggestionRow(
+                  icon: YuLiIcons.notebook,
+                  title: 'Crear cuaderno “${query.trim()}”',
+                  subtitle: 'CUADERNO EN ESTA CARPETA',
+                  accent: accent,
+                  onTap: () => onCreate(NoteKind.notebook),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WikiSuggestionRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _WikiSuggestionRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: yBorderSoft, width: 1)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: accent),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ySans(
+                      size: 13,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                    ),
+                  ),
+                  Text(subtitle, style: yMono(size: 8, color: yMuted)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+IconData _wikiKindIcon(NoteKind kind) => switch (kind) {
+  NoteKind.block => YuLiIcons.fileText,
+  NoteKind.whiteboard => YuLiIcons.layoutGrid,
+  NoteKind.notebook => YuLiIcons.notebook,
+};
 
 class _YuliAtomicAction {
   final String label;

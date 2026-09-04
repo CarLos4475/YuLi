@@ -1139,6 +1139,57 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant('block'),
   );
+  static const VerificationMeta _parentNoteIdMeta = const VerificationMeta(
+    'parentNoteId',
+  );
+  @override
+  late final GeneratedColumn<int> parentNoteId = GeneratedColumn<int>(
+    'parent_note_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES notes (id)',
+    ),
+  );
+  static const VerificationMeta _parentCanvasBlockIdMeta =
+      const VerificationMeta('parentCanvasBlockId');
+  @override
+  late final GeneratedColumn<int> parentCanvasBlockId = GeneratedColumn<int>(
+    'parent_canvas_block_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _workspaceOrderMeta = const VerificationMeta(
+    'workspaceOrder',
+  );
+  @override
+  late final GeneratedColumn<int> workspaceOrder = GeneratedColumn<int>(
+    'workspace_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdFromWikiMeta = const VerificationMeta(
+    'createdFromWiki',
+  );
+  @override
+  late final GeneratedColumn<bool> createdFromWiki = GeneratedColumn<bool>(
+    'created_from_wiki',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("created_from_wiki" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1151,6 +1202,10 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
     deletedAt,
     color,
     kind,
+    parentNoteId,
+    parentCanvasBlockId,
+    workspaceOrder,
+    createdFromWiki,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1226,6 +1281,42 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
         kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
       );
     }
+    if (data.containsKey('parent_note_id')) {
+      context.handle(
+        _parentNoteIdMeta,
+        parentNoteId.isAcceptableOrUnknown(
+          data['parent_note_id']!,
+          _parentNoteIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('parent_canvas_block_id')) {
+      context.handle(
+        _parentCanvasBlockIdMeta,
+        parentCanvasBlockId.isAcceptableOrUnknown(
+          data['parent_canvas_block_id']!,
+          _parentCanvasBlockIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('workspace_order')) {
+      context.handle(
+        _workspaceOrderMeta,
+        workspaceOrder.isAcceptableOrUnknown(
+          data['workspace_order']!,
+          _workspaceOrderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_from_wiki')) {
+      context.handle(
+        _createdFromWikiMeta,
+        createdFromWiki.isAcceptableOrUnknown(
+          data['created_from_wiki']!,
+          _createdFromWikiMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1282,6 +1373,24 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, NoteRow> {
             DriftSqlType.string,
             data['${effectivePrefix}kind'],
           )!,
+      parentNoteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}parent_note_id'],
+      ),
+      parentCanvasBlockId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}parent_canvas_block_id'],
+      ),
+      workspaceOrder:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}workspace_order'],
+          )!,
+      createdFromWiki:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.bool,
+            data['${effectivePrefix}created_from_wiki'],
+          )!,
     );
   }
 
@@ -1305,6 +1414,10 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
   /// Note variant. 'block' = block-based editor (default). 'whiteboard' =
   /// infinite canvas, drawing-only.
   final String kind;
+  final int? parentNoteId;
+  final int? parentCanvasBlockId;
+  final int workspaceOrder;
+  final bool createdFromWiki;
   const NoteRow({
     required this.id,
     required this.folderId,
@@ -1316,6 +1429,10 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     this.deletedAt,
     this.color,
     required this.kind,
+    this.parentNoteId,
+    this.parentCanvasBlockId,
+    required this.workspaceOrder,
+    required this.createdFromWiki,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1336,6 +1453,14 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       map['color'] = Variable<String>(color);
     }
     map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || parentNoteId != null) {
+      map['parent_note_id'] = Variable<int>(parentNoteId);
+    }
+    if (!nullToAbsent || parentCanvasBlockId != null) {
+      map['parent_canvas_block_id'] = Variable<int>(parentCanvasBlockId);
+    }
+    map['workspace_order'] = Variable<int>(workspaceOrder);
+    map['created_from_wiki'] = Variable<bool>(createdFromWiki);
     return map;
   }
 
@@ -1356,6 +1481,16 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       color:
           color == null && nullToAbsent ? const Value.absent() : Value(color),
       kind: Value(kind),
+      parentNoteId:
+          parentNoteId == null && nullToAbsent
+              ? const Value.absent()
+              : Value(parentNoteId),
+      parentCanvasBlockId:
+          parentCanvasBlockId == null && nullToAbsent
+              ? const Value.absent()
+              : Value(parentCanvasBlockId),
+      workspaceOrder: Value(workspaceOrder),
+      createdFromWiki: Value(createdFromWiki),
     );
   }
 
@@ -1375,6 +1510,12 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       color: serializer.fromJson<String?>(json['color']),
       kind: serializer.fromJson<String>(json['kind']),
+      parentNoteId: serializer.fromJson<int?>(json['parentNoteId']),
+      parentCanvasBlockId: serializer.fromJson<int?>(
+        json['parentCanvasBlockId'],
+      ),
+      workspaceOrder: serializer.fromJson<int>(json['workspaceOrder']),
+      createdFromWiki: serializer.fromJson<bool>(json['createdFromWiki']),
     );
   }
   @override
@@ -1391,6 +1532,10 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'color': serializer.toJson<String?>(color),
       'kind': serializer.toJson<String>(kind),
+      'parentNoteId': serializer.toJson<int?>(parentNoteId),
+      'parentCanvasBlockId': serializer.toJson<int?>(parentCanvasBlockId),
+      'workspaceOrder': serializer.toJson<int>(workspaceOrder),
+      'createdFromWiki': serializer.toJson<bool>(createdFromWiki),
     };
   }
 
@@ -1405,6 +1550,10 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     Value<DateTime?> deletedAt = const Value.absent(),
     Value<String?> color = const Value.absent(),
     String? kind,
+    Value<int?> parentNoteId = const Value.absent(),
+    Value<int?> parentCanvasBlockId = const Value.absent(),
+    int? workspaceOrder,
+    bool? createdFromWiki,
   }) => NoteRow(
     id: id ?? this.id,
     folderId: folderId ?? this.folderId,
@@ -1416,6 +1565,13 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     color: color.present ? color.value : this.color,
     kind: kind ?? this.kind,
+    parentNoteId: parentNoteId.present ? parentNoteId.value : this.parentNoteId,
+    parentCanvasBlockId:
+        parentCanvasBlockId.present
+            ? parentCanvasBlockId.value
+            : this.parentCanvasBlockId,
+    workspaceOrder: workspaceOrder ?? this.workspaceOrder,
+    createdFromWiki: createdFromWiki ?? this.createdFromWiki,
   );
   NoteRow copyWithCompanion(NotesCompanion data) {
     return NoteRow(
@@ -1430,6 +1586,22 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       color: data.color.present ? data.color.value : this.color,
       kind: data.kind.present ? data.kind.value : this.kind,
+      parentNoteId:
+          data.parentNoteId.present
+              ? data.parentNoteId.value
+              : this.parentNoteId,
+      parentCanvasBlockId:
+          data.parentCanvasBlockId.present
+              ? data.parentCanvasBlockId.value
+              : this.parentCanvasBlockId,
+      workspaceOrder:
+          data.workspaceOrder.present
+              ? data.workspaceOrder.value
+              : this.workspaceOrder,
+      createdFromWiki:
+          data.createdFromWiki.present
+              ? data.createdFromWiki.value
+              : this.createdFromWiki,
     );
   }
 
@@ -1445,7 +1617,11 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('color: $color, ')
-          ..write('kind: $kind')
+          ..write('kind: $kind, ')
+          ..write('parentNoteId: $parentNoteId, ')
+          ..write('parentCanvasBlockId: $parentCanvasBlockId, ')
+          ..write('workspaceOrder: $workspaceOrder, ')
+          ..write('createdFromWiki: $createdFromWiki')
           ..write(')'))
         .toString();
   }
@@ -1462,6 +1638,10 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
     deletedAt,
     color,
     kind,
+    parentNoteId,
+    parentCanvasBlockId,
+    workspaceOrder,
+    createdFromWiki,
   );
   @override
   bool operator ==(Object other) =>
@@ -1476,7 +1656,11 @@ class NoteRow extends DataClass implements Insertable<NoteRow> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.color == this.color &&
-          other.kind == this.kind);
+          other.kind == this.kind &&
+          other.parentNoteId == this.parentNoteId &&
+          other.parentCanvasBlockId == this.parentCanvasBlockId &&
+          other.workspaceOrder == this.workspaceOrder &&
+          other.createdFromWiki == this.createdFromWiki);
 }
 
 class NotesCompanion extends UpdateCompanion<NoteRow> {
@@ -1490,6 +1674,10 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
   final Value<DateTime?> deletedAt;
   final Value<String?> color;
   final Value<String> kind;
+  final Value<int?> parentNoteId;
+  final Value<int?> parentCanvasBlockId;
+  final Value<int> workspaceOrder;
+  final Value<bool> createdFromWiki;
   const NotesCompanion({
     this.id = const Value.absent(),
     this.folderId = const Value.absent(),
@@ -1501,6 +1689,10 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     this.deletedAt = const Value.absent(),
     this.color = const Value.absent(),
     this.kind = const Value.absent(),
+    this.parentNoteId = const Value.absent(),
+    this.parentCanvasBlockId = const Value.absent(),
+    this.workspaceOrder = const Value.absent(),
+    this.createdFromWiki = const Value.absent(),
   });
   NotesCompanion.insert({
     this.id = const Value.absent(),
@@ -1513,6 +1705,10 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     this.deletedAt = const Value.absent(),
     this.color = const Value.absent(),
     this.kind = const Value.absent(),
+    this.parentNoteId = const Value.absent(),
+    this.parentCanvasBlockId = const Value.absent(),
+    this.workspaceOrder = const Value.absent(),
+    this.createdFromWiki = const Value.absent(),
   }) : folderId = Value(folderId);
   static Insertable<NoteRow> custom({
     Expression<int>? id,
@@ -1525,6 +1721,10 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     Expression<DateTime>? deletedAt,
     Expression<String>? color,
     Expression<String>? kind,
+    Expression<int>? parentNoteId,
+    Expression<int>? parentCanvasBlockId,
+    Expression<int>? workspaceOrder,
+    Expression<bool>? createdFromWiki,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1537,6 +1737,11 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (color != null) 'color': color,
       if (kind != null) 'kind': kind,
+      if (parentNoteId != null) 'parent_note_id': parentNoteId,
+      if (parentCanvasBlockId != null)
+        'parent_canvas_block_id': parentCanvasBlockId,
+      if (workspaceOrder != null) 'workspace_order': workspaceOrder,
+      if (createdFromWiki != null) 'created_from_wiki': createdFromWiki,
     });
   }
 
@@ -1551,6 +1756,10 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     Value<DateTime?>? deletedAt,
     Value<String?>? color,
     Value<String>? kind,
+    Value<int?>? parentNoteId,
+    Value<int?>? parentCanvasBlockId,
+    Value<int>? workspaceOrder,
+    Value<bool>? createdFromWiki,
   }) {
     return NotesCompanion(
       id: id ?? this.id,
@@ -1563,6 +1772,10 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
       deletedAt: deletedAt ?? this.deletedAt,
       color: color ?? this.color,
       kind: kind ?? this.kind,
+      parentNoteId: parentNoteId ?? this.parentNoteId,
+      parentCanvasBlockId: parentCanvasBlockId ?? this.parentCanvasBlockId,
+      workspaceOrder: workspaceOrder ?? this.workspaceOrder,
+      createdFromWiki: createdFromWiki ?? this.createdFromWiki,
     );
   }
 
@@ -1599,6 +1812,18 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
     }
+    if (parentNoteId.present) {
+      map['parent_note_id'] = Variable<int>(parentNoteId.value);
+    }
+    if (parentCanvasBlockId.present) {
+      map['parent_canvas_block_id'] = Variable<int>(parentCanvasBlockId.value);
+    }
+    if (workspaceOrder.present) {
+      map['workspace_order'] = Variable<int>(workspaceOrder.value);
+    }
+    if (createdFromWiki.present) {
+      map['created_from_wiki'] = Variable<bool>(createdFromWiki.value);
+    }
     return map;
   }
 
@@ -1614,7 +1839,11 @@ class NotesCompanion extends UpdateCompanion<NoteRow> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('color: $color, ')
-          ..write('kind: $kind')
+          ..write('kind: $kind, ')
+          ..write('parentNoteId: $parentNoteId, ')
+          ..write('parentCanvasBlockId: $parentCanvasBlockId, ')
+          ..write('workspaceOrder: $workspaceOrder, ')
+          ..write('createdFromWiki: $createdFromWiki')
           ..write(')'))
         .toString();
   }
@@ -11004,6 +11233,10 @@ typedef $$NotesTableCreateCompanionBuilder =
       Value<DateTime?> deletedAt,
       Value<String?> color,
       Value<String> kind,
+      Value<int?> parentNoteId,
+      Value<int?> parentCanvasBlockId,
+      Value<int> workspaceOrder,
+      Value<bool> createdFromWiki,
     });
 typedef $$NotesTableUpdateCompanionBuilder =
     NotesCompanion Function({
@@ -11017,6 +11250,10 @@ typedef $$NotesTableUpdateCompanionBuilder =
       Value<DateTime?> deletedAt,
       Value<String?> color,
       Value<String> kind,
+      Value<int?> parentNoteId,
+      Value<int?> parentCanvasBlockId,
+      Value<int> workspaceOrder,
+      Value<bool> createdFromWiki,
     });
 
 final class $$NotesTableReferences
@@ -11034,6 +11271,23 @@ final class $$NotesTableReferences
       $_db.folders,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_folderIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $NotesTable _parentNoteIdTable(_$AppDatabase db) => db.notes
+      .createAlias($_aliasNameGenerator(db.notes.parentNoteId, db.notes.id));
+
+  $$NotesTableProcessedTableManager? get parentNoteId {
+    final $_column = $_itemColumn<int>('parent_note_id');
+    if ($_column == null) return null;
+    final manager = $$NotesTableTableManager(
+      $_db,
+      $_db.notes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_parentNoteIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -11230,6 +11484,21 @@ class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get parentCanvasBlockId => $composableBuilder(
+    column: $table.parentCanvasBlockId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get workspaceOrder => $composableBuilder(
+    column: $table.workspaceOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get createdFromWiki => $composableBuilder(
+    column: $table.createdFromWiki,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$FoldersTableFilterComposer get folderId {
     final $$FoldersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -11244,6 +11513,29 @@ class $$NotesTableFilterComposer extends Composer<_$AppDatabase, $NotesTable> {
           }) => $$FoldersTableFilterComposer(
             $db: $db,
             $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableFilterComposer get parentNoteId {
+    final $$NotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableFilterComposer(
+            $db: $db,
+            $table: $db.notes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11483,6 +11775,21 @@ class $$NotesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get parentCanvasBlockId => $composableBuilder(
+    column: $table.parentCanvasBlockId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get workspaceOrder => $composableBuilder(
+    column: $table.workspaceOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get createdFromWiki => $composableBuilder(
+    column: $table.createdFromWiki,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$FoldersTableOrderingComposer get folderId {
     final $$FoldersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -11497,6 +11804,29 @@ class $$NotesTableOrderingComposer
           }) => $$FoldersTableOrderingComposer(
             $db: $db,
             $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableOrderingComposer get parentNoteId {
+    final $$NotesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableOrderingComposer(
+            $db: $db,
+            $table: $db.notes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11545,6 +11875,21 @@ class $$NotesTableAnnotationComposer
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
+  GeneratedColumn<int> get parentCanvasBlockId => $composableBuilder(
+    column: $table.parentCanvasBlockId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get workspaceOrder => $composableBuilder(
+    column: $table.workspaceOrder,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get createdFromWiki => $composableBuilder(
+    column: $table.createdFromWiki,
+    builder: (column) => column,
+  );
+
   $$FoldersTableAnnotationComposer get folderId {
     final $$FoldersTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -11559,6 +11904,29 @@ class $$NotesTableAnnotationComposer
           }) => $$FoldersTableAnnotationComposer(
             $db: $db,
             $table: $db.folders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$NotesTableAnnotationComposer get parentNoteId {
+    final $$NotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentNoteId,
+      referencedTable: $db.notes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.notes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11760,6 +12128,7 @@ class $$NotesTableTableManager
           NoteRow,
           PrefetchHooks Function({
             bool folderId,
+            bool parentNoteId,
             bool noteImagesRefs,
             bool noteVersionsRefs,
             bool noteTaskLinksRefs,
@@ -11792,6 +12161,10 @@ class $$NotesTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<int?> parentNoteId = const Value.absent(),
+                Value<int?> parentCanvasBlockId = const Value.absent(),
+                Value<int> workspaceOrder = const Value.absent(),
+                Value<bool> createdFromWiki = const Value.absent(),
               }) => NotesCompanion(
                 id: id,
                 folderId: folderId,
@@ -11803,6 +12176,10 @@ class $$NotesTableTableManager
                 deletedAt: deletedAt,
                 color: color,
                 kind: kind,
+                parentNoteId: parentNoteId,
+                parentCanvasBlockId: parentCanvasBlockId,
+                workspaceOrder: workspaceOrder,
+                createdFromWiki: createdFromWiki,
               ),
           createCompanionCallback:
               ({
@@ -11816,6 +12193,10 @@ class $$NotesTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<int?> parentNoteId = const Value.absent(),
+                Value<int?> parentCanvasBlockId = const Value.absent(),
+                Value<int> workspaceOrder = const Value.absent(),
+                Value<bool> createdFromWiki = const Value.absent(),
               }) => NotesCompanion.insert(
                 id: id,
                 folderId: folderId,
@@ -11827,6 +12208,10 @@ class $$NotesTableTableManager
                 deletedAt: deletedAt,
                 color: color,
                 kind: kind,
+                parentNoteId: parentNoteId,
+                parentCanvasBlockId: parentCanvasBlockId,
+                workspaceOrder: workspaceOrder,
+                createdFromWiki: createdFromWiki,
               ),
           withReferenceMapper:
               (p0) =>
@@ -11840,6 +12225,7 @@ class $$NotesTableTableManager
                       .toList(),
           prefetchHooksCallback: ({
             folderId = false,
+            parentNoteId = false,
             noteImagesRefs = false,
             noteVersionsRefs = false,
             noteTaskLinksRefs = false,
@@ -11883,6 +12269,20 @@ class $$NotesTableTableManager
                                 ._folderIdTable(db),
                             referencedColumn:
                                 $$NotesTableReferences._folderIdTable(db).id,
+                          )
+                          as T;
+                }
+                if (parentNoteId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.parentNoteId,
+                            referencedTable: $$NotesTableReferences
+                                ._parentNoteIdTable(db),
+                            referencedColumn:
+                                $$NotesTableReferences
+                                    ._parentNoteIdTable(db)
+                                    .id,
                           )
                           as T;
                 }
@@ -12062,6 +12462,7 @@ typedef $$NotesTableProcessedTableManager =
       NoteRow,
       PrefetchHooks Function({
         bool folderId,
+        bool parentNoteId,
         bool noteImagesRefs,
         bool noteVersionsRefs,
         bool noteTaskLinksRefs,

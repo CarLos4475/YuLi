@@ -25,7 +25,8 @@ class CanvasTextBlockOverlay extends StatefulWidget {
 
   /// True when a tap on the box opens the editor. True in lasso mode (when not
   /// selected) and in text mode; false while a drawing tool without palm-
-  /// rejection is active or the block is lasso-selected / mid-gesture.
+  /// rejection is active or the block is lasso-selected / mid-gesture. Wiki
+  /// labels remain available by double tap even when this is false.
   final bool interactive;
 
   /// True in text mode: a one-finger drag on the box moves it (tap still edits).
@@ -45,6 +46,7 @@ class CanvasTextBlockOverlay extends StatefulWidget {
   /// Text-mode drag: capture an undo snapshot at start, commit + persist at end.
   final VoidCallback? onDragStart;
   final VoidCallback? onDragEnd;
+  final ValueChanged<String>? onWikiLinkTap;
 
   const CanvasTextBlockOverlay({
     super.key,
@@ -57,6 +59,7 @@ class CanvasTextBlockOverlay extends StatefulWidget {
     required this.onHeightMeasured,
     this.onDragStart,
     this.onDragEnd,
+    this.onWikiLinkTap,
   });
 
   @override
@@ -78,7 +81,11 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
     if (_mdRawCache != raw || _mdWidgetCache == null) {
       _mdRawCache = raw;
       _mdWidgetCache = NoteMarkdownPreview(
-          data: fixMarkdownTables(raw), tight: true, accent: widget.accent);
+        data: fixMarkdownTables(raw),
+        tight: true,
+        accent: widget.accent,
+        onWikiLinkTap: widget.onWikiLinkTap,
+      );
     }
     return _mdWidgetCache!;
   }
@@ -115,7 +122,8 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
     final ctrl = TextEditingController(text: widget.block.markdown);
     final focus = FocusNode();
     _editorEntry = OverlayEntry(
-        builder: (ctx) => _buildEditorBar(ctx, ctrl, focus));
+      builder: (ctx) => _buildEditorBar(ctx, ctrl, focus),
+    );
     Overlay.of(context, rootOverlay: true).insert(_editorEntry!);
     WidgetsBinding.instance.addPostFrameCallback((_) => focus.requestFocus());
   }
@@ -139,7 +147,10 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
   }
 
   Widget _buildEditorBar(
-      BuildContext context, TextEditingController ctrl, FocusNode focus) {
+    BuildContext context,
+    TextEditingController ctrl,
+    FocusNode focus,
+  ) {
     final insets = MediaQuery.of(context).viewInsets.bottom;
     return Stack(
       children: [
@@ -161,7 +172,9 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
               child: Container(
                 decoration: const BoxDecoration(
                   color: yCream,
-                  border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
+                  border: Border(
+                    top: BorderSide(color: yBorderStrong, width: yLineHeavy),
+                  ),
                 ),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 child: SafeArea(
@@ -178,22 +191,28 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
                             margin: const EdgeInsets.only(right: 8),
                             color: widget.accent,
                           ),
-                          Text('> EDITAR TEXTO',
-                              style: yMono(
-                                  size: 10,
-                                  weight: FontWeight.w700,
-                                  tracking: 1.4,
-                                  color: yInk)),
+                          Text(
+                            '> EDITAR TEXTO',
+                            style: yMono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              tracking: 1.4,
+                              color: yInk,
+                            ),
+                          ),
                           const Spacer(),
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => _saveEditor(ctrl.text),
-                            child: Text('GUARDAR',
-                                style: yMono(
-                                    size: 10,
-                                    weight: FontWeight.w700,
-                                    tracking: 1.4,
-                                    color: yInk)),
+                            child: Text(
+                              'GUARDAR',
+                              style: yMono(
+                                size: 10,
+                                weight: FontWeight.w700,
+                                tracking: 1.4,
+                                color: yInk,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -201,10 +220,15 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
                       Container(
                         decoration: BoxDecoration(
                           color: yCream,
-                          border: Border.all(color: yBorderStrong, width: yLineMid),
+                          border: Border.all(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                         child: TextField(
                           controller: ctrl,
                           focusNode: focus,
@@ -255,7 +279,10 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
     final angle = widget.block.rotation;
     if (angle == 0.0) return box;
     return Transform.rotate(
-        angle: angle, alignment: Alignment.center, child: box);
+      angle: angle,
+      alignment: Alignment.center,
+      child: box,
+    );
   }
 
   Widget _buildCard() {
@@ -272,15 +299,21 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
           border: Border(left: BorderSide(color: widget.accent, width: 6)),
         ),
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-        child: empty
-            ? Text('Toca para editar',
-                style: yBody(
-                    size: 14, color: yMuted.withValues(alpha: 0.7), height: 1.3))
-            : _markdownWidget(widget.block.markdown),
+        child:
+            empty
+                ? Text(
+                  'Toca para editar',
+                  style: yBody(
+                    size: 14,
+                    color: yMuted.withValues(alpha: 0.7),
+                    height: 1.3,
+                  ),
+                )
+                : _markdownWidget(widget.block.markdown),
       ),
     );
 
-    if (!widget.interactive) return IgnorePointer(child: card);
+    if (!widget.interactive) return card;
     // Tap anywhere on the card opens the editor (easy to hit). In text mode a
     // one-finger drag moves the block; `delta` is in the canvas/world space of
     // the InteractiveViewer child, so it applies directly to x/y.
@@ -288,13 +321,14 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
       behavior: HitTestBehavior.opaque,
       onTap: _openEditor,
       onPanStart: widget.movable ? (_) => widget.onDragStart?.call() : null,
-      onPanUpdate: widget.movable
-          ? (d) {
-              widget.block.x += d.delta.dx;
-              widget.block.y += d.delta.dy;
-              widget.onChanged();
-            }
-          : null,
+      onPanUpdate:
+          widget.movable
+              ? (d) {
+                widget.block.x += d.delta.dx;
+                widget.block.y += d.delta.dy;
+                widget.onChanged();
+              }
+              : null,
       onPanEnd: widget.movable ? (_) => widget.onDragEnd?.call() : null,
       child: card,
     );

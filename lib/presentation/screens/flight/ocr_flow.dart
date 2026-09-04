@@ -61,6 +61,7 @@ Future<void> runMathToYuliFlow(
   List<List<Offset>> strokes, {
   required Color accent,
   required int noteId,
+  int? canvasBlockId,
 }) async {
   if (strokes.isEmpty) return;
 
@@ -79,12 +80,21 @@ Future<void> runMathToYuliFlow(
     context,
     contextText: contextText,
     accent: accent,
-    onSend: (t) => _sendOcrContextToYuli(context, ref, noteId, accent, t),
+    onSend:
+        (t) => _sendOcrContextToYuli(
+          context,
+          ref,
+          noteId,
+          accent,
+          t,
+          canvasBlockId: canvasBlockId,
+        ),
     onAsk:
         (t) => showAiChat(
           context,
           ref,
           noteId: noteId,
+          canvasBlockId: canvasBlockId,
           prefillMessage: t,
           accent: accent,
         ),
@@ -98,10 +108,16 @@ Future<MathRecognitionResult> _recognizeMathDraft(
 ) async {
   try {
     final result = await ref.read(mathRecognizerProvider).recognize(strokes);
-    await _maybeDumpMathStrokes(strokes, result.latex); // datos fine-tune (debug)
+    await _maybeDumpMathStrokes(
+      strokes,
+      result.latex,
+    ); // datos fine-tune (debug)
     return result;
   } catch (e, stackTrace) {
-    await _maybeDumpMathStrokes(strokes, 'ERROR: $e'); // datos fine-tune (debug)
+    await _maybeDumpMathStrokes(
+      strokes,
+      'ERROR: $e',
+    ); // datos fine-tune (debug)
     debugPrint('MATH OCR LOCAL FALLBACK: $e');
     debugPrintStack(stackTrace: stackTrace);
     if (context.mounted) {
@@ -202,8 +218,9 @@ Future<void> _sendOcrContextToYuli(
   WidgetRef ref,
   int noteId,
   Color accent,
-  String text,
-) async {
+  String text, {
+  int? canvasBlockId,
+}) async {
   final sources = await ref
       .read(noteRepositoryProvider)
       .getContextSources(noteId);
@@ -211,7 +228,14 @@ Future<void> _sendOcrContextToYuli(
       sources.where((s) => s.isNote && s.noteId != null).toList();
   if (!context.mounted) return;
   if (noteSources.isEmpty) {
-    showAiChat(context, ref, noteId: noteId, newContext: text, accent: accent);
+    showAiChat(
+      context,
+      ref,
+      noteId: noteId,
+      canvasBlockId: canvasBlockId,
+      newContext: text,
+      accent: accent,
+    );
     return;
   }
   int target;
@@ -284,7 +308,13 @@ Future<void> _sendOcrContextToYuli(
       .read(noteBlockRepositoryProvider)
       .insertAtEnd(target, NoteBlockType.text, payload: {'md': text});
   if (!context.mounted) return;
-  showAiChat(context, ref, noteId: noteId, accent: accent);
+  showAiChat(
+    context,
+    ref,
+    noteId: noteId,
+    canvasBlockId: canvasBlockId,
+    accent: accent,
+  );
 }
 
 /// Heuristic (NOT a real math classifier): flag results that are empty or

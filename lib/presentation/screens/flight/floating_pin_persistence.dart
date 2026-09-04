@@ -12,21 +12,29 @@ import 'pinned_snapshots.dart';
 class RepoFloatingPinPersistence implements FloatingPinPersistence {
   final FloatingPinRepository repo;
   final int noteId;
+  final int? canvasBlockId;
 
-  RepoFloatingPinPersistence({required this.repo, required this.noteId});
+  RepoFloatingPinPersistence({
+    required this.repo,
+    required this.noteId,
+    this.canvasBlockId,
+  });
 
   FloatingPinRecord _record(FloatingPin pin) => FloatingPinRecord(
-        id: pin.dbId ?? 0,
-        noteId: noteId,
-        kind: pin.kindName,
-        left: pin.rect.left,
-        top: pin.rect.top,
-        width: pin.rect.width,
-        height: pin.rect.height,
-        collapsed: pin.collapsed,
-        sortOrder: 0, // real order is written by reorder()
-        metadata: pin.toMetadata(),
-      );
+    id: pin.dbId ?? 0,
+    noteId: noteId,
+    kind: pin.kindName,
+    left: pin.rect.left,
+    top: pin.rect.top,
+    width: pin.rect.width,
+    height: pin.rect.height,
+    collapsed: pin.collapsed,
+    sortOrder: 0, // real order is written by reorder()
+    metadata: {
+      ...pin.toMetadata(),
+      if (canvasBlockId != null) 'canvasBlockId': canvasBlockId,
+    },
+  );
 
   @override
   Future<int> insert(FloatingPin pin) => repo.insert(_record(pin));
@@ -68,12 +76,23 @@ class RepoFloatingPinPersistence implements FloatingPinPersistence {
 Future<List<FloatingPin>> loadFloatingPins({
   required FloatingPinRepository repo,
   required int noteId,
+  int? canvasBlockId,
 }) async {
   final records = await repo.forNote(noteId);
   if (records.isEmpty) return const [];
   final dir = await floatingPinsNoteDir(noteId);
   final out = <FloatingPin>[];
   for (final r in records) {
+    if (canvasBlockId != null && r.canvasBlockId != null) {
+      if (r.canvasBlockId != canvasBlockId) continue;
+    } else if (canvasBlockId == null && r.canvasBlockId != null) {
+      continue;
+    }
+    if (canvasBlockId != null && r.canvasBlockId == null) {
+      await repo.update(
+        r.copyWith(metadata: {...r.metadata, 'canvasBlockId': canvasBlockId}),
+      );
+    }
     final pin = _pinFromRecord(r, dir.path);
     if (pin != null) out.add(pin);
   }

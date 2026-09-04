@@ -1,4 +1,5 @@
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
@@ -673,6 +674,47 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 600));
   });
+
+  testWidgets(
+    'wiki links in the live editor reserve double tap for navigation',
+    (tester) async {
+      final repository = _FakeNoteBlockRepository();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noteBlockRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: const [
+              AppFlowyEditorLocalizations.delegate,
+            ],
+            home: Scaffold(
+              body: SizedBox(
+                width: 360,
+                child: YuliLiveTextEditor(
+                  block: const TextBlock(
+                    id: 1,
+                    noteId: 1,
+                    position: 0,
+                    markdown: 'Consulta [[Derivadas]]',
+                  ),
+                  accent: const Color(0xFF2D3F8C),
+                  onOpenWorkspaceTarget: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final link = _renderedSpans(
+        tester,
+      ).firstWhere((span) => span.text == 'Derivadas');
+      expect(link.recognizer, isA<DoubleTapGestureRecognizer>());
+    },
+  );
 
   testWidgets('multiple inline formulas render together without offset spans', (
     tester,

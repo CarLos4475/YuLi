@@ -14,6 +14,7 @@ const yuliQuoteText = 'yuli_quote_text';
 const yuliHighlight = 'yuli_highlight';
 const yuliLatex = 'yuli_latex';
 const yuliLatexDisplay = 'yuli_latex_display';
+const yuliWikiLink = 'yuli_wiki_link';
 
 final Expando<String> _preferredAlignment = Expando<String>();
 
@@ -708,6 +709,10 @@ Delta buildLiveMarkdownDelta(String text) {
   if (text.trim() == '---') {
     _markBlock(attributes, 0, text.length);
   }
+
+  _applyDelimited(text, attributes, RegExp(r'\[\[([^\]\n]{1,120})\]\]'), 2, {
+    yuliWikiLink: true,
+  });
 
   _applyDelimited(
     text,

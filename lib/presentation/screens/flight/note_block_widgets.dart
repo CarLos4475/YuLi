@@ -17,6 +17,7 @@ import '../../providers/database_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_block_providers.dart';
+import '../../providers/flight_workspace_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/confetti_burst.dart';
 import '../../theme/app_tokens.dart';
@@ -45,6 +46,7 @@ class BlockRouter extends StatelessWidget {
   final YuliEditorFocusChanged? onTextBlockFocusChanged;
   final ValueChanged<bool>? onScrollLockChanged;
   final bool autofocus;
+  final ValueChanged<FlightWorkspaceTarget>? onOpenWorkspaceTarget;
 
   const BlockRouter({
     super.key,
@@ -55,6 +57,7 @@ class BlockRouter extends StatelessWidget {
     this.onTextBlockFocusChanged,
     this.onScrollLockChanged,
     this.autofocus = false,
+    this.onOpenWorkspaceTarget,
   });
 
   Color get _accent => note.color ?? folder.color;
@@ -71,10 +74,16 @@ class BlockRouter extends StatelessWidget {
           accent: accent,
           onFocusChanged: onTextBlockFocusChanged,
           autofocus: autofocus,
+          onOpenWorkspaceTarget: onOpenWorkspaceTarget,
         ),
         MathBlock m => _MathBlockBody(block: m, accentColor: accent),
         BulletsBlock bl => _BulletsBlockBody(block: bl),
-        TareasBlock tb => _TareasBlockBody(block: tb, note: note, folder: folder, accent: accent),
+        TareasBlock tb => _TareasBlockBody(
+          block: tb,
+          note: note,
+          folder: folder,
+          accent: accent,
+        ),
         DrawingBlock d => _DrawingBlockBody(
           block: d,
           accent: accent,
@@ -92,7 +101,11 @@ class _BlockShell extends ConsumerStatefulWidget {
   final Widget child;
   final int index;
 
-  const _BlockShell({required this.block, required this.child, required this.index});
+  const _BlockShell({
+    required this.block,
+    required this.child,
+    required this.index,
+  });
 
   static const _glyphForType = {
     NoteBlockType.text: YuLiIcons.textInitial,
@@ -139,9 +152,13 @@ class _BlockShellState extends ConsumerState<_BlockShell> {
                         width: 22,
                         height: 22,
                         alignment: Alignment.center,
-                        decoration: BoxDecoration(color: yCream, border: Border.all(color: yBorderStrong, width: 1.5)),
+                        decoration: BoxDecoration(
+                          color: yCream,
+                          border: Border.all(color: yBorderStrong, width: 1.5),
+                        ),
                         child: Icon(
-                          _BlockShell._glyphForType[widget.block.type] ?? YuLiIcons.textInitial,
+                          _BlockShell._glyphForType[widget.block.type] ??
+                              YuLiIcons.textInitial,
                           size: 12,
                           color: yMuted,
                         ),
@@ -149,7 +166,11 @@ class _BlockShellState extends ConsumerState<_BlockShell> {
                       const SizedBox(height: 6),
                       ReorderableDragStartListener(
                         index: widget.index,
-                        child: const Icon(YuLiIcons.gripVertical, size: 14, color: yMuted),
+                        child: const Icon(
+                          YuLiIcons.gripVertical,
+                          size: 14,
+                          color: yMuted,
+                        ),
                       ),
                     ],
                   ),
@@ -170,7 +191,11 @@ class _BlockShellState extends ConsumerState<_BlockShell> {
                         onTap: () => _confirmDelete(context),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
-                          child: Icon(YuLiIcons.close, size: 14, color: yMuted.withValues(alpha: 0.5)),
+                          child: Icon(
+                            YuLiIcons.close,
+                            size: 14,
+                            color: yMuted.withValues(alpha: 0.5),
+                          ),
                         ),
                       ),
                     ),
@@ -193,11 +218,23 @@ class _BlockShellState extends ConsumerState<_BlockShell> {
               borderRadius: BorderRadius.zero,
               side: BorderSide(color: yBorderStrong, width: yLineMid),
             ),
-            title: Text('Borrar bloque', style: ySans(size: 18, weight: FontWeight.w700)),
-            content: Text('Se eliminará este bloque de la nota.', style: yBody(size: 14)),
+            title: Text(
+              'Borrar bloque',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
+            content: Text(
+              'Se eliminará este bloque de la nota.',
+              style: yBody(size: 14),
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Borrar')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Borrar'),
+              ),
             ],
           ),
     );
@@ -261,7 +298,8 @@ class _TextBlockBody extends ConsumerStatefulWidget {
   final TextBlock block;
   final Color accent;
   final int noteId;
-  final void Function(TextEditingController? ctrl, FocusNode? node)? onFocusChanged;
+  final void Function(TextEditingController? ctrl, FocusNode? node)?
+  onFocusChanged;
   final void Function(Widget? editor)? onRequestEditor;
   const _TextBlockBody({
     required this.block,
@@ -275,7 +313,8 @@ class _TextBlockBody extends ConsumerStatefulWidget {
   ConsumerState<_TextBlockBody> createState() => _TextBlockBodyState();
 }
 
-class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMixin {
+class _TextBlockBodyState extends ConsumerState<_TextBlockBody>
+    with _AutosaveMixin {
   late final TextEditingController _ctrl;
   late final FocusNode _focus;
   bool _hasFocus = false;
@@ -328,7 +367,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
   }
 
   Future<void> _persist() async {
-    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {'md': _ctrl.text});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'md': _ctrl.text,
+    });
   }
 
   // ─── Live Preview ──────────────────────────────────────────────────────────
@@ -357,13 +398,20 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
       _lineFocuses.add(f);
     }
     _cursorLine =
-        _ctrl.selection.isValid ? _ctrl.text.substring(0, _ctrl.selection.baseOffset).split('\n').length - 1 : 0;
+        _ctrl.selection.isValid
+            ? _ctrl.text
+                    .substring(0, _ctrl.selection.baseOffset)
+                    .split('\n')
+                    .length -
+                1
+            : 0;
     if (_cursorLine < 0) _cursorLine = 0;
     if (_cursorLine >= _lineCtrls.length) _cursorLine = _lineCtrls.length - 1;
     _hasFocus = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _lineFocuses.isNotEmpty) {
-        _lineFocuses[_cursorLine.clamp(0, _lineFocuses.length - 1)].requestFocus();
+        _lineFocuses[_cursorLine.clamp(0, _lineFocuses.length - 1)]
+            .requestFocus();
       }
     });
   }
@@ -419,7 +467,8 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
 
   // ─── Atomic block detection ────────────────────────────────────────────────
 
-  bool _isTableLine(String t) => t.trimLeft().startsWith('|') && t.trimRight().endsWith('|');
+  bool _isTableLine(String t) =>
+      t.trimLeft().startsWith('|') && t.trimRight().endsWith('|');
 
   bool _isFenceLine(String t) => t.trimLeft().startsWith('```');
 
@@ -527,7 +576,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
     _lineFocuses.insert(lineIdx + 1, newFocus);
     _syncLiveToCtrl();
     setState(() => _cursorLine = lineIdx + 1);
-    WidgetsBinding.instance.addPostFrameCallback((_) => newFocus.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => newFocus.requestFocus(),
+    );
   }
 
   void _mergeWithPrevLine(int lineIdx) {
@@ -545,7 +596,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
     _lineFocuses.removeAt(lineIdx);
     _syncLiveToCtrl();
     setState(() => _cursorLine = lineIdx - 1);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _lineFocuses[lineIdx - 1].requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _lineFocuses[lineIdx - 1].requestFocus(),
+    );
   }
 
   void _moveUp() {
@@ -575,13 +628,24 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
             onTap: _toggleLive,
             child: Container(
               padding: const EdgeInsets.fromLTRB(8, 2, 8, 3),
-              decoration: BoxDecoration(color: yLab, border: Border.all(color: yBorderStrong, width: yLineThin)),
+              decoration: BoxDecoration(
+                color: yLab,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(YuLiIcons.eye, size: 10, color: yCream),
                   const SizedBox(width: 4),
-                  Text('LIVE', style: yMono(size: 8, weight: FontWeight.w700, color: yCream, tracking: 1.0)),
+                  Text(
+                    'LIVE',
+                    style: yMono(
+                      size: 8,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                      tracking: 1.0,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -597,7 +661,11 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
       onTap: _toggleLive,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(6, 2, 6, 2),
-        child: Icon(YuLiIcons.eye, size: 13, color: yMuted.withValues(alpha: 0.4)),
+        child: Icon(
+          YuLiIcons.eye,
+          size: 13,
+          color: yMuted.withValues(alpha: 0.4),
+        ),
       ),
     );
   }
@@ -650,11 +718,13 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
                   _moveUp();
                   return KeyEventResult.handled;
                 }
-                if (event.logicalKey == LogicalKeyboardKey.arrowDown && idx < _lineCtrls.length - 1) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                    idx < _lineCtrls.length - 1) {
                   _moveDown();
                   return KeyEventResult.handled;
                 }
-                if (event.logicalKey == LogicalKeyboardKey.backspace && !inAtomic) {
+                if (event.logicalKey == LogicalKeyboardKey.backspace &&
+                    !inAtomic) {
                   final c = _lineCtrls[idx];
                   final sel = c.selection;
                   if (sel.baseOffset == 0 && sel.extentOffset == 0 && idx > 0) {
@@ -708,17 +778,28 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
       }
     }
 
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: widgets);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: widgets,
+    );
   }
 
   Widget _groupContainer({required bool selected, required Widget child}) {
     return Container(
-      decoration: BoxDecoration(border: selected ? Border.all(color: widget.accent, width: yLineMid) : null),
+      decoration: BoxDecoration(
+        border:
+            selected ? Border.all(color: widget.accent, width: yLineMid) : null,
+      ),
       child: child,
     );
   }
 
-  Widget _groupPills({required List<int> indices, required VoidCallback onEdit, required VoidCallback onDelete}) {
+  Widget _groupPills({
+    required List<int> indices,
+    required VoidCallback onEdit,
+    required VoidCallback onDelete,
+  }) {
     return Positioned(
       top: 4,
       right: 4,
@@ -734,7 +815,15 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
                 color: widget.accent,
                 border: Border.all(color: yBorderStrong, width: yLineThin),
               ),
-              child: Text('EDITAR', style: yMono(size: 9, weight: FontWeight.w700, color: yCream, tracking: 1.2)),
+              child: Text(
+                'EDITAR',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  color: yCream,
+                  tracking: 1.2,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -745,7 +834,10 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
               width: 26,
               height: 26,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: yFight, border: Border.all(color: yBorderStrong, width: yLineThin)),
+              decoration: BoxDecoration(
+                color: yFight,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
               child: const Icon(YuLiIcons.close, size: 12, color: yCream),
             ),
           ),
@@ -754,7 +846,11 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
     );
   }
 
-  Widget _groupFocusWrapper({required List<int> indices, required bool selected, required Widget child}) {
+  Widget _groupFocusWrapper({
+    required List<int> indices,
+    required bool selected,
+    required Widget child,
+  }) {
     if (!selected) {
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -775,14 +871,20 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
           final last = indices.last;
-          if (event.logicalKey == LogicalKeyboardKey.arrowUp && indices.first > 0) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+              indices.first > 0) {
             setState(() => _cursorLine = indices.first - 1);
-            WidgetsBinding.instance.addPostFrameCallback((_) => _lineFocuses[_cursorLine].requestFocus());
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _lineFocuses[_cursorLine].requestFocus(),
+            );
             return KeyEventResult.handled;
           }
-          if (event.logicalKey == LogicalKeyboardKey.arrowDown && last < _lineCtrls.length - 1) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+              last < _lineCtrls.length - 1) {
             setState(() => _cursorLine = last + 1);
-            WidgetsBinding.instance.addPostFrameCallback((_) => _lineFocuses[_cursorLine].requestFocus());
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _lineFocuses[_cursorLine].requestFocus(),
+            );
             return KeyEventResult.handled;
           }
           if (event.logicalKey == LogicalKeyboardKey.backspace) {
@@ -797,7 +899,8 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
   }
 
   Widget _buildTableGroup(List<int> indices, bool selected) {
-    if (_editingTableIndices != null && _listEquals(_editingTableIndices!, indices)) {
+    if (_editingTableIndices != null &&
+        _listEquals(_editingTableIndices!, indices)) {
       return _TableInlineEditor(
         initialData: indices.map((i) => _lineCtrls[i].text).join('\n'),
         accent: widget.accent,
@@ -807,16 +910,29 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
     }
     final text = indices.map((i) => _lineCtrls[i].text).join('\n');
     final preview = IgnorePointer(
-      child: NoteMarkdownPreview(data: text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+      child: NoteMarkdownPreview(
+        data: text,
+        accent: widget.accent,
+        tight: true,
+        padding: EdgeInsets.zero,
+      ),
     );
     return Stack(
       children: [
         _groupContainer(
           selected: selected,
-          child: _groupFocusWrapper(indices: indices, selected: selected, child: preview),
+          child: _groupFocusWrapper(
+            indices: indices,
+            selected: selected,
+            child: preview,
+          ),
         ),
         if (selected)
-          _groupPills(indices: indices, onEdit: () => _editTableGroup(indices), onDelete: () => _deleteGroup(indices)),
+          _groupPills(
+            indices: indices,
+            onEdit: () => _editTableGroup(indices),
+            onDelete: () => _deleteGroup(indices),
+          ),
       ],
     );
   }
@@ -824,22 +940,36 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
   Widget _buildImageGroup(List<int> indices, bool selected) {
     final text = indices.map((i) => _lineCtrls[i].text).join('\n');
     final preview = IgnorePointer(
-      child: NoteMarkdownPreview(data: text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+      child: NoteMarkdownPreview(
+        data: text,
+        accent: widget.accent,
+        tight: true,
+        padding: EdgeInsets.zero,
+      ),
     );
     return Stack(
       children: [
         _groupContainer(
           selected: selected,
-          child: _groupFocusWrapper(indices: indices, selected: selected, child: preview),
+          child: _groupFocusWrapper(
+            indices: indices,
+            selected: selected,
+            child: preview,
+          ),
         ),
         if (selected)
-          _groupPills(indices: indices, onEdit: () => _editImageGroup(indices), onDelete: () => _deleteGroup(indices)),
+          _groupPills(
+            indices: indices,
+            onEdit: () => _editImageGroup(indices),
+            onDelete: () => _deleteGroup(indices),
+          ),
       ],
     );
   }
 
   Widget _buildFenceGroup(List<int> indices, bool selected) {
-    if (_editingFenceIndices != null && _listEquals(_editingFenceIndices!, indices)) {
+    if (_editingFenceIndices != null &&
+        _listEquals(_editingFenceIndices!, indices)) {
       return _CodeInlineEditor(
         initialData: indices.map((i) => _lineCtrls[i].text).join('\n'),
         accent: widget.accent,
@@ -849,16 +979,29 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
     }
     final text = indices.map((i) => _lineCtrls[i].text).join('\n');
     final preview = IgnorePointer(
-      child: NoteMarkdownPreview(data: text, accent: widget.accent, tight: true, padding: EdgeInsets.zero),
+      child: NoteMarkdownPreview(
+        data: text,
+        accent: widget.accent,
+        tight: true,
+        padding: EdgeInsets.zero,
+      ),
     );
     return Stack(
       children: [
         _groupContainer(
           selected: selected,
-          child: _groupFocusWrapper(indices: indices, selected: selected, child: preview),
+          child: _groupFocusWrapper(
+            indices: indices,
+            selected: selected,
+            child: preview,
+          ),
         ),
         if (selected)
-          _groupPills(indices: indices, onEdit: () => _editFenceGroup(indices), onDelete: () => _deleteGroup(indices)),
+          _groupPills(
+            indices: indices,
+            onEdit: () => _editFenceGroup(indices),
+            onDelete: () => _deleteGroup(indices),
+          ),
       ],
     );
   }
@@ -976,7 +1119,9 @@ class _TextBlockBodyState extends ConsumerState<_TextBlockBody> with _AutosaveMi
             _focus.requestFocus();
           });
         },
-        child: IgnorePointer(child: NoteMarkdownPreview(data: _ctrl.text, accent: widget.accent)),
+        child: IgnorePointer(
+          child: NoteMarkdownPreview(data: _ctrl.text, accent: widget.accent),
+        ),
       );
     }
     return Column(
@@ -1013,7 +1158,12 @@ class _TableEditor extends StatefulWidget {
   final void Function(String newMarkdown) onSave;
   final VoidCallback onClose;
 
-  const _TableEditor({required this.initialData, required this.accent, required this.onSave, required this.onClose});
+  const _TableEditor({
+    required this.initialData,
+    required this.accent,
+    required this.onSave,
+    required this.onClose,
+  });
 
   @override
   State<_TableEditor> createState() => _TableEditorState();
@@ -1033,7 +1183,12 @@ class _TableEditorState extends State<_TableEditor> {
   }
 
   void _parseTable() {
-    final lines = widget.initialData.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final lines =
+        widget.initialData
+            .trim()
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
     if (lines.length < 2) {
       _cells = [
         [TextEditingController()],
@@ -1047,13 +1202,25 @@ class _TableEditorState extends State<_TableEditor> {
       _cols = 1;
       return;
     }
-    _cols = lines[0].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|').length;
+    _cols =
+        lines[0]
+            .trim()
+            .replaceAll(RegExp(r'^\|'), '')
+            .replaceAll(RegExp(r'\|$'), '')
+            .split('|')
+            .length;
     final dataRows = <List<String>>[];
     for (int i = 0; i < lines.length; i++) {
       final isSep = i == 1;
       if (isSep) {
-        final seps = lines[i].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|');
-        if (seps.any((s) => s.trim().startsWith(':') && s.trim().endsWith(':'))) {
+        final seps = lines[i]
+            .trim()
+            .replaceAll(RegExp(r'^\|'), '')
+            .replaceAll(RegExp(r'\|$'), '')
+            .split('|');
+        if (seps.any(
+          (s) => s.trim().startsWith(':') && s.trim().endsWith(':'),
+        )) {
           _align = 'center';
         } else if (seps.any((s) => s.trim().endsWith(':'))) {
           _align = 'right';
@@ -1076,8 +1243,14 @@ class _TableEditorState extends State<_TableEditor> {
       dataRows.add(cells.take(_cols).toList());
     }
     _rows = dataRows.length;
-    _cells = dataRows.map((r) => r.map((c) => TextEditingController(text: c)).toList()).toList();
-    _focuses = List.generate(_rows, (_) => List.generate(_cols, (_) => FocusNode()));
+    _cells =
+        dataRows
+            .map((r) => r.map((c) => TextEditingController(text: c)).toList())
+            .toList();
+    _focuses = List.generate(
+      _rows,
+      (_) => List.generate(_cols, (_) => FocusNode()),
+    );
   }
 
   String _generateMarkdown() {
@@ -1176,18 +1349,32 @@ class _TableEditorState extends State<_TableEditor> {
     return Container(
       color: yCream,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxW, maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        constraints: BoxConstraints(
+          maxWidth: maxW,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
               decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+                border: Border(
+                  bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+                ),
               ),
               child: Row(
                 children: [
-                  Expanded(child: Text('Tabla', style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
+                  Expanded(
+                    child: Text(
+                      'Tabla',
+                      style: ySans(
+                        size: 24,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ),
+                    ),
+                  ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.onClose,
@@ -1203,9 +1390,19 @@ class _TableEditorState extends State<_TableEditor> {
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
               child: Row(
                 children: [
-                  _counter(label: 'fil', value: _rows - 1, onAdd: _addRow, onRemove: _rows > 2 ? _removeRow : null),
+                  _counter(
+                    label: 'fil',
+                    value: _rows - 1,
+                    onAdd: _addRow,
+                    onRemove: _rows > 2 ? _removeRow : null,
+                  ),
                   const SizedBox(width: 20),
-                  _counter(label: 'col', value: _cols, onAdd: _addCol, onRemove: _cols > 1 ? _removeCol : null),
+                  _counter(
+                    label: 'col',
+                    value: _cols,
+                    onAdd: _addCol,
+                    onRemove: _cols > 1 ? _removeCol : null,
+                  ),
                   const SizedBox(width: 20),
                   _alignBtn('left'),
                   const SizedBox(width: 4),
@@ -1225,12 +1422,23 @@ class _TableEditorState extends State<_TableEditor> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Table(
-                        border: TableBorder.all(color: yBorderSoft, width: yLineThin),
-                        columnWidths: {for (int c = 0; c < _cols; c++) c: const FixedColumnWidth(140)},
+                        border: TableBorder.all(
+                          color: yBorderSoft,
+                          width: yLineThin,
+                        ),
+                        columnWidths: {
+                          for (int c = 0; c < _cols; c++)
+                            c: const FixedColumnWidth(140),
+                        },
                         children: [
                           for (int r = 0; r < _rows; r++)
                             TableRow(
-                              decoration: r == 0 ? BoxDecoration(color: yInk.withValues(alpha: 0.04)) : null,
+                              decoration:
+                                  r == 0
+                                      ? BoxDecoration(
+                                        color: yInk.withValues(alpha: 0.04),
+                                      )
+                                      : null,
                               children: [
                                 for (int c = 0; c < _cols; c++)
                                   Padding(
@@ -1242,11 +1450,17 @@ class _TableEditorState extends State<_TableEditor> {
                                       style: yBody(
                                         size: r == 0 ? 14 : 13,
                                         color: yInk,
-                                        weight: r == 0 ? FontWeight.w700 : FontWeight.w400,
+                                        weight:
+                                            r == 0
+                                                ? FontWeight.w700
+                                                : FontWeight.w400,
                                       ),
                                       decoration: InputDecoration(
                                         hintText: r == 0 ? 'Col ${c + 1}' : '',
-                                        hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
+                                        hintStyle: yBody(
+                                          size: 13,
+                                          color: yMuted.withValues(alpha: 0.5),
+                                        ),
                                         border: InputBorder.none,
                                         enabledBorder: InputBorder.none,
                                         focusedBorder: InputBorder.none,
@@ -1274,12 +1488,18 @@ class _TableEditorState extends State<_TableEditor> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: widget.accent,
-                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                  border: const Border(
+                    top: BorderSide(color: yBorderStrong, width: yLineMid),
+                  ),
                 ),
                 child: Center(
                   child: Text(
                     'GUARDAR',
-                    style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0),
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                    ).copyWith(letterSpacing: 1.0),
                   ),
                 ),
               ),
@@ -1290,7 +1510,12 @@ class _TableEditorState extends State<_TableEditor> {
     );
   }
 
-  Widget _counter({required String label, required int value, required VoidCallback onAdd, VoidCallback? onRemove}) {
+  Widget _counter({
+    required String label,
+    required int value,
+    required VoidCallback onAdd,
+    VoidCallback? onRemove,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1302,8 +1527,13 @@ class _TableEditorState extends State<_TableEditor> {
               width: 28,
               height: 28,
               alignment: Alignment.center,
-              decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
-              child: Text('−', style: yBody(size: 14, color: yInk, height: 1.0)),
+              decoration: BoxDecoration(
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Text(
+                '−',
+                style: yBody(size: 14, color: yInk, height: 1.0),
+              ),
             ),
           ),
         Padding(
@@ -1317,7 +1547,9 @@ class _TableEditorState extends State<_TableEditor> {
             width: 28,
             height: 28,
             alignment: Alignment.center,
-            decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+            decoration: BoxDecoration(
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
             child: Text('+', style: yBody(size: 14, color: yInk, height: 1.0)),
           ),
         ),
@@ -1344,7 +1576,10 @@ class _TableEditorState extends State<_TableEditor> {
           color: selected ? widget.accent : Colors.transparent,
           border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
-        child: Text(label, style: yBody(size: 12, color: selected ? yCream : yInk, height: 1.0)),
+        child: Text(
+          label,
+          style: yBody(size: 12, color: selected ? yCream : yInk, height: 1.0),
+        ),
       ),
     );
   }
@@ -1356,7 +1591,12 @@ class _CodeEditor extends StatefulWidget {
   final void Function(String newMarkdown) onSave;
   final VoidCallback onClose;
 
-  const _CodeEditor({required this.initialData, required this.accent, required this.onSave, required this.onClose});
+  const _CodeEditor({
+    required this.initialData,
+    required this.accent,
+    required this.onSave,
+    required this.onClose,
+  });
 
   @override
   State<_CodeEditor> createState() => _CodeEditorState();
@@ -1409,18 +1649,32 @@ class _CodeEditorState extends State<_CodeEditor> {
     return Container(
       color: yCream,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxW, maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        constraints: BoxConstraints(
+          maxWidth: maxW,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
               decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+                border: Border(
+                  bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+                ),
               ),
               child: Row(
                 children: [
-                  Expanded(child: Text('Codigo', style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
+                  Expanded(
+                    child: Text(
+                      'Codigo',
+                      style: ySans(
+                        size: 24,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ),
+                    ),
+                  ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.onClose,
@@ -1434,7 +1688,10 @@ class _CodeEditorState extends State<_CodeEditor> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-              child: Text('Lenguaje', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
+              child: Text(
+                'Lenguaje',
+                style: yBody(size: 14, weight: FontWeight.w700, color: yInk),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
@@ -1446,15 +1703,24 @@ class _CodeEditorState extends State<_CodeEditor> {
                   hintText: 'python, dart, js...',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
-                    borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+                    borderSide: BorderSide(
+                      color: yBorderSoft,
+                      width: yLineThin,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
-                    borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+                    borderSide: BorderSide(
+                      color: yBorderSoft,
+                      width: yLineThin,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
-                    borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                    borderSide: BorderSide(
+                      color: yBorderStrong,
+                      width: yLineMid,
+                    ),
                   ),
                   contentPadding: EdgeInsets.all(12),
                   isDense: true,
@@ -1474,15 +1740,24 @@ class _CodeEditorState extends State<_CodeEditor> {
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+                      borderSide: BorderSide(
+                        color: yBorderSoft,
+                        width: yLineThin,
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+                      borderSide: BorderSide(
+                        color: yBorderSoft,
+                        width: yLineThin,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
-                      borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                      borderSide: BorderSide(
+                        color: yBorderStrong,
+                        width: yLineMid,
+                      ),
                     ),
                     contentPadding: EdgeInsets.all(12),
                   ),
@@ -1499,12 +1774,18 @@ class _CodeEditorState extends State<_CodeEditor> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: widget.accent,
-                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                  border: const Border(
+                    top: BorderSide(color: yBorderStrong, width: yLineMid),
+                  ),
                 ),
                 child: Center(
                   child: Text(
                     'GUARDAR',
-                    style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0),
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                    ).copyWith(letterSpacing: 1.0),
                   ),
                 ),
               ),
@@ -1550,7 +1831,9 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
   void _parse() {
     final raw = widget.initialData.trim();
     final lines = raw.split('\n');
-    if (lines.length >= 3 && lines[0].trim().startsWith(':::') && lines[2].trim() == ':::') {
+    if (lines.length >= 3 &&
+        lines[0].trim().startsWith(':::') &&
+        lines[2].trim() == ':::') {
       _align = lines[0].trim().replaceAll(':::', '').trim();
       _parseImageLine(lines[1].trim());
     } else {
@@ -1587,14 +1870,18 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
     if (_newFile != null) {
       try {
         final appDir = await getApplicationDocumentsDirectory();
-        final imagesDir = Directory(p.join(appDir.path, 'note_images', '${widget.noteId}'));
+        final imagesDir = Directory(
+          p.join(appDir.path, 'note_images', '${widget.noteId}'),
+        );
         await imagesDir.create(recursive: true);
         final ext = p.extension(_newFile!.path).toLowerCase();
         final newFilename = '${const Uuid().v4()}$ext';
         final newPath = p.join(imagesDir.path, newFilename);
         await File(_newFile!.path).copy(newPath);
         final fileSize = await File(newPath).length();
-        await ref.read(noteRepositoryProvider).addImage(widget.noteId, newFilename, newPath, fileSize);
+        await ref
+            .read(noteRepositoryProvider)
+            .addImage(widget.noteId, newFilename, newPath, fileSize);
         _imagePath = newPath;
       } catch (_) {}
     }
@@ -1614,11 +1901,22 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
             Container(
               padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
               decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: yBorderStrong, width: yLineMid)),
+                border: Border(
+                  bottom: BorderSide(color: yBorderStrong, width: yLineMid),
+                ),
               ),
               child: Row(
                 children: [
-                  Expanded(child: Text('Imagen', style: ySans(size: 24, weight: FontWeight.w700, color: yInk))),
+                  Expanded(
+                    child: Text(
+                      'Imagen',
+                      style: ySans(
+                        size: 24,
+                        weight: FontWeight.w700,
+                        color: yInk,
+                      ),
+                    ),
+                  ),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.onClose,
@@ -1637,7 +1935,10 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
                   if (_newFile != null)
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 240),
-                      child: Image.file(File(_newFile!.path), fit: BoxFit.contain),
+                      child: Image.file(
+                        File(_newFile!.path),
+                        fit: BoxFit.contain,
+                      ),
                     )
                   else if (_imagePath.isNotEmpty)
                     IgnorePointer(
@@ -1651,21 +1952,50 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
                   else
                     Container(
                       height: 120,
-                      decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
-                      child: const Center(child: Icon(YuLiIcons.image, size: 48, color: yMuted)),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineThin,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(YuLiIcons.image, size: 48, color: yMuted),
+                      ),
                     ),
                   const SizedBox(height: 12),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _pickImage,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
-                      child: Text('Cambiar imagen', style: yBody(size: 13, weight: FontWeight.w700, color: yInk)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineThin,
+                        ),
+                      ),
+                      child: Text(
+                        'Cambiar imagen',
+                        style: yBody(
+                          size: 13,
+                          weight: FontWeight.w700,
+                          color: yInk,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Text('Alineacion', style: yBody(size: 14, weight: FontWeight.w700, color: yInk)),
+                  Text(
+                    'Alineacion',
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: yInk,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Row(
                     children: [
@@ -1687,12 +2017,18 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: widget.accent,
-                  border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                  border: const Border(
+                    top: BorderSide(color: yBorderStrong, width: yLineMid),
+                  ),
                 ),
                 child: Center(
                   child: Text(
                     'GUARDAR',
-                    style: yBody(size: 14, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0),
+                    style: yBody(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: yCream,
+                    ).copyWith(letterSpacing: 1.0),
                   ),
                 ),
               ),
@@ -1714,7 +2050,14 @@ class _ImageEditorState extends ConsumerState<_ImageEditor> {
           color: selected ? widget.accent : Colors.transparent,
           border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
-        child: Text(label, style: yBody(size: 11, weight: FontWeight.w700, color: selected ? yCream : yInk)),
+        child: Text(
+          label,
+          style: yBody(
+            size: 11,
+            weight: FontWeight.w700,
+            color: selected ? yCream : yInk,
+          ),
+        ),
       ),
     );
   }
@@ -1753,7 +2096,12 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
   }
 
   void _parseTable() {
-    final lines = widget.initialData.trim().split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final lines =
+        widget.initialData
+            .trim()
+            .split('\n')
+            .where((l) => l.trim().isNotEmpty)
+            .toList();
     if (lines.length < 2) {
       _cells = [
         [TextEditingController()],
@@ -1767,13 +2115,25 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
       _cols = 1;
       return;
     }
-    _cols = lines[0].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|').length;
+    _cols =
+        lines[0]
+            .trim()
+            .replaceAll(RegExp(r'^\|'), '')
+            .replaceAll(RegExp(r'\|$'), '')
+            .split('|')
+            .length;
     final dataRows = <List<String>>[];
     for (int i = 0; i < lines.length; i++) {
       final isSep = i == 1;
       if (isSep) {
-        final seps = lines[i].trim().replaceAll(RegExp(r'^\|'), '').replaceAll(RegExp(r'\|$'), '').split('|');
-        if (seps.any((s) => s.trim().startsWith(':') && s.trim().endsWith(':'))) {
+        final seps = lines[i]
+            .trim()
+            .replaceAll(RegExp(r'^\|'), '')
+            .replaceAll(RegExp(r'\|$'), '')
+            .split('|');
+        if (seps.any(
+          (s) => s.trim().startsWith(':') && s.trim().endsWith(':'),
+        )) {
           _align = 'center';
         } else if (seps.any((s) => s.trim().endsWith(':'))) {
           _align = 'right';
@@ -1796,8 +2156,14 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
       dataRows.add(cells.take(_cols).toList());
     }
     _rows = dataRows.length;
-    _cells = dataRows.map((r) => r.map((c) => TextEditingController(text: c)).toList()).toList();
-    _focuses = List.generate(_rows, (_) => List.generate(_cols, (_) => FocusNode()));
+    _cells =
+        dataRows
+            .map((r) => r.map((c) => TextEditingController(text: c)).toList())
+            .toList();
+    _focuses = List.generate(
+      _rows,
+      (_) => List.generate(_cols, (_) => FocusNode()),
+    );
   }
 
   String _generateMarkdown() {
@@ -1893,7 +2259,9 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(border: Border.all(color: widget.accent, width: yLineMid)),
+      decoration: BoxDecoration(
+        border: Border.all(color: widget.accent, width: yLineMid),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1902,9 +2270,19 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child: Row(
               children: [
-                _counter(label: 'fil', value: _rows - 1, onAdd: _addRow, onRemove: _rows > 2 ? _removeRow : null),
+                _counter(
+                  label: 'fil',
+                  value: _rows - 1,
+                  onAdd: _addRow,
+                  onRemove: _rows > 2 ? _removeRow : null,
+                ),
                 const SizedBox(width: 20),
-                _counter(label: 'col', value: _cols, onAdd: _addCol, onRemove: _cols > 1 ? _removeCol : null),
+                _counter(
+                  label: 'col',
+                  value: _cols,
+                  onAdd: _addCol,
+                  onRemove: _cols > 1 ? _removeCol : null,
+                ),
                 const SizedBox(width: 20),
                 _alignBtn('left'),
                 const SizedBox(width: 4),
@@ -1922,11 +2300,19 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
                 padding: const EdgeInsets.all(8),
                 child: Table(
                   border: TableBorder.all(color: yBorderSoft, width: yLineThin),
-                  columnWidths: {for (int c = 0; c < _cols; c++) c: const FixedColumnWidth(140)},
+                  columnWidths: {
+                    for (int c = 0; c < _cols; c++)
+                      c: const FixedColumnWidth(140),
+                  },
                   children: [
                     for (int r = 0; r < _rows; r++)
                       TableRow(
-                        decoration: r == 0 ? BoxDecoration(color: yInk.withValues(alpha: 0.04)) : null,
+                        decoration:
+                            r == 0
+                                ? BoxDecoration(
+                                  color: yInk.withValues(alpha: 0.04),
+                                )
+                                : null,
                         children: [
                           for (int c = 0; c < _cols; c++)
                             Padding(
@@ -1938,11 +2324,17 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
                                 style: yBody(
                                   size: r == 0 ? 14 : 13,
                                   color: yInk,
-                                  weight: r == 0 ? FontWeight.w700 : FontWeight.w400,
+                                  weight:
+                                      r == 0
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
                                 ),
                                 decoration: InputDecoration(
                                   hintText: r == 0 ? 'Col ${c + 1}' : '',
-                                  hintStyle: yBody(size: 13, color: yMuted.withValues(alpha: 0.5)),
+                                  hintStyle: yBody(
+                                    size: 13,
+                                    color: yMuted.withValues(alpha: 0.5),
+                                  ),
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,
@@ -1968,12 +2360,18 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: const BoxDecoration(
-                      border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                      border: Border(
+                        top: BorderSide(color: yBorderStrong, width: yLineMid),
+                      ),
                     ),
                     child: Center(
                       child: Text(
                         'CANCELAR',
-                        style: yBody(size: 12, weight: FontWeight.w700, color: yInk).copyWith(letterSpacing: 1.0),
+                        style: yBody(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: yInk,
+                        ).copyWith(letterSpacing: 1.0),
                       ),
                     ),
                   ),
@@ -1990,12 +2388,18 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       color: widget.accent,
-                      border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                      border: const Border(
+                        top: BorderSide(color: yBorderStrong, width: yLineMid),
+                      ),
                     ),
                     child: Center(
                       child: Text(
                         'GUARDAR',
-                        style: yBody(size: 12, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0),
+                        style: yBody(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                        ).copyWith(letterSpacing: 1.0),
                       ),
                     ),
                   ),
@@ -2008,7 +2412,12 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
     );
   }
 
-  Widget _counter({required String label, required int value, required VoidCallback onAdd, VoidCallback? onRemove}) {
+  Widget _counter({
+    required String label,
+    required int value,
+    required VoidCallback onAdd,
+    VoidCallback? onRemove,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2020,8 +2429,13 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
               width: 28,
               height: 28,
               alignment: Alignment.center,
-              decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
-              child: Text('−', style: yBody(size: 14, color: yInk, height: 1.0)),
+              decoration: BoxDecoration(
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: Text(
+                '−',
+                style: yBody(size: 14, color: yInk, height: 1.0),
+              ),
             ),
           ),
         Padding(
@@ -2035,7 +2449,9 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
             width: 28,
             height: 28,
             alignment: Alignment.center,
-            decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineThin)),
+            decoration: BoxDecoration(
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
             child: Text('+', style: yBody(size: 14, color: yInk, height: 1.0)),
           ),
         ),
@@ -2062,7 +2478,10 @@ class _TableInlineEditorState extends State<_TableInlineEditor> {
           color: selected ? widget.accent : Colors.transparent,
           border: Border.all(color: yBorderStrong, width: yLineThin),
         ),
-        child: Text(label, style: yBody(size: 12, color: selected ? yCream : yInk, height: 1.0)),
+        child: Text(
+          label,
+          style: yBody(size: 12, color: selected ? yCream : yInk, height: 1.0),
+        ),
       ),
     );
   }
@@ -2129,7 +2548,9 @@ class _CodeInlineEditorState extends State<_CodeInlineEditor> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(border: Border.all(color: widget.accent, width: yLineMid)),
+      decoration: BoxDecoration(
+        border: Border.all(color: widget.accent, width: yLineMid),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2175,15 +2596,24 @@ class _CodeInlineEditorState extends State<_CodeInlineEditor> {
                   hintStyle: yBody(size: 13, color: yMuted),
                   border: const OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
-                    borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+                    borderSide: BorderSide(
+                      color: yBorderSoft,
+                      width: yLineThin,
+                    ),
                   ),
                   enabledBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
-                    borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
+                    borderSide: BorderSide(
+                      color: yBorderSoft,
+                      width: yLineThin,
+                    ),
                   ),
                   focusedBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
-                    borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                    borderSide: BorderSide(
+                      color: yBorderStrong,
+                      width: yLineMid,
+                    ),
                   ),
                   contentPadding: const EdgeInsets.all(8),
                   isDense: true,
@@ -2201,12 +2631,18 @@ class _CodeInlineEditorState extends State<_CodeInlineEditor> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: const BoxDecoration(
-                      border: Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                      border: Border(
+                        top: BorderSide(color: yBorderStrong, width: yLineMid),
+                      ),
                     ),
                     child: Center(
                       child: Text(
                         'CANCELAR',
-                        style: yBody(size: 12, weight: FontWeight.w700, color: yInk).copyWith(letterSpacing: 1.0),
+                        style: yBody(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: yInk,
+                        ).copyWith(letterSpacing: 1.0),
                       ),
                     ),
                   ),
@@ -2223,12 +2659,18 @@ class _CodeInlineEditorState extends State<_CodeInlineEditor> {
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: widget.accent,
-                      border: const Border(top: BorderSide(color: yBorderStrong, width: yLineMid)),
+                      border: const Border(
+                        top: BorderSide(color: yBorderStrong, width: yLineMid),
+                      ),
                     ),
                     child: Center(
                       child: Text(
                         'GUARDAR',
-                        style: yBody(size: 12, weight: FontWeight.w700, color: yCream).copyWith(letterSpacing: 1.0),
+                        style: yBody(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                        ).copyWith(letterSpacing: 1.0),
                       ),
                     ),
                   ),
@@ -2253,7 +2695,8 @@ class _MathBlockBody extends ConsumerStatefulWidget {
   ConsumerState<_MathBlockBody> createState() => _MathBlockBodyState();
 }
 
-class _MathBlockBodyState extends ConsumerState<_MathBlockBody> with _AutosaveMixin {
+class _MathBlockBodyState extends ConsumerState<_MathBlockBody>
+    with _AutosaveMixin {
   late final TextEditingController _ctrl;
   late final FocusNode _focus;
 
@@ -2279,7 +2722,9 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody> with _AutosaveMi
   }
 
   Future<void> _persist() async {
-    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {'latex': _ctrl.text});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'latex': _ctrl.text,
+    });
   }
 
   @override
@@ -2292,7 +2737,9 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody> with _AutosaveMi
           decoration: BoxDecoration(
             color: widget.accentColor,
             border: Border.all(color: yBorderStrong, width: yLineMid),
-            boxShadow: const [BoxShadow(color: yBorderStrong, offset: Offset(3, 3))],
+            boxShadow: const [
+              BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+            ],
           ),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
           child: Stack(
@@ -2302,7 +2749,12 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody> with _AutosaveMi
                 right: 4,
                 child: Text(
                   'LATEX · DISPLAY',
-                  style: yMono(size: 9, weight: FontWeight.w700, tracking: 1.4, color: yCream.withValues(alpha: 0.55)),
+                  style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yCream.withValues(alpha: 0.55),
+                  ),
                 ),
               ),
               Center(
@@ -2310,14 +2762,25 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody> with _AutosaveMi
                     latex.trim().isEmpty
                         ? Text(
                           'introduce LaTeX abajo',
-                          style: yMono(size: 12, color: yCream.withValues(alpha: 0.6), tracking: 1.2),
+                          style: yMono(
+                            size: 12,
+                            color: yCream.withValues(alpha: 0.6),
+                            tracking: 1.2,
+                          ),
                         )
                         : Math.tex(
                           latex,
                           mathStyle: MathStyle.display,
                           textStyle: TextStyle(fontSize: 22, color: yCream),
                           onErrorFallback:
-                              (err) => Text(err.message, style: yMono(size: 11, color: yAmber2, tracking: 0.8)),
+                              (err) => Text(
+                                err.message,
+                                style: yMono(
+                                  size: 11,
+                                  color: yAmber2,
+                                  tracking: 0.8,
+                                ),
+                              ),
                         ),
               ),
             ],
@@ -2335,7 +2798,10 @@ class _MathBlockBodyState extends ConsumerState<_MathBlockBody> with _AutosaveMi
           style: yMono(size: 12, color: yInk, tracking: 0.5),
           decoration: InputDecoration(
             isCollapsed: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 6,
+              horizontal: 4,
+            ),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
@@ -2359,7 +2825,8 @@ class _BulletsBlockBody extends ConsumerStatefulWidget {
   ConsumerState<_BulletsBlockBody> createState() => _BulletsBlockBodyState();
 }
 
-class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _AutosaveMixin {
+class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody>
+    with _AutosaveMixin {
   late List<String> _items;
   final List<TextEditingController> _ctrls = [];
   final List<FocusNode> _focuses = [];
@@ -2381,13 +2848,16 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
       onKeyEvent: (node, event) {
         if (event is KeyUpEvent) return KeyEventResult.ignored;
         final idx = _focuses.indexOf(f);
-        if (event.logicalKey == LogicalKeyboardKey.backspace && c.text.isEmpty && idx >= 0) {
+        if (event.logicalKey == LogicalKeyboardKey.backspace &&
+            c.text.isEmpty &&
+            idx >= 0) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _removeItem(idx);
           });
           return KeyEventResult.handled;
         }
-        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.enter) {
           _addItem();
           return KeyEventResult.handled;
         }
@@ -2415,7 +2885,9 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
 
   Future<void> _persist() async {
     _items = _ctrls.map((c) => c.text).toList();
-    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {'items': _items});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'items': _items,
+    });
   }
 
   void _addItem() {
@@ -2428,13 +2900,20 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
   }
 
   void _copyAll() {
-    final text = _ctrls.map((c) => c.text).where((t) => t.isNotEmpty).map((t) => '- $t').join('\n');
+    final text = _ctrls
+        .map((c) => c.text)
+        .where((t) => t.isNotEmpty)
+        .map((t) => '- $t')
+        .join('\n');
     if (text.isEmpty) return;
     Clipboard.setData(ClipboardData(text: text));
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Lista copiada'), duration: Duration(seconds: 1)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Lista copiada'),
+          duration: Duration(seconds: 1),
+        ),
+      );
     }
   }
 
@@ -2465,7 +2944,11 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
               children: [
                 const Padding(
                   padding: EdgeInsets.only(top: 9, right: 10),
-                  child: SizedBox(width: 6, height: 6, child: ColoredBox(color: yInk)),
+                  child: SizedBox(
+                    width: 6,
+                    height: 6,
+                    child: ColoredBox(color: yInk),
+                  ),
                 ),
                 Expanded(
                   child: TextField(
@@ -2473,7 +2956,9 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
                     focusNode: _focuses[i],
                     maxLines: null,
                     textInputAction: TextInputAction.done,
-                    inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\n'))],
+                    inputFormatters: [
+                      FilteringTextInputFormatter.deny(RegExp(r'\n')),
+                    ],
                     onChanged: (_) => scheduleSave(_persist),
                     style: yBody(size: 14, color: yInk2, height: 1.5),
                     decoration: InputDecoration(
@@ -2498,7 +2983,15 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
               onTap: _addItem,
               child: Padding(
                 padding: const EdgeInsets.only(top: 4, left: 16),
-                child: Text('+ item', style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted)),
+                child: Text(
+                  '+ item',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -2509,7 +3002,12 @@ class _BulletsBlockBodyState extends ConsumerState<_BulletsBlockBody> with _Auto
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   'COPIAR TODO',
-                  style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yMuted),
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yMuted,
+                  ),
                 ),
               ),
             ),
@@ -2528,7 +3026,12 @@ class _TareasBlockBody extends ConsumerStatefulWidget {
   final Folder folder;
   final Color accent;
 
-  const _TareasBlockBody({required this.block, required this.note, required this.folder, required this.accent});
+  const _TareasBlockBody({
+    required this.block,
+    required this.note,
+    required this.folder,
+    required this.accent,
+  });
 
   @override
   ConsumerState<_TareasBlockBody> createState() => _TareasBlockBodyState();
@@ -2538,7 +3041,11 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
   final _newTaskCtrl = TextEditingController();
   bool _showInput = false;
 
-  NoteBlockActions get _actions => NoteBlockActions(ref: ref, noteId: widget.note.id, folderId: widget.note.folderId);
+  NoteBlockActions get _actions => NoteBlockActions(
+    ref: ref,
+    noteId: widget.note.id,
+    folderId: widget.note.folderId,
+  );
 
   @override
   void dispose() {
@@ -2559,18 +3066,27 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
   Future<void> _onLongPress(Task t) async {
     final spaces = ref.read(activeLabSpacesProvider).valueOrNull ?? [];
     if (spaces.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No hay spaces activos'), duration: Duration(seconds: 2)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay spaces activos'),
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
-    final picked = await showDialog<LabSpace>(context: context, builder: (ctx) => _SpacePickerDialog(spaces: spaces));
+    final picked = await showDialog<LabSpace>(
+      context: context,
+      builder: (ctx) => _SpacePickerDialog(spaces: spaces),
+    );
     if (picked == null) return;
     await _actions.linkTaskToSpace(t, picked.id);
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Linkeada a ${picked.name}'), duration: const Duration(seconds: 2)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Linkeada a ${picked.name}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -2584,7 +3100,10 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
               borderRadius: BorderRadius.zero,
               side: BorderSide(color: yBorderStrong, width: yLineMid),
             ),
-            title: Text('Borrar tarea', style: ySans(size: 18, weight: FontWeight.w700)),
+            title: Text(
+              'Borrar tarea',
+              style: ySans(size: 18, weight: FontWeight.w700),
+            ),
             content: Text(
               '¿Solo desenlazar de la nota (sigue viva en FIGHT) o borrar de todos los lugares?',
               style: yBody(size: 13),
@@ -2615,7 +3134,13 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
     final tasksAsync = ref.watch(noteLinkedTasksProvider(widget.note.id));
     final allTasks = tasksAsync.valueOrNull ?? [];
     final blockTasks =
-        allTasks.where((t) => widget.block.taskIds.contains(t.id) && t.status != TaskStatus.trash).toList()
+        allTasks
+            .where(
+              (t) =>
+                  widget.block.taskIds.contains(t.id) &&
+                  t.status != TaskStatus.trash,
+            )
+            .toList()
           ..sort((a, b) {
             final aDone = a.status == TaskStatus.done;
             final bDone = b.status == TaskStatus.done;
@@ -2630,14 +3155,24 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
         borderRadius: BorderRadius.zero,
       ),
       child: Container(
-        decoration: BoxDecoration(border: Border(left: BorderSide(color: widget.accent, width: 6))),
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: widget.accent, width: 6)),
+        ),
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Text('> BLOQUE TAREAS', style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yInk)),
+                Text(
+                  '> BLOQUE TAREAS',
+                  style: yMono(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    tracking: 1.4,
+                    color: yInk,
+                  ),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -2651,7 +3186,12 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
                   onTap: () => setState(() => _showInput = !_showInput),
                   child: Text(
                     _showInput ? 'CERRAR' : '+ TAREA',
-                    style: yMono(size: 10, weight: FontWeight.w700, tracking: 1.4, color: yInk),
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
                   ),
                 ),
               ],
@@ -2668,18 +3208,30 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
                       style: yBody(size: 14, color: yInk),
                       decoration: InputDecoration(
                         isCollapsed: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.zero,
-                          borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                          borderSide: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.zero,
-                          borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                          borderSide: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.zero,
-                          borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
+                          borderSide: BorderSide(
+                            color: yBorderStrong,
+                            width: yLineMid,
+                          ),
                         ),
                         filled: false,
                         hintText: 'nueva tarea…',
@@ -2697,9 +3249,19 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: yFight,
-                        border: Border.all(color: yBorderStrong, width: yLineMid),
+                        border: Border.all(
+                          color: yBorderStrong,
+                          width: yLineMid,
+                        ),
                       ),
-                      child: const Text('+', style: TextStyle(fontSize: 18, color: yCream, height: 1.0)),
+                      child: const Text(
+                        '+',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: yCream,
+                          height: 1.0,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -2709,7 +3271,14 @@ class _TareasBlockBodyState extends ConsumerState<_TareasBlockBody> {
             if (blockTasks.isEmpty && !_showInput)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text('sin tareas', style: yMono(size: 10, color: yMuted.withValues(alpha: 0.6), tracking: 1.2)),
+                child: Text(
+                  'sin tareas',
+                  style: yMono(
+                    size: 10,
+                    color: yMuted.withValues(alpha: 0.6),
+                    tracking: 1.2,
+                  ),
+                ),
               ),
             for (final t in blockTasks)
               _NoteTaskRow(
@@ -2731,7 +3300,12 @@ class _NoteTaskRow extends ConsumerWidget {
   final VoidCallback onLongPress;
   final VoidCallback onDelete;
 
-  const _NoteTaskRow({required this.task, required this.onCheck, required this.onLongPress, required this.onDelete});
+  const _NoteTaskRow({
+    required this.task,
+    required this.onCheck,
+    required this.onLongPress,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2751,7 +3325,11 @@ class _NoteTaskRow extends ConsumerWidget {
               behavior: HitTestBehavior.opaque,
               onTapUp: (d) {
                 if (!done) {
-                  burstConfetti(context, d.globalPosition, accent: accentFlight);
+                  burstConfetti(
+                    context,
+                    d.globalPosition,
+                    accent: accentFlight,
+                  );
                 }
                 onCheck();
               },
@@ -2763,16 +3341,28 @@ class _NoteTaskRow extends ConsumerWidget {
                   color: done ? yInk : yCream,
                   border: Border.all(color: yBorderStrong, width: yLineThin),
                 ),
-                child: done ? const Icon(YuLiIcons.check, size: 12, color: yCream) : null,
+                child:
+                    done
+                        ? const Icon(YuLiIcons.check, size: 12, color: yCream)
+                        : null,
               ),
             ),
             const SizedBox(width: 10),
             if (task.folderId != null) ...[
               Builder(
                 builder: (context) {
-                  final fColor = ref.watch(folderByIdProvider(task.folderId!)).valueOrNull?.color;
+                  final fColor =
+                      ref
+                          .watch(folderByIdProvider(task.folderId!))
+                          .valueOrNull
+                          ?.color;
                   if (fColor == null) return const SizedBox.shrink();
-                  return Container(width: 4, height: 16, margin: const EdgeInsets.only(right: 6), color: fColor);
+                  return Container(
+                    width: 4,
+                    height: 16,
+                    margin: const EdgeInsets.only(right: 6),
+                    color: fColor,
+                  );
                 },
               ),
             ],
@@ -2784,7 +3374,9 @@ class _NoteTaskRow extends ConsumerWidget {
                   weight: FontWeight.w500,
                   color: done ? yMuted : yInk,
                   height: 1.3,
-                ).copyWith(decoration: done ? TextDecoration.lineThrough : null),
+                ).copyWith(
+                  decoration: done ? TextDecoration.lineThrough : null,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -2793,7 +3385,12 @@ class _NoteTaskRow extends ConsumerWidget {
               const SizedBox(width: 6),
               Text(
                 'DUE ${_fmtDue(task.dueDate!).toUpperCase()}',
-                style: yMono(size: 9, weight: FontWeight.w700, tracking: 1, color: yMuted),
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w700,
+                  tracking: 1,
+                  color: yMuted,
+                ),
               ),
             ],
             const SizedBox(width: 6),
@@ -2808,7 +3405,11 @@ class _NoteTaskRow extends ConsumerWidget {
               onTap: onDelete,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Icon(YuLiIcons.close, size: 14, color: yMuted.withValues(alpha: 0.6)),
+                child: Icon(
+                  YuLiIcons.close,
+                  size: 14,
+                  color: yMuted.withValues(alpha: 0.6),
+                ),
               ),
             ),
           ],
@@ -2817,7 +3418,8 @@ class _NoteTaskRow extends ConsumerWidget {
     );
   }
 
-  static String _fmtDue(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  static String _fmtDue(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
 }
 
 class _LinkChip extends StatelessWidget {
@@ -2830,8 +3432,19 @@ class _LinkChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(5, 1, 5, 2),
-      decoration: BoxDecoration(color: bg, border: Border.all(color: yBorderStrong, width: 1.5)),
-      child: Text(text, style: yMono(size: 8, weight: FontWeight.w700, tracking: 1, color: yCream)),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: yBorderStrong, width: 1.5),
+      ),
+      child: Text(
+        text,
+        style: yMono(
+          size: 8,
+          weight: FontWeight.w700,
+          tracking: 1,
+          color: yCream,
+        ),
+      ),
     );
   }
 }
@@ -2840,13 +3453,19 @@ enum _DeleteChoice { unlink, hard }
 
 /// Returns the linked space name for a task (or null if no kanban link).
 /// Reactive: refreshes when the linked card is created/moved/deleted.
-final _kanbanByTaskProvider = StreamProvider.family<String?, int>((ref, taskId) {
+final _kanbanByTaskProvider = StreamProvider.family<String?, int>((
+  ref,
+  taskId,
+) {
   final labRepo = ref.watch(labSpaceRepositoryProvider);
-  return ref.watch(kanbanCardRepositoryProvider).watchByOriginTaskId(taskId).asyncMap((card) async {
-    if (card == null) return null;
-    final space = await labRepo.getById(card.labSpaceId);
-    return space?.name;
-  });
+  return ref
+      .watch(kanbanCardRepositoryProvider)
+      .watchByOriginTaskId(taskId)
+      .asyncMap((card) async {
+        if (card == null) return null;
+        final space = await labRepo.getById(card.labSpaceId);
+        return space?.name;
+      });
 });
 
 class _SpacePickerDialog extends StatelessWidget {
@@ -2863,13 +3482,18 @@ class _SpacePickerDialog extends StatelessWidget {
       ),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 360),
-        decoration: BoxDecoration(border: Border.all(color: yBorderStrong, width: yLineMid)),
+        decoration: BoxDecoration(
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+        ),
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Linkear a space', style: ySans(size: 20, weight: FontWeight.w700, color: yInk)),
+            Text(
+              'Linkear a space',
+              style: ySans(size: 20, weight: FontWeight.w700, color: yInk),
+            ),
             const SizedBox(height: 12),
             for (final s in spaces)
               GestureDetector(
@@ -2881,7 +3505,12 @@ class _SpacePickerDialog extends StatelessWidget {
                     children: [
                       Container(width: 12, height: 12, color: s.accentColor),
                       const SizedBox(width: 10),
-                      Expanded(child: Text(s.name, style: ySans(size: 16, color: yInk))),
+                      Expanded(
+                        child: Text(
+                          s.name,
+                          style: ySans(size: 16, color: yInk),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -2901,7 +3530,12 @@ class _DrawingBlockBody extends ConsumerStatefulWidget {
   final int? folderId;
   final ValueChanged<bool>? onScrollLockChanged;
 
-  const _DrawingBlockBody({required this.block, required this.accent, this.folderId, this.onScrollLockChanged});
+  const _DrawingBlockBody({
+    required this.block,
+    required this.accent,
+    this.folderId,
+    this.onScrollLockChanged,
+  });
 
   @override
   ConsumerState<_DrawingBlockBody> createState() => _DrawingBlockBodyState();
@@ -2933,7 +3567,9 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
   }
 
   Future<void> _loadStoredStrokes() async {
-    final rows = await ref.read(drawingStrokeRepositoryProvider).getByBlock(widget.block.id);
+    final rows = await ref
+        .read(drawingStrokeRepositoryProvider)
+        .getByBlock(widget.block.id);
     if (!mounted || rows.isEmpty) return;
     setState(() {
       _data.strokes = rows.map(strokeFromRecord).toList();
@@ -2962,7 +3598,9 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       background: data.background,
       bgColorValue: data.bgColorValue,
     );
-    _persistTail = _persistTail.catchError((_) {}).then((_) => _persistNow(snapshot));
+    _persistTail = _persistTail
+        .catchError((_) {})
+        .then((_) => _persistNow(snapshot));
     await _persistTail;
   }
 
@@ -2970,11 +3608,16 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
     final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
     final appendOnly =
         data.strokes.length > _strokeIds.length &&
-        _strokeIds.asMap().entries.every((e) => data.strokes[e.key].dbId == e.value) &&
+        _strokeIds.asMap().entries.every(
+          (e) => data.strokes[e.key].dbId == e.value,
+        ) &&
         data.strokes.skip(_strokeIds.length).every((s) => s.dbId == null);
     if (appendOnly) {
       for (int i = _strokeIds.length; i < data.strokes.length; i++) {
-        final id = await strokeRepo.insert(widget.block.id, strokeWrite(i, data.strokes[i]));
+        final id = await strokeRepo.insert(
+          widget.block.id,
+          strokeWrite(i, data.strokes[i]),
+        );
         data.strokes[i].dbId = id;
         if (i < _data.strokes.length) {
           _data.strokes[i].dbId = id;
@@ -2982,7 +3625,8 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       }
     } else {
       final ids = await strokeRepo.replaceBlock(widget.block.id, [
-        for (int i = 0; i < data.strokes.length; i++) strokeWrite(i, data.strokes[i]),
+        for (int i = 0; i < data.strokes.length; i++)
+          strokeWrite(i, data.strokes[i]),
       ]);
       for (int i = 0; i < data.strokes.length && i < ids.length; i++) {
         data.strokes[i].dbId = ids[i];
@@ -2992,7 +3636,10 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       }
     }
     _strokeIds = data.strokes.map((s) => s.dbId).toList();
-    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {'h': data.height, 's': const []});
+    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+      'h': data.height,
+      's': const [],
+    });
   }
 
   @override
@@ -3025,16 +3672,29 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
             await deleteAiChatImage(prepared);
             return;
           }
-          await showAiChat(context, ref, noteId: widget.block.noteId, pendingImages: [prepared], accent: widget.accent);
+          await showAiChat(
+            context,
+            ref,
+            noteId: widget.block.noteId,
+            pendingImages: [prepared],
+            accent: widget.accent,
+          );
         } catch (_) {
           if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No pude preparar esa selección.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No pude preparar esa selección.')),
+          );
         }
       },
       onSendMathToYuli:
           kDebugMode
-              ? (strokes) =>
-                  runMathToYuliFlow(context, ref, strokes, accent: widget.accent, noteId: widget.block.noteId)
+              ? (strokes) => runMathToYuliFlow(
+                context,
+                ref,
+                strokes,
+                accent: widget.accent,
+                noteId: widget.block.noteId,
+              )
               : null,
     );
   }
@@ -3100,7 +3760,9 @@ List<String> _extractMarkdownTables(String md) {
     if (!lines[i].contains('|') || !separator.hasMatch(lines[i + 1])) continue;
 
     var end = i + 2;
-    while (end < lines.length && lines[end].trim().isNotEmpty && lines[end].contains('|')) {
+    while (end < lines.length &&
+        lines[end].trim().isNotEmpty &&
+        lines[end].contains('|')) {
       end++;
     }
     tables.add(lines.sublist(i, end).join('\n').trimRight());
@@ -3113,12 +3775,19 @@ double _markdownTableWidth(String md, double viewportWidth) {
   final rows =
       md
           .split('\n')
-          .where((line) => line.contains('|') && !RegExp(r'^\s*\|?[\s:|-]+\|[\s:|-]*\s*$').hasMatch(line))
+          .where(
+            (line) =>
+                line.contains('|') &&
+                !RegExp(r'^\s*\|?[\s:|-]+\|[\s:|-]*\s*$').hasMatch(line),
+          )
           .map(_markdownTableCells)
           .where((cells) => cells.length > 1)
           .toList();
   if (rows.isEmpty) return viewportWidth;
-  final columnCount = rows.fold<int>(0, (max, cells) => cells.length > max ? cells.length : max);
+  final columnCount = rows.fold<int>(
+    0,
+    (max, cells) => cells.length > max ? cells.length : max,
+  );
   final columnWidths = List<double>.filled(columnCount, 72);
   var tableHasMath = false;
   for (final cells in rows) {
@@ -3128,7 +3797,10 @@ double _markdownTableWidth(String md, double viewportWidth) {
           .fold<int>(0, (max, word) => word.length > max ? word.length : max);
       final cellLength = cells[i].length;
       final hasMath =
-          cells[i].contains(r'$') || cells[i].contains('\\') || cells[i].contains('∫') || cells[i].contains('∑');
+          cells[i].contains(r'$') ||
+          cells[i].contains('\\') ||
+          cells[i].contains('∫') ||
+          cells[i].contains('∑');
       tableHasMath = tableHasMath || hasMath;
       final estimated =
           hasMath
@@ -3162,6 +3834,7 @@ class NoteMarkdownPreview extends ConsumerWidget {
   final bool scrollWideTables;
   final ValueChanged<String>? onCopyBlock;
   final ValueChanged<String>? onPinBlock;
+  final ValueChanged<String>? onWikiLinkTap;
   const NoteMarkdownPreview({
     super.key,
     required this.data,
@@ -3172,26 +3845,48 @@ class NoteMarkdownPreview extends ConsumerWidget {
     this.scrollWideTables = true,
     this.onCopyBlock,
     this.onPinBlock,
+    this.onWikiLinkTap,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final md = fixMarkdownTables(data);
-    final tableMarkdown = onCopyBlock == null && onPinBlock == null ? const <String>[] : _extractMarkdownTables(md);
+    final tableMarkdown =
+        onCopyBlock == null && onPinBlock == null
+            ? const <String>[]
+            : _extractMarkdownTables(md);
     var renderedTableIndex = 0;
-    SpanNode? customTextGenerator(m.Node node, MarkdownConfig config, WidgetVisitor visitor) {
+    SpanNode? customTextGenerator(
+      m.Node node,
+      MarkdownConfig config,
+      WidgetVisitor visitor,
+    ) {
       return null;
     }
 
     final generator = MarkdownGenerator(
       textGenerator: customTextGenerator,
       linesMargin: tight ? EdgeInsets.zero : const EdgeInsets.only(bottom: 8),
-      inlineSyntaxList: [_LatexSyntax()],
-      blockSyntaxList: [const _DefinitionListSyntax(), const _LatexBlockSyntax(), const _AlignmentBlockSyntax()],
+      inlineSyntaxList: [_WikiLinkSyntax(), _LatexSyntax()],
+      blockSyntaxList: [
+        const _DefinitionListSyntax(),
+        const _LatexBlockSyntax(),
+        const _AlignmentBlockSyntax(),
+      ],
       generators: [
         SpanNodeGeneratorWithTag(
           tag: 'hr',
-          generator: (e, config, visitor) => _MarkdownHorizontalRuleNode(accent),
+          generator:
+              (e, config, visitor) => _MarkdownHorizontalRuleNode(accent),
+        ),
+        SpanNodeGeneratorWithTag(
+          tag: 'wikilink',
+          generator:
+              (e, config, visitor) => _WikiLinkNode(
+                e.attributes['label'] ?? e.textContent,
+                accent,
+                onWikiLinkTap,
+              ),
         ),
         SpanNodeGeneratorWithTag(
           tag: 'latex',
@@ -3207,29 +3902,69 @@ class NoteMarkdownPreview extends ConsumerWidget {
         ),
         SpanNodeGeneratorWithTag(
           tag: 'align',
-          generator: (e, config, visitor) => _AlignmentNode(e.attributes['align'] ?? 'left', e.textContent, config),
+          generator:
+              (e, config, visitor) => _AlignmentNode(
+                e.attributes['align'] ?? 'left',
+                e.textContent,
+                config,
+              ),
         ),
         SpanNodeGeneratorWithTag(
           tag: 'deflist',
-          generator: (e, config, visitor) => _DefinitionListNode(e.attributes['data'] ?? '', config),
+          generator:
+              (e, config, visitor) =>
+                  _DefinitionListNode(e.attributes['data'] ?? '', config),
         ),
       ],
     );
 
     final config = MarkdownConfig(
       configs: [
-        PConfig(textStyle: textStyle ?? yBody(size: 15, color: yInk2, height: 1.55)),
-        H1Config(style: ySans(size: 28, weight: FontWeight.w700, letterSpacing: -0.8, color: yInk)),
-        H2Config(style: ySans(size: 22, weight: FontWeight.w700, letterSpacing: -0.5, color: yInk)),
-        H3Config(style: ySans(size: 18, weight: FontWeight.w700, letterSpacing: -0.3, color: yInk)),
+        PConfig(
+          textStyle: textStyle ?? yBody(size: 15, color: yInk2, height: 1.55),
+        ),
+        H1Config(
+          style: ySans(
+            size: 28,
+            weight: FontWeight.w700,
+            letterSpacing: -0.8,
+            color: yInk,
+          ),
+        ),
+        H2Config(
+          style: ySans(
+            size: 22,
+            weight: FontWeight.w700,
+            letterSpacing: -0.5,
+            color: yInk,
+          ),
+        ),
+        H3Config(
+          style: ySans(
+            size: 18,
+            weight: FontWeight.w700,
+            letterSpacing: -0.3,
+            color: yInk,
+          ),
+        ),
         CheckBoxConfig(
           builder:
               (checked) => Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Icon(checked ? YuLiIcons.squareCheck : YuLiIcons.square, size: 18, color: yInk),
+                child: Icon(
+                  checked ? YuLiIcons.squareCheck : YuLiIcons.square,
+                  size: 18,
+                  color: yInk,
+                ),
               ),
         ),
-        CodeConfig(style: yMono(size: 12, color: yInk, tracking: 0.5).copyWith(backgroundColor: yCream2)),
+        CodeConfig(
+          style: yMono(
+            size: 12,
+            color: yInk,
+            tracking: 0.5,
+          ).copyWith(backgroundColor: yCream2),
+        ),
         if (onCopyBlock != null || onPinBlock != null)
           PreConfig(
             wrapper: (child, code, language) {
@@ -3245,8 +3980,14 @@ class NoteMarkdownPreview extends ConsumerWidget {
                     alignment: Alignment.centerRight,
                     child: MarkdownBlockActions(
                       accent: accent,
-                      onCopy: onCopyBlock == null ? null : () => onCopyBlock!(cleanCode),
-                      onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+                      onCopy:
+                          onCopyBlock == null
+                              ? null
+                              : () => onCopyBlock!(cleanCode),
+                      onPin:
+                          onPinBlock == null
+                              ? null
+                              : () => onPinBlock!(markdown),
                     ),
                   ),
                 ],
@@ -3256,7 +3997,8 @@ class NoteMarkdownPreview extends ConsumerWidget {
         if (tableMarkdown.isNotEmpty)
           TableConfig(
             wrapper: (child) {
-              final markdown = tableMarkdown[renderedTableIndex % tableMarkdown.length];
+              final markdown =
+                  tableMarkdown[renderedTableIndex % tableMarkdown.length];
               renderedTableIndex++;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3268,8 +4010,14 @@ class NoteMarkdownPreview extends ConsumerWidget {
                     alignment: Alignment.centerRight,
                     child: MarkdownBlockActions(
                       accent: accent,
-                      onCopy: onCopyBlock == null ? null : () => onCopyBlock!(markdown),
-                      onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+                      onCopy:
+                          onCopyBlock == null
+                              ? null
+                              : () => onCopyBlock!(markdown),
+                      onPin:
+                          onPinBlock == null
+                              ? null
+                              : () => onPinBlock!(markdown),
                     ),
                   ),
                 ],
@@ -3285,29 +4033,49 @@ class NoteMarkdownPreview extends ConsumerWidget {
               img = Image.file(
                 File(url),
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Text('[Imagen no encontrada]', style: yBody(size: 13, color: yMuted)),
+                errorBuilder:
+                    (_, _, _) => Text(
+                      '[Imagen no encontrada]',
+                      style: yBody(size: 13, color: yMuted),
+                    ),
               );
             } else {
               img = Image.network(
                 url,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Text('[Imagen: $url]', style: yBody(size: 13, color: yMuted)),
+                errorBuilder:
+                    (_, _, _) => Text(
+                      '[Imagen: $url]',
+                      style: yBody(size: 13, color: yMuted),
+                    ),
               );
             }
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: ConstrainedBox(constraints: BoxConstraints(maxHeight: 300, maxWidth: maxW), child: img),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: 300, maxWidth: maxW),
+                child: img,
+              ),
             );
           },
         ),
       ],
     );
-    final previewPadding = padding ?? (tight ? const EdgeInsets.symmetric(vertical: 4) : const EdgeInsets.all(8.0));
+    final previewPadding =
+        padding ??
+        (tight
+            ? const EdgeInsets.symmetric(vertical: 4)
+            : const EdgeInsets.all(8.0));
     final Widget markdown =
         tight
             ? Padding(
               padding: previewPadding,
-              child: MarkdownBlock(data: md, selectable: false, generator: generator, config: config),
+              child: MarkdownBlock(
+                data: md,
+                selectable: false,
+                generator: generator,
+                config: config,
+              ),
             )
             : MarkdownWidget(
               data: md,
@@ -3334,6 +4102,51 @@ class NoteMarkdownPreview extends ConsumerWidget {
   }
 }
 
+class _WikiLinkNode extends SpanNode {
+  final String label;
+  final Color accent;
+  final ValueChanged<String>? onTap;
+
+  _WikiLinkNode(this.label, this.accent, this.onTap);
+
+  @override
+  InlineSpan build() {
+    final style = (parentStyle ?? const TextStyle()).copyWith(
+      color: accent,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.underline,
+      decorationColor: accent.withValues(alpha: 0.55),
+    );
+    if (onTap == null) return TextSpan(text: label, style: style);
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.baseline,
+      baseline: TextBaseline.alphabetic,
+      child: Semantics(
+        button: true,
+        label: 'Abrir $label',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: () => onTap!(label),
+          child: Text(label, style: style),
+        ),
+      ),
+    );
+  }
+}
+
+class _WikiLinkSyntax extends m.InlineSyntax {
+  _WikiLinkSyntax() : super(r'\[\[([^\]\n]{1,120})\]\]');
+
+  @override
+  bool onMatch(m.InlineParser parser, Match match) {
+    final label = match.group(1)?.trim() ?? '';
+    final element = m.Element.text('wikilink', label);
+    element.attributes['label'] = label;
+    parser.addNode(element);
+    return true;
+  }
+}
+
 class _MarkdownHorizontalRuleNode extends SpanNode {
   final Color accent;
 
@@ -3356,7 +4169,12 @@ class MarkdownBlockActions extends StatelessWidget {
   final VoidCallback? onCopy;
   final VoidCallback? onPin;
 
-  const MarkdownBlockActions({super.key, required this.accent, this.onCopy, this.onPin});
+  const MarkdownBlockActions({
+    super.key,
+    required this.accent,
+    this.onCopy,
+    this.onPin,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3385,15 +4203,29 @@ class MarkdownBlockActions extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (onCopy != null) _action(icon: YuLiIcons.copy, label: 'Copiar bloque', onTap: onCopy!),
+          if (onCopy != null)
+            _action(
+              icon: YuLiIcons.copy,
+              label: 'Copiar bloque',
+              onTap: onCopy!,
+            ),
           if (onCopy != null && onPin != null) const SizedBox(width: 2),
-          if (onPin != null) _action(icon: YuLiIcons.pin, label: 'Pinear en lienzo', onTap: onPin!),
+          if (onPin != null)
+            _action(
+              icon: YuLiIcons.pin,
+              label: 'Pinear en lienzo',
+              onTap: onPin!,
+            ),
         ],
       ),
     );
   }
 
-  Widget _action({required IconData icon, required String label, required VoidCallback onTap}) {
+  Widget _action({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return Tooltip(
       message: label,
       child: Semantics(
@@ -3402,7 +4234,11 @@ class MarkdownBlockActions extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
-          child: SizedBox(width: 28, height: 28, child: Icon(icon, size: 14, color: accent)),
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Icon(icon, size: 14, color: accent),
+          ),
         ),
       ),
     );
@@ -3441,11 +4277,25 @@ class _LatexNode extends SpanNode {
       normalizedContent,
       mathStyle: isInline ? MathStyle.text : MathStyle.display,
       textStyle: style,
-      onErrorFallback: (err) => Text(_normalizeLatexContent(textContent), style: style.copyWith(color: yInk)),
+      onErrorFallback:
+          (err) => Text(
+            _normalizeLatexContent(textContent),
+            style: style.copyWith(color: yInk),
+          ),
     );
-    final rendered = isInline ? FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: math) : math;
+    final rendered =
+        isInline
+            ? FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: math,
+            )
+            : math;
     if (isInline) {
-      return WidgetSpan(alignment: PlaceholderAlignment.middle, child: rendered);
+      return WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: rendered,
+      );
     }
     final markdown = '\$\$\n$normalizedContent\n\$\$';
     final block =
@@ -3461,8 +4311,12 @@ class _LatexNode extends SpanNode {
                   alignment: Alignment.centerRight,
                   child: MarkdownBlockActions(
                     accent: accent,
-                    onCopy: onCopyBlock == null ? null : () => onCopyBlock!(normalizedContent),
-                    onPin: onPinBlock == null ? null : () => onPinBlock!(markdown),
+                    onCopy:
+                        onCopyBlock == null
+                            ? null
+                            : () => onCopyBlock!(normalizedContent),
+                    onPin:
+                        onPinBlock == null ? null : () => onPinBlock!(markdown),
                   ),
                 ),
               ],
@@ -3508,7 +4362,10 @@ class _LatexBlockSyntax extends m.BlockSyntax {
 }
 
 class _LatexSyntax extends m.InlineSyntax {
-  _LatexSyntax() : super(r'(\$\$\s*([\s\S]+?)\s*\$\$)|((?<![\\$])\$(?![$\s])([^$\n]*[^$\s\n][^$\n]*)\$(?!\$))');
+  _LatexSyntax()
+    : super(
+        r'(\$\$\s*([\s\S]+?)\s*\$\$)|((?<![\\$])\$(?![$\s])([^$\n]*[^$\s\n][^$\n]*)\$(?!\$))',
+      );
 
   @override
   bool onMatch(m.InlineParser parser, Match match) {
@@ -3555,7 +4412,8 @@ class _AlignmentNode extends SpanNode {
       generators: [
         SpanNodeGeneratorWithTag(
           tag: 'latex',
-          generator: (e, cfg, visitor) => _LatexNode(e.attributes, e.textContent, cfg),
+          generator:
+              (e, cfg, visitor) => _LatexNode(e.attributes, e.textContent, cfg),
         ),
       ],
     );
@@ -3564,7 +4422,10 @@ class _AlignmentNode extends SpanNode {
 
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
-      child: SizedBox(width: double.infinity, child: Column(mainAxisSize: MainAxisSize.min, children: widgets)),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(mainAxisSize: MainAxisSize.min, children: widgets),
+      ),
     );
   }
 }
@@ -3663,7 +4524,15 @@ class _DefinitionListNode extends SpanNode {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(term, style: ySans(size: 15, weight: FontWeight.w700, color: yInk, height: 1.4)),
+                Text(
+                  term,
+                  style: ySans(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: yInk,
+                    height: 1.4,
+                  ),
+                ),
                 for (final def in defs)
                   Padding(
                     padding: const EdgeInsets.only(left: 20, top: 2),
@@ -3674,7 +4543,12 @@ class _DefinitionListNode extends SpanNode {
                           padding: const EdgeInsets.only(top: 5, right: 8),
                           child: Container(width: 6, height: 2, color: yMuted),
                         ),
-                        Expanded(child: Text(def, style: yBody(size: 14, color: yInk2, height: 1.5))),
+                        Expanded(
+                          child: Text(
+                            def,
+                            style: yBody(size: 14, color: yInk2, height: 1.5),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -3691,7 +4565,8 @@ class _DefinitionListNode extends SpanNode {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final c in children) Builder(builder: (_) => Text.rich(TextSpan(children: [c]))),
+          for (final c in children)
+            Builder(builder: (_) => Text.rich(TextSpan(children: [c]))),
         ],
       ),
     );

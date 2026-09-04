@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/folder.dart';
@@ -9,6 +9,7 @@ import '../../domain/models/note.dart';
 import '../../domain/models/note_block.dart';
 import '../providers/database_providers.dart';
 import '../providers/flight_workspace_providers.dart';
+import '../screens/flight/pin_dialog.dart';
 import '../theme/lab_icons.dart';
 import 'yuli_design.dart';
 
@@ -61,9 +62,8 @@ Future<void> showFlightWorkspace({
   required FlightWorkspaceTarget current,
   required Color accent,
   required ValueChanged<FlightWorkspaceTarget> onOpen,
-  ValueChanged<String>? onInsertLink,
 }) async {
-  final action = await showGeneralDialog<_WorkspaceAction>(
+  final target = await showGeneralDialog<FlightWorkspaceTarget>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Cerrar explorador',
@@ -72,11 +72,7 @@ Future<void> showFlightWorkspace({
     pageBuilder:
         (_, _, _) => Align(
           alignment: Alignment.centerLeft,
-          child: _FlightWorkspacePanel(
-            current: current,
-            accent: accent,
-            canInsertLink: onInsertLink != null,
-          ),
+          child: _FlightWorkspacePanel(current: current, accent: accent),
         ),
     transitionBuilder:
         (_, animation, _, child) => SlideTransition(
@@ -89,21 +85,9 @@ Future<void> showFlightWorkspace({
           child: child,
         ),
   );
-  if (action == null || !context.mounted) return;
-  if (action.insertLink) {
-    onInsertLink?.call('[[${flightWikiLinkLabel(action.target)}]]');
-    return;
-  }
-  ref.read(flightWorkspaceTabsProvider.notifier).open(action.target);
-  onOpen(action.target);
-}
-
-class _WorkspaceAction {
-  final FlightWorkspaceTarget target;
-  final bool insertLink;
-
-  const _WorkspaceAction.open(this.target) : insertLink = false;
-  const _WorkspaceAction.insert(this.target) : insertLink = true;
+  if (target == null || !context.mounted) return;
+  ref.read(flightWorkspaceTabsProvider.notifier).open(target);
+  onOpen(target);
 }
 
 class FlightWorkspaceTabsBar extends ConsumerWidget {
@@ -152,78 +136,107 @@ class FlightWorkspaceTabsBar extends ConsumerWidget {
             ),
           ),
           Expanded(
-            child: ListView.separated(
+            child: ReorderableListView.builder(
               scrollDirection: Axis.horizontal,
               padding: EdgeInsets.zero,
+              buildDefaultDragHandles: false,
               itemCount: tabs.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 1),
+              onReorder: ref.read(flightWorkspaceTabsProvider.notifier).reorder,
+              proxyDecorator:
+                  (child, _, _) => Material(
+                    color: const Color(0x00000000),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        boxShadow: [
+                          BoxShadow(
+                            color: yInk.withValues(alpha: 0.18),
+                            offset: const Offset(3, 3),
+                          ),
+                        ],
+                      ),
+                      child: child,
+                    ),
+                  ),
               itemBuilder: (context, index) {
                 final tab = tabs[index];
                 final selected = tab.key == current.key;
-                return Semantics(
-                  button: true,
-                  selected: selected,
-                  label: tab.label,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: selected ? null : () => onOpen(tab),
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        minWidth: 118,
-                        maxWidth: 220,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: selected ? accent : yCream,
-                        border: const Border(
-                          right: BorderSide(
-                            color: yBorderStrong,
-                            width: yLineThin,
-                          ),
+                return ReorderableDelayedDragStartListener(
+                  key: ValueKey(tab.key),
+                  index: index,
+                  child: Semantics(
+                    button: true,
+                    selected: selected,
+                    label: tab.label,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: selected ? null : () => onOpen(tab),
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 118,
+                          maxWidth: 220,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _kindIcon(tab.kind),
-                            size: 14,
-                            color: selected ? yCream : yMuted,
-                          ),
-                          const SizedBox(width: 7),
-                          Flexible(
-                            child: Text(
-                              tab.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ySans(
-                                size: 12,
-                                weight:
-                                    selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w600,
-                                color: selected ? yCream : yInk2,
-                              ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: selected ? accent : yCream,
+                          border: const Border(
+                            right: BorderSide(
+                              color: yBorderStrong,
+                              width: yLineThin,
                             ),
                           ),
-                          if (!selected) ...[
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _kindIcon(tab.kind),
+                              size: 14,
+                              color: selected ? yCream : yMuted,
+                            ),
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                tab.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: ySans(
+                                  size: 12,
+                                  weight:
+                                      selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w600,
+                                  color: selected ? yCream : yInk2,
+                                ),
+                              ),
+                            ),
                             const SizedBox(width: 8),
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap:
-                                  () => ref
-                                      .read(
-                                        flightWorkspaceTabsProvider.notifier,
-                                      )
-                                      .close(tab),
-                              child: const Icon(
+                              onTap: () {
+                                final next =
+                                    selected && tabs.length > 1
+                                        ? tabs[index == tabs.length - 1
+                                            ? index - 1
+                                            : index + 1]
+                                        : null;
+                                ref
+                                    .read(flightWorkspaceTabsProvider.notifier)
+                                    .close(tab);
+                                if (!selected) return;
+                                if (next != null) {
+                                  onOpen(next);
+                                } else {
+                                  Navigator.maybePop(context);
+                                }
+                              },
+                              child: Icon(
                                 YuLiIcons.close,
                                 size: 13,
-                                color: yMuted,
+                                color: selected ? yCream : yMuted,
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -240,13 +253,8 @@ class FlightWorkspaceTabsBar extends ConsumerWidget {
 class _FlightWorkspacePanel extends ConsumerStatefulWidget {
   final FlightWorkspaceTarget current;
   final Color accent;
-  final bool canInsertLink;
 
-  const _FlightWorkspacePanel({
-    required this.current,
-    required this.accent,
-    required this.canInsertLink,
-  });
+  const _FlightWorkspacePanel({required this.current, required this.accent});
 
   @override
   ConsumerState<_FlightWorkspacePanel> createState() =>
@@ -256,13 +264,16 @@ class _FlightWorkspacePanel extends ConsumerStatefulWidget {
 class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
   late Future<_WorkspaceSnapshot> _snapshot;
   final _queryController = TextEditingController();
-  final Set<int> _expandedFolders = {};
-  bool _connectionsOpen = false;
+  Offset? _dragPointerStart;
+  double _dragDistance = 0;
+  _WorkspaceNotice? _notice;
 
   @override
   void initState() {
     super.initState();
-    _expandedFolders.add(widget.current.folderId);
+    ref
+        .read(flightWorkspaceExpansionProvider.notifier)
+        .ensureExpanded('folder:${widget.current.folderId}');
     _snapshot = _loadSnapshot();
   }
 
@@ -283,28 +294,278 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
     final blocks = await ref
         .read(noteBlockRepositoryProvider)
         .getByNoteIds(notes.map((note) => note.id).toList());
-    return _WorkspaceSnapshot.build(
+    final snapshot = _WorkspaceSnapshot.build(
       folders: folders,
       notes: notes,
       blocks: blocks,
       current: widget.current,
     );
+    final availableKeys = {
+      for (final targets in snapshot.targetsByFolder.values)
+        for (final target in targets) target.key,
+    };
+    if (mounted) {
+      ref.read(flightWorkspaceTabsProvider.notifier).retainKeys(availableKeys);
+    }
+    return snapshot;
+  }
+
+  Set<int> _branchIds(_WorkspaceSnapshot data, int noteId) {
+    final childrenByParent = <int, List<int>>{};
+    for (final note in data.notesById.values) {
+      final parentId = note.parentNoteId;
+      if (parentId == null) continue;
+      childrenByParent.putIfAbsent(parentId, () => []).add(note.id);
+    }
+    final result = <int>{};
+    final pending = <int>[noteId];
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      if (!result.add(current)) continue;
+      pending.addAll(childrenByParent[current] ?? const []);
+    }
+    return result;
+  }
+
+  _WorkspaceDropValidity _dropValidity(
+    _WorkspaceSnapshot data,
+    _WorkspaceDragData drag,
+    _WorkspaceDropDestination destination,
+  ) {
+    final source = data.notesById[drag.noteId];
+    if (source == null || !source.isWikiCreated) {
+      return const _WorkspaceDropValidity.invalid('SOLO ELEMENTOS [[ ]]');
+    }
+    final branchIds = _branchIds(data, source.id);
+    if (destination.parentNoteId != null &&
+        branchIds.contains(destination.parentNoteId)) {
+      return const _WorkspaceDropValidity.invalid('NO DENTRO DE SÍ MISMO');
+    }
+    if (destination.beforeNoteId == source.id) {
+      return const _WorkspaceDropValidity.invalid('YA ESTÁ AQUÍ');
+    }
+    final branchLabels =
+        branchIds
+            .map((id) => data.notesById[id]?.displayTitle ?? '')
+            .map(_normalize)
+            .where((label) => label.isNotEmpty)
+            .toSet();
+    final collision =
+        source.folderId != destination.folderId &&
+        data.notesById.values.any(
+          (note) =>
+              note.isActive &&
+              note.folderId == destination.folderId &&
+              !branchIds.contains(note.id) &&
+              branchLabels.contains(_normalize(note.displayTitle)),
+        );
+    if (collision) {
+      return const _WorkspaceDropValidity.invalid('NOMBRE REPETIDO');
+    }
+    return _WorkspaceDropValidity.valid(destination.actionLabel);
+  }
+
+  Future<void> _moveWorkspaceChild(
+    _WorkspaceDragData drag,
+    _WorkspaceDropDestination destination,
+  ) async {
+    try {
+      final affectedIds = await ref
+          .read(noteRepositoryProvider)
+          .moveWorkspaceBranch(
+            drag.noteId,
+            folderId: destination.folderId,
+            parentNoteId: destination.parentNoteId,
+            parentCanvasBlockId: destination.parentCanvasBlockId,
+            beforeNoteId: destination.beforeNoteId,
+          );
+      HapticFeedback.mediumImpact();
+      if (!mounted) return;
+      ref
+          .read(flightWorkspaceExpansionProvider.notifier)
+          .ensureExpanded('folder:${destination.folderId}');
+      if (destination.parentNoteId != null) {
+        ref
+            .read(flightWorkspaceExpansionProvider.notifier)
+            .ensureExpanded(
+              'target:${destination.parentNoteId}:${destination.parentCanvasBlockId ?? 0}',
+            );
+      }
+      final nextSnapshot = await _loadSnapshot();
+      if (!mounted) return;
+      final targetsByKey = {
+        for (final targets in nextSnapshot.targetsByFolder.values)
+          for (final target in targets) target.key: target,
+      };
+      final tabs = [...ref.read(flightWorkspaceTabsProvider)];
+      for (final tab in tabs) {
+        final refreshed = targetsByKey[tab.key];
+        if (refreshed != null) {
+          ref.read(flightWorkspaceTabsProvider.notifier).refresh(refreshed);
+        }
+      }
+      final refreshedCurrent = targetsByKey[widget.current.key];
+      if (affectedIds.contains(widget.current.noteId) &&
+          refreshedCurrent != null) {
+        _open(refreshedCurrent);
+        return;
+      }
+      setState(() {
+        _snapshot = Future.value(nextSnapshot);
+        _notice = _WorkspaceNotice(
+          'Movido a ${destination.destinationLabel}',
+          isError: false,
+        );
+      });
+    } on StateError catch (error) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _notice = _WorkspaceNotice(error.message.toString(), isError: true);
+      });
+    }
   }
 
   void _open(FlightWorkspaceTarget target) {
-    Navigator.pop(context, _WorkspaceAction.open(target));
+    Navigator.pop(context, target);
   }
 
-  void _insert(FlightWorkspaceTarget target) {
-    if (!widget.canInsertLink) return;
-    Navigator.pop(context, _WorkspaceAction.insert(target));
+  Future<void> _manageWorkspaceChild(int noteId) async {
+    HapticFeedback.mediumImpact();
+    final notes = await ref.read(noteRepositoryProvider).watchAllActive().first;
+    final noteById = {for (final note in notes) note.id: note};
+    final note = noteById[noteId];
+    if (note == null || !note.isWikiCreated || !mounted) return;
+    final childrenByParent = <int, List<int>>{};
+    for (final item in notes) {
+      final parentId = item.parentNoteId;
+      if (parentId == null) continue;
+      childrenByParent.putIfAbsent(parentId, () => []).add(item.id);
+    }
+    final branchIds = <int>[];
+    final visited = <int>{};
+    final pending = <int>[noteId];
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      if (!visited.add(current)) continue;
+      branchIds.add(current);
+      pending.addAll(childrenByParent[current] ?? const []);
+    }
+    final descendants = branchIds.length - 1;
+    final choice = await showDialog<_WorkspaceDeleteChoice>(
+      context: context,
+      builder:
+          (dialogContext) => PinDialogShell(
+            icon: YuLiIcons.trash,
+            title: 'GESTIONAR ELEMENTO',
+            accent: widget.accent,
+            footer: Row(
+              children: [
+                const Spacer(),
+                PinGhostButton(
+                  label: 'CANCELAR',
+                  onTap: () => Navigator.pop(dialogContext),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  note.displayTitle,
+                  style: ySans(size: 18, weight: FontWeight.w800, color: yInk),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  descendants == 0
+                      ? 'Este elemento se enviará a Papelera.'
+                      : 'Este elemento contiene $descendants ${descendants == 1 ? 'descendiente' : 'descendientes'}. Elige qué debe ocurrir con ellos.',
+                  style: yBody(size: 12, color: yMuted, height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                _WorkspaceDeleteAction(
+                  icon: YuLiIcons.trash,
+                  title: descendants == 0 ? 'ELIMINAR' : 'ELIMINAR RAMA',
+                  description:
+                      descendants == 0
+                          ? 'Enviar este elemento a Papelera.'
+                          : 'Enviar este elemento y sus $descendants descendientes a Papelera.',
+                  accent: widget.accent,
+                  onTap:
+                      () => Navigator.pop(
+                        dialogContext,
+                        _WorkspaceDeleteChoice.branch,
+                      ),
+                ),
+                if (descendants > 0) ...[
+                  const SizedBox(height: 12),
+                  _WorkspaceDeleteAction(
+                    icon: YuLiIcons.folder,
+                    title: 'CONSERVAR HIJOS',
+                    description:
+                        'Eliminar solo este elemento. Sus hijos directos aparecerán en la carpeta y conservarán sus propias ramas.',
+                    accent: widget.accent,
+                    onTap:
+                        () => Navigator.pop(
+                          dialogContext,
+                          _WorkspaceDeleteChoice.keepChildren,
+                        ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+    );
+    if (choice == null || !mounted) return;
+    final repository = ref.read(noteRepositoryProvider);
+    final removedIds = switch (choice) {
+      _WorkspaceDeleteChoice.branch => await repository.softDeleteBranch(
+        noteId,
+      ),
+      _WorkspaceDeleteChoice.keepChildren => <int>[noteId],
+    };
+    if (choice == _WorkspaceDeleteChoice.keepChildren) {
+      await repository.softDeleteKeepingChildren(noteId);
+    }
+    if (!mounted || removedIds.isEmpty) return;
+    _closeRemovedNotes(removedIds.toSet());
+  }
+
+  void _closeRemovedNotes(Set<int> noteIds) {
+    final tabs = ref.read(flightWorkspaceTabsProvider);
+    final currentIndex = tabs.indexWhere(
+      (target) => target.key == widget.current.key,
+    );
+    final surviving =
+        tabs.where((target) => !noteIds.contains(target.noteId)).toList();
+    for (final noteId in noteIds) {
+      ref.read(flightWorkspaceTabsProvider.notifier).closeNote(noteId);
+    }
+    if (!noteIds.contains(widget.current.noteId)) {
+      setState(() => _snapshot = _loadSnapshot());
+      return;
+    }
+    if (surviving.isNotEmpty) {
+      final nextIndex = math.min(
+        math.max(currentIndex, 0),
+        surviving.length - 1,
+      );
+      _open(surviving[nextIndex]);
+      return;
+    }
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (navigator.mounted) navigator.maybePop();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final width = math.min(460.0, MediaQuery.sizeOf(context).width * 0.92);
     return Material(
-      color: Colors.transparent,
+      color: const Color(0x00000000),
       child: SafeArea(
         child: Container(
           width: width,
@@ -433,9 +694,25 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 28),
       children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          transitionBuilder:
+              (child, animation) => SizeTransition(
+                sizeFactor: animation,
+                axisAlignment: -1,
+                child: FadeTransition(opacity: animation, child: child),
+              ),
+          child:
+              _notice == null
+                  ? const SizedBox.shrink(key: ValueKey('no-notice'))
+                  : _WorkspaceNoticeBanner(
+                    key: ValueKey('${_notice!.message}:${_notice!.isError}'),
+                    notice: _notice!,
+                    accent: widget.accent,
+                    onClose: () => setState(() => _notice = null),
+                  ),
+        ),
         _tabsSection(),
-        if (data.outgoing.isNotEmpty || data.backlinks.isNotEmpty)
-          _connectionsSection(data),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 7),
           child: Text(
@@ -476,76 +753,8 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
             tab,
             selected: tab.key == widget.current.key,
             showFolder: true,
+            onClose: () => _closeTab(tab, tabs),
           ),
-      ],
-    );
-  }
-
-  Widget _connectionsSection(_WorkspaceSnapshot data) {
-    return Column(
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => _connectionsOpen = !_connectionsOpen),
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            decoration: BoxDecoration(
-              color: Color.lerp(yCream, widget.accent, 0.08),
-              border: Border.all(color: widget.accent, width: yLineThin),
-            ),
-            child: Row(
-              children: [
-                Icon(YuLiIcons.link, color: widget.accent, size: 16),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    'CONEXIONES · ${data.outgoing.length + data.backlinks.length}',
-                    style: ySans(
-                      size: 12,
-                      weight: FontWeight.w800,
-                      color: yInk,
-                    ),
-                  ),
-                ),
-                Icon(
-                  _connectionsOpen
-                      ? YuLiIcons.chevronDown
-                      : YuLiIcons.chevronRight,
-                  color: yInk,
-                  size: 16,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_connectionsOpen) ...[
-          if (data.outgoing.isNotEmpty)
-            _connectionGroup('MENCIONA', data.outgoing),
-          if (data.backlinks.isNotEmpty)
-            _connectionGroup('MENCIONADA EN', data.backlinks),
-        ],
-      ],
-    );
-  }
-
-  Widget _connectionGroup(String label, List<FlightWorkspaceTarget> targets) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 12, 16, 4),
-          child: Text(
-            label,
-            style: yMono(
-              size: 9,
-              weight: FontWeight.w700,
-              tracking: 1.1,
-              color: yMuted,
-            ),
-          ),
-        ),
-        for (final target in targets) _targetRow(target, showFolder: true),
       ],
     );
   }
@@ -558,72 +767,424 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
             : targets
                 .where((target) => _normalize(target.label).contains(query))
                 .toList();
-    final expanded = query.isNotEmpty || _expandedFolders.contains(folder.id);
+    final expansionKey = 'folder:${folder.id}';
+    final expanded =
+        query.isNotEmpty ||
+        ref.watch(flightWorkspaceExpansionProvider).contains(expansionKey);
+    final folderDestination = _WorkspaceDropDestination(
+      key: 'folder:${folder.id}',
+      folderId: folder.id,
+      actionLabel: 'SOLTAR EN CARPETA',
+      destinationLabel: folder.name,
+    );
     return Column(
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap:
-              () => setState(() {
-                if (expanded && query.isEmpty) {
-                  _expandedFolders.remove(folder.id);
-                } else {
-                  _expandedFolders.add(folder.id);
-                }
-              }),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: yBorderSoft, width: 1)),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  expanded ? YuLiIcons.chevronDown : YuLiIcons.chevronRight,
-                  size: 15,
-                  color: yMuted,
+        _dropTarget(
+          data: data,
+          destination: folderDestination,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap:
+                query.isNotEmpty
+                    ? null
+                    : () => ref
+                        .read(flightWorkspaceExpansionProvider.notifier)
+                        .toggle(expansionKey),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: yBorderSoft, width: 1),
                 ),
-                const SizedBox(width: 5),
-                Icon(YuLiIcons.folder, size: 17, color: folder.color),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    folder.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ySans(
-                      size: 14,
-                      weight:
-                          folder.id == widget.current.folderId
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                      color: yInk,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    expanded ? YuLiIcons.chevronDown : YuLiIcons.chevronRight,
+                    size: 15,
+                    color: yMuted,
+                  ),
+                  const SizedBox(width: 5),
+                  Icon(YuLiIcons.folder, size: 17, color: folder.color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      folder.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ySans(
+                        size: 14,
+                        weight:
+                            folder.id == widget.current.folderId
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                        color: yInk,
+                      ),
                     ),
                   ),
-                ),
-                Text('${targets.length}', style: yMono(size: 9, color: yMuted)),
-              ],
+                  Text(
+                    '${targets.length}',
+                    style: yMono(size: 9, color: yMuted),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
         if (expanded)
-          for (final target in visibleTargets)
-            _targetRow(
-              target,
-              selected: target.key == widget.current.key,
-              indent: 18,
-              allowInsert: target.key != widget.current.key,
-            ),
+          if (query.isNotEmpty)
+            for (final target in visibleTargets)
+              _draggableWorkspaceChild(
+                data: data,
+                noteId: target.noteId,
+                label:
+                    data.notesById[target.noteId]?.displayTitle ?? target.label,
+                child: _dropTarget(
+                  data: data,
+                  destination: _destinationForTarget(target),
+                  child: _targetRow(
+                    target,
+                    selected: target.key == widget.current.key,
+                    indent: 18,
+                  ),
+                ),
+              )
+          else
+            for (final node in data.rootsByFolder[folder.id] ?? const [])
+              _workspaceTree(node, data, const {}, 18),
       ],
+    );
+  }
+
+  Widget _workspaceTree(
+    FlightWorkspaceTreeNode node,
+    _WorkspaceSnapshot data,
+    Set<String> ancestors,
+    double indent,
+  ) {
+    final cyclic = ancestors.contains(node.key);
+    final expansionKey = 'target:${node.key}';
+    final expanded = ref
+        .watch(flightWorkspaceExpansionProvider)
+        .contains(expansionKey);
+    final nextAncestors = {...ancestors, node.key};
+    final canExpand = node.children.isNotEmpty && !cyclic;
+    final note = node.noteId == null ? null : data.notesById[node.noteId];
+    final target = node.target;
+    final Widget row;
+    if (target != null) {
+      row = _dropTarget(
+        data: data,
+        destination: _destinationForTarget(target),
+        child: _targetRow(
+          target,
+          label: node.label,
+          selected: target.key == widget.current.key,
+          indent: indent,
+          expandable: canExpand,
+          expanded: expanded,
+          onToggle:
+              !canExpand
+                  ? null
+                  : () => ref
+                      .read(flightWorkspaceExpansionProvider.notifier)
+                      .toggle(expansionKey),
+        ),
+      );
+    } else {
+      row = _dropTarget(
+        data: data,
+        destination: _WorkspaceDropDestination.invalid(
+          key: 'container:${node.key}',
+          folderId: node.folderId,
+          label: 'ELIGE UNA PIZARRA',
+        ),
+        child: _containerRow(
+          node,
+          indent: indent,
+          expanded: expanded,
+          onToggle:
+              !canExpand
+                  ? null
+                  : () => ref
+                      .read(flightWorkspaceExpansionProvider.notifier)
+                      .toggle(expansionKey),
+        ),
+      );
+    }
+    final interactiveRow = _draggableWorkspaceChild(
+      data: data,
+      noteId: node.noteId,
+      label: node.label,
+      child: row,
+    );
+    return Column(
+      children: [
+        if (note != null)
+          _reorderTarget(data: data, before: note, indent: indent),
+        interactiveRow,
+        if (expanded && !cyclic)
+          for (final child in node.children)
+            _workspaceTree(child, data, nextAncestors, indent + 18),
+      ],
+    );
+  }
+
+  _WorkspaceDropDestination _destinationForTarget(
+    FlightWorkspaceTarget target,
+  ) => _WorkspaceDropDestination(
+    key: 'inside:${target.key}',
+    folderId: target.folderId,
+    parentNoteId: target.noteId,
+    parentCanvasBlockId:
+        target.kind == NoteKind.whiteboard ? target.canvasBlockId : null,
+    actionLabel:
+        target.kind == NoteKind.whiteboard
+            ? 'SOLTAR EN PIZARRA'
+            : 'SOLTAR DENTRO',
+    destinationLabel: target.label,
+  );
+
+  Widget _reorderTarget({
+    required _WorkspaceSnapshot data,
+    required Note before,
+    required double indent,
+  }) {
+    final destination = _WorkspaceDropDestination(
+      key: 'before:${before.id}',
+      folderId: before.folderId,
+      parentNoteId: before.parentNoteId,
+      parentCanvasBlockId: before.parentCanvasBlockId,
+      beforeNoteId: before.id,
+      actionLabel: 'INSERTAR AQUÍ',
+      destinationLabel: 'esta posición',
+    );
+    return _dropTarget(
+      data: data,
+      destination: destination,
+      compact: true,
+      indent: indent,
+      child: const SizedBox.shrink(),
+    );
+  }
+
+  Widget _draggableWorkspaceChild({
+    required _WorkspaceSnapshot data,
+    required int? noteId,
+    required String label,
+    required Widget child,
+  }) {
+    final note = noteId == null ? null : data.notesById[noteId];
+    if (note == null || !note.isWikiCreated) return child;
+    final drag = _WorkspaceDragData(noteId: note.id, label: label);
+    return Listener(
+      onPointerDown: (event) {
+        _dragPointerStart = event.position;
+        _dragDistance = 0;
+      },
+      child: LongPressDraggable<_WorkspaceDragData>(
+        data: drag,
+        delay: const Duration(milliseconds: 360),
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        maxSimultaneousDrags: 1,
+        onDragStarted: () {
+          HapticFeedback.mediumImpact();
+          setState(() => _notice = null);
+        },
+        onDragUpdate: (details) {
+          final start = _dragPointerStart;
+          if (start == null) return;
+          _dragDistance = math.max(
+            _dragDistance,
+            (details.globalPosition - start).distance,
+          );
+        },
+        onDragEnd: (details) {
+          final shouldManage = !details.wasAccepted && _dragDistance < 12;
+          _dragPointerStart = null;
+          _dragDistance = 0;
+          if (shouldManage) _manageWorkspaceChild(note.id);
+        },
+        feedback: _WorkspaceDragFeedback(
+          label: label,
+          kind: note.kind,
+          accent: widget.accent,
+        ),
+        childWhenDragging: Opacity(opacity: 0.36, child: child),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _dropTarget({
+    required _WorkspaceSnapshot data,
+    required _WorkspaceDropDestination destination,
+    required Widget child,
+    bool compact = false,
+    double indent = 0,
+  }) {
+    return DragTarget<_WorkspaceDragData>(
+      key: ValueKey(destination.key),
+      onWillAcceptWithDetails: (details) {
+        if (destination.invalidLabel != null) return false;
+        return _dropValidity(data, details.data, destination).valid;
+      },
+      onAcceptWithDetails: (details) {
+        _moveWorkspaceChild(details.data, destination);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final drag =
+            candidateData.isNotEmpty
+                ? candidateData.first
+                : rejectedData.isNotEmpty
+                ? rejectedData.first
+                : null;
+        final active = drag != null;
+        final validity =
+            drag == null
+                ? null
+                : destination.invalidLabel != null
+                ? _WorkspaceDropValidity.invalid(destination.invalidLabel!)
+                : _dropValidity(data, drag, destination);
+        final valid = validity?.valid == true;
+        final signalColor = valid ? widget.accent : yFight;
+        if (compact) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            height: active ? 30 : 8,
+            margin: EdgeInsets.only(left: 14 + indent, right: 14),
+            padding:
+                active
+                    ? const EdgeInsets.symmetric(horizontal: 8)
+                    : EdgeInsets.zero,
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: active ? signalColor.withValues(alpha: 0.14) : null,
+              border: Border(
+                top: BorderSide(
+                  color: active ? signalColor : const Color(0x00000000),
+                  width: active ? yLineThin : 0,
+                ),
+              ),
+            ),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 120),
+              opacity: active ? 1 : 0,
+              child: Text(
+                validity?.label ?? '',
+                style: yMono(
+                  size: 9,
+                  weight: FontWeight.w800,
+                  tracking: 0.7,
+                  color: signalColor,
+                ),
+              ),
+            ),
+          );
+        }
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: active ? signalColor.withValues(alpha: 0.13) : null,
+            border: Border(
+              left: BorderSide(
+                color: active ? signalColor : const Color(0x00000000),
+                width: active ? 4 : 0,
+              ),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              child,
+              AnimatedSize(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                child:
+                    active
+                        ? Container(
+                          width: double.infinity,
+                          color: signalColor,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
+                          child: Text(
+                            validity?.label ?? '',
+                            style: yMono(
+                              size: 9,
+                              weight: FontWeight.w800,
+                              tracking: 0.7,
+                              color: yCream,
+                            ),
+                          ),
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _containerRow(
+    FlightWorkspaceTreeNode node, {
+    required double indent,
+    required bool expanded,
+    required VoidCallback? onToggle,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle,
+      child: Container(
+        padding: EdgeInsets.only(left: 14 + indent, right: 14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Icon(
+                  expanded ? YuLiIcons.chevronDown : YuLiIcons.chevronRight,
+                  size: 14,
+                  color: yMuted,
+                ),
+              ),
+              Icon(YuLiIcons.layoutGrid, size: 16, color: widget.accent),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  node.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ySans(size: 13, weight: FontWeight.w800, color: yInk),
+                ),
+              ),
+              Text(
+                '${node.children.length}',
+                style: yMono(size: 9, color: yMuted),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _targetRow(
     FlightWorkspaceTarget target, {
+    String? label,
     bool selected = false,
     bool showFolder = false,
-    bool allowInsert = false,
     double indent = 0,
+    bool expandable = false,
+    bool expanded = false,
+    VoidCallback? onToggle,
+    VoidCallback? onClose,
   }) {
     return Container(
       color: selected ? Color.lerp(yCream, widget.accent, 0.15) : null,
@@ -638,6 +1199,24 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Row(
                   children: [
+                    if (expandable)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onToggle,
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Icon(
+                            expanded
+                                ? YuLiIcons.chevronDown
+                                : YuLiIcons.chevronRight,
+                            size: 14,
+                            color: yMuted,
+                          ),
+                        ),
+                      )
+                    else
+                      const SizedBox(width: 24),
                     Icon(
                       _kindIcon(target.kind),
                       size: 16,
@@ -649,7 +1228,7 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            target.label,
+                            label ?? target.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: ySans(
@@ -674,17 +1253,21 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
               ),
             ),
           ),
-          if (allowInsert && widget.canInsertLink)
+          if (onClose != null)
             Semantics(
               button: true,
-              label: 'Insertar enlace',
+              label: 'Cerrar ${target.label}',
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _insert(target),
+                onTap: onClose,
                 child: SizedBox(
                   width: 44,
-                  height: 42,
-                  child: Icon(YuLiIcons.link, size: 15, color: widget.accent),
+                  height: 44,
+                  child: Icon(
+                    YuLiIcons.close,
+                    size: 15,
+                    color: selected ? widget.accent : yMuted,
+                  ),
                 ),
               ),
             ),
@@ -692,19 +1275,42 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
       ),
     );
   }
+
+  void _closeTab(
+    FlightWorkspaceTarget target,
+    List<FlightWorkspaceTarget> tabs,
+  ) {
+    final selected = target.key == widget.current.key;
+    final index = tabs.indexWhere((item) => item.key == target.key);
+    final next =
+        selected && tabs.length > 1 && index >= 0
+            ? tabs[index == tabs.length - 1 ? index - 1 : index + 1]
+            : null;
+    ref.read(flightWorkspaceTabsProvider.notifier).close(target);
+    if (!selected) return;
+    if (next != null) {
+      _open(next);
+    } else {
+      final navigator = Navigator.of(context);
+      navigator.pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (navigator.mounted) navigator.maybePop();
+      });
+    }
+  }
 }
 
 class _WorkspaceSnapshot {
   final List<Folder> folders;
+  final Map<int, Note> notesById;
   final Map<int, List<FlightWorkspaceTarget>> targetsByFolder;
-  final List<FlightWorkspaceTarget> outgoing;
-  final List<FlightWorkspaceTarget> backlinks;
+  final Map<int, List<FlightWorkspaceTreeNode>> rootsByFolder;
 
   const _WorkspaceSnapshot({
     required this.folders,
+    required this.notesById,
     required this.targetsByFolder,
-    required this.outgoing,
-    required this.backlinks,
+    required this.rootsByFolder,
   });
 
   factory _WorkspaceSnapshot.build({
@@ -713,120 +1319,438 @@ class _WorkspaceSnapshot {
     required List<NoteBlock> blocks,
     required FlightWorkspaceTarget current,
   }) {
-    final folderById = {for (final folder in folders) folder.id: folder};
-    final blocksByNote = <int, List<NoteBlock>>{};
-    for (final block in blocks) {
-      blocksByNote.putIfAbsent(block.noteId, () => []).add(block);
-    }
-    final targets = <FlightWorkspaceTarget>[];
-    final sourceText = <String, String>{};
-    for (final note in notes) {
-      final folder = folderById[note.folderId];
-      if (folder == null) continue;
-      final noteBlocks = blocksByNote[note.id] ?? const [];
-      if (note.kind == NoteKind.whiteboard) {
-        final canvases =
-            noteBlocks.whereType<DrawingBlock>().toList()
-              ..sort((a, b) => a.position.compareTo(b.position));
-        if (canvases.isEmpty) {
-          final target = flightWorkspaceTarget(note: note, folder: folder);
-          targets.add(target);
-          sourceText[target.key] = _noteLinkText(note, noteBlocks);
-        } else {
-          for (var index = 0; index < canvases.length; index++) {
-            final target = flightWorkspaceTarget(
-              note: note,
-              folder: folder,
-              canvas: canvases[index],
-              canvasOrdinal: index + 1,
-            );
-            targets.add(target);
-            sourceText[target.key] = _blockLinkText(canvases[index]);
-          }
-        }
-      } else {
-        final target = flightWorkspaceTarget(note: note, folder: folder);
-        targets.add(target);
-        sourceText[target.key] = _noteLinkText(note, noteBlocks);
-      }
-    }
-    final aliases = <String, FlightWorkspaceTarget>{};
-    for (final target in targets) {
-      aliases.putIfAbsent(
-        _normalize(flightWikiLinkLabel(target)),
-        () => target,
-      );
-      aliases.putIfAbsent(_normalize(target.label), () => target);
-    }
-    final outgoing = <String, FlightWorkspaceTarget>{};
-    for (final label in _wikiLabels(sourceText[current.key] ?? '')) {
-      final target = aliases[_normalize(label)];
-      if (target != null && target.key != current.key) {
-        outgoing[target.key] = target;
-      }
-    }
-    final currentAliases = {
-      _normalize(flightWikiLinkLabel(current)),
-      _normalize(current.label),
-    };
-    final backlinks = <String, FlightWorkspaceTarget>{};
-    for (final entry in sourceText.entries) {
-      if (entry.key == current.key) continue;
-      final links = _wikiLabels(entry.value).map(_normalize).toSet();
-      if (links.any(currentAliases.contains)) {
-        final source =
-            targets.where((target) => target.key == entry.key).firstOrNull;
-        if (source != null) backlinks[source.key] = source;
-      }
-    }
-    final targetsByFolder = <int, List<FlightWorkspaceTarget>>{};
-    for (final target in targets) {
-      targetsByFolder.putIfAbsent(target.folderId, () => []).add(target);
-    }
-    for (final folderTargets in targetsByFolder.values) {
-      folderTargets.sort(
-        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
-      );
-    }
+    final tree = buildFlightWorkspaceTree(
+      folders: folders,
+      notes: notes,
+      blocks: blocks,
+    );
     return _WorkspaceSnapshot(
       folders: folders,
-      targetsByFolder: targetsByFolder,
-      outgoing: outgoing.values.toList(),
-      backlinks: backlinks.values.toList(),
+      notesById: {for (final note in notes) note.id: note},
+      targetsByFolder: tree.targetsByFolder,
+      rootsByFolder: tree.rootsByFolder,
     );
   }
 }
 
-String _noteLinkText(Note note, List<NoteBlock> blocks) => [
-  note.rawMarkdown,
-  for (final block in blocks) _blockLinkText(block),
-].join('\n');
+class FlightWorkspaceTreeNode {
+  final String key;
+  final String label;
+  final NoteKind kind;
+  final int folderId;
+  final int? noteId;
+  final FlightWorkspaceTarget? target;
+  final List<FlightWorkspaceTreeNode> children;
+  final bool preservesChildOrder;
+  final int workspaceOrder;
 
-String _blockLinkText(NoteBlock block) => switch (block) {
-  TextBlock text => text.markdown,
-  BulletsBlock bullets => bullets.items.join('\n'),
-  DrawingBlock drawing => _canvasText(drawing.textBlocksJson),
-  _ => '',
-};
+  FlightWorkspaceTreeNode({
+    required this.key,
+    required this.label,
+    required this.kind,
+    required this.folderId,
+    this.noteId,
+    required this.target,
+    this.preservesChildOrder = false,
+    this.workspaceOrder = 0,
+    List<FlightWorkspaceTreeNode>? children,
+  }) : children = children ?? [];
+}
 
-String _canvasText(String raw) {
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) return '';
-    return decoded
-        .whereType<Map>()
-        .map((item) => item['md']?.toString() ?? '')
-        .join('\n');
-  } catch (_) {
-    return '';
+class FlightWorkspaceTree {
+  final Map<int, List<FlightWorkspaceTarget>> targetsByFolder;
+  final Map<int, List<FlightWorkspaceTreeNode>> rootsByFolder;
+
+  const FlightWorkspaceTree({
+    required this.targetsByFolder,
+    required this.rootsByFolder,
+  });
+}
+
+FlightWorkspaceTree buildFlightWorkspaceTree({
+  required List<Folder> folders,
+  required List<Note> notes,
+  required List<NoteBlock> blocks,
+}) {
+  final folderById = {for (final folder in folders) folder.id: folder};
+  final blocksByNote = <int, List<NoteBlock>>{};
+  for (final block in blocks) {
+    blocksByNote.putIfAbsent(block.noteId, () => []).add(block);
+  }
+  final targetsByFolder = <int, List<FlightWorkspaceTarget>>{};
+  final rootByNote = <int, FlightWorkspaceTreeNode>{};
+  final anchorsByNote = <int, List<FlightWorkspaceTreeNode>>{};
+  final rootsByFolder = <int, List<FlightWorkspaceTreeNode>>{};
+
+  void addTarget(FlightWorkspaceTarget target) {
+    targetsByFolder.putIfAbsent(target.folderId, () => []).add(target);
+  }
+
+  for (final note in notes) {
+    final folder = folderById[note.folderId];
+    if (folder == null) continue;
+    late final FlightWorkspaceTreeNode root;
+    if (note.kind == NoteKind.whiteboard) {
+      final noteLabel =
+          note.displayTitle.trim().isEmpty
+              ? _kindFallback(note.kind)
+              : note.displayTitle.trim();
+      final canvases =
+          (blocksByNote[note.id] ?? const []).whereType<DrawingBlock>().toList()
+            ..sort((a, b) => a.position.compareTo(b.position));
+      final canvasNodes = <FlightWorkspaceTreeNode>[];
+      if (canvases.isEmpty) {
+        final target = FlightWorkspaceTarget(
+          noteId: note.id,
+          folderId: folder.id,
+          kind: note.kind,
+          label: '$noteLabel · Pizarra 1',
+          folderLabel: folder.name,
+        );
+        addTarget(target);
+        canvasNodes.add(
+          FlightWorkspaceTreeNode(
+            key: target.key,
+            label: 'Pizarra 1',
+            kind: note.kind,
+            folderId: folder.id,
+            target: target,
+          ),
+        );
+      } else {
+        for (var index = 0; index < canvases.length; index++) {
+          final canvas = canvases[index];
+          final target = flightWorkspaceTarget(
+            note: note,
+            folder: folder,
+            canvas: canvas,
+            canvasOrdinal: index + 1,
+          );
+          addTarget(target);
+          canvasNodes.add(
+            FlightWorkspaceTreeNode(
+              key: target.key,
+              label:
+                  canvas.name?.trim().isNotEmpty == true
+                      ? canvas.name!.trim()
+                      : 'Pizarra ${index + 1}',
+              kind: note.kind,
+              folderId: folder.id,
+              target: target,
+            ),
+          );
+        }
+      }
+      root = FlightWorkspaceTreeNode(
+        key: 'whiteboard:${note.id}',
+        label: noteLabel,
+        kind: note.kind,
+        folderId: folder.id,
+        noteId: note.id,
+        target: null,
+        preservesChildOrder: true,
+        workspaceOrder: note.workspaceOrder,
+        children: canvasNodes,
+      );
+      anchorsByNote[note.id] = canvasNodes;
+    } else {
+      final target = flightWorkspaceTarget(note: note, folder: folder);
+      addTarget(target);
+      root = FlightWorkspaceTreeNode(
+        key: target.key,
+        label: target.label,
+        kind: note.kind,
+        folderId: folder.id,
+        noteId: note.id,
+        target: target,
+        workspaceOrder: note.workspaceOrder,
+      );
+      anchorsByNote[note.id] = [root];
+    }
+    rootByNote[note.id] = root;
+    rootsByFolder.putIfAbsent(note.folderId, () => []).add(root);
+  }
+
+  for (final note in notes) {
+    final parentNoteId = note.parentNoteId;
+    if (parentNoteId == null) continue;
+    final child = rootByNote[note.id];
+    final parentAnchors = anchorsByNote[parentNoteId];
+    if (child == null || parentAnchors == null || parentAnchors.isEmpty) {
+      continue;
+    }
+    final requestedKey = '$parentNoteId:${note.parentCanvasBlockId ?? 0}';
+    final parent = parentAnchors.firstWhere(
+      (node) => node.key == requestedKey,
+      orElse: () => parentAnchors.first,
+    );
+    if (parent.key == child.key ||
+        parent.children.any((node) => node.key == child.key)) {
+      continue;
+    }
+    rootsByFolder[note.folderId]?.removeWhere((node) => node.key == child.key);
+    parent.children.add(child);
+  }
+
+  int compareNodes(FlightWorkspaceTreeNode a, FlightWorkspaceTreeNode b) {
+    final order = a.workspaceOrder.compareTo(b.workspaceOrder);
+    if (order != 0) return order;
+    return a.label.toLowerCase().compareTo(b.label.toLowerCase());
+  }
+
+  void sortChildren(FlightWorkspaceTreeNode node, Set<String> ancestors) {
+    if (!ancestors.add(node.key)) return;
+    if (!node.preservesChildOrder) node.children.sort(compareNodes);
+    for (final child in node.children) {
+      sortChildren(child, {...ancestors});
+    }
+  }
+
+  for (final targets in targetsByFolder.values) {
+    targets.sort(
+      (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+    );
+  }
+  for (final roots in rootsByFolder.values) {
+    roots.sort(compareNodes);
+    for (final root in roots) {
+      sortChildren(root, <String>{});
+    }
+  }
+
+  return FlightWorkspaceTree(
+    targetsByFolder: targetsByFolder,
+    rootsByFolder: rootsByFolder,
+  );
+}
+
+enum _WorkspaceDeleteChoice { branch, keepChildren }
+
+class _WorkspaceDragData {
+  final int noteId;
+  final String label;
+
+  const _WorkspaceDragData({required this.noteId, required this.label});
+}
+
+class _WorkspaceDropDestination {
+  final String key;
+  final int folderId;
+  final int? parentNoteId;
+  final int? parentCanvasBlockId;
+  final int? beforeNoteId;
+  final String actionLabel;
+  final String destinationLabel;
+  final String? invalidLabel;
+
+  const _WorkspaceDropDestination({
+    required this.key,
+    required this.folderId,
+    this.parentNoteId,
+    this.parentCanvasBlockId,
+    this.beforeNoteId,
+    required this.actionLabel,
+    required this.destinationLabel,
+  }) : invalidLabel = null;
+
+  const _WorkspaceDropDestination.invalid({
+    required this.key,
+    required this.folderId,
+    required String label,
+  }) : parentNoteId = null,
+       parentCanvasBlockId = null,
+       beforeNoteId = null,
+       actionLabel = label,
+       destinationLabel = '',
+       invalidLabel = label;
+}
+
+class _WorkspaceDropValidity {
+  final bool valid;
+  final String label;
+
+  const _WorkspaceDropValidity.valid(this.label) : valid = true;
+  const _WorkspaceDropValidity.invalid(this.label) : valid = false;
+}
+
+class _WorkspaceNotice {
+  final String message;
+  final bool isError;
+
+  const _WorkspaceNotice(this.message, {required this.isError});
+}
+
+class _WorkspaceDragFeedback extends StatelessWidget {
+  final String label;
+  final NoteKind kind;
+  final Color accent;
+
+  const _WorkspaceDragFeedback({
+    required this.label,
+    required this.kind,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x00000000),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 260),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: accent,
+          border: Border.all(color: yBorderStrong, width: yLineMid),
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_kindIcon(kind), size: 16, color: yCream),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ySans(size: 12, weight: FontWeight.w800, color: yCream),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(YuLiIcons.gripVertical, size: 15, color: yCream),
+          ],
+        ),
+      ),
+    );
   }
 }
 
-Iterable<String> _wikiLabels(String text) sync* {
-  final pattern = RegExp(r'\[\[([^\]\n]{1,120})\]\]');
-  for (final match in pattern.allMatches(text)) {
-    final label = match.group(1)?.trim();
-    if (label != null && label.isNotEmpty) yield label;
+class _WorkspaceNoticeBanner extends StatelessWidget {
+  final _WorkspaceNotice notice;
+  final Color accent;
+  final VoidCallback onClose;
+
+  const _WorkspaceNoticeBanner({
+    super.key,
+    required this.notice,
+    required this.accent,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = notice.isError ? yFight : accent;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      decoration: BoxDecoration(
+        color: color,
+        border: Border.all(color: yBorderStrong, width: yLineThin),
+        boxShadow: const [
+          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+        ],
+      ),
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              notice.isError ? YuLiIcons.triangleAlert : YuLiIcons.check,
+              size: 17,
+              color: yCream,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              notice.message,
+              style: yBody(size: 11, weight: FontWeight.w700, color: yCream),
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onClose,
+            child: const SizedBox(
+              width: 42,
+              height: 42,
+              child: Icon(YuLiIcons.close, size: 15, color: yCream),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceDeleteAction extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _WorkspaceDeleteAction({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: accent,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: yCream),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: yMono(
+                      size: 11,
+                      weight: FontWeight.w800,
+                      tracking: 0.8,
+                      color: yCream,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: yBody(
+                      size: 11,
+                      color: yCream.withValues(alpha: 0.82),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(YuLiIcons.chevronRight, size: 16, color: yCream),
+          ],
+        ),
+      ),
+    );
   }
 }
 

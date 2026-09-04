@@ -54,6 +54,20 @@ final aiSessionProvider = Provider.family<AiChatSession, int>((ref, noteId) {
   return session;
 });
 
+final aiCanvasSessionProvider =
+    Provider.family<AiChatSession, ({int noteId, int canvasBlockId})>((
+      ref,
+      target,
+    ) {
+      final session = AiChatSession(
+        target.noteId,
+        scope: 'canvas_${target.canvasBlockId}',
+        settingsStore: ref.watch(aiChatSettingsStoreProvider),
+      );
+      ref.onDispose(session.dispose);
+      return session;
+    });
+
 /// Single global YuLi AI conversation (YuLi AI 2). Always base mode + flash, no
 /// note context (function-calling will inject context later). Non-autoDispose →
 /// persists for the whole app run like the note sessions. Opened from the cube

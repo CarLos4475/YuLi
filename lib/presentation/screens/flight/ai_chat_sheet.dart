@@ -47,6 +47,7 @@ Future<void> showAiChat(
   BuildContext context,
   WidgetRef ref, {
   required int noteId,
+  int? canvasBlockId,
   String? newContext,
   String? prefillMessage,
   List<AiImageInput> pendingImages = const [],
@@ -78,7 +79,15 @@ Future<void> showAiChat(
     return;
   }
 
-  final session = ref.read(aiSessionProvider(noteId));
+  final session =
+      canvasBlockId == null
+          ? ref.read(aiSessionProvider(noteId))
+          : ref.read(
+            aiCanvasSessionProvider((
+              noteId: noteId,
+              canvasBlockId: canvasBlockId,
+            )),
+          );
   final ctx = newContext?.trim();
   if (ctx != null && ctx.isNotEmpty) {
     if (!session.hasAnchor) {

@@ -24,20 +24,22 @@ class FolderEnrichment {
   });
 }
 
-final folderEnrichmentProvider =
-    StreamProvider.family<FolderEnrichment, int>((ref, folderId) async* {
+final folderEnrichmentProvider = StreamProvider.family<FolderEnrichment, int>((
+  ref,
+  folderId,
+) async* {
   final noteRepo = ref.watch(noteRepositoryProvider);
   final labRepo = ref.watch(labSpaceRepositoryProvider);
 
   await for (final notes in noteRepo.watchByFolder(folderId)) {
+    final roots = notes.where((note) => !note.isWorkspaceChild).toList();
     final spaceIds = await labRepo.getLinkedSpaceIdsForFolder(folderId);
     final allSpaces = await labRepo.getActive();
-    final linked =
-        allSpaces.where((s) => spaceIds.contains(s.id)).toList();
+    final linked = allSpaces.where((s) => spaceIds.contains(s.id)).toList();
     yield FolderEnrichment(
-      noteCount: notes.length,
-      lastEditedAt: notes.isEmpty ? null : notes.first.updatedAt,
-      recentNotes: notes.take(3).toList(),
+      noteCount: roots.length,
+      lastEditedAt: roots.isEmpty ? null : roots.first.updatedAt,
+      recentNotes: roots.take(3).toList(),
       linkedSpaces: linked,
     );
   }
@@ -84,7 +86,8 @@ class PinnedFoldersNotifier extends StateNotifier<Set<int>> {
 
 final pinnedFoldersProvider =
     StateNotifierProvider<PinnedFoldersNotifier, Set<int>>(
-        (ref) => PinnedFoldersNotifier());
+      (ref) => PinnedFoldersNotifier(),
+    );
 
 // ─── Pinned notes ─────────────────────────────────────────────────────────
 
@@ -125,7 +128,8 @@ class PinnedNotesNotifier extends StateNotifier<Set<int>> {
 
 final pinnedNotesProvider =
     StateNotifierProvider<PinnedNotesNotifier, Set<int>>(
-        (ref) => PinnedNotesNotifier());
+      (ref) => PinnedNotesNotifier(),
+    );
 
 // ─── FLIGHT toolbar state ─────────────────────────────────────────────────
 
@@ -153,13 +157,12 @@ class FlightToolbarState {
     FlightView? view,
     String? query,
     FlightFilter? filter,
-  }) =>
-      FlightToolbarState(
-        sort: sort ?? this.sort,
-        view: view ?? this.view,
-        query: query ?? this.query,
-        filter: filter ?? this.filter,
-      );
+  }) => FlightToolbarState(
+    sort: sort ?? this.sort,
+    view: view ?? this.view,
+    query: query ?? this.query,
+    filter: filter ?? this.filter,
+  );
 }
 
 class FlightToolbarNotifier extends StateNotifier<FlightToolbarState> {
@@ -173,7 +176,8 @@ class FlightToolbarNotifier extends StateNotifier<FlightToolbarState> {
 
 final flightToolbarProvider =
     StateNotifierProvider<FlightToolbarNotifier, FlightToolbarState>(
-        (ref) => FlightToolbarNotifier());
+      (ref) => FlightToolbarNotifier(),
+    );
 
 // ─── Global note search ───────────────────────────────────────────────────
 
@@ -189,27 +193,29 @@ class NoteSearchHit {
 }
 
 final globalNoteSearchProvider =
-    FutureProvider.family<List<NoteSearchHit>, String>(
-        (ref, query) async {
-  final q = query.trim().toLowerCase();
-  if (q.isEmpty) return const [];
-  final noteRepo = ref.watch(noteRepositoryProvider);
-  final folders = await ref.watch(folderRepositoryProvider).getActive();
-  final folderById = {for (final f in folders) f.id: f};
-  final results = <NoteSearchHit>[];
-  for (final f in folders) {
-    final notes = await noteRepo.getByFolder(f.id);
-    for (final n in notes) {
-      final title = (n.title ?? '').toLowerCase();
-      final body = n.rawMarkdown.toLowerCase();
-      if (title.contains(q) || body.contains(q)) {
-        results.add(NoteSearchHit(
-          note: n,
-          folderId: f.id,
-          folderName: folderById[f.id]?.name ?? '',
-        ));
+    FutureProvider.family<List<NoteSearchHit>, String>((ref, query) async {
+      final q = query.trim().toLowerCase();
+      if (q.isEmpty) return const [];
+      final noteRepo = ref.watch(noteRepositoryProvider);
+      final folders = await ref.watch(folderRepositoryProvider).getActive();
+      final folderById = {for (final f in folders) f.id: f};
+      final results = <NoteSearchHit>[];
+      for (final f in folders) {
+        final notes = await noteRepo.getByFolder(f.id);
+        for (final n in notes) {
+          if (n.isWorkspaceChild) continue;
+          final title = (n.title ?? '').toLowerCase();
+          final body = n.rawMarkdown.toLowerCase();
+          if (title.contains(q) || body.contains(q)) {
+            results.add(
+              NoteSearchHit(
+                note: n,
+                folderId: f.id,
+                folderName: folderById[f.id]?.name ?? '',
+              ),
+            );
+          }
+        }
       }
-    }
-  }
-  return results;
-});
+      return results;
+    });

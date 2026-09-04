@@ -49,6 +49,10 @@ class FlightWorkspaceTabsNotifier
   static const _key = 'flight_workspace_tabs_v1';
   static const _maxTabs = 10;
   static SharedPreferences? _prefs;
+  final Set<String> _closedKeys = {};
+  final Set<int> _closedNoteIds = {};
+  final Set<int> _closedFolderIds = {};
+  Set<String>? _retainedKeys;
 
   FlightWorkspaceTabsNotifier() : super(const []) {
     _load();
@@ -67,6 +71,7 @@ class FlightWorkspaceTabsNotifier
                   Map<String, dynamic>.from(item),
                 ),
               )
+              .where(_canRestore)
               .toList();
       final currentKeys = state.map((item) => item.key).toSet();
       final merged = [
@@ -89,17 +94,70 @@ class FlightWorkspaceTabsNotifier
   }
 
   void open(FlightWorkspaceTarget target) {
-    final remaining = state.where((item) => item.key != target.key).toList();
-    state = [...remaining, target];
+    _closedKeys.remove(target.key);
+    _closedNoteIds.remove(target.noteId);
+    _closedFolderIds.remove(target.folderId);
+    _retainedKeys?.add(target.key);
+    final index = state.indexWhere((item) => item.key == target.key);
+    if (index >= 0) {
+      state = [...state]..[index] = target;
+      _save();
+      return;
+    }
+    state = [...state, target];
     if (state.length > _maxTabs) {
       state = state.sublist(state.length - _maxTabs);
     }
     _save();
   }
 
+  void reorder(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= state.length) return;
+    var targetIndex = newIndex;
+    if (targetIndex > oldIndex) targetIndex--;
+    if (targetIndex < 0 || targetIndex >= state.length) return;
+    final updated = [...state];
+    final target = updated.removeAt(oldIndex);
+    updated.insert(targetIndex, target);
+    state = updated;
+    _save();
+  }
+
   void close(FlightWorkspaceTarget target) {
+    _closedKeys.add(target.key);
     state = state.where((item) => item.key != target.key).toList();
     _save();
+  }
+
+  void closeNote(int noteId) {
+    _closedNoteIds.add(noteId);
+    final updated = state.where((item) => item.noteId != noteId).toList();
+    if (updated.length == state.length) return;
+    state = updated;
+    _save();
+  }
+
+  void closeFolder(int folderId) {
+    _closedFolderIds.add(folderId);
+    final updated = state.where((item) => item.folderId != folderId).toList();
+    if (updated.length == state.length) return;
+    state = updated;
+    _save();
+  }
+
+  void retainKeys(Set<String> keys) {
+    _retainedKeys = {...keys};
+    final updated = state.where((item) => keys.contains(item.key)).toList();
+    if (updated.length == state.length) return;
+    state = updated;
+    _save();
+  }
+
+  bool _canRestore(FlightWorkspaceTarget target) {
+    return !_closedKeys.contains(target.key) &&
+        !_closedNoteIds.contains(target.noteId) &&
+        !_closedFolderIds.contains(target.folderId) &&
+        (_retainedKeys?.contains(target.key) ?? true);
   }
 
   void refresh(FlightWorkspaceTarget target) {
@@ -115,3 +173,41 @@ final flightWorkspaceTabsProvider = StateNotifierProvider<
   FlightWorkspaceTabsNotifier,
   List<FlightWorkspaceTarget>
 >((_) => FlightWorkspaceTabsNotifier());
+
+class FlightWorkspaceExpansionNotifier extends StateNotifier<Set<String>> {
+  static const _key = 'flight_workspace_expansion_v1';
+  static SharedPreferences? _prefs;
+
+  FlightWorkspaceExpansionNotifier() : super(const {}) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    final loaded = _prefs!.getStringList(_key)?.toSet() ?? const <String>{};
+    state = {...loaded, ...state};
+  }
+
+  void ensureExpanded(String key) {
+    if (state.contains(key)) return;
+    state = {...state, key};
+    _save();
+  }
+
+  void toggle(String key) {
+    final updated = {...state};
+    if (!updated.remove(key)) updated.add(key);
+    state = updated;
+    _save();
+  }
+
+  Future<void> _save() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.setStringList(_key, state.toList());
+  }
+}
+
+final flightWorkspaceExpansionProvider =
+    StateNotifierProvider<FlightWorkspaceExpansionNotifier, Set<String>>(
+      (_) => FlightWorkspaceExpansionNotifier(),
+    );

@@ -30,21 +30,26 @@ class FloatingPinRecord {
 
   Rect get rect => Rect.fromLTWH(left, top, width, height);
 
+  int? get canvasBlockId {
+    final value = metadata['canvasBlockId'];
+    return value is num ? value.toInt() : null;
+  }
+
   FloatingPinRecord copyWith({
     Rect? rect,
     bool? collapsed,
     int? sortOrder,
-  }) =>
-      FloatingPinRecord(
-        id: id,
-        noteId: noteId,
-        kind: kind,
-        left: rect?.left ?? left,
-        top: rect?.top ?? top,
-        width: rect?.width ?? width,
-        height: rect?.height ?? height,
-        collapsed: collapsed ?? this.collapsed,
-        sortOrder: sortOrder ?? this.sortOrder,
-        metadata: metadata,
-      );
+    Map<String, dynamic>? metadata,
+  }) => FloatingPinRecord(
+    id: id,
+    noteId: noteId,
+    kind: kind,
+    left: rect?.left ?? left,
+    top: rect?.top ?? top,
+    width: rect?.width ?? width,
+    height: rect?.height ?? height,
+    collapsed: collapsed ?? this.collapsed,
+    sortOrder: sortOrder ?? this.sortOrder,
+    metadata: metadata ?? this.metadata,
+  );
 }

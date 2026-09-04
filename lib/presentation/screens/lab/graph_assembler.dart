@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/graph.dart';
@@ -6,6 +8,7 @@ import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/note.dart';
+import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
 import '../../../domain/models/canvas_context_source.dart';
 import '../../providers/database_providers.dart';
@@ -28,12 +31,12 @@ import 'lab_card_colors.dart';
 /// moved) would never reach the cache and you'd see a stale graph until an app
 /// restart rebuilt the container. autoDispose drops the cache when nobody is
 /// watching, so re-entering the tab recomputes from the live DB.
-final graphDataProvider =
-    FutureProvider.autoDispose.family<GraphData, int?>((ref, spaceId) {
+final graphDataProvider = FutureProvider.autoDispose.family<GraphData, int?>((
+  ref,
+  spaceId,
+) {
   final builder = _GraphBuilder(ref);
-  return spaceId == null
-      ? builder.buildGlobal()
-      : builder.buildSpace(spaceId);
+  return spaceId == null ? builder.buildGlobal() : builder.buildSpace(spaceId);
 });
 
 /// Maps a FIGHT [Task] to its 4-state graph lifecycle. Returns null for
@@ -60,10 +63,10 @@ TaskGraphState? taskGraphState(Task t) {
 }
 
 NoteVariant _variant(NoteKind k) => switch (k) {
-      NoteKind.block => NoteVariant.block,
-      NoteKind.whiteboard => NoteVariant.whiteboard,
-      NoteKind.notebook => NoteVariant.notebook,
-    };
+  NoteKind.block => NoteVariant.block,
+  NoteKind.whiteboard => NoteVariant.whiteboard,
+  NoteKind.notebook => NoteVariant.notebook,
+};
 
 class _GraphBuilder {
   _GraphBuilder(this.ref);
@@ -73,6 +76,7 @@ class _GraphBuilder {
   late final _cardRepo = ref.read(kanbanCardRepositoryProvider);
   late final _folderRepo = ref.read(folderRepositoryProvider);
   late final _noteRepo = ref.read(noteRepositoryProvider);
+  late final _noteBlockRepo = ref.read(noteBlockRepositoryProvider);
   late final _taskRepo = ref.read(taskRepositoryProvider);
   late final _scheduleRepo = ref.read(scheduleRepositoryProvider);
 
@@ -175,8 +179,7 @@ class _GraphBuilder {
     }
   }
 
-  Future<void> _addCard(
-      KanbanCard card, String rootId, bool inExpired) async {
+  Future<void> _addCard(KanbanCard card, String rootId, bool inExpired) async {
     final cardId = GraphNode.idFor(GraphNodeKind.card, refId: card.id);
     _nodes.putIfAbsent(
       cardId,
@@ -220,8 +223,11 @@ class _GraphBuilder {
     if (t != null) await _addTaskEntity(t, fromId: fromId, edgeKind: kind);
   }
 
-  Future<void> _addTaskEntity(Task t,
-      {String? fromId, GraphEdgeKind? edgeKind}) async {
+  Future<void> _addTaskEntity(
+    Task t, {
+    String? fromId,
+    GraphEdgeKind? edgeKind,
+  }) async {
     final state = taskGraphState(t);
     if (state == null) return; // done/trash → omitted
     final taskId = GraphNode.idFor(GraphNodeKind.task, refId: t.id);
@@ -284,7 +290,10 @@ class _GraphBuilder {
   }
 
   Future<void> _addSource(
-      CanvasContextSource s, String fromId, GraphEdgeKind kind) async {
+    CanvasContextSource s,
+    String fromId,
+    GraphEdgeKind kind,
+  ) async {
     switch (s.kind) {
       case CanvasSourceKind.note:
         final nid = s.noteId;
@@ -305,10 +314,11 @@ class _GraphBuilder {
   /// every note to its linked tasks (`note_task_links`) and AI-context links.
   /// AI targets are added as leaves (not further expanded) → bounded BFS.
   Future<void> _expandFoldersAndNotes() async {
-    final folderIds = _nodes.values
-        .where((n) => n.kind == GraphNodeKind.folder)
-        .map((n) => n.refId!)
-        .toList();
+    final folderIds =
+        _nodes.values
+            .where((n) => n.kind == GraphNodeKind.folder)
+            .map((n) => n.refId!)
+            .toList();
     for (final fid in folderIds) {
       final folderNodeId = GraphNode.idFor(GraphNodeKind.folder, refId: fid);
       final notes = await _noteRepo.getByFolder(fid);
@@ -318,10 +328,11 @@ class _GraphBuilder {
       }
     }
 
-    final noteIds = _nodes.values
-        .where((n) => n.kind == GraphNodeKind.note)
-        .map((n) => n.refId!)
-        .toList();
+    final noteIds =
+        _nodes.values
+            .where((n) => n.kind == GraphNodeKind.note)
+            .map((n) => n.refId!)
+            .toList();
     for (final nid in noteIds) {
       final noteNodeId = GraphNode.idFor(GraphNodeKind.note, refId: nid);
       for (final tid in await _noteRepo.getLinkedTaskIds(nid)) {
@@ -331,16 +342,54 @@ class _GraphBuilder {
         await _addSource(s, noteNodeId, GraphEdgeKind.ai);
       }
     }
+    await _expandWikiLinks(noteIds);
+  }
+
+  Future<void> _expandWikiLinks(List<int> seedNoteIds) async {
+    final activeNotes = await _noteRepo.watchAllActive().first;
+    final aliases = <String, List<Note>>{};
+    for (final note in activeNotes) {
+      final label = _normalizeWikiLabel(note.displayTitle);
+      if (label.isEmpty) continue;
+      aliases.putIfAbsent(label, () => []).add(note);
+    }
+    final queue = [...seedNoteIds];
+    final visited = <int>{};
+    while (queue.isNotEmpty && visited.length < 300) {
+      final sourceId = queue.removeAt(0);
+      if (!visited.add(sourceId)) continue;
+      final source = await _noteRepo.getById(sourceId);
+      if (source == null || !source.isActive) continue;
+      final blocks = await _noteBlockRepo.getByNote(sourceId);
+      final sourceText = [
+        source.rawMarkdown,
+        for (final block in blocks) _wikiTextFromBlock(block),
+      ].join('\n');
+      final fromId = GraphNode.idFor(GraphNodeKind.note, refId: sourceId);
+      for (final label in _wikiLabelsFromText(sourceText)) {
+        final matches = aliases[_normalizeWikiLabel(label)];
+        if (matches == null || matches.isEmpty) continue;
+        final target = matches.firstWhere(
+          (note) => note.folderId == source.folderId,
+          orElse: () => matches.first,
+        );
+        if (target.id == sourceId) continue;
+        final targetId = await _addNote(target);
+        _edge(fromId, targetId, GraphEdgeKind.bridge);
+        if (!visited.contains(target.id)) queue.add(target.id);
+      }
+    }
   }
 
   /// For every folder already in the graph, pull in its live FIGHT tasks (the
   /// `@folder` capture) — even if they were never sent to Lab. They attach to
   /// the folder via a bridge edge (added inside [_addTaskEntity]).
   Future<void> _addFolderTasks() async {
-    final folderIds = _nodes.values
-        .where((n) => n.kind == GraphNodeKind.folder)
-        .map((n) => n.refId!)
-        .toSet();
+    final folderIds =
+        _nodes.values
+            .where((n) => n.kind == GraphNodeKind.folder)
+            .map((n) => n.refId!)
+            .toSet();
     if (folderIds.isEmpty) return;
     final live = [
       ...await _taskRepo.watchPending().first,
@@ -354,3 +403,33 @@ class _GraphBuilder {
     }
   }
 }
+
+String _wikiTextFromBlock(NoteBlock block) => switch (block) {
+  TextBlock text => text.markdown,
+  BulletsBlock bullets => bullets.items.join('\n'),
+  DrawingBlock drawing => _wikiCanvasText(drawing.textBlocksJson),
+  _ => '',
+};
+
+String _wikiCanvasText(String raw) {
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return '';
+    return decoded
+        .whereType<Map>()
+        .map((item) => item['md']?.toString() ?? '')
+        .join('\n');
+  } catch (_) {
+    return '';
+  }
+}
+
+Iterable<String> _wikiLabelsFromText(String text) sync* {
+  for (final match in RegExp(r'\[\[([^\]\n]{1,120})\]\]').allMatches(text)) {
+    final label = match.group(1)?.trim();
+    if (label != null && label.isNotEmpty) yield label;
+  }
+}
+
+String _normalizeWikiLabel(String value) =>
+    value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();

@@ -78,7 +78,6 @@ import 'stroke_bounds.dart';
 import 'stroke_tiles.dart';
 import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
-import '../lab/lab_space_detail_screen.dart';
 
 // World canvas size — large but finite to keep memory bounded. The user
 // pans inside this via InteractiveViewer. ~10kx10k logical pixels.
@@ -697,6 +696,9 @@ class _WhiteboardEditorScreenState
     final deletingCurrent = canvas.id == _selectedBlockId;
     if (deletingCurrent) await _flushCurrentCanvas();
     await _blockRepo.delete(canvas.id);
+    await ref
+        .read(floatingPinRepositoryProvider)
+        .deleteForCanvas(widget.note.id, canvas.id);
     await _deleteCanvasFiles(canvas, deleteLegacyCache: index == 0);
     if (!mounted) return;
 
@@ -797,19 +799,28 @@ class _WhiteboardEditorScreenState
           useLegacyCache: _canvases.length == 1 && safeIndex == 0,
           onOpenCanvases: () => setState(() => _drawerOpen = true),
           workspaceTarget: workspaceTarget,
-          onOpenWorkspaceTarget:
-              (target) => openFlightWorkspaceTarget(context, ref, target),
+          onOpenWorkspaceTarget: (target) {
+            if (target.noteId == widget.note.id &&
+                target.canvasBlockId != null) {
+              unawaited(_selectCanvas(target.canvasBlockId!));
+              return;
+            }
+            openFlightWorkspaceTarget(context, ref, target);
+          },
           onOpenWorkspace:
               () => showFlightWorkspace(
                 context: context,
                 ref: ref,
                 current: workspaceTarget,
                 accent: _accent,
-                onOpen:
-                    (target) => openFlightWorkspaceTarget(context, ref, target),
-                onInsertLink:
-                    (syntax) =>
-                        _canvasKey.currentState?._insertTextBlock(syntax),
+                onOpen: (target) {
+                  if (target.noteId == widget.note.id &&
+                      target.canvasBlockId != null) {
+                    unawaited(_selectCanvas(target.canvasBlockId!));
+                    return;
+                  }
+                  openFlightWorkspaceTarget(context, ref, target);
+                },
               ),
         ),
         if (_drawerOpen)
@@ -1521,7 +1532,6 @@ class _WhiteboardCanvasEditorState
   final Set<int> _activePointers = {};
   bool _isDrawing = false;
   bool _stylusActive = false;
-  bool _headerCollapsed = true;
   StabilizerLevel _stabilizer = StabilizerLevel.off;
   LiveStabilizer? _stab;
   bool _fillShapes = false;
@@ -1673,7 +1683,7 @@ class _WhiteboardCanvasEditorState
 
   late final FloatingPinController _pinController = FloatingPinControllerStore
       .instance
-      .forNote(widget.note.id);
+      .forNote('${widget.note.id}:${widget.canvasBlockId}');
 
   ui.Image? _eyedropImg;
   ByteData? _eyedropBytes;
@@ -1717,6 +1727,7 @@ class _WhiteboardCanvasEditorState
     _pinController.persistence = RepoFloatingPinPersistence(
       repo: ref.read(floatingPinRepositoryProvider),
       noteId: widget.note.id,
+      canvasBlockId: widget.canvasBlockId,
     );
     unawaited(_loadFloatingPins());
     StrokeWidthPrefs.load().then((widths) {
@@ -1953,6 +1964,7 @@ class _WhiteboardCanvasEditorState
     final pins = await loadFloatingPins(
       repo: ref.read(floatingPinRepositoryProvider),
       noteId: widget.note.id,
+      canvasBlockId: widget.canvasBlockId,
     );
     if (!mounted) return;
     _pinController.loadPersisted(pins);
@@ -4646,6 +4658,7 @@ class _WhiteboardCanvasEditorState
         context,
         ref,
         noteId: widget.note.id,
+        canvasBlockId: widget.canvasBlockId,
         pendingImages: [prepared],
         dockController: _chatDock,
         accent: _accent,
@@ -4667,6 +4680,7 @@ class _WhiteboardCanvasEditorState
       strokes,
       accent: _accent,
       noteId: widget.note.id,
+      canvasBlockId: widget.canvasBlockId,
     );
   }
 
@@ -4797,12 +4811,21 @@ class _WhiteboardCanvasEditorState
           key: ValueKey(b.id),
           block: b,
           accent: _accent,
-          // Text blocks are ONLY interactive (tap = edit, drag = move) in text
-          // mode. In pen/lasso modes they're inert (IgnorePointer): the lasso
-          // selects/moves/resizes them by geometry, pens never touch them. This
-          // also avoids a multi-touch crash (finger on block + 2-finger zoom).
-          interactive: !selected && !gesture && _tool == DrawTool.text,
+          // Editing and moving remain tool-specific; wiki links handle their
+          // own double tap in every tool.
+          interactive:
+              !selected &&
+              !gesture &&
+              (_tool == DrawTool.text || _tool == DrawTool.lasso),
           movable: !selected && !gesture && _tool == DrawTool.text,
+          onWikiLinkTap:
+              (label) => openFlightWikiLink(
+                context,
+                ref,
+                sourceNoteId: widget.note.id,
+                label: label,
+                sourceCanvasBlockId: _blockId,
+              ),
           onPersist: () async {
             _persist();
           },
@@ -7317,7 +7340,12 @@ class _WhiteboardCanvasEditorState
           Positioned.fill(
             child: AiChatDock(
               controller: _chatDock,
-              session: ref.read(aiSessionProvider(widget.note.id)),
+              session: ref.read(
+                aiCanvasSessionProvider((
+                  noteId: widget.note.id,
+                  canvasBlockId: widget.canvasBlockId,
+                )),
+              ),
               accent: _accent,
               linked: linked,
               onSendToCanvas: _insertTextBlock,
@@ -7331,11 +7359,6 @@ class _WhiteboardCanvasEditorState
   @override
   Widget build(BuildContext context) {
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
-    final linkedCards =
-        ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
-    final linkedSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
-    final linkedSpaces =
-        spaces.where((s) => linkedSpaceIds.contains(s.id)).toList();
     final aiLinked =
         (ref
             .watch(canvasContextSourcesProvider(widget.note.id))
@@ -7348,7 +7371,7 @@ class _WhiteboardCanvasEditorState
       Scaffold(
         backgroundColor: yCream,
         body: StatusBarFlood(
-          color: _headerCollapsed ? yCream2 : _accent,
+          color: yCream2,
           child: SafeArea(
             top: false,
             child: Stack(
@@ -7357,159 +7380,18 @@ class _WhiteboardCanvasEditorState
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_headerCollapsed)
-                      _CollapsedWhiteboardHeader(
-                        folder: widget.folder,
-                        spaces: spaces,
-                        accent: _accent,
-                        noteTitle: widget.note.title ?? '',
-                        canvasOrdinal: widget.canvasOrdinal,
-                        canvasCount: widget.canvasCount,
-                        onCanvases: widget.onOpenCanvases,
-                        onExpand:
-                            () => setState(() => _headerCollapsed = false),
-                        onReset: _resetView,
-                        onZoomToFit: _zoomToFit,
-                        onExport: _startExport,
-                        onLink: () => _linkToLab(spaces),
-                      )
-                    else ...[
-                      Column(
-                        children: [
-                          ModeHeader(
-                            mode: 'PIZARRA',
-                            subtitle:
-                                (widget.note.title?.trim().isNotEmpty == true)
-                                    ? 'INFINITA · CANVAS · PAN + ZOOM · ${widget.note.title!.trim()}'
-                                    : 'INFINITA · CANVAS · PAN + ZOOM',
-                            color: _accent,
-                            onBack: () => Navigator.pop(context),
-                            headerRight: [
-                              YBadge(
-                                label: '@${widget.folder.name}',
-                                bg: widget.folder.color,
-                                fg: yCream,
-                              ),
-                              _WhiteboardCanvasSwitchButton(
-                                accent: _accent,
-                                ordinal: widget.canvasOrdinal,
-                                count: widget.canvasCount,
-                                onTap: widget.onOpenCanvases,
-                              ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: _resetView,
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: yCream,
-                                    border: Border.all(
-                                      color: yBorderStrong,
-                                      width: yLineMid,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    YuLiIcons.scan,
-                                    color: yInk,
-                                    size: 16,
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: _zoomToFit,
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: yCream,
-                                    border: Border.all(
-                                      color: yBorderStrong,
-                                      width: yLineMid,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    YuLiIcons.discAlbum,
-                                    color: yInk,
-                                    size: 16,
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: _startExport,
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: yCream,
-                                    border: Border.all(
-                                      color: yBorderStrong,
-                                      width: yLineMid,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    YuLiIcons.share,
-                                    color: yInk,
-                                    size: 16,
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => _linkToLab(spaces),
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: yLab,
-                                    border: Border.all(
-                                      color: yBorderStrong,
-                                      width: yLineMid,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    YuLiIcons.infinity,
-                                    color: yCream,
-                                    size: 16,
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap:
-                                    () =>
-                                        setState(() => _headerCollapsed = true),
-                                child: Container(
-                                  width: 32,
-                                  height: 32,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: yCream,
-                                    border: Border.all(
-                                      color: yBorderStrong,
-                                      width: yLineMid,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    YuLiIcons.chevronUp,
-                                    color: yInk,
-                                    size: 18,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (linkedSpaces.isNotEmpty)
-                            _LinkedSpacesBar(spaces: linkedSpaces),
-                        ],
-                      ),
-                    ],
+                    _CollapsedWhiteboardHeader(
+                      folder: widget.folder,
+                      accent: _accent,
+                      noteTitle: widget.note.title ?? '',
+                      canvasOrdinal: widget.canvasOrdinal,
+                      canvasCount: widget.canvasCount,
+                      onCanvases: widget.onOpenCanvases,
+                      onReset: _resetView,
+                      onZoomToFit: _zoomToFit,
+                      onExport: _startExport,
+                      onLink: () => _linkToLab(spaces),
+                    ),
                     FlightWorkspaceTabsBar(
                       current: widget.workspaceTarget,
                       accent: _accent,
@@ -8689,8 +8571,8 @@ class _WhiteboardCanvasSwitchButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          width: compact ? 32 : 58,
-          height: 32,
+          width: compact ? 28 : 58,
+          height: compact ? 28 : 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: accent,
@@ -8722,13 +8604,11 @@ class _WhiteboardCanvasSwitchButton extends StatelessWidget {
 
 class _CollapsedWhiteboardHeader extends StatelessWidget {
   final Folder folder;
-  final List<LabSpace> spaces;
   final Color accent;
   final String noteTitle;
   final int canvasOrdinal;
   final int canvasCount;
   final VoidCallback onCanvases;
-  final VoidCallback onExpand;
   final VoidCallback onReset;
   final VoidCallback onZoomToFit;
   final VoidCallback onExport;
@@ -8736,13 +8616,11 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
 
   const _CollapsedWhiteboardHeader({
     required this.folder,
-    required this.spaces,
     required this.accent,
     required this.noteTitle,
     required this.canvasOrdinal,
     required this.canvasCount,
     required this.onCanvases,
-    required this.onExpand,
     required this.onReset,
     required this.onZoomToFit,
     required this.onExport,
@@ -8758,15 +8636,15 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
           bottom: BorderSide(color: yBorderStrong, width: yLineMid),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => Navigator.pop(context),
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
@@ -8775,16 +8653,16 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
             ),
           ),
-          const SizedBox(width: 10),
-          Container(width: 4, height: 24, color: accent),
-          const SizedBox(width: 8),
+          const SizedBox(width: 7),
+          Container(width: 3, height: 20, color: accent),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               noteTitle.trim().isEmpty
                   ? 'PIZARRA · @${folder.name}'
                   : 'PIZARRA · @${folder.name} · ${noteTitle.trim()}',
               style: ySans(
-                size: 15,
+                size: 14,
                 weight: FontWeight.w700,
                 letterSpacing: -0.3,
                 color: accent,
@@ -8794,7 +8672,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           _WhiteboardCanvasSwitchButton(
             accent: accent,
             ordinal: canvasOrdinal,
@@ -8807,8 +8685,8 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
             behavior: HitTestBehavior.opaque,
             onTap: onReset,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
@@ -8817,13 +8695,13 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.scan, color: yInk, size: 16),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onZoomToFit,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
@@ -8832,13 +8710,13 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.discAlbum, color: yInk, size: 16),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onExport,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
@@ -8847,34 +8725,19 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.share, color: yInk, size: 16),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onLink,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yLab,
                 border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
               child: const Icon(YuLiIcons.infinity, color: yCream, size: 16),
-            ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onExpand,
-            child: Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-              ),
-              child: const Icon(YuLiIcons.chevronDown, color: yInk, size: 18),
             ),
           ),
         ],
@@ -8999,79 +8862,6 @@ class _ActiveStrokePainter extends CustomPainter {
       old.tick != tick ||
       old.viewScale != viewScale ||
       old.origin != origin;
-}
-
-// ─── Linked-spaces bar (under header) ─────────────────────────────────────
-
-class _LinkedSpacesBar extends ConsumerWidget {
-  final List<LabSpace> spaces;
-  const _LinkedSpacesBar({required this.spaces});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: yCream2,
-        border: Border(
-          bottom: BorderSide(color: yBorderStrong, width: yLineThin),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      child: Row(
-        children: [
-          Text(
-            'VINCULADA A',
-            style: yMono(
-              size: 9,
-              weight: FontWeight.w700,
-              tracking: 1.4,
-              color: yMuted,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final s in spaces) ...[
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) => LabSpaceDetailScreen(space: s),
-                          ),
-                          (route) => route.isFirst,
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(8, 3, 8, 4),
-                        decoration: BoxDecoration(
-                          color: s.accentColor,
-                          border: Border.all(color: yBorderStrong, width: 1.5),
-                        ),
-                        child: Text(
-                          '→ ${s.name.toUpperCase()}',
-                          style: yMono(
-                            size: 9,
-                            weight: FontWeight.w700,
-                            tracking: 1.2,
-                            color: yCream,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _SpacePickerDialog extends StatelessWidget {

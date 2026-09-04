@@ -6,13 +6,26 @@ abstract class NoteRepository {
   Stream<List<Note>> watchByFolder(int folderId);
   Future<List<Note>> getByFolder(int folderId);
   Future<Note?> getById(int id);
-  Future<Note> create(int folderId,
-      {String? title,
-      String rawMarkdown,
-      Color? color,
-      NoteKind kind});
+  Future<Note> create(
+    int folderId, {
+    String? title,
+    String rawMarkdown,
+    Color? color,
+    NoteKind kind,
+    int? parentNoteId,
+    int? parentCanvasBlockId,
+  });
   Future<void> update(Note note);
   Future<void> softDelete(int id);
+  Future<List<int>> softDeleteBranch(int id);
+  Future<void> softDeleteKeepingChildren(int id);
+  Future<List<int>> moveWorkspaceBranch(
+    int id, {
+    required int folderId,
+    int? parentNoteId,
+    int? parentCanvasBlockId,
+    int? beforeNoteId,
+  });
   Future<void> restore(int id);
   Future<void> hardDelete(int id);
 
@@ -21,7 +34,12 @@ abstract class NoteRepository {
 
   Future<List<NoteImage>> getImages(int noteId);
   Future<List<int>> getAllNoteIds();
-  Future<NoteImage> addImage(int noteId, String filename, String filePath, int sizeBytes);
+  Future<NoteImage> addImage(
+    int noteId,
+    String filename,
+    String filePath,
+    int sizeBytes,
+  );
   Future<void> deleteImage(int imageId);
 
   Future<void> linkTask(int noteId, int taskId);
@@ -34,12 +52,20 @@ abstract class NoteRepository {
   Stream<List<Note>> watchDeleted();
 
   // Canvas context sources (AI context: linked notes + external urls).
-  Future<void> addContextSource(int canvasNoteId, CanvasSourceKind kind,
-      String ref, {String? label, DateTime? fetchedAt});
+  Future<void> addContextSource(
+    int canvasNoteId,
+    CanvasSourceKind kind,
+    String ref, {
+    String? label,
+    DateTime? fetchedAt,
+  });
   Future<void> removeContextSource(int id);
   Future<void> setContextSourceEnabled(int id, bool enabled);
-  Future<void> updateContextSourceFetch(int id,
-      {String? label, DateTime? fetchedAt});
+  Future<void> updateContextSourceFetch(
+    int id, {
+    String? label,
+    DateTime? fetchedAt,
+  });
   Stream<List<CanvasContextSource>> watchContextSources(int canvasNoteId);
   Future<List<CanvasContextSource>> getContextSources(int canvasNoteId);
   Future<void> removeNoteSourceRefs(int noteId);

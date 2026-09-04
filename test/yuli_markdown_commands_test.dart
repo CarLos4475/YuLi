@@ -3,6 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/presentation/screens/flight/yuli_markdown_commands.dart';
 
 void main() {
+  test('wiki links hide their markers and style their label', () {
+    final operations =
+        buildLiveMarkdownDelta(
+          'Antes [[Cálculo]] después',
+        ).toList().whereType<TextInsert>().toList();
+    final markers = operations.where(
+      (operation) => operation.attributes?[yuliMarkdownMarker] == true,
+    );
+    final label = operations.firstWhere(
+      (operation) => operation.attributes?[yuliWikiLink] == true,
+    );
+
+    expect(markers.map((operation) => operation.text).join(), '[[]]');
+    expect(label.text, 'Cálculo');
+  });
   test('pairing inserts delimiters and leaves the cursor inside', () async {
     final state = EditorState(
       document: Document(root: pageNode(children: [paragraphNode()])),

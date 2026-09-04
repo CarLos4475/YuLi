@@ -11,6 +11,7 @@ import 'package:yuli/data/repositories/local/local_kanban_repository.dart';
 import 'package:yuli/domain/models/graph.dart';
 import 'package:yuli/domain/models/task.dart';
 import 'package:yuli/domain/models/note.dart';
+import 'package:yuli/domain/models/note_block.dart';
 import 'package:yuli/domain/models/kanban_card.dart';
 import 'package:yuli/domain/models/canvas_context_source.dart';
 import 'package:yuli/presentation/providers/database_providers.dart';
@@ -22,35 +23,47 @@ void main() {
 
   group('taskGraphState (mapeo de 4 estados)', () {
     Task t(TaskStatus status, {DateTime? due}) => Task(
-          id: 1,
-          content: 'x',
-          status: status,
-          createdAt: DateTime.now(),
-          expiresAt: DateTime.now().add(const Duration(days: 1)),
-          dueDate: due,
-        );
+      id: 1,
+      content: 'x',
+      status: status,
+      createdAt: DateTime.now(),
+      expiresAt: DateTime.now().add(const Duration(days: 1)),
+      dueDate: due,
+    );
 
     test('pending sin due → fresca', () {
       expect(taskGraphState(t(TaskStatus.pending)), TaskGraphState.fresca);
     });
     test('pending due ≤24h → urgente', () {
       expect(
-        taskGraphState(t(TaskStatus.pending,
-            due: DateTime.now().add(const Duration(hours: 6)))),
+        taskGraphState(
+          t(
+            TaskStatus.pending,
+            due: DateTime.now().add(const Duration(hours: 6)),
+          ),
+        ),
         TaskGraphState.urgente,
       );
     });
     test('pending due ya pasada → urgente', () {
       expect(
-        taskGraphState(t(TaskStatus.pending,
-            due: DateTime.now().subtract(const Duration(hours: 1)))),
+        taskGraphState(
+          t(
+            TaskStatus.pending,
+            due: DateTime.now().subtract(const Duration(hours: 1)),
+          ),
+        ),
         TaskGraphState.urgente,
       );
     });
     test('pending due lejana (>24h) → fresca', () {
       expect(
-        taskGraphState(t(TaskStatus.pending,
-            due: DateTime.now().add(const Duration(days: 3)))),
+        taskGraphState(
+          t(
+            TaskStatus.pending,
+            due: DateTime.now().add(const Duration(days: 3)),
+          ),
+        ),
         TaskGraphState.fresca,
       );
     });
@@ -59,7 +72,9 @@ void main() {
     });
     test('archived_failed → fantasma', () {
       expect(
-          taskGraphState(t(TaskStatus.archivedFailed)), TaskGraphState.fantasma);
+        taskGraphState(t(TaskStatus.archivedFailed)),
+        TaskGraphState.fantasma,
+      );
     });
     test('done/trash → omitido (null)', () {
       expect(taskGraphState(t(TaskStatus.done)), isNull);
@@ -83,11 +98,15 @@ void main() {
       noteRepo = LocalNoteRepository(db);
       taskRepo = LocalTaskRepository(db);
       kanbanRepo = LocalKanbanRepository(db);
-      container = ProviderContainer(overrides: [
-        databaseProvider.overrideWithValue(db),
-        taskRepositoryProvider.overrideWithValue(LocalTaskRepository(db)),
-        kanbanCardRepositoryProvider.overrideWithValue(LocalKanbanRepository(db)),
-      ]);
+      container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          taskRepositoryProvider.overrideWithValue(LocalTaskRepository(db)),
+          kanbanCardRepositoryProvider.overrideWithValue(
+            LocalKanbanRepository(db),
+          ),
+        ],
+      );
     });
     tearDown(() {
       container.dispose();
@@ -95,14 +114,14 @@ void main() {
     });
 
     Task newTask(TaskStatus status, {int? folderId, DateTime? due}) => Task(
-          id: 0,
-          content: 'task-${status.name}',
-          status: status,
-          folderId: folderId,
-          createdAt: DateTime.now(),
-          expiresAt: DateTime.now().add(const Duration(days: 1)),
-          dueDate: due,
-        );
+      id: 0,
+      content: 'task-${status.name}',
+      status: status,
+      folderId: folderId,
+      createdAt: DateTime.now(),
+      expiresAt: DateTime.now().add(const Duration(days: 1)),
+      dueDate: due,
+    );
 
     test('arma nodos, aristas, estados y los 3 tipos de arista', () async {
       final space = await labRepo.create('Sexto', '#3D6B4F');
@@ -110,17 +129,30 @@ void main() {
       final backlog = cols.firstWhere((c) => c.name == 'Backlog');
 
       final folder = await folderRepo.create('Estadistica', '#6B2D8E');
-      final n1 = await noteRepo.create(folder.id,
-          title: 'Markov', kind: NoteKind.block);
-      final n2 = await noteRepo.create(folder.id,
-          title: 'Pizarra', kind: NoteKind.whiteboard);
+      final n1 = await noteRepo.create(
+        folder.id,
+        title: 'Markov',
+        kind: NoteKind.block,
+      );
+      final n2 = await noteRepo.create(
+        folder.id,
+        title: 'Pizarra',
+        kind: NoteKind.whiteboard,
+      );
 
-      final tFresh =
-          await taskRepo.save(newTask(TaskStatus.pending, folderId: folder.id));
-      final tUrgent = await taskRepo.save(newTask(TaskStatus.pending,
-          folderId: folder.id, due: DateTime.now().add(const Duration(hours: 6))));
-      final tYest =
-          await taskRepo.save(newTask(TaskStatus.yesterday, folderId: folder.id));
+      final tFresh = await taskRepo.save(
+        newTask(TaskStatus.pending, folderId: folder.id),
+      );
+      final tUrgent = await taskRepo.save(
+        newTask(
+          TaskStatus.pending,
+          folderId: folder.id,
+          due: DateTime.now().add(const Duration(hours: 6)),
+        ),
+      );
+      final tYest = await taskRepo.save(
+        newTask(TaskStatus.yesterday, folderId: folder.id),
+      );
       final tGhost = await taskRepo.save(newTask(TaskStatus.archivedFailed));
       final tDone = await taskRepo.save(newTask(TaskStatus.done));
 
@@ -148,10 +180,16 @@ void main() {
 
       // Space sources: a note + a url (the url must NOT become a node).
       await labRepo.addContextSource(
-          space.id, CanvasSourceKind.note, '${n2.id}');
+        space.id,
+        CanvasSourceKind.note,
+        '${n2.id}',
+      );
       await labRepo.addContextSource(
-          space.id, CanvasSourceKind.url, 'https://ex.com',
-          label: 'Ejemplo');
+        space.id,
+        CanvasSourceKind.url,
+        'https://ex.com',
+        label: 'Ejemplo',
+      );
       // AI link between notes (N1 feeds on N2).
       await noteRepo.addContextSource(n1.id, CanvasSourceKind.note, '${n2.id}');
 
@@ -160,9 +198,11 @@ void main() {
       String id(GraphNodeKind k, [int? r]) => GraphNode.idFor(k, refId: r);
       final ids = {for (final n in data.nodes) n.id};
       GraphNode node(String i) => data.nodes.firstWhere((n) => n.id == i);
-      bool edge(String a, String b, GraphEdgeKind k) => data.edges.any((e) =>
-          ((e.from == a && e.to == b) || (e.from == b && e.to == a)) &&
-          e.kind == k);
+      bool edge(String a, String b, GraphEdgeKind k) => data.edges.any(
+        (e) =>
+            ((e.from == a && e.to == b) || (e.from == b && e.to == a)) &&
+            e.kind == k,
+      );
 
       final spaceId = id(GraphNodeKind.space, space.id);
       final folderId = id(GraphNodeKind.folder, folder.id);
@@ -185,14 +225,16 @@ void main() {
 
       // Bridge: card→task (fresh), task→folder (@folder)
       final c1 = data.nodes.firstWhere(
-          (n) => n.kind == GraphNodeKind.card && n.label == 'C1');
+        (n) => n.kind == GraphNodeKind.card && n.label == 'C1',
+      );
       expect(edge(c1.id, freshId, GraphEdgeKind.bridge), isTrue);
       expect(node(freshId).taskState, TaskGraphState.fresca);
       expect(edge(freshId, folderId, GraphEdgeKind.bridge), isTrue);
 
       // Bridge: card→note
       final c2 = data.nodes.firstWhere(
-          (n) => n.kind == GraphNodeKind.card && n.label == 'C2');
+        (n) => n.kind == GraphNodeKind.card && n.label == 'C2',
+      );
       expect(edge(c2.id, n1Id, GraphEdgeKind.bridge), isTrue);
 
       // Notes + variant + containment
@@ -225,25 +267,31 @@ void main() {
       expect(data.hasAiEdges, isTrue);
     });
 
-    test('carpeta vinculada: arista IA sol→carpeta + tareas @carpeta',
-        () async {
+    test('carpeta vinculada: arista IA sol→carpeta + tareas @carpeta', () async {
       final space = await labRepo.create('S', '#3D6B4F');
       final folder = await folderRepo.create('Mate', '#6B2D8E');
       await noteRepo.create(folder.id, title: 'N', kind: NoteKind.block);
       // Fight task con @folder, NUNCA enviada a Lab (sin card)
-      final t = await taskRepo.save(newTask(TaskStatus.pending, folderId: folder.id));
+      final t = await taskRepo.save(
+        newTask(TaskStatus.pending, folderId: folder.id),
+      );
       // vincular la carpeta al espacio (kind=folder)
       await labRepo.addContextSource(
-          space.id, CanvasSourceKind.folder, '${folder.id}',
-          label: folder.name);
+        space.id,
+        CanvasSourceKind.folder,
+        '${folder.id}',
+        label: folder.name,
+      );
 
       final data = await container.read(graphDataProvider(space.id).future);
       final spaceId = GraphNode.idFor(GraphNodeKind.space, refId: space.id);
       final folderId = GraphNode.idFor(GraphNodeKind.folder, refId: folder.id);
       final taskId = GraphNode.idFor(GraphNodeKind.task, refId: t.id);
-      bool edge(String a, String b, GraphEdgeKind k) => data.edges.any((e) =>
-          ((e.from == a && e.to == b) || (e.from == b && e.to == a)) &&
-          e.kind == k);
+      bool edge(String a, String b, GraphEdgeKind k) => data.edges.any(
+        (e) =>
+            ((e.from == a && e.to == b) || (e.from == b && e.to == a)) &&
+            e.kind == k,
+      );
 
       // sol→carpeta como fuente de contexto = arista IA (la carpeta nutre la IA)
       expect(edge(spaceId, folderId, GraphEdgeKind.ai), isTrue);
@@ -261,75 +309,122 @@ void main() {
 
       final data = await container.read(graphDataProvider(null).future);
       expect(
-          data.nodes.any((n) =>
-              n.kind == GraphNodeKind.space && n.refId == space.id),
-          isTrue);
+        data.nodes.any(
+          (n) => n.kind == GraphNodeKind.space && n.refId == space.id,
+        ),
+        isTrue,
+      );
       expect(
-          data.nodes.any((n) =>
-              n.kind == GraphNodeKind.folder && n.refId == folder.id),
-          isTrue);
+        data.nodes.any(
+          (n) => n.kind == GraphNodeKind.folder && n.refId == folder.id,
+        ),
+        isTrue,
+      );
       expect(data.nodes.any((n) => n.kind == GraphNodeKind.note), isTrue);
     });
 
-    test('vencido: card se conserva con tarea viva, se oculta sin ella',
-        () async {
-      final space = await labRepo.create('S', '#3D6B4F');
-      final cols = await labRepo.getColumns(space.id);
-      final vencido = cols.firstWhere((c) => c.isExpired);
-      final entregado = cols.firstWhere((c) => c.isTerminal);
-
-      // (1) Card en Vencido con tarea VIVA (fantasma) → se CONSERVA el par.
-      final tAlive = await taskRepo.save(newTask(TaskStatus.archivedFailed));
-      await kanbanRepo.create(
-        labSpaceId: space.id,
-        columnId: vencido.id,
-        title: 'VivoEnVencido',
-        originTaskId: tAlive.id,
+    test('los enlaces wiki conectan notas en el grafo', () async {
+      final folder = await folderRepo.create('Cálculo', '#6B2D8E');
+      final source = await noteRepo.create(
+        folder.id,
+        title: 'Derivadas',
+        kind: NoteKind.block,
       );
-      // (2) Card en Vencido con tarea MUERTA (done) → card oculto.
-      final tDead = await taskRepo.save(newTask(TaskStatus.done));
-      await kanbanRepo.create(
-        labSpaceId: space.id,
-        columnId: vencido.id,
-        title: 'MuertoEnVencido',
-        originTaskId: tDead.id,
+      final target = await noteRepo.create(
+        folder.id,
+        title: 'Regla de la cadena',
+        kind: NoteKind.block,
       );
-      // (3) Card en Entregado (tarea done) → oculto limpio.
-      final tDelivered = await taskRepo.save(newTask(TaskStatus.done));
-      await kanbanRepo.create(
-        labSpaceId: space.id,
-        columnId: entregado.id,
-        title: 'Entregado',
-        originTaskId: tDelivered.id,
-      );
+      await container
+          .read(noteBlockRepositoryProvider)
+          .insertAtEnd(
+            source.id,
+            NoteBlockType.text,
+            payload: {'md': 'Consulta [[Regla de la cadena]]'},
+          );
 
-      final data = await container.read(graphDataProvider(space.id).future);
-      bool hasCard(String label) => data.nodes
-          .any((n) => n.kind == GraphNodeKind.card && n.label == label);
-      bool hasTask(int refId) => data.nodes
-          .any((n) => n.kind == GraphNodeKind.task && n.refId == refId);
+      final data = await container.read(graphDataProvider(null).future);
+      final sourceId = GraphNode.idFor(GraphNodeKind.note, refId: source.id);
+      final targetId = GraphNode.idFor(GraphNodeKind.note, refId: target.id);
 
-      // (1) El par vencido-vivo se conserva: card + tarea fantasma + puente.
-      expect(hasCard('VivoEnVencido'), isTrue);
-      final cardNode = data.nodes.firstWhere(
-          (n) => n.kind == GraphNodeKind.card && n.label == 'VivoEnVencido');
-      final taskNode = data.nodes.firstWhere(
-          (n) => n.kind == GraphNodeKind.task && n.refId == tAlive.id);
-      expect(taskNode.taskState, TaskGraphState.fantasma);
       expect(
-        data.edges.any((e) =>
-            e.kind == GraphEdgeKind.bridge &&
-            ((e.from == cardNode.id && e.to == taskNode.id) ||
-                (e.to == cardNode.id && e.from == taskNode.id))),
+        data.edges.any(
+          (edge) =>
+              edge.kind == GraphEdgeKind.bridge &&
+              ((edge.from == sourceId && edge.to == targetId) ||
+                  (edge.from == targetId && edge.to == sourceId)),
+        ),
         isTrue,
       );
-
-      // (2) y (3): sin tarea viva → card oculto, y la tarea done no tiene nodo.
-      expect(hasCard('MuertoEnVencido'), isFalse);
-      expect(hasCard('Entregado'), isFalse);
-      expect(hasTask(tDead.id), isFalse);
-      expect(hasTask(tDelivered.id), isFalse);
     });
+
+    test(
+      'vencido: card se conserva con tarea viva, se oculta sin ella',
+      () async {
+        final space = await labRepo.create('S', '#3D6B4F');
+        final cols = await labRepo.getColumns(space.id);
+        final vencido = cols.firstWhere((c) => c.isExpired);
+        final entregado = cols.firstWhere((c) => c.isTerminal);
+
+        // (1) Card en Vencido con tarea VIVA (fantasma) → se CONSERVA el par.
+        final tAlive = await taskRepo.save(newTask(TaskStatus.archivedFailed));
+        await kanbanRepo.create(
+          labSpaceId: space.id,
+          columnId: vencido.id,
+          title: 'VivoEnVencido',
+          originTaskId: tAlive.id,
+        );
+        // (2) Card en Vencido con tarea MUERTA (done) → card oculto.
+        final tDead = await taskRepo.save(newTask(TaskStatus.done));
+        await kanbanRepo.create(
+          labSpaceId: space.id,
+          columnId: vencido.id,
+          title: 'MuertoEnVencido',
+          originTaskId: tDead.id,
+        );
+        // (3) Card en Entregado (tarea done) → oculto limpio.
+        final tDelivered = await taskRepo.save(newTask(TaskStatus.done));
+        await kanbanRepo.create(
+          labSpaceId: space.id,
+          columnId: entregado.id,
+          title: 'Entregado',
+          originTaskId: tDelivered.id,
+        );
+
+        final data = await container.read(graphDataProvider(space.id).future);
+        bool hasCard(String label) => data.nodes.any(
+          (n) => n.kind == GraphNodeKind.card && n.label == label,
+        );
+        bool hasTask(int refId) => data.nodes.any(
+          (n) => n.kind == GraphNodeKind.task && n.refId == refId,
+        );
+
+        // (1) El par vencido-vivo se conserva: card + tarea fantasma + puente.
+        expect(hasCard('VivoEnVencido'), isTrue);
+        final cardNode = data.nodes.firstWhere(
+          (n) => n.kind == GraphNodeKind.card && n.label == 'VivoEnVencido',
+        );
+        final taskNode = data.nodes.firstWhere(
+          (n) => n.kind == GraphNodeKind.task && n.refId == tAlive.id,
+        );
+        expect(taskNode.taskState, TaskGraphState.fantasma);
+        expect(
+          data.edges.any(
+            (e) =>
+                e.kind == GraphEdgeKind.bridge &&
+                ((e.from == cardNode.id && e.to == taskNode.id) ||
+                    (e.to == cardNode.id && e.from == taskNode.id)),
+          ),
+          isTrue,
+        );
+
+        // (2) y (3): sin tarea viva → card oculto, y la tarea done no tiene nodo.
+        expect(hasCard('MuertoEnVencido'), isFalse);
+        expect(hasCard('Entregado'), isFalse);
+        expect(hasTask(tDead.id), isFalse);
+        expect(hasTask(tDelivered.id), isFalse);
+      },
+    );
 
     test('space vacío → solo el sol, sin crash', () async {
       final space = await labRepo.create('Vacio', '#3D6B4F');

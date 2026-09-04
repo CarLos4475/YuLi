@@ -9,6 +9,7 @@ import '../../providers/task_providers.dart';
 import '../../providers/task_propagation_provider.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/navigation_provider.dart';
+import '../../providers/flight_workspace_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/yuli_ai_fab.dart';
 import '../../widgets/status_bar_flood.dart';
@@ -621,6 +622,7 @@ class _NoteCard extends ConsumerWidget {
     );
     if (confirmed == true) {
       await ref.read(noteRepositoryProvider).softDelete(note.id);
+      ref.read(flightWorkspaceTabsProvider.notifier).closeNote(note.id);
     }
   }
 
@@ -977,6 +979,7 @@ Future<void> _confirmDeleteNote(
   );
   if (confirmed == true) {
     await ref.read(noteRepositoryProvider).softDelete(note.id);
+    ref.read(flightWorkspaceTabsProvider.notifier).closeNote(note.id);
   }
 }
 

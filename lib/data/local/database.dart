@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -77,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -114,17 +117,24 @@ class AppDatabase extends _$AppDatabase {
         } catch (_) {}
       }
       if (from <= 10) {
-        // Block editor migration: wipe legacy markdown notes (single-user
-        // app, no production data) and create the typed-block table.
-        try {
-          await customStatement(
-            "DELETE FROM note_task_links WHERE note_id IN (SELECT id FROM notes)",
-          );
-          await customStatement("DELETE FROM note_images");
-          await customStatement("DELETE FROM note_versions");
-          await customStatement("DELETE FROM notes");
-        } catch (_) {}
         await m.createTable(noteBlocks);
+        final legacyNotes =
+            await customSelect(
+              'SELECT id, raw_markdown FROM notes WHERE deleted_at IS NULL',
+              readsFrom: {notes},
+            ).get();
+        for (final legacy in legacyNotes) {
+          final markdown = legacy.read<String>('raw_markdown');
+          if (markdown.trim().isEmpty) continue;
+          await into(noteBlocks).insert(
+            NoteBlocksCompanion.insert(
+              noteId: legacy.read<int>('id'),
+              position: 0,
+              type: 'text',
+              payload: Value(jsonEncode({'md': markdown})),
+            ),
+          );
+        }
       }
       if (from <= 11) {
         try {
@@ -217,18 +227,77 @@ class AppDatabase extends _$AppDatabase {
           );
         } catch (_) {}
       }
-      if (from <= 22) {
-        // drawing_strokes payload TEXT(JSON) → data BLOB (compact binary stroke
-        // codec). Test data only, no JSON→binary backfill: drop & recreate.
-        try {
-          await m.deleteTable('drawing_strokes');
-          await m.createTable(drawingStrokes);
-        } catch (_) {}
+      if (from == 22) {
+        final legacyRows =
+            await customSelect(
+              'SELECT id, block_id, position, payload, min_x, min_y, max_x, '
+              'max_y, point_count FROM drawing_strokes ORDER BY position',
+            ).get();
+        final converted =
+            <
+              ({
+                int id,
+                int blockId,
+                int position,
+                Uint8List data,
+                double minX,
+                double minY,
+                double maxX,
+                double maxY,
+                int pointCount,
+              })
+            >[];
+        for (final row in legacyRows) {
+          converted.add((
+            id: row.read<int>('id'),
+            blockId: row.read<int>('block_id'),
+            position: row.read<int>('position'),
+            data: _legacyStrokeBytes(row.read<String>('payload')),
+            minX: row.read<double>('min_x'),
+            minY: row.read<double>('min_y'),
+            maxX: row.read<double>('max_x'),
+            maxY: row.read<double>('max_y'),
+            pointCount: row.read<int>('point_count'),
+          ));
+        }
+        await m.deleteTable('drawing_strokes');
+        await m.createTable(drawingStrokes);
+        for (final row in converted) {
+          await customInsert(
+            'INSERT INTO drawing_strokes '
+            '(id, block_id, position, data, min_x, min_y, max_x, max_y, '
+            'point_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            variables: [
+              Variable.withInt(row.id),
+              Variable.withInt(row.blockId),
+              Variable.withInt(row.position),
+              Variable<Uint8List>(row.data),
+              Variable.withReal(row.minX),
+              Variable.withReal(row.minY),
+              Variable.withReal(row.maxX),
+              Variable.withReal(row.maxY),
+              Variable.withInt(row.pointCount),
+            ],
+            updates: {drawingStrokes},
+          );
+        }
       }
       if (from <= 23) {
         try {
           await m.createTable(floatingPins);
         } catch (_) {}
+      }
+      if (from <= 24) {
+        await m.addColumn(notes, notes.parentNoteId);
+        await m.addColumn(notes, notes.parentCanvasBlockId);
+      }
+      if (from <= 25) {
+        await m.addColumn(notes, notes.workspaceOrder);
+        await m.addColumn(notes, notes.createdFromWiki);
+        await customStatement(
+          'UPDATE notes SET created_from_wiki = 1 '
+          'WHERE parent_note_id IS NOT NULL',
+        );
       }
     },
   );
@@ -505,7 +574,297 @@ class AppDatabase extends _$AppDatabase {
   /// Permanently deletes a note and every row that references it.
   Future<void> hardDeleteNoteCascade(int noteId) => transaction(() async {
     await _deleteNoteChildren(noteId);
+    await (update(notes)..where((n) => n.parentNoteId.equals(noteId))).write(
+      const NotesCompanion(
+        parentNoteId: Value(null),
+        parentCanvasBlockId: Value(null),
+      ),
+    );
     await (delete(notes)..where((n) => n.id.equals(noteId))).go();
+  });
+
+  Future<List<int>> _activeNoteBranchIds(int noteId) async {
+    final rows = await select(notes).get();
+    final rowsById = {for (final row in rows) row.id: row};
+    final root = rowsById[noteId];
+    if (root == null || root.deletedAt != null) return const [];
+    final childrenByParent = <int, List<NoteRow>>{};
+    for (final row in rows) {
+      final parentId = row.parentNoteId;
+      if (parentId == null) continue;
+      childrenByParent.putIfAbsent(parentId, () => []).add(row);
+    }
+    final activeIds = <int>[];
+    final visited = <int>{};
+    final pending = <int>[noteId];
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      if (!visited.add(current)) continue;
+      final row = rowsById[current];
+      if (row?.deletedAt == null) activeIds.add(current);
+      pending.addAll(
+        (childrenByParent[current] ?? const []).map((child) => child.id),
+      );
+    }
+    return activeIds;
+  }
+
+  Future<void> _removeActiveNoteSourceRefs(Iterable<int> noteIds) async {
+    for (final noteId in noteIds) {
+      await (delete(canvasContextSources)..where(
+        (source) =>
+            source.kind.equals('note') & source.ref.equals(noteId.toString()),
+      )).go();
+      await (delete(spaceContextSources)..where(
+        (source) =>
+            source.kind.equals('note') & source.ref.equals(noteId.toString()),
+      )).go();
+    }
+  }
+
+  Future<List<int>> softDeleteNoteBranch(int noteId) => transaction(() async {
+    final noteIds = await _activeNoteBranchIds(noteId);
+    if (noteIds.isEmpty) return const <int>[];
+    await (update(notes)..where(
+      (note) => note.id.isIn(noteIds),
+    )).write(NotesCompanion(deletedAt: Value(DateTime.now())));
+    await _removeActiveNoteSourceRefs(noteIds);
+    return noteIds;
+  });
+
+  Future<void> softDeleteNoteKeepingChildren(int noteId) =>
+      transaction(() async {
+        await (update(notes)
+          ..where((note) => note.parentNoteId.equals(noteId))).write(
+          const NotesCompanion(
+            parentNoteId: Value(null),
+            parentCanvasBlockId: Value(null),
+          ),
+        );
+        await (update(notes)..where(
+          (note) => note.id.equals(noteId),
+        )).write(NotesCompanion(deletedAt: Value(DateTime.now())));
+        await _removeActiveNoteSourceRefs([noteId]);
+      });
+
+  Future<void> restoreNoteBranch(int noteId) => transaction(() async {
+    final rows = await select(notes).get();
+    final childrenByParent = <int, List<int>>{};
+    for (final row in rows) {
+      final parentId = row.parentNoteId;
+      if (parentId == null) continue;
+      childrenByParent.putIfAbsent(parentId, () => []).add(row.id);
+    }
+    final ids = <int>[];
+    final visited = <int>{};
+    final pending = <int>[noteId];
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      if (!visited.add(current)) continue;
+      ids.add(current);
+      pending.addAll(childrenByParent[current] ?? const []);
+    }
+    if (ids.isEmpty) return;
+    await (update(notes)..where(
+      (note) => note.id.isIn(ids),
+    )).write(const NotesCompanion(deletedAt: Value(null)));
+  });
+
+  Future<int> nextWorkspaceOrder({
+    required int folderId,
+    required int parentNoteId,
+    int? parentCanvasBlockId,
+  }) async {
+    final rows =
+        await (select(notes)..where(
+          (note) => note.folderId.equals(folderId) & note.deletedAt.isNull(),
+        )).get();
+    var next = 0;
+    for (final row in rows) {
+      if (row.parentNoteId != parentNoteId ||
+          row.parentCanvasBlockId != parentCanvasBlockId) {
+        continue;
+      }
+      if (row.workspaceOrder >= next) next = row.workspaceOrder + 1;
+    }
+    return next;
+  }
+
+  Future<List<int>> moveWorkspaceNoteBranch(
+    int noteId, {
+    required int folderId,
+    int? parentNoteId,
+    int? parentCanvasBlockId,
+    int? beforeNoteId,
+  }) => transaction(() async {
+    final rows = await select(notes).get();
+    final rowsById = {for (final row in rows) row.id: row};
+    final source = rowsById[noteId];
+    if (source == null || source.deletedAt != null || !source.createdFromWiki) {
+      throw StateError('Solo se pueden mover elementos creados con etiquetas.');
+    }
+    final targetFolder =
+        await (select(folders)..where(
+          (folder) => folder.id.equals(folderId) & folder.deletedAt.isNull(),
+        )).getSingleOrNull();
+    if (targetFolder == null) {
+      throw StateError('La carpeta de destino ya no está disponible.');
+    }
+    if (parentCanvasBlockId != null) {
+      if (parentNoteId == null) {
+        throw StateError('La pizarra necesita una nota madre.');
+      }
+      final canvas =
+          await (select(noteBlocks)..where(
+            (block) =>
+                block.id.equals(parentCanvasBlockId) &
+                block.noteId.equals(parentNoteId) &
+                block.type.equals('drawing'),
+          )).getSingleOrNull();
+      if (canvas == null) {
+        throw StateError('La pizarra de destino ya no está disponible.');
+      }
+    }
+
+    final childrenByParent = <int, List<int>>{};
+    for (final row in rows.where((row) => row.deletedAt == null)) {
+      final parentId = row.parentNoteId;
+      if (parentId == null) continue;
+      childrenByParent.putIfAbsent(parentId, () => []).add(row.id);
+    }
+    final branchIds = <int>[];
+    final visited = <int>{};
+    final pending = <int>[noteId];
+    while (pending.isNotEmpty) {
+      final current = pending.removeLast();
+      if (!visited.add(current)) continue;
+      branchIds.add(current);
+      pending.addAll(childrenByParent[current] ?? const []);
+    }
+    if (parentNoteId != null && visited.contains(parentNoteId)) {
+      throw StateError('No puedes mover una rama dentro de sí misma.');
+    }
+    if (parentNoteId != null) {
+      final parent = rowsById[parentNoteId];
+      if (parent == null ||
+          parent.deletedAt != null ||
+          parent.folderId != folderId) {
+        throw StateError('El destino ya no está disponible.');
+      }
+    }
+
+    String normalizedTitle(NoteRow row) {
+      final title = row.title?.trim() ?? '';
+      if (title.isNotEmpty) return title.toLowerCase();
+      final cleaned =
+          row.rawMarkdown.replaceAll(RegExp(r'[#*_`\[\]]'), '').trim();
+      final display = cleaned.length > 40 ? cleaned.substring(0, 40) : cleaned;
+      return display.toLowerCase();
+    }
+
+    final branchTitles =
+        branchIds
+            .map((id) => rowsById[id])
+            .whereType<NoteRow>()
+            .map(normalizedTitle)
+            .where((title) => title.isNotEmpty)
+            .toSet();
+    final hasCollision =
+        source.folderId != folderId &&
+        rows.any(
+          (row) =>
+              row.deletedAt == null &&
+              row.folderId == folderId &&
+              !visited.contains(row.id) &&
+              branchTitles.contains(normalizedTitle(row)),
+        );
+    if (hasCollision) {
+      throw StateError('Ya existe un elemento con ese nombre en la carpeta.');
+    }
+
+    bool sameScope(
+      NoteRow row, {
+      required int scopeFolderId,
+      required int? scopeParentNoteId,
+      required int? scopeCanvasBlockId,
+    }) =>
+        row.deletedAt == null &&
+        row.folderId == scopeFolderId &&
+        row.parentNoteId == scopeParentNoteId &&
+        row.parentCanvasBlockId == scopeCanvasBlockId;
+
+    final oldScope =
+        rows
+            .where(
+              (row) =>
+                  !visited.contains(row.id) &&
+                  sameScope(
+                    row,
+                    scopeFolderId: source.folderId,
+                    scopeParentNoteId: source.parentNoteId,
+                    scopeCanvasBlockId: source.parentCanvasBlockId,
+                  ),
+            )
+            .toList();
+    final destination =
+        rows
+            .where(
+              (row) =>
+                  !visited.contains(row.id) &&
+                  sameScope(
+                    row,
+                    scopeFolderId: folderId,
+                    scopeParentNoteId: parentNoteId,
+                    scopeCanvasBlockId: parentCanvasBlockId,
+                  ),
+            )
+            .toList();
+    int compareRows(NoteRow left, NoteRow right) {
+      final order = left.workspaceOrder.compareTo(right.workspaceOrder);
+      if (order != 0) return order;
+      final title = normalizedTitle(left).compareTo(normalizedTitle(right));
+      return title != 0 ? title : left.id.compareTo(right.id);
+    }
+
+    oldScope.sort(compareRows);
+    destination.sort(compareRows);
+    var insertAt = destination.length;
+    if (beforeNoteId != null) {
+      final index = destination.indexWhere((row) => row.id == beforeNoteId);
+      if (index < 0) {
+        throw StateError('El punto de inserción ya no está disponible.');
+      }
+      insertAt = index;
+    }
+    destination.insert(insertAt, source);
+
+    await (update(notes)..where(
+      (note) => note.id.isIn(branchIds),
+    )).write(NotesCompanion(folderId: Value(folderId)));
+    await (update(notes)..where((note) => note.id.equals(noteId))).write(
+      NotesCompanion(
+        parentNoteId: Value(parentNoteId),
+        parentCanvasBlockId: Value(parentCanvasBlockId),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    final sameDestination =
+        source.folderId == folderId &&
+        source.parentNoteId == parentNoteId &&
+        source.parentCanvasBlockId == parentCanvasBlockId;
+    if (!sameDestination) {
+      for (var index = 0; index < oldScope.length; index++) {
+        await (update(notes)..where(
+          (note) => note.id.equals(oldScope[index].id),
+        )).write(NotesCompanion(workspaceOrder: Value(index)));
+      }
+    }
+    for (var index = 0; index < destination.length; index++) {
+      await (update(notes)..where(
+        (note) => note.id.equals(destination[index].id),
+      )).write(NotesCompanion(workspaceOrder: Value(index)));
+    }
+    return branchIds;
   });
 
   /// Soft-deletes a folder together with its active notes, so they hide and can
@@ -624,4 +983,44 @@ class AppDatabase extends _$AppDatabase {
       }
     }
   }
+}
+
+Uint8List _legacyStrokeBytes(String payload) {
+  final json = Map<String, dynamic>.from(jsonDecode(payload) as Map);
+  final points =
+      (json['p'] as List)
+          .map(
+            (point) =>
+                (point as List)
+                    .map((value) => (value as num).toDouble())
+                    .toList(),
+          )
+          .toList();
+  final components = points.isEmpty ? 2 : points.first.length;
+  final bytes = ByteData(16 + points.length * components * 4);
+  bytes.setUint8(0, 1);
+  var flags = 0;
+  if (json['f'] == 1) flags |= 1;
+  if (json['fl'] == 1) flags |= 2;
+  if (json['sh'] == 1) flags |= 4;
+  if (json['hl'] == 1) flags |= 8;
+  if (json['pc'] == 1) flags |= 16;
+  bytes.setUint8(1, flags);
+  bytes.setUint8(2, components);
+  bytes.setUint8(3, 0);
+  bytes.setUint32(4, (json['c'] as num).toInt(), Endian.little);
+  bytes.setFloat32(8, (json['w'] as num).toDouble(), Endian.little);
+  bytes.setUint32(12, points.length, Endian.little);
+  var offset = 16;
+  for (final point in points) {
+    for (var component = 0; component < components; component++) {
+      bytes.setFloat32(
+        offset,
+        component < point.length ? point[component] : 0,
+        Endian.little,
+      );
+      offset += 4;
+    }
+  }
+  return bytes.buffer.asUint8List();
 }

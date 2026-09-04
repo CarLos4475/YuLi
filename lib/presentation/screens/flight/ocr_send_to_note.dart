@@ -28,7 +28,8 @@ Future<void> sendTextToNote(
   if (!context.mounted) return;
   if (folders.isEmpty) {
     messenger.showSnackBar(
-        const SnackBar(content: Text('No hay carpetas donde guardar')));
+      const SnackBar(content: Text('No hay carpetas donde guardar')),
+    );
     return;
   }
 
@@ -36,11 +37,12 @@ Future<void> sendTextToNote(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _SendToNotePicker(
-      folders: folders,
-      defaultFolderId: defaultFolderId,
-      accent: accent,
-    ),
+    builder:
+        (_) => _SendToNotePicker(
+          folders: folders,
+          defaultFolderId: defaultFolderId,
+          accent: accent,
+        ),
   );
   if (dest == null || !context.mounted) return;
 
@@ -61,12 +63,16 @@ Future<void> sendTextToNote(
     noteId = dest.noteId!;
     label = 'Enviado a la nota';
   }
-  await blockRepo
-      .insertAtEnd(noteId, NoteBlockType.text, payload: {'md': trimmed});
+  await blockRepo.insertAtEnd(
+    noteId,
+    NoteBlockType.text,
+    payload: {'md': trimmed},
+  );
 
   if (!context.mounted) return;
   messenger.showSnackBar(
-      SnackBar(content: Text(label), duration: const Duration(seconds: 2)));
+    SnackBar(content: Text(label), duration: const Duration(seconds: 2)),
+  );
 }
 
 String _titleFrom(String text) {
@@ -108,7 +114,9 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
   Future<List<Note>> _loadNotes() async {
     final notes = await ref.read(noteRepositoryProvider).getByFolder(_folderId);
     return notes
-        .where((n) => n.isActive && n.kind == NoteKind.block)
+        .where(
+          (n) => n.isActive && !n.isWorkspaceChild && n.kind == NoteKind.block,
+        )
         .toList();
   }
 
@@ -120,7 +128,9 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
       child: Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
+          border: Border(
+            top: BorderSide(color: yBorderStrong, width: yLineHeavy),
+          ),
         ),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: SafeArea(
@@ -131,12 +141,15 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
             children: [
               Row(
                 children: [
-                  Text('ENVIAR A NOTA',
-                      style: yMono(
-                          size: 11,
-                          weight: FontWeight.w700,
-                          tracking: 1.4,
-                          color: yInk)),
+                  Text(
+                    'ENVIAR A NOTA',
+                    style: yMono(
+                      size: 11,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yInk,
+                    ),
+                  ),
                   const Spacer(),
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
@@ -146,8 +159,10 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
                 ],
               ),
               const SizedBox(height: 10),
-              Text('CARPETA',
-                  style: yMono(size: 9, tracking: 1.2, color: yMuted)),
+              Text(
+                'CARPETA',
+                style: yMono(size: 9, tracking: 1.2, color: yMuted),
+              ),
               const SizedBox(height: 6),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -178,30 +193,38 @@ class _SendToNotePickerState extends ConsumerState<_SendToNotePicker> {
                           label: 'NUEVA NOTA AQUÍ',
                           accent: widget.accent,
                           highlight: true,
-                          onTap: () =>
-                              Navigator.of(context).pop(_Dest(_folderId, null)),
+                          onTap:
+                              () => Navigator.of(
+                                context,
+                              ).pop(_Dest(_folderId, null)),
                         ),
                         if (snap.connectionState == ConnectionState.waiting)
                           const Padding(
                             padding: EdgeInsets.all(16),
                             child: Center(
-                                child: SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2))),
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
                           )
                         else
                           for (final n in notes)
                             _DestRow(
                               icon: YuLiIcons.fileText,
-                              label: n.displayTitle.isEmpty
-                                  ? 'Sin título'
-                                  : n.displayTitle,
+                              label:
+                                  n.displayTitle.isEmpty
+                                      ? 'Sin título'
+                                      : n.displayTitle,
                               accent: widget.accent,
                               highlight: false,
-                              onTap: () => Navigator.of(context)
-                                  .pop(_Dest(_folderId, n.id)),
+                              onTap:
+                                  () => Navigator.of(
+                                    context,
+                                  ).pop(_Dest(_folderId, n.id)),
                             ),
                       ],
                     );
@@ -220,8 +243,11 @@ class _FolderChip extends StatelessWidget {
   final Folder folder;
   final bool selected;
   final VoidCallback onTap;
-  const _FolderChip(
-      {required this.folder, required this.selected, required this.onTap});
+  const _FolderChip({
+    required this.folder,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -232,15 +258,19 @@ class _FolderChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? folder.color : yCream,
-          border: Border.all(color: yBorderStrong, width: selected ? 2.5 : yLineThin),
+          border: Border.all(
+            color: yBorderStrong,
+            width: selected ? 2.5 : yLineThin,
+          ),
         ),
         child: Text(
           folder.name,
           style: yMono(
-              size: 10,
-              weight: FontWeight.w700,
-              tracking: 1.0,
-              color: selected ? yCream : yInk),
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 1.0,
+            color: selected ? yCream : yInk,
+          ),
         ),
       ),
     );
@@ -272,18 +302,21 @@ class _DestRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: highlight ? accent.withValues(alpha: 0.12) : yCream,
           border: Border.all(
-              color: highlight ? accent : yBorderStrong,
-              width: highlight ? 2 : yLineThin),
+            color: highlight ? accent : yBorderStrong,
+            width: highlight ? 2 : yLineThin,
+          ),
         ),
         child: Row(
           children: [
             Icon(icon, size: 16, color: yInk),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: yBody(size: 14, color: yInk)),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: yBody(size: 14, color: yInk),
+              ),
             ),
           ],
         ),

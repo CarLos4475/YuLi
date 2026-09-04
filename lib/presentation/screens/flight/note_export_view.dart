@@ -37,6 +37,7 @@ List<Widget> buildNoteExportItems({
   Map<int, Task> tasksById = const {},
   Map<int, List<DrawingStroke>> drawingStrokesByBlock = const {},
   bool includeTasks = true,
+  ValueChanged<String>? onWikiLinkTap,
 }) {
   final items = <Widget>[];
   final cleanTitle = title?.trim() ?? '';
@@ -50,6 +51,7 @@ List<Widget> buildNoteExportItems({
       tasksById,
       drawingStrokesByBlock,
       includeTasks,
+      onWikiLinkTap,
     );
     if (item != null) items.add(item);
   }
@@ -62,12 +64,17 @@ Widget? _blockItem(
   Map<int, Task> tasksById,
   Map<int, List<DrawingStroke>> drawingStrokesByBlock,
   bool includeTasks,
+  ValueChanged<String>? onWikiLinkTap,
 ) {
   return switch (block) {
     TextBlock t =>
       t.markdown.trim().isEmpty
           ? null
-          : NoteMarkdownPreview(data: t.markdown, accent: accent),
+          : NoteMarkdownPreview(
+            data: t.markdown,
+            accent: accent,
+            onWikiLinkTap: onWikiLinkTap,
+          ),
     MathBlock m =>
       m.latex.trim().isEmpty ? null : _MathItem(latex: m.latex, accent: accent),
     BulletsBlock b => b.items.isEmpty ? null : _BulletsItem(items: b.items),
@@ -105,6 +112,7 @@ class NoteExportView extends ConsumerStatefulWidget {
   final Map<int, Task> tasksById;
   final Map<int, List<DrawingStroke>> drawingStrokesByBlock;
   final bool includeTasks;
+  final ValueChanged<String>? onWikiLinkTap;
 
   const NoteExportView({
     super.key,
@@ -114,6 +122,7 @@ class NoteExportView extends ConsumerStatefulWidget {
     this.tasksById = const {},
     this.drawingStrokesByBlock = const {},
     this.includeTasks = true,
+    this.onWikiLinkTap,
   });
 
   @override
@@ -176,6 +185,7 @@ class _NoteExportViewState extends ConsumerState<NoteExportView> {
       tasksById: widget.tasksById,
       drawingStrokesByBlock: drawingStrokesByBlock,
       includeTasks: widget.includeTasks,
+      onWikiLinkTap: widget.onWikiLinkTap,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

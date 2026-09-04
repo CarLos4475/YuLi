@@ -53,161 +53,174 @@ class _FakePersistence implements FloatingPinPersistence {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('controller clamps, resizes, collapses, orders, and closes pins', (
-    tester,
-  ) async {
-    final controller = FloatingPinController();
-    final bounds = Rect.fromLTWH(8, 8, 392, 292);
-    final first = controller.addSnapshot(
-      image: await _testImage(),
-      rect: const Rect.fromLTWH(0, 0, 200, 200),
-      usableBounds: bounds,
-    );
-    final second = controller.addSnapshot(
-      image: await _testImage(width: 100, height: 100),
-      rect: const Rect.fromLTWH(40, 40, 120, 120),
-      usableBounds: bounds,
-    );
+  testWidgets(
+    'controller clamps, resizes, collapses, orders, and closes pins',
+    (tester) async {
+      final controller = FloatingPinController();
+      final bounds = Rect.fromLTWH(8, 8, 392, 292);
+      final first = controller.addSnapshot(
+        image: await _testImage(),
+        rect: const Rect.fromLTWH(0, 0, 200, 200),
+        usableBounds: bounds,
+      );
+      final second = controller.addSnapshot(
+        image: await _testImage(width: 100, height: 100),
+        rect: const Rect.fromLTWH(40, 40, 120, 120),
+        usableBounds: bounds,
+      );
 
-    expect(controller.value.first.id, first.id);
-    expect(controller.value.last.id, second.id);
-    expect(first.rect.left, 8);
-    expect(first.rect.top, 8);
-    expect(first.rect.height, floatingPinHeaderHeight + 100);
+      expect(controller.value.first.id, first.id);
+      expect(controller.value.last.id, second.id);
+      expect(first.rect.left, 8);
+      expect(first.rect.top, 8);
+      expect(first.rect.height, floatingPinHeaderHeight + 100);
 
-    controller.commitRect(
-      first.id,
-      const Rect.fromLTWH(40, 50, 260, 100),
-      bounds,
-    );
-    final resized = controller.value.firstWhere((pin) => pin.id == first.id);
-    expect(resized.rect.width, 260);
-    expect(resized.rect.height, floatingPinHeaderHeight + 130);
+      controller.commitRect(
+        first.id,
+        const Rect.fromLTWH(40, 50, 260, 100),
+        bounds,
+      );
+      final resized = controller.value.firstWhere((pin) => pin.id == first.id);
+      expect(resized.rect.width, 260);
+      expect(resized.rect.height, floatingPinHeaderHeight + 130);
 
-    controller.toggleCollapsed(first.id);
-    expect(
-      controller.value.firstWhere((pin) => pin.id == first.id).collapsed,
-      isTrue,
-    );
+      controller.toggleCollapsed(first.id);
+      expect(
+        controller.value.firstWhere((pin) => pin.id == first.id).collapsed,
+        isTrue,
+      );
 
-    controller.bringToFront(first.id);
-    expect(controller.value.last.id, first.id);
+      controller.bringToFront(first.id);
+      expect(controller.value.last.id, first.id);
 
-    controller.close(first.id);
-    expect(controller.value.map((pin) => pin.id), isNot(contains(first.id)));
-    controller.close(second.id);
-  });
+      controller.close(first.id);
+      expect(controller.value.map((pin) => pin.id), isNot(contains(first.id)));
+      controller.close(second.id);
+    },
+  );
 
-  testWidgets('layer appears without rebuilding host and commits drag on release', (
-    tester,
-  ) async {
-    final controller = FloatingPinController();
-    final bounds = Rect.fromLTWH(8, 8, 392, 292);
-    var hostBuilds = 0;
+  testWidgets(
+    'layer appears without rebuilding host and commits drag on release',
+    (tester) async {
+      final controller = FloatingPinController();
+      final bounds = Rect.fromLTWH(8, 8, 392, 292);
+      var hostBuilds = 0;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SizedBox(
-          width: 420,
-          height: 320,
-          child: KeyedSubtree(
-            key: const ValueKey('pin-layer-host'),
-            child: Builder(
-              builder: (_) {
-                hostBuilds++;
-                return FloatingPinsLayer(
-                  controller: controller,
-                  usableBounds: bounds,
-                  accent: const Color(0xFF2A4BD7),
-                );
-              },
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox(
+            width: 420,
+            height: 320,
+            child: KeyedSubtree(
+              key: const ValueKey('pin-layer-host'),
+              child: Builder(
+                builder: (_) {
+                  hostBuilds++;
+                  return FloatingPinsLayer(
+                    controller: controller,
+                    usableBounds: bounds,
+                    accent: const Color(0xFF2A4BD7),
+                  );
+                },
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(hostBuilds, 1);
-    final layerBoundaries = find.descendant(
-      of: find.byKey(const ValueKey('pin-layer-host')),
-      matching: find.byType(RepaintBoundary),
-    );
-    expect(layerBoundaries, findsNothing);
+      expect(hostBuilds, 1);
+      final layerBoundaries = find.descendant(
+        of: find.byKey(const ValueKey('pin-layer-host')),
+        matching: find.byType(RepaintBoundary),
+      );
+      expect(layerBoundaries, findsNothing);
 
-    final pin = controller.addSnapshot(
-      image: await _testImage(),
-      rect: const Rect.fromLTWH(30, 30, 160, 160),
-      usableBounds: bounds,
-    );
-    await tester.pump();
-    await tester.pumpAndSettle();
+      final pin = controller.addSnapshot(
+        image: await _testImage(),
+        rect: const Rect.fromLTWH(30, 30, 160, 160),
+        usableBounds: bounds,
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
 
-    expect(hostBuilds, 1);
-    expect(find.byKey(ValueKey(pin.id)), findsOneWidget);
-    expect(layerBoundaries, findsOneWidget);
+      expect(hostBuilds, 1);
+      expect(find.byKey(ValueKey(pin.id)), findsOneWidget);
+      expect(layerBoundaries, findsOneWidget);
 
-    final initialRect = controller.value.single.rect;
-    await tester.drag(
-      find.byKey(ValueKey('pin-header-${pin.id}')),
-      const Offset(50, 40),
-    );
-    await tester.pump();
+      final initialRect = controller.value.single.rect;
+      await tester.drag(
+        find.byKey(ValueKey('pin-header-${pin.id}')),
+        const Offset(50, 40),
+      );
+      await tester.pump();
 
-    expect(controller.value.single.rect.left, initialRect.left + 50);
-    expect(controller.value.single.rect.top, initialRect.top + 40);
+      expect(controller.value.single.rect.left, initialRect.left + 50);
+      expect(controller.value.single.rect.top, initialRect.top + 40);
 
-    await tester.tap(find.byIcon(YuLiIcons.close));
-    await tester.pump();
-    expect(controller.value.single.id, pin.id);
-    expect(find.byKey(ValueKey(pin.id)), findsOneWidget);
+      await tester.tap(find.byIcon(YuLiIcons.close));
+      await tester.pump();
+      expect(controller.value.single.id, pin.id);
+      expect(find.byKey(ValueKey(pin.id)), findsOneWidget);
 
-    await tester.pumpAndSettle();
-    expect(controller.value, isEmpty);
-    expect(find.byKey(ValueKey(pin.id)), findsNothing);
-  });
+      await tester.pumpAndSettle();
+      expect(controller.value, isEmpty);
+      expect(find.byKey(ValueKey(pin.id)), findsNothing);
+    },
+  );
 
-  test('image pin persists through the seam; snapshot stays volatile', () async {
-    final controller = FloatingPinController();
-    final fake = _FakePersistence();
-    controller.persistence = fake;
-    final bounds = Rect.fromLTWH(8, 8, 800, 600);
+  test(
+    'image pin persists through the seam; snapshot stays volatile',
+    () async {
+      final controller = FloatingPinController();
+      final fake = _FakePersistence();
+      controller.persistence = fake;
+      final bounds = Rect.fromLTWH(8, 8, 800, 600);
 
-    final img = await controller.addImage(
-      filePath: '/tmp/a.jpg',
-      aspectRatio: 2.0,
-      rect: const Rect.fromLTWH(0, 0, 200, 0),
-      usableBounds: bounds,
-    );
-    expect(img.dbId, isNotNull);
-    expect(img.persisted, isTrue);
-    expect(fake.inserted, hasLength(1));
-    expect(fake.reorders, isNotEmpty); // z-order written on add
-    // aspect 2.0 → body height = width / 2.
-    expect(img.rect.height, floatingPinHeaderHeight + 100);
+      final img = await controller.addImage(
+        filePath: '/tmp/a.jpg',
+        aspectRatio: 2.0,
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        usableBounds: bounds,
+      );
+      expect(img.dbId, isNotNull);
+      expect(img.persisted, isTrue);
+      expect(fake.inserted, hasLength(1));
+      expect(fake.reorders, isNotEmpty); // z-order written on add
+      // aspect 2.0 → body height = width / 2.
+      expect(img.rect.height, floatingPinHeaderHeight + 100);
 
-    controller.commitRect(img.id, const Rect.fromLTWH(40, 40, 160, 0), bounds);
-    expect(fake.saved, isNotEmpty);
+      controller.commitRect(
+        img.id,
+        const Rect.fromLTWH(40, 40, 160, 0),
+        bounds,
+      );
+      expect(fake.saved, isNotEmpty);
 
-    fake.saved.clear();
-    controller.toggleCollapsed(img.id);
-    expect(fake.saved.single.collapsed, isTrue);
+      fake.saved.clear();
+      controller.toggleCollapsed(img.id);
+      expect(fake.saved.single.collapsed, isTrue);
 
-    // A volatile snapshot must NOT hit the seam.
-    final snap = controller.addSnapshot(
-      image: await _testImage(),
-      rect: const Rect.fromLTWH(0, 0, 120, 0),
-      usableBounds: bounds,
-    );
-    fake.saved.clear();
-    controller.commitRect(snap.id, const Rect.fromLTWH(10, 10, 120, 0), bounds);
-    expect(fake.saved, isEmpty);
+      // A volatile snapshot must NOT hit the seam.
+      final snap = controller.addSnapshot(
+        image: await _testImage(),
+        rect: const Rect.fromLTWH(0, 0, 120, 0),
+        usableBounds: bounds,
+      );
+      fake.saved.clear();
+      controller.commitRect(
+        snap.id,
+        const Rect.fromLTWH(10, 10, 120, 0),
+        bounds,
+      );
+      expect(fake.saved, isEmpty);
 
-    // Closing a persisted pin removes via the seam; a snapshot does not.
-    controller.close(img.id);
-    expect(fake.removed.single.dbId, img.dbId);
-    controller.close(snap.id);
-    expect(fake.removed, hasLength(1));
-  });
+      // Closing a persisted pin removes via the seam; a snapshot does not.
+      controller.close(img.id);
+      expect(fake.removed.single.dbId, img.dbId);
+      controller.close(snap.id);
+      expect(fake.removed, hasLength(1));
+    },
+  );
 
   test('pdf pin is free-resize and persisted', () async {
     final controller = FloatingPinController();
@@ -227,7 +240,11 @@ void main() {
     expect(pdf.rect.width, 300);
     expect(pdf.rect.height, 400);
 
-    controller.commitRect(pdf.id, const Rect.fromLTWH(20, 20, 500, 400), bounds);
+    controller.commitRect(
+      pdf.id,
+      const Rect.fromLTWH(20, 20, 500, 400),
+      bounds,
+    );
     final after = controller.value.single;
     expect(after.rect.width, 500);
     expect(after.rect.height, 400); // not derived from width
@@ -295,25 +312,32 @@ void main() {
     expect(after.rect.height, 300); // not derived from width
   });
 
-  test('pin recents: newest-first, de-duped, capped, independent lists', () async {
-    SharedPreferences.setMockInitialValues({});
-    for (var i = 0; i < 12; i++) {
-      await PinRecents.pushWeb(PinRecent(value: 'https://s$i.test', title: 'S$i'));
-    }
-    var web = await PinRecents.web();
-    expect(web.length, PinRecents.cap); // oldest evicted past the cap
-    expect(web.first.value, 'https://s11.test'); // newest first
+  test(
+    'pin recents: newest-first, de-duped, capped, independent lists',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      for (var i = 0; i < 12; i++) {
+        await PinRecents.pushWeb(
+          PinRecent(value: 'https://s$i.test', title: 'S$i'),
+        );
+      }
+      var web = await PinRecents.web();
+      expect(web.length, PinRecents.cap); // oldest evicted past the cap
+      expect(web.first.value, 'https://s11.test'); // newest first
 
-    // Re-pushing an existing entry moves it to front without growing the list.
-    await PinRecents.pushWeb(const PinRecent(value: 'https://s5.test', title: 'x'));
-    web = await PinRecents.web();
-    expect(web.length, PinRecents.cap);
-    expect(web.first.value, 'https://s5.test');
-    expect(web.where((r) => r.value == 'https://s5.test'), hasLength(1));
+      // Re-pushing an existing entry moves it to front without growing the list.
+      await PinRecents.pushWeb(
+        const PinRecent(value: 'https://s5.test', title: 'x'),
+      );
+      web = await PinRecents.web();
+      expect(web.length, PinRecents.cap);
+      expect(web.first.value, 'https://s5.test');
+      expect(web.where((r) => r.value == 'https://s5.test'), hasLength(1));
 
-    // The video list is a separate key.
-    expect(await PinRecents.video(), isEmpty);
-  });
+      // The video list is a separate key.
+      expect(await PinRecents.video(), isEmpty);
+    },
+  );
 
   test('pdf recents prune entries whose source file was deleted', () async {
     SharedPreferences.setMockInitialValues({});
@@ -341,30 +365,33 @@ void main() {
     expect(normalizeWebUrl(' https://y.test '), 'https://y.test');
   });
 
-  test('loadPersisted is idempotent and sits behind volatile snapshots', () async {
-    final controller = FloatingPinController();
-    final bounds = Rect.fromLTWH(8, 8, 800, 600);
-    final snap = controller.addSnapshot(
-      image: await _testImage(),
-      rect: const Rect.fromLTWH(0, 0, 120, 0),
-      usableBounds: bounds,
-    );
-    final persisted = FloatingPin(
-      id: 'db1',
-      dbId: 1,
-      kind: FloatingPinKind.image,
-      payload: ImagePinPayload(filePath: '/tmp/x.jpg', aspectRatio: 1),
-      rect: const Rect.fromLTWH(0, 0, 100, 100),
-    );
+  test(
+    'loadPersisted is idempotent and sits behind volatile snapshots',
+    () async {
+      final controller = FloatingPinController();
+      final bounds = Rect.fromLTWH(8, 8, 800, 600);
+      final snap = controller.addSnapshot(
+        image: await _testImage(),
+        rect: const Rect.fromLTWH(0, 0, 120, 0),
+        usableBounds: bounds,
+      );
+      final persisted = FloatingPin(
+        id: 'db1',
+        dbId: 1,
+        kind: FloatingPinKind.image,
+        payload: ImagePinPayload(filePath: '/tmp/x.jpg', aspectRatio: 1),
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+      );
 
-    controller.loadPersisted([persisted]);
-    // Persisted (older) behind, the session snapshot on top (list end = front).
-    expect(controller.value.map((p) => p.id).toList(), ['db1', snap.id]);
-    expect(controller.persistedLoaded, isTrue);
+      controller.loadPersisted([persisted]);
+      // Persisted (older) behind, the session snapshot on top (list end = front).
+      expect(controller.value.map((p) => p.id).toList(), ['db1', snap.id]);
+      expect(controller.persistedLoaded, isTrue);
 
-    controller.loadPersisted([persisted]); // no-op on re-entry
-    expect(controller.value.where((p) => p.id == 'db1'), hasLength(1));
-  });
+      controller.loadPersisted([persisted]); // no-op on re-entry
+      expect(controller.value.where((p) => p.id == 'db1'), hasLength(1));
+    },
+  );
 
   group('repository round-trip', () {
     late AppDatabase db;
@@ -380,7 +407,9 @@ void main() {
       final folderId = await db
           .into(db.folders)
           .insert(FoldersCompanion.insert(name: 'f', color: '#FFFFFF'));
-      return db.into(db.notes).insert(NotesCompanion.insert(folderId: folderId));
+      return db
+          .into(db.notes)
+          .insert(NotesCompanion.insert(folderId: folderId));
     }
 
     FloatingPinRecord rec(int noteId, String filename, int order) =>
@@ -424,6 +453,27 @@ void main() {
       referenced = await repo.referencedFilesByNote();
       expect(referenced[noteId], {'b.jpg'});
       expect(await repo.forNote(noteId), hasLength(1));
+    });
+
+    test('canvas deletion removes only pins from that multipizarra', () async {
+      final noteId = await makeNote();
+      await repo.insert(
+        rec(noteId, 'a.jpg', 0).copyWith(
+          metadata: {...rec(noteId, 'a.jpg', 0).metadata, 'canvasBlockId': 10},
+        ),
+      );
+      await repo.insert(
+        rec(noteId, 'b.jpg', 1).copyWith(
+          metadata: {...rec(noteId, 'b.jpg', 1).metadata, 'canvasBlockId': 11},
+        ),
+      );
+
+      await repo.deleteForCanvas(noteId, 10);
+
+      final remaining = await repo.forNote(noteId);
+      expect(remaining, hasLength(1));
+      expect(remaining.single.canvasBlockId, 11);
+      expect(remaining.single.metadata['filename'], 'b.jpg');
     });
   });
 }

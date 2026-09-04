@@ -16,7 +16,6 @@ import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/status_bar_flood.dart';
 import '../../../domain/models/folder.dart';
-import '../../../domain/models/kanban_card.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
@@ -33,7 +32,6 @@ import 'note_cell_model.dart';
 import 'note_export_view.dart';
 import 'ai_chat_sheet.dart';
 import 'yuli_markdown_commands.dart';
-import '../lab/lab_space_detail_screen.dart';
 
 class NoteEditorScreen extends ConsumerStatefulWidget {
   final Note note;
@@ -57,7 +55,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   InsertPanelType? _activePanel;
   bool _isPreview = false;
   bool _scrollLocked = false;
-  bool _headerCollapsed = true;
   final AiChatDockController _chatDock = AiChatDockController();
   final Map<int, GlobalKey> _blockKeys = {};
   int? _pendingFocusBlockId;
@@ -115,28 +112,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       current: _workspaceTarget,
       accent: _accent,
       onOpen: (target) => openFlightWorkspaceTarget(context, ref, target),
-      onInsertLink: (syntax) => unawaited(_insertWorkspaceLink(syntax)),
     );
-  }
-
-  Future<void> _insertWorkspaceLink(String syntax) async {
-    final editorState =
-        _insertEditorState ?? _lastEditorState ?? _activeEditorState;
-    final selection = _insertSelection ?? editorState?.selection;
-    if (editorState != null && selection != null) {
-      await _insertSyntax(syntax);
-      return;
-    }
-    final block = await ref
-        .read(noteBlockRepositoryProvider)
-        .insertAtEnd(
-          widget.note.id,
-          NoteBlockType.text,
-          payload: {'md': syntax},
-        );
-    if (!mounted) return;
-    setState(() => _pendingFocusBlockId = block.id);
-    _revealBlock(block.id);
   }
 
   Future<void> _addBlock(NoteBlockType type) async {
@@ -396,8 +372,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     final blocks =
         ref.watch(noteBlocksProvider(widget.note.id)).valueOrNull ?? [];
     final spaces = ref.watch(activeLabSpacesProvider).valueOrNull ?? [];
-    final linkedCards =
-        ref.watch(kanbanCardsByNoteProvider(widget.note.id)).valueOrNull ?? [];
     final hasAiKey = ref.watch(aiHasKeyProvider).valueOrNull ?? false;
     final aiLinked =
         hasAiKey &&
@@ -413,49 +387,26 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       Scaffold(
         backgroundColor: yCream,
         body: StatusBarFlood(
-          // Header is the note accent when expanded, cream2 when collapsed.
-          color: _headerCollapsed ? yCream2 : _accent,
+          color: yCream2,
           child: SafeArea(
             top: false,
             child: Stack(
               children: [
                 Column(
                   children: [
-                    if (_headerCollapsed)
-                      _CollapsedHeader(
-                        folder: widget.folder,
-                        titleCtrl: _titleCtrl,
-                        dirty: _dirty,
-                        isPreview: _isPreview,
-                        accent: _accent,
-                        onBack: () => Navigator.pop(context),
-                        onSave: _saveTitle,
-                        onTogglePreview:
-                            () => setState(() => _isPreview = !_isPreview),
-                        onPdf: () => _exportPdf(blocks),
-                        onExpand:
-                            () => setState(() => _headerCollapsed = false),
-                      )
-                    else ...[
-                      ModeHeader(
-                        mode: 'NOTA',
-                        subtitle: _buildSubtitle(),
-                        subtitleWidget: _buildNoteSubtitleWidget(linkedCards),
-                        color: _accent,
-                        onBack: () => Navigator.pop(context),
-                        headerRight: _buildExpandedHeaderRight(
-                          dirty: _dirty,
-                          isPreview: _isPreview,
-                          onSave: _saveTitle,
-                          onTogglePreview:
-                              () => setState(() => _isPreview = !_isPreview),
-                          onLink: () => _showLinkToLab(spaces),
-                          onPdf: () => _exportPdf(blocks),
-                          onCollapse:
-                              () => setState(() => _headerCollapsed = true),
-                        ),
-                      ),
-                    ],
+                    _CollapsedHeader(
+                      folder: widget.folder,
+                      titleCtrl: _titleCtrl,
+                      dirty: _dirty,
+                      isPreview: _isPreview,
+                      accent: _accent,
+                      onBack: () => Navigator.pop(context),
+                      onSave: _saveTitle,
+                      onTogglePreview:
+                          () => setState(() => _isPreview = !_isPreview),
+                      onLink: () => _showLinkToLab(spaces),
+                      onPdf: () => _exportPdf(blocks),
+                    ),
                     FlightWorkspaceTabsBar(
                       current: _workspaceTarget,
                       accent: _accent,
@@ -516,6 +467,13 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                                             note: widget.note,
                                             folder: widget.folder,
                                             index: i,
+                                            onOpenWorkspaceTarget:
+                                                (target) =>
+                                                    openFlightWorkspaceTarget(
+                                                      context,
+                                                      ref,
+                                                      target,
+                                                    ),
                                             autofocus:
                                                 _pendingFocusBlockId ==
                                                 blocks[i].id,
@@ -603,7 +561,17 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   Widget _buildPreview(List<NoteBlock> blocks) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: NoteExportView(blocks: blocks, accent: _accent),
+      child: NoteExportView(
+        blocks: blocks,
+        accent: _accent,
+        onWikiLinkTap:
+            (label) => openFlightWikiLink(
+              context,
+              ref,
+              sourceNoteId: widget.note.id,
+              label: label,
+            ),
+      ),
     );
   }
 
@@ -630,120 +598,6 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
   int _wc(String s) =>
       s.trim().isEmpty ? 0 : s.trim().split(RegExp(r'\s+')).length;
-
-  String _buildSubtitle() {
-    final title = _titleCtrl.text.trim();
-    final base = 'MODO NOTAS · CARPETA · NOTA ABIERTA';
-    return title.isEmpty ? base : '$base · ${title.toUpperCase()}';
-  }
-
-  /// Subtitle slot for the expanded [ModeHeader]. Holds the editable note
-  /// title (cream text on the accent background) plus linked lab badges.
-  Widget _buildNoteSubtitleWidget(List<KanbanCard> linkedCards) {
-    final uniqueSpaceIds = linkedCards.map((c) => c.labSpaceId).toSet();
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _titleCtrl,
-            style: ySans(
-              size: 22,
-              weight: FontWeight.w700,
-              letterSpacing: -0.6,
-              color: yCream,
-              height: 1.1,
-            ),
-            decoration: InputDecoration(
-              isCollapsed: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 2),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              filled: false,
-              hintText: 'Sin título',
-              hintStyle: ySans(
-                size: 22,
-                weight: FontWeight.w700,
-                letterSpacing: -0.6,
-                color: yCream.withValues(alpha: 0.55),
-                height: 1.1,
-              ),
-            ),
-            maxLines: 1,
-          ),
-        ),
-        if (uniqueSpaceIds.isNotEmpty) ...[
-          const SizedBox(width: 10),
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children:
-                uniqueSpaceIds
-                    .map((spaceId) => _LabBadge(spaceId: spaceId))
-                    .toList(),
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// Action icons rendered in the expanded [ModeHeader] headerRight, matching
-  /// pizarra/cuaderno. Order: @carpeta, save, preview, link, PDF, AI, collapse.
-  List<Widget> _buildExpandedHeaderRight({
-    required bool dirty,
-    required bool isPreview,
-    required VoidCallback onSave,
-    required VoidCallback onTogglePreview,
-    required VoidCallback onLink,
-    required VoidCallback onPdf,
-    required VoidCallback onCollapse,
-  }) {
-    return [
-      YBadge(
-        label: '@${widget.folder.name}',
-        bg: widget.folder.color,
-        fg: yCream,
-      ),
-      _HeaderIcon(
-        icon: YuLiIcons.check,
-        fill: !dirty,
-        color: dirty ? yAmber2 : yLab,
-        onTap: onSave,
-      ),
-      _HeaderIcon(
-        icon: isPreview ? YuLiIcons.pen : YuLiIcons.eye,
-        fill: isPreview,
-        color: yLab,
-        onTap: onTogglePreview,
-      ),
-      _HeaderIcon(
-        icon: YuLiIcons.infinity,
-        fill: true,
-        color: yLab,
-        onTap: onLink,
-      ),
-      _HeaderIcon(
-        icon: YuLiIcons.fileText,
-        fill: true,
-        color: yAmber,
-        onTap: onPdf,
-      ),
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onCollapse,
-        child: Container(
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: yCream,
-            border: Border.all(color: yBorderStrong, width: yLineMid),
-          ),
-          child: const Icon(YuLiIcons.chevronUp, color: yInk, size: 18),
-        ),
-      ),
-    ];
-  }
 }
 
 // ─── Collapsed header ─────────────────────────────────────────────────────
@@ -757,8 +611,8 @@ class _CollapsedHeader extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onSave;
   final VoidCallback onTogglePreview;
+  final VoidCallback onLink;
   final VoidCallback onPdf;
-  final VoidCallback onExpand;
 
   const _CollapsedHeader({
     required this.folder,
@@ -769,8 +623,8 @@ class _CollapsedHeader extends StatelessWidget {
     required this.onBack,
     required this.onSave,
     required this.onTogglePreview,
+    required this.onLink,
     required this.onPdf,
-    required this.onExpand,
   });
 
   @override
@@ -782,15 +636,15 @@ class _CollapsedHeader extends StatelessWidget {
           bottom: BorderSide(color: yBorderStrong, width: yLineMid),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: onBack,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: yCream,
@@ -799,106 +653,68 @@ class _CollapsedHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.arrowLeft, color: yInk, size: 16),
             ),
           ),
-          const SizedBox(width: 10),
-          Container(width: 4, height: 24, color: accent),
-          const SizedBox(width: 8),
+          const SizedBox(width: 7),
+          Container(width: 3, height: 20, color: accent),
+          const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              titleCtrl.text.isEmpty ? 'Sin titulo' : titleCtrl.text,
+            child: TextField(
+              controller: titleCtrl,
               style: ySans(
-                size: 16,
+                size: 14,
                 weight: FontWeight.w700,
                 letterSpacing: -0.3,
                 color: accent,
                 height: 1.0,
               ),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                hintText: 'Sin título',
+                hintStyle: ySans(
+                  size: 14,
+                  weight: FontWeight.w700,
+                  color: yMuted,
+                  height: 1.0,
+                ),
+              ),
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => onSave(),
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           _HeaderIcon(
             icon: YuLiIcons.check,
             fill: !dirty,
-            color: dirty ? yAmber2 : yLab,
+            color: accent,
             onTap: onSave,
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           _HeaderIcon(
             icon: isPreview ? YuLiIcons.pen : YuLiIcons.eye,
             fill: isPreview,
-            color: yLab,
+            color: accent,
             onTap: onTogglePreview,
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           _HeaderIcon(
             icon: YuLiIcons.fileText,
             fill: true,
-            color: yAmber,
+            color: accent,
             onTap: onPdf,
           ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onExpand,
-            child: Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-              ),
-              child: const Icon(YuLiIcons.chevronDown, color: yInk, size: 18),
-            ),
+          const SizedBox(width: 4),
+          _HeaderIcon(
+            icon: YuLiIcons.infinity,
+            fill: true,
+            color: accent,
+            onTap: onLink,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LabBadge extends ConsumerWidget {
-  final int spaceId;
-  const _LabBadge({required this.spaceId});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final spaceAsync = ref.watch(labSpaceByIdProvider(spaceId));
-    final space = spaceAsync.valueOrNull;
-    if (space == null || !space.isActive) return const SizedBox.shrink();
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => LabSpaceDetailScreen(space: space)),
-          (route) => route.isFirst,
-        );
-        ref.read(currentModeProvider.notifier).state = AppMode.lab;
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: space.accentColor,
-          border: Border.all(color: yBorderStrong, width: 1.5),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(YuLiIcons.flaskConical, size: 10, color: yCream),
-            const SizedBox(width: 4),
-            Text(
-              space.name.toUpperCase(),
-              style: yMono(
-                size: 9,
-                weight: FontWeight.w700,
-                color: yCream,
-                tracking: 1,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -923,14 +739,14 @@ class _HeaderIcon extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        width: 38,
-        height: 38,
+        width: 28,
+        height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: fill ? color : yCream,
           border: Border.all(color: yBorderStrong, width: yLineMid),
         ),
-        child: Icon(icon, size: 18, color: fill ? yCream : yInk),
+        child: Icon(icon, size: 15, color: fill ? yCream : yInk),
       ),
     );
   }
