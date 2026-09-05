@@ -42,7 +42,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
   String? _selectedId;
   String? _dragId;
   bool _moved = false;
-  bool _includeIslands = false;
+  bool _includeIslands = true;
   bool _needsFit = false;
   double _scaleStart = 1;
 

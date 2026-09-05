@@ -8,13 +8,13 @@ enum GraphLayoutMode { solar, knowledge }
 /// Visual radius (world units) of a node by kind. Shared by the simulation
 /// (collision) and the painter so spacing and drawing stay consistent.
 double graphNodeRadius(GraphNodeKind k) => switch (k) {
-      GraphNodeKind.space => 46,
-      GraphNodeKind.folder => 28,
-      GraphNodeKind.card => 22,
-      GraphNodeKind.note => 18,
-      GraphNodeKind.task => 15,
-      GraphNodeKind.url => 14,
-    };
+  GraphNodeKind.space => 46,
+  GraphNodeKind.folder => 28,
+  GraphNodeKind.card => 22,
+  GraphNodeKind.note => 18,
+  GraphNodeKind.task => 15,
+  GraphNodeKind.url => 14,
+};
 
 /// Live force-directed simulation (D3-style): nodes settle on load and, when a
 /// node is dragged, the whole graph follows it with springs ("jala todo el
@@ -27,80 +27,94 @@ class GraphSimulation {
   /// [previous] carries over positions from an earlier simulation (real-time
   /// data updates): nodes that still exist keep their place and the layout only
   /// nudges (low [alpha]) instead of re-exploding from scratch.
-  GraphSimulation(this.data,
-      {int seed = 7,
-      Map<String, Offset>? previous,
-      this.layout = GraphLayoutMode.solar}) {
+  GraphSimulation(
+    this.data, {
+    int seed = 7,
+    Map<String, Offset>? previous,
+    this.layout = GraphLayoutMode.solar,
+  }) {
     final rnd = math.Random(seed);
     for (final n in data.nodes) {
       _kind[n.id] = n.kind;
       _radius[n.id] = graphNodeRadius(n.kind);
+      _degree[n.id] = 0;
+    }
+    for (final edge in data.edges) {
+      if (_degree.containsKey(edge.from) && _degree.containsKey(edge.to)) {
+        _degree[edge.from] = _degree[edge.from]! + 1;
+        _degree[edge.to] = _degree[edge.to]! + 1;
+      }
     }
     _computeAnchors();
 
-    // Structured seeding (avoids the "starts tangled in the centre" local
-    // minimum): folders ring the sun, each node spawns around its anchor so the
-    // regions exist from frame 0 and the settle only tightens them.
-    final roots = data.nodes.where((n) => n.isRoot).toList();
-    final sib = <String, int>{};
-    final ordered = [...data.nodes]
-      ..sort((a, b) => _seedDepth(a.kind).compareTo(_seedDepth(b.kind)));
-    for (final n in ordered) {
-      if (n.isRoot) {
-        final idx = roots.indexOf(n);
-        final at = roots.length == 1
-            ? Offset.zero
-            : Offset(math.cos(2 * math.pi * idx / roots.length),
-                    math.sin(2 * math.pi * idx / roots.length)) *
-                (_baseLinkDist * 4);
-        _bodies[n.id] = _Body(at, root: true);
-        continue;
+    if (layout == GraphLayoutMode.knowledge) {
+      _seedKnowledge(previous);
+    } else {
+      final roots = data.nodes.where((n) => n.isRoot).toList();
+      final sib = <String, int>{};
+      final ordered = [...data.nodes]
+        ..sort((a, b) => _seedDepth(a.kind).compareTo(_seedDepth(b.kind)));
+      for (final n in ordered) {
+        if (n.isRoot) {
+          final idx = roots.indexOf(n);
+          final at =
+              roots.length == 1
+                  ? Offset.zero
+                  : Offset(
+                        math.cos(2 * math.pi * idx / roots.length),
+                        math.sin(2 * math.pi * idx / roots.length),
+                      ) *
+                      (_baseLinkDist * 4);
+          _bodies[n.id] = _Body(at, root: true);
+          continue;
+        }
+        if (previous != null && previous.containsKey(n.id)) {
+          _bodies[n.id] = _Body(previous[n.id]!);
+          continue;
+        }
+        final anchorId = _anchor[n.id];
+        final base =
+            (anchorId != null && _bodies[anchorId] != null)
+                ? _bodies[anchorId]!.pos
+                : Offset.zero;
+        final key = anchorId ?? '_root';
+        final idx = sib[key] = (sib[key] ?? 0) + 1;
+        final ang = 2 * math.pi * 0.618 * idx + rnd.nextDouble() * 0.4;
+        final rr = _seedRadius(n.kind) + (rnd.nextDouble() - 0.5) * 24;
+        _bodies[n.id] = _Body(base + Offset(math.cos(ang), math.sin(ang)) * rr);
       }
-      if (previous != null && previous.containsKey(n.id)) {
-        _bodies[n.id] = _Body(previous[n.id]!);
-        continue;
-      }
-      final anchorId = _anchor[n.id];
-      final base = (anchorId != null && _bodies[anchorId] != null)
-          ? _bodies[anchorId]!.pos
-          : Offset.zero;
-      final key = anchorId ?? '_root';
-      final idx = sib[key] = (sib[key] ?? 0) + 1;
-      final ang = 2 * math.pi * 0.618 * idx + rnd.nextDouble() * 0.4;
-      final rr = layout == GraphLayoutMode.knowledge
-          ? 54 + math.sqrt(idx) * 28 + rnd.nextDouble() * 18
-          : _seedRadius(n.kind) + (rnd.nextDouble() - 0.5) * 24;
-      _bodies[n.id] = _Body(base + Offset(math.cos(ang), math.sin(ang)) * rr);
     }
     // The structured seed already looks right (separated regions). Use a LOW
     // alpha so the settle only relaxes overlaps via collision instead of a full
     // re-layout that collapses everything inward. Carry-over relaxes even less.
-    alpha = previous != null
-        ? (layout == GraphLayoutMode.knowledge ? 0.34 : 0.28)
-        : (layout == GraphLayoutMode.knowledge ? 0.58 : 0.42);
+    alpha =
+        previous != null
+            ? (layout == GraphLayoutMode.knowledge ? 0.34 : 0.28)
+            : (layout == GraphLayoutMode.knowledge ? 0.58 : 0.42);
   }
 
   static int _seedDepth(GraphNodeKind k) => switch (k) {
-        GraphNodeKind.space => 0,
-        GraphNodeKind.folder || GraphNodeKind.card => 1,
-        GraphNodeKind.note || GraphNodeKind.url => 2,
-        GraphNodeKind.task => 3,
-      };
+    GraphNodeKind.space => 0,
+    GraphNodeKind.folder || GraphNodeKind.card => 1,
+    GraphNodeKind.note || GraphNodeKind.url => 2,
+    GraphNodeKind.task => 3,
+  };
 
   static double _seedRadius(GraphNodeKind k) => switch (k) {
-        GraphNodeKind.folder => 261, // sun spoke ×0.9
-        GraphNodeKind.card => 162, // sun spoke ×0.9
-        GraphNodeKind.note => 88, // intra-cluster (unchanged)
-        GraphNodeKind.task => 58,
-        GraphNodeKind.url => 88,
-        GraphNodeKind.space => 0,
-      };
+    GraphNodeKind.folder => 261, // sun spoke ×0.9
+    GraphNodeKind.card => 162, // sun spoke ×0.9
+    GraphNodeKind.note => 88, // intra-cluster (unchanged)
+    GraphNodeKind.task => 58,
+    GraphNodeKind.url => 88,
+    GraphNodeKind.space => 0,
+  };
 
   final GraphData data;
   final GraphLayoutMode layout;
   final Map<String, _Body> _bodies = {};
   final Map<String, double> _radius = {};
   final Map<String, GraphNodeKind> _kind = {};
+  final Map<String, int> _degree = {};
 
   /// Layout "parent" each node orbits — the heart of readable REGIONS: notes
   /// hug their folder, tasks hug their note/folder, folders + cards hug the sun.
@@ -111,7 +125,8 @@ class GraphSimulation {
   static const double _baseLinkDist = 130;
   static const double _linkStrength = 0.35;
   static const double _charge = 9500; // repulsion → whitespace + region split
-  static const double _clusterPull = 0.05; // gentle: seed already groups regions
+  static const double _clusterPull =
+      0.05; // gentle: seed already groups regions
   static const double _gravity = 0.004; // tiny pull to origin (anti-drift)
   static const double _collidePad = 16;
   static const double _velocityDecay = 0.62;
@@ -119,10 +134,147 @@ class GraphSimulation {
   static const double _alphaMin = 0.02;
   static const double _maxVel = 70;
 
+  void _seedKnowledge(Map<String, Offset>? previous) {
+    final adjacency = <String, Set<String>>{
+      for (final node in data.nodes) node.id: <String>{},
+    };
+    for (final edge in data.edges) {
+      if (!adjacency.containsKey(edge.from) ||
+          !adjacency.containsKey(edge.to) ||
+          edge.from == edge.to) {
+        continue;
+      }
+      adjacency[edge.from]!.add(edge.to);
+      adjacency[edge.to]!.add(edge.from);
+    }
+
+    final pending = data.nodes.map((node) => node.id).toSet();
+    final components = <List<String>>[];
+    while (pending.isNotEmpty) {
+      final first = pending.reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
+      final component = <String>[];
+      final queue = <String>[first];
+      pending.remove(first);
+      var cursor = 0;
+      while (cursor < queue.length) {
+        final current = queue[cursor++];
+        component.add(current);
+        final neighbors = adjacency[current]!.toList()..sort();
+        for (final neighbor in neighbors) {
+          if (pending.remove(neighbor)) queue.add(neighbor);
+        }
+      }
+      component.sort();
+      components.add(component);
+    }
+    components.sort((a, b) {
+      final bySize = b.length.compareTo(a.length);
+      return bySize != 0 ? bySize : a.first.compareTo(b.first);
+    });
+
+    final designed = <String, Offset>{};
+    const goldenAngle = math.pi * (3 - 2.23606797749979);
+    final primarySize = components.isEmpty ? 0 : components.first.length;
+    for (
+      var componentIndex = 0;
+      componentIndex < components.length;
+      componentIndex++
+    ) {
+      final component = components[componentIndex];
+      final center =
+          componentIndex == 0
+              ? Offset.zero
+              : Offset(
+                    math.cos(componentIndex * goldenAngle - math.pi / 2),
+                    math.sin(componentIndex * goldenAngle - math.pi / 2),
+                  ) *
+                  (460 +
+                      math.sqrt(componentIndex) * 90 +
+                      math.min(600, math.sqrt(primarySize) * 100));
+      if (component.length == 1) {
+        designed[component.first] = center;
+        continue;
+      }
+
+      final maxDegree = component.map((id) => _degree[id]!).reduce(math.max);
+      final rootCandidates =
+          component.where((id) => _degree[id] == maxDegree).toList();
+      var root = rootCandidates.first;
+      var bestDistance = 1 << 30;
+      for (final candidate in rootCandidates) {
+        final distances = <String, int>{candidate: 0};
+        final candidatesQueue = <String>[candidate];
+        var candidateCursor = 0;
+        while (candidateCursor < candidatesQueue.length) {
+          final current = candidatesQueue[candidateCursor++];
+          for (final neighbor in adjacency[current]!) {
+            if (distances.containsKey(neighbor)) continue;
+            distances[neighbor] = distances[current]! + 1;
+            candidatesQueue.add(neighbor);
+          }
+        }
+        final distance = distances.values.fold<int>(0, (sum, d) => sum + d);
+        if (distance < bestDistance ||
+            (distance == bestDistance && candidate.compareTo(root) < 0)) {
+          root = candidate;
+          bestDistance = distance;
+        }
+      }
+      final depth = <String, int>{root: 0};
+      final queue = <String>[root];
+      var cursor = 0;
+      while (cursor < queue.length) {
+        final current = queue[cursor++];
+        final neighbors = adjacency[current]!.toList()..sort();
+        for (final neighbor in neighbors) {
+          if (depth.containsKey(neighbor)) continue;
+          depth[neighbor] = depth[current]! + 1;
+          queue.add(neighbor);
+        }
+      }
+      final layers = <int, List<String>>{};
+      for (final id in component) {
+        layers.putIfAbsent(depth[id]!, () => []).add(id);
+      }
+      designed[root] = center;
+      for (final entry in layers.entries.where((entry) => entry.key > 0)) {
+        final layer = entry.value..sort();
+        final radius = entry.key * 176.0;
+        final phase = componentIndex * goldenAngle + entry.key * 0.53;
+        for (var i = 0; i < layer.length; i++) {
+          final angle = phase + 2 * math.pi * i / layer.length;
+          designed[layer[i]] =
+              center + Offset(math.cos(angle), math.sin(angle)) * radius;
+        }
+      }
+    }
+
+    for (final component in components) {
+      final carried = component.where(
+        (id) => previous?.containsKey(id) == true,
+      );
+      var offset = Offset.zero;
+      if (carried.isNotEmpty) {
+        var oldCenter = Offset.zero;
+        var newCenter = Offset.zero;
+        for (final id in carried) {
+          oldCenter += previous![id]!;
+          newCenter += designed[id]!;
+        }
+        offset =
+            oldCenter / carried.length.toDouble() -
+            newCenter / carried.length.toDouble();
+      }
+      for (final id in component) {
+        _bodies[id] = _Body(previous?[id] ?? designed[id]! + offset);
+      }
+    }
+  }
+
   /// Per-edge rest length: long spokes from the sun (so folders get their own
   /// neighbourhood), short links inside a folder's cluster.
   double _linkDistFor(GraphEdge e) {
-    if (layout == GraphLayoutMode.knowledge) return 108;
+    if (layout == GraphLayoutMode.knowledge) return 168;
     final a = _kind[e.from];
     final b = _kind[e.to];
     bool has(GraphNodeKind k) => a == k || b == k;
@@ -145,7 +297,7 @@ class GraphSimulation {
       return;
     }
     final adj = <String, List<String>>{
-      for (final n in data.nodes) n.id: <String>[]
+      for (final n in data.nodes) n.id: <String>[],
     };
     for (final e in data.edges) {
       adj[e.from]?.add(e.to);
@@ -162,13 +314,14 @@ class GraphSimulation {
       _anchor[n.id] = switch (n.kind) {
         GraphNodeKind.space => null,
         GraphNodeKind.folder ||
-        GraphNodeKind.card =>
-          neighborOf(n.id, GraphNodeKind.space),
-        GraphNodeKind.note => neighborOf(n.id, GraphNodeKind.folder) ??
-            neighborOf(n.id, GraphNodeKind.space),
-        GraphNodeKind.task => neighborOf(n.id, GraphNodeKind.folder) ??
-            neighborOf(n.id, GraphNodeKind.note) ??
-            neighborOf(n.id, GraphNodeKind.card),
+        GraphNodeKind.card => neighborOf(n.id, GraphNodeKind.space),
+        GraphNodeKind.note =>
+          neighborOf(n.id, GraphNodeKind.folder) ??
+              neighborOf(n.id, GraphNodeKind.space),
+        GraphNodeKind.task =>
+          neighborOf(n.id, GraphNodeKind.folder) ??
+              neighborOf(n.id, GraphNodeKind.note) ??
+              neighborOf(n.id, GraphNodeKind.card),
         GraphNodeKind.url => null,
       };
     }
@@ -183,8 +336,9 @@ class GraphSimulation {
   bool dragActive = false;
 
   Offset? posOf(String id) => _bodies[id]?.pos;
-  Map<String, Offset> get positions =>
-      {for (final e in _bodies.entries) e.key: e.value.pos};
+  Map<String, Offset> get positions => {
+    for (final e in _bodies.entries) e.key: e.value.pos,
+  };
 
   void reheat([double a = 0.5]) => alpha = math.max(alpha, a);
 
@@ -222,7 +376,13 @@ class GraphSimulation {
           }
           final d = math.sqrt(d2);
           final charge =
-              layout == GraphLayoutMode.knowledge ? 7200.0 : _charge;
+              layout == GraphLayoutMode.knowledge
+                  ? 9500.0 *
+                      (1 +
+                          0.16 *
+                              ((_degree[nodes[i].id] ?? 0) +
+                                  (_degree[nodes[j].id] ?? 0)))
+                  : _charge;
           final f = charge * alpha / d2;
           a.vel += Offset(dx / d * f, dy / d * f);
           b.vel -= Offset(dx / d * f, dy / d * f);
@@ -238,7 +398,9 @@ class GraphSimulation {
       var dx = b.pos.dx - a.pos.dx;
       var dy = b.pos.dy - a.pos.dy;
       final d = math.max(math.sqrt(dx * dx + dy * dy), 1.0);
-      final diff = (d - _linkDistFor(e)) / d * _linkStrength * alpha;
+      final strength =
+          layout == GraphLayoutMode.knowledge ? 0.24 : _linkStrength;
+      final diff = (d - _linkDistFor(e)) / d * strength * alpha;
       a.vel += Offset(dx * diff * 0.5, dy * diff * 0.5);
       b.vel -= Offset(dx * diff * 0.5, dy * diff * 0.5);
     }
@@ -258,12 +420,12 @@ class GraphSimulation {
         if (anchorId != null) {
           final ap = _bodies[anchorId];
           if (ap != null) {
-            b.vel += Offset(ap.pos.dx - b.pos.dx, ap.pos.dy - b.pos.dy) *
+            b.vel +=
+                Offset(ap.pos.dx - b.pos.dx, ap.pos.dy - b.pos.dy) *
                 (_clusterPull * alpha);
           }
         }
-        final gravity =
-            layout == GraphLayoutMode.knowledge ? 0.007 : _gravity;
+        final gravity = layout == GraphLayoutMode.knowledge ? 0.0011 : _gravity;
         b.vel += Offset(-b.pos.dx, -b.pos.dy) * (gravity * alpha);
       }
       var v = b.vel * _velocityDecay;
@@ -321,6 +483,7 @@ class GraphSimulation {
   }
 
   double _pairCollidePad(GraphNodeKind a, GraphNodeKind b) {
+    if (layout == GraphLayoutMode.knowledge) return 44;
     if (a == GraphNodeKind.note && b == GraphNodeKind.note) return 24;
     if (a == GraphNodeKind.task && b == GraphNodeKind.task) return 24;
     if ((a == GraphNodeKind.note && b == GraphNodeKind.task) ||

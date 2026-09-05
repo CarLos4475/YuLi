@@ -8,31 +8,64 @@ GraphData _sample({int notes = 10, int roots = 1}) {
   final nodes = <GraphNode>[];
   final edges = <GraphEdge>[];
   for (var r = 0; r < roots; r++) {
-    nodes.add(GraphNode(
-      id: 'space:$r',
-      kind: GraphNodeKind.space,
-      label: 'S$r',
-      color: const Color(0xFF3D6B4F),
-      refId: r,
-      isRoot: true,
-    ));
+    nodes.add(
+      GraphNode(
+        id: 'space:$r',
+        kind: GraphNodeKind.space,
+        label: 'S$r',
+        color: const Color(0xFF3D6B4F),
+        refId: r,
+        isRoot: true,
+      ),
+    );
   }
   for (var i = 0; i < notes; i++) {
-    nodes.add(GraphNode(
-      id: 'note:$i',
-      kind: GraphNodeKind.note,
-      label: 'n$i',
-      color: const Color(0xFF6B2D8E),
-      refId: i,
-      noteVariant: NoteVariant.block,
-    ));
-    edges.add(GraphEdge(
-        from: 'space:${i % roots}', to: 'note:$i', kind: GraphEdgeKind.structure));
+    nodes.add(
+      GraphNode(
+        id: 'note:$i',
+        kind: GraphNodeKind.note,
+        label: 'n$i',
+        color: const Color(0xFF6B2D8E),
+        refId: i,
+        noteVariant: NoteVariant.block,
+      ),
+    );
+    edges.add(
+      GraphEdge(
+        from: 'space:${i % roots}',
+        to: 'note:$i',
+        kind: GraphEdgeKind.structure,
+      ),
+    );
     if (i > 0) {
-      edges.add(GraphEdge(
-          from: 'note:${i - 1}', to: 'note:$i', kind: GraphEdgeKind.ai));
+      edges.add(
+        GraphEdge(from: 'note:${i - 1}', to: 'note:$i', kind: GraphEdgeKind.ai),
+      );
     }
   }
+  return GraphData(nodes: nodes, edges: edges);
+}
+
+GraphData _knowledgeSample() {
+  final nodes = List.generate(
+    7,
+    (index) => GraphNode(
+      id: 'note:$index',
+      kind: GraphNodeKind.note,
+      label: 'n$index',
+      color: const Color(0xFF6B2D8E),
+      refId: index,
+      noteVariant: NoteVariant.block,
+    ),
+  );
+  final edges = List.generate(
+    4,
+    (index) => GraphEdge(
+      from: 'note:$index',
+      to: 'note:${index + 1}',
+      kind: GraphEdgeKind.mention,
+    ),
+  );
   return GraphData(nodes: nodes, edges: edges);
 }
 
@@ -88,11 +121,14 @@ void main() {
       for (var j = i + 1; j < nodes.length; j++) {
         final pa = sim.posOf(nodes[i].id)!;
         final pb = sim.posOf(nodes[j].id)!;
-        final minD = graphNodeRadius(nodes[i].kind) +
-            graphNodeRadius(nodes[j].kind);
+        final minD =
+            graphNodeRadius(nodes[i].kind) + graphNodeRadius(nodes[j].kind);
         // allow a little numerical slack; the key is they don't overlap
-        expect((pa - pb).distance, greaterThan(minD * 0.85),
-            reason: '${nodes[i].id} y ${nodes[j].id} encimados');
+        expect(
+          (pa - pb).distance,
+          greaterThan(minD * 0.85),
+          reason: '${nodes[i].id} y ${nodes[j].id} encimados',
+        );
       }
     }
   });
@@ -101,5 +137,25 @@ void main() {
     final pos = GraphSimulation(_sample(notes: 12, roots: 3)).settle();
     expect(pos['space:0'] != pos['space:1'], isTrue);
     expect(pos['space:1'] != pos['space:2'], isTrue);
+  });
+
+  test('conocimiento: componentes e islas nacen en territorios distintos', () {
+    final positions =
+        GraphSimulation(
+          _knowledgeSample(),
+          layout: GraphLayoutMode.knowledge,
+        ).positions;
+    var connectedCenter = Offset.zero;
+    for (var i = 0; i < 5; i++) {
+      connectedCenter += positions['note:$i']!;
+    }
+    connectedCenter /= 5;
+
+    expect((positions['note:5']! - connectedCenter).distance, greaterThan(650));
+    expect((positions['note:6']! - connectedCenter).distance, greaterThan(650));
+    expect(
+      (positions['note:5']! - positions['note:6']!).distance,
+      greaterThan(700),
+    );
   });
 }
