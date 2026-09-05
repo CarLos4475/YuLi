@@ -20,9 +20,31 @@ import 'stroke_bounds.dart';
 const double kStrokeTileSize = 512;
 
 class StrokeTileIndex extends ChangeNotifier {
-  StrokeTileIndex({this.tileSize = kStrokeTileSize});
+  StrokeTileIndex({
+    this.tileSize = kStrokeTileSize,
+    this.preserveOrder = false,
+  });
 
   final double tileSize;
+  final bool preserveOrder;
+  Expando<int> _order = Expando<int>();
+  int _nextOrder = 0;
+
+  void inheritOrder(DrawingStroke original, DrawingStroke replacement) {
+    if (preserveOrder) _order[replacement] = _order[original];
+  }
+
+  List<DrawingStroke> strokesInRect(Rect rect) {
+    final found = Set<DrawingStroke>.identity();
+    for (final key in tilesInRect(rect)) {
+      found.addAll(_tiles[key]!);
+    }
+    final result = found.where((s) => strokeBounds(s).overlaps(rect)).toList();
+    if (preserveOrder) {
+      result.sort((a, b) => _order[a]!.compareTo(_order[b]!));
+    }
+    return result;
+  }
 
   final Map<(int, int), List<DrawingStroke>> _tiles = {};
   final Map<(int, int), int> _versions = {};
@@ -38,6 +60,8 @@ class StrokeTileIndex extends ChangeNotifier {
   void rebuild(List<DrawingStroke> strokes) {
     final touched = <(int, int)>{..._tiles.keys};
     _tiles.clear();
+    _order = Expando<int>();
+    _nextOrder = 0;
     for (final s in strokes) {
       _index(s, touched);
     }
@@ -78,13 +102,16 @@ class StrokeTileIndex extends ChangeNotifier {
       if (t + tileSize > maxB) maxB = t + tileSize;
     }
     final cleared = Rect.fromLTRB(minL, minT, maxR, maxB);
+    var order = 0;
     for (final s in all) {
+      if (preserveOrder) _order[s] = order++;
       final b = strokeBounds(s);
       if (!b.overlaps(cleared)) continue;
       for (final k in _keysIn(b)) {
         if (keys.contains(k)) (_tiles[k] ??= <DrawingStroke>[]).add(s);
       }
     }
+    if (preserveOrder) _nextOrder = order;
     // Drop now-empty tiles so the builder doesn't emit blank widgets.
     for (final k in keys) {
       if (_tiles[k]!.isEmpty) _tiles.remove(k);
@@ -120,7 +147,7 @@ class StrokeTileIndex extends ChangeNotifier {
 
   /// Add several strokes to the tiles their current bounds overlap. Appended at
   /// the tail of each bucket → a moved/edited stroke draws on top within its new
-  /// tile (the deliberate trade for an O(selection) commit vs a full rebuild).
+  /// tile unless preserveOrder retains the original insertion order.
   void appendAll(Iterable<DrawingStroke> strokes) {
     final touched = <(int, int)>{};
     for (final s in strokes) {
@@ -163,9 +190,25 @@ class StrokeTileIndex extends ChangeNotifier {
   // ─── Internals ────────────────────────────────────────────────────────────
 
   void _index(DrawingStroke s, Set<(int, int)> touched) {
+    if (preserveOrder) _order[s] ??= _nextOrder++;
     final b = strokeBounds(s);
     for (final k in _keysIn(b)) {
-      (_tiles[k] ??= <DrawingStroke>[]).add(s);
+      final list = _tiles[k] ??= <DrawingStroke>[];
+      if (preserveOrder && list.isNotEmpty && _order[list.last]! > _order[s]!) {
+        var lo = 0;
+        var hi = list.length;
+        while (lo < hi) {
+          final mid = (lo + hi) ~/ 2;
+          if (_order[list[mid]]! < _order[s]!) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+        list.insert(lo, s);
+      } else {
+        list.add(s);
+      }
       touched.add(k);
     }
   }
@@ -207,6 +250,7 @@ class StrokeTilePainter extends CustomPainter {
     this.hidden,
     this.clipBounds,
     this.lod = 0,
+    this.preserveAppearance = false,
   });
 
   final List<DrawingStroke> strokes;
@@ -216,6 +260,7 @@ class StrokeTilePainter extends CustomPainter {
   /// Level-of-detail for the current zoom (0 = full). At higher LOD strokes are
   /// drawn as cheap decimated polylines so zoomed-out tiles rasterize fast.
   final int lod;
+  final bool preserveAppearance;
 
   /// Strokes to skip (identity set) — the lasso selection during a live
   /// move/resize/rotate, drawn by the overlay instead. Null when nothing hidden.
@@ -231,19 +276,21 @@ class StrokeTilePainter extends CustomPainter {
     canvas.translate(-tileOrigin.dx, -tileOrigin.dy);
     canvas.clipRect(
       Rect.fromLTWH(tileOrigin.dx, tileOrigin.dy, size.width, size.height),
+      doAntiAlias: !preserveAppearance,
     );
     if (clipBounds != null) canvas.clipRect(clipBounds!);
     final h = hidden;
     for (final s in strokes) {
       if (h != null && h.contains(s)) continue;
-      drawStroke(canvas, s, lod: lod);
+      drawStroke(canvas, s, lod: lod, preserveAppearance: preserveAppearance);
     }
   }
 
   @override
   bool shouldRepaint(StrokeTilePainter old) =>
       old.version != version ||
-      old.lod != lod ||
+      (old.lod != lod && !preserveAppearance) ||
+      old.preserveAppearance != preserveAppearance ||
       !identical(old.strokes, strokes) ||
       !identical(old.hidden, hidden) ||
       old.clipBounds != clipBounds;
@@ -263,6 +310,7 @@ List<Widget> strokeTileWidgets({
   Object keyPrefix = 0,
   Rect? clipBounds,
   int lod = 0,
+  bool preserveAppearance = false,
 }) {
   final out = <Widget>[];
   final size = index.tileSize;
@@ -296,6 +344,7 @@ List<Widget> strokeTileWidgets({
               hidden: hidden,
               clipBounds: clipBounds,
               lod: lod,
+              preserveAppearance: preserveAppearance,
             ),
             size: Size(size, size),
           ),

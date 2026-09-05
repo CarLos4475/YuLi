@@ -24,7 +24,11 @@ void drawCanvasImage(Canvas canvas, Image? image, CanvasImage ci) {
   }
   if (image != null) {
     final src = Rect.fromLTWH(
-        0, 0, image.width.toDouble(), image.height.toDouble());
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
+    );
     canvas.drawImageRect(image, src, rect, _imagePaint);
   } else {
     canvas.drawRect(rect, Paint()..color = const Color(0x14000000));
@@ -85,8 +89,15 @@ class _SimpPathEntry {
   final int step, pointCount;
   final double firstX, firstY, lastX, lastY;
   final Path path;
-  const _SimpPathEntry(this.step, this.pointCount, this.firstX, this.firstY,
-      this.lastX, this.lastY, this.path);
+  const _SimpPathEntry(
+    this.step,
+    this.pointCount,
+    this.firstX,
+    this.firstY,
+    this.lastX,
+    this.lastY,
+    this.path,
+  );
   bool matches(DrawingStroke s, int step) {
     final p = s.points;
     return this.step == step &&
@@ -118,8 +129,15 @@ Path _cachedSimplifiedPath(DrawingStroke stroke, int step) {
   if (cached != null && cached.matches(stroke, step)) return cached.path;
   final pts = stroke.points;
   final path = _buildSimplifiedPath(stroke, step);
-  _simpPathCache[stroke] = _SimpPathEntry(step, pts.length, pts.firstX,
-      pts.firstY, pts.lastX, pts.lastY, path);
+  _simpPathCache[stroke] = _SimpPathEntry(
+    step,
+    pts.length,
+    pts.firstX,
+    pts.firstY,
+    pts.lastX,
+    pts.lastY,
+    path,
+  );
   return path;
 }
 
@@ -130,12 +148,13 @@ void _drawStrokeSimplified(
   bool cache = true,
 }) {
   final pts = stroke.points;
-  final paint = Paint()
-    ..color = Color(stroke.colorValue)
-    ..strokeWidth = stroke.strokeWidth
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round
-    ..style = PaintingStyle.stroke;
+  final paint =
+      Paint()
+        ..color = Color(stroke.colorValue)
+        ..strokeWidth = stroke.strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
   if (stroke.isHighlighter) {
     // Match the LOD-0 highlighter (drawStroke): multiply + 0.5. Without this the
     // marker visibly jumps to a stronger plain-srcOver tint the moment the view
@@ -154,7 +173,9 @@ void _drawStrokeSimplified(
     return;
   }
   canvas.drawPath(
-    cache ? _cachedSimplifiedPath(stroke, step) : _buildSimplifiedPath(stroke, step),
+    cache
+        ? _cachedSimplifiedPath(stroke, step)
+        : _buildSimplifiedPath(stroke, step),
     paint,
   );
 }
@@ -169,27 +190,29 @@ void drawStroke(
   // very dense board) so they don't permanently retain a Path per stroke —
   // caching all of, say, 1.1M strokes' paths is what OOMs the open.
   bool cache = true,
+  bool preserveAppearance = false,
 }) {
   if (stroke.points.isEmpty) return;
-  if (lod > 0) {
+  if (lod > 0 && !preserveAppearance) {
     _drawStrokeSimplified(canvas, stroke, _decimationStep(lod), cache: cache);
     return;
   }
   if (stroke.isFountainPen) {
-    drawFountainPenStroke(canvas, stroke, viewScale: viewScale);
+    drawFountainPenStroke(canvas, stroke, viewScale: viewScale, cache: cache);
     return;
   }
   if (stroke.isPencil) {
-    drawPencilStroke(canvas, stroke);
+    drawPencilStroke(canvas, stroke, cache: cache);
     return;
   }
   fillStrokeShape(canvas, stroke);
-  final paint = Paint()
-    ..color = Color(stroke.colorValue)
-    ..strokeWidth = stroke.strokeWidth
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round
-    ..style = PaintingStyle.stroke;
+  final paint =
+      Paint()
+        ..color = Color(stroke.colorValue)
+        ..strokeWidth = stroke.strokeWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
   if (stroke.isHighlighter) {
     // Multiply blend keeps the ink underneath dark/legible while tinting the
     // paper — reads like a real marker without reordering render passes.
@@ -223,8 +246,11 @@ const double _kPredict = 2.5;
 /// recent velocity, so the live ink keeps up with the pen. The committed stroke
 /// (drawn via [drawStroke]) never includes the prediction → saved geometry stays
 /// faithful, and the prediction self-cancels when the pen slows (velocity → 0).
-void drawActiveStroke(Canvas canvas, DrawingStroke stroke,
-    {double viewScale = 1.0}) {
+void drawActiveStroke(
+  Canvas canvas,
+  DrawingStroke stroke, {
+  double viewScale = 1.0,
+}) {
   if (stroke.isShape) {
     drawStroke(canvas, stroke, viewScale: viewScale);
     return;
@@ -281,8 +307,12 @@ Path buildPencilPath(DrawingStroke stroke) {
     for (int i = 0; i < raw.length; i++) raw.comps > 2 ? raw.z(i) : 0.5,
   ];
   final ts = List<int>.filled(raw.length, 0);
-  final (dsPts, dsPre, _) =
-      FountainPenEngine.downsample(pts, pressures, ts, minDist: 2.0);
+  final (dsPts, dsPre, _) = FountainPenEngine.downsample(
+    pts,
+    pressures,
+    ts,
+    minDist: 2.0,
+  );
   final basePts = FountainPenEngine.smoothPolyline(dsPts, passes: 1);
 
   final base = stroke.strokeWidth;
@@ -326,7 +356,9 @@ ImageShader? _pencilGrainShader() {
   const coarse = 24; // soft-clump cells across the tile
   final rng = math.Random(7);
   final grid = List<double>.generate(
-      (coarse + 1) * (coarse + 1), (_) => rng.nextDouble());
+    (coarse + 1) * (coarse + 1),
+    (_) => rng.nextDouble(),
+  );
   double soft(double gx, double gy) {
     final x0 = gx.floor();
     final y0 = gy.floor();
@@ -357,7 +389,11 @@ ImageShader? _pencilGrainShader() {
   }
   decodeImageFromPixels(px, n, n, PixelFormat.rgba8888, (img) {
     _pencilGrain = ImageShader(
-        img, TileMode.repeated, TileMode.repeated, _identity4x4);
+      img,
+      TileMode.repeated,
+      TileMode.repeated,
+      _identity4x4,
+    );
   });
   return null;
 }
@@ -365,7 +401,11 @@ ImageShader? _pencilGrainShader() {
 /// Render a pencil stroke: the pressure-tapered strip, filled with the grain
 /// texture tinted to the stroke color. Overall opacity follows the mean stylus
 /// pressure, so a light hand leaves a lighter mark.
-void drawPencilStroke(Canvas canvas, DrawingStroke stroke) {
+void drawPencilStroke(
+  Canvas canvas,
+  DrawingStroke stroke, {
+  bool cache = true,
+}) {
   final base = Color(stroke.colorValue);
   final pts = stroke.points;
   if (pts.length < 2) {
@@ -386,16 +426,22 @@ void drawPencilStroke(Canvas canvas, DrawingStroke stroke) {
   final meanP = sum / pts.length;
   final alpha = (0.5 + 0.42 * meanP).clamp(0.45, 0.92);
 
-  final path = cachedStrokePath(stroke, () => buildPencilPath(stroke));
-  final paint = Paint()
-    ..color = base.withValues(alpha: alpha)
-    ..style = PaintingStyle.fill;
+  final path =
+      cache
+          ? cachedStrokePath(stroke, () => buildPencilPath(stroke))
+          : buildPencilPath(stroke);
+  final paint =
+      Paint()
+        ..color = base.withValues(alpha: alpha)
+        ..style = PaintingStyle.fill;
   final grain = _pencilGrainShader();
   if (grain != null) {
     paint
       ..shader = grain
-      ..colorFilter =
-          ColorFilter.mode(base.withValues(alpha: alpha), BlendMode.srcIn);
+      ..colorFilter = ColorFilter.mode(
+        base.withValues(alpha: alpha),
+        BlendMode.srcIn,
+      );
   }
   canvas.drawPath(path, paint);
 }

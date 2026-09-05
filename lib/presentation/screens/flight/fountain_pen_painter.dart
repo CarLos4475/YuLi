@@ -9,8 +9,12 @@ import 'stroke_bounds.dart';
 /// Handles two point formats:
 /// - **Baked** (completed stroke):  [x, y, width]
 /// - **Raw** (in-progress stroke):  [x, y, pressure, timestamp]
-void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
-    {double viewScale = 1.0}) {
+void drawFountainPenStroke(
+  Canvas canvas,
+  DrawingStroke stroke, {
+  double viewScale = 1.0,
+  bool cache = true,
+}) {
   if (stroke.points.isEmpty) return;
 
   final isRaw = stroke.points.comps >= 4;
@@ -33,12 +37,12 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
       }
       return;
     }
-    final path = cachedStrokePath(
-      stroke,
-      () => FountainPenEngine.rawFountainPath(
-          stroke.points, stroke.strokeWidth,
-          viewScale: viewScale),
+    Path buildPath() => FountainPenEngine.rawFountainPath(
+      stroke.points,
+      stroke.strokeWidth,
+      viewScale: viewScale,
     );
+    final path = cache ? cachedStrokePath(stroke, buildPath) : buildPath();
     canvas.drawPath(
       path,
       Paint()
@@ -65,15 +69,21 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
 
   // Centerline/widths are only needed on a cache miss → build them lazily so
   // repaints (pan/zoom) of an unchanged baked stroke skip the allocations.
-  final path = cachedStrokePath(stroke, () {
+  Path buildPath() {
     final centerline = pts.toOffsets();
     final widths = [
       for (int i = 0; i < pts.length; i++)
         pts.comps > 2 ? pts.z(i) : stroke.strokeWidth,
     ];
-    return FountainPenEngine.tessellate(centerline, widths,
-        tangentWindow: 3, noiseAmp: 0);
-  });
+    return FountainPenEngine.tessellate(
+      centerline,
+      widths,
+      tangentWindow: 3,
+      noiseAmp: 0,
+    );
+  }
+
+  final path = cache ? cachedStrokePath(stroke, buildPath) : buildPath();
   canvas.drawPath(
     path,
     Paint()
@@ -81,4 +91,3 @@ void drawFountainPenStroke(Canvas canvas, DrawingStroke stroke,
       ..style = PaintingStyle.fill,
   );
 }
-

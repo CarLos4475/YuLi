@@ -126,7 +126,7 @@ Notas enriquecidas con bloques tipo-dispatch:
 
 ### Modo Pizarra (Whiteboard)
 
-Lienzo virtual de 10000x10000px con pan + zoom (0.3x–4x). Disenado para pensamiento visual.
+Lienzo virtual de 10000x10000px con pan + zoom (0.1x–4x). Disenado para pensamiento visual.
 
 **Herramientas de dibujo:**
 
