@@ -22,6 +22,7 @@ void main() {
       kind: NoteKind.whiteboard,
       label: 'Cálculo · Derivadas',
       folderLabel: 'Universidad',
+      folderColor: Color(0xFF315C9E),
     );
 
     final restored = FlightWorkspaceTarget.fromJson(target.toJson());
@@ -29,6 +30,7 @@ void main() {
     expect(restored.key, '7:42');
     expect(restored.label, target.label);
     expect(restored.kind, NoteKind.whiteboard);
+    expect(restored.folderColor?.toARGB32(), 0xFF315C9E);
     expect(flightWikiLinkLabel(restored), 'Cálculo#Derivadas');
   });
 

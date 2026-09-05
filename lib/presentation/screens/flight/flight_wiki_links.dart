@@ -37,6 +37,7 @@ Future<List<FlightWorkspaceTarget>> findFlightWikiTargets(
         kind: note.kind,
         label: label,
         folderLabel: folder.name,
+        folderColor: folder.color,
       ),
     );
   }
@@ -123,6 +124,7 @@ Future<FlightWorkspaceTarget?> resolveFlightWikiTarget(
           kind: note.kind,
           label: '${note.displayTitle} · $name',
           folderLabel: folder.name,
+          folderColor: folder.color,
         );
       }
     }
@@ -149,5 +151,6 @@ Future<FlightWorkspaceTarget?> resolveFlightWikiTarget(
     kind: created.kind,
     label: created.displayTitle,
     folderLabel: folder.name,
+    folderColor: folder.color,
   );
 }

@@ -188,9 +188,9 @@ class GraphSimulation {
                     math.cos(componentIndex * goldenAngle - math.pi / 2),
                     math.sin(componentIndex * goldenAngle - math.pi / 2),
                   ) *
-                  (460 +
-                      math.sqrt(componentIndex) * 90 +
-                      math.min(600, math.sqrt(primarySize) * 100));
+                  (300 +
+                      math.sqrt(componentIndex) * 55 +
+                      math.min(180, math.sqrt(primarySize) * 30));
       if (component.length == 1) {
         designed[component.first] = center;
         continue;

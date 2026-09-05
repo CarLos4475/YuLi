@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +13,7 @@ class FlightWorkspaceTarget {
   final NoteKind kind;
   final String label;
   final String folderLabel;
+  final Color? folderColor;
 
   const FlightWorkspaceTarget({
     required this.noteId,
@@ -20,6 +22,7 @@ class FlightWorkspaceTarget {
     required this.label,
     required this.folderLabel,
     this.canvasBlockId,
+    this.folderColor,
   });
 
   String get key => '$noteId:${canvasBlockId ?? 0}';
@@ -30,6 +33,7 @@ class FlightWorkspaceTarget {
     'kind': kind.name,
     'label': label,
     'folderLabel': folderLabel,
+    if (folderColor != null) 'folderColor': folderColor!.toARGB32(),
     if (canvasBlockId != null) 'canvasBlockId': canvasBlockId,
   };
 
@@ -41,6 +45,10 @@ class FlightWorkspaceTarget {
         kind: NoteKind.fromString(json['kind'] as String? ?? ''),
         label: json['label'] as String? ?? 'Sin título',
         folderLabel: json['folderLabel'] as String? ?? 'Carpeta',
+        folderColor:
+            json['folderColor'] == null
+                ? null
+                : Color((json['folderColor'] as num).toInt()),
       );
 }
 

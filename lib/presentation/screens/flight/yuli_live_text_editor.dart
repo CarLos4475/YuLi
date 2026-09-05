@@ -18,6 +18,7 @@ import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/repositories/note_block_repository.dart';
 import 'flight_wiki_links.dart';
+import 'flight_wiki_suggestions.dart';
 import 'yuli_code_language_picker.dart';
 import 'yuli_markdown_commands.dart';
 import 'yuli_markdown_document.dart';
@@ -1414,7 +1415,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       mainAxisSize: MainAxisSize.min,
       children: [
         editor,
-        _WikiLinkSuggestions(
+        FlightWikiLinkSuggestions(
           query: _wikiDraft!.query,
           matches: _wikiMatches!,
           accent: widget.accent,
@@ -1458,138 +1459,6 @@ bool _samePath(List<int> left, List<int> right) {
   }
   return true;
 }
-
-class _WikiLinkSuggestions extends StatelessWidget {
-  final String query;
-  final Future<List<FlightWorkspaceTarget>> matches;
-  final Color accent;
-  final ValueChanged<FlightWorkspaceTarget> onSelect;
-  final ValueChanged<NoteKind> onCreate;
-
-  const _WikiLinkSuggestions({
-    required this.query,
-    required this.matches,
-    required this.accent,
-    required this.onSelect,
-    required this.onCreate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(top: 4, right: 20),
-      decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: yBorderStrong, width: yLineThin),
-        boxShadow: const [
-          BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
-        ],
-      ),
-      child: FutureBuilder<List<FlightWorkspaceTarget>>(
-        future: matches,
-        builder: (context, snapshot) {
-          final targets = snapshot.data ?? const <FlightWorkspaceTarget>[];
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final target in targets)
-                _WikiSuggestionRow(
-                  icon: _wikiKindIcon(target.kind),
-                  title: target.label,
-                  subtitle: target.folderLabel,
-                  accent: accent,
-                  onTap: () => onSelect(target),
-                ),
-              if (query.trim().isNotEmpty) ...[
-                _WikiSuggestionRow(
-                  icon: YuLiIcons.fileText,
-                  title: 'Crear nota “${query.trim()}”',
-                  subtitle: 'NOTA EN ESTA CARPETA',
-                  accent: accent,
-                  onTap: () => onCreate(NoteKind.block),
-                ),
-                _WikiSuggestionRow(
-                  icon: YuLiIcons.layoutGrid,
-                  title: 'Crear pizarra “${query.trim()}”',
-                  subtitle: 'PIZARRA EN ESTA CARPETA',
-                  accent: accent,
-                  onTap: () => onCreate(NoteKind.whiteboard),
-                ),
-                _WikiSuggestionRow(
-                  icon: YuLiIcons.notebook,
-                  title: 'Crear cuaderno “${query.trim()}”',
-                  subtitle: 'CUADERNO EN ESTA CARPETA',
-                  accent: accent,
-                  onTap: () => onCreate(NoteKind.notebook),
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _WikiSuggestionRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color accent;
-  final VoidCallback onTap;
-
-  const _WikiSuggestionRow({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.accent,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: yBorderSoft, width: 1)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: accent),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ySans(
-                      size: 13,
-                      weight: FontWeight.w700,
-                      color: yInk,
-                    ),
-                  ),
-                  Text(subtitle, style: yMono(size: 8, color: yMuted)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-IconData _wikiKindIcon(NoteKind kind) => switch (kind) {
-  NoteKind.block => YuLiIcons.fileText,
-  NoteKind.whiteboard => YuLiIcons.layoutGrid,
-  NoteKind.notebook => YuLiIcons.notebook,
-};
 
 class _YuliAtomicAction {
   final String label;

@@ -151,11 +151,17 @@ void main() {
     }
     connectedCenter /= 5;
 
-    expect((positions['note:5']! - connectedCenter).distance, greaterThan(650));
-    expect((positions['note:6']! - connectedCenter).distance, greaterThan(650));
+    expect(
+      (positions['note:5']! - connectedCenter).distance,
+      inInclusiveRange(360, 520),
+    );
+    expect(
+      (positions['note:6']! - connectedCenter).distance,
+      inInclusiveRange(360, 520),
+    );
     expect(
       (positions['note:5']! - positions['note:6']!).distance,
-      greaterThan(700),
+      greaterThan(650),
     );
   });
 }

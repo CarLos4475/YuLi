@@ -5993,6 +5993,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             key: ValueKey(b.id),
             block: b,
             accent: _accent,
+            sourceNoteId: widget.note.id,
+            sourceCanvasBlockId: _pageBlockIds[i],
             // Editing and moving remain tool-specific; wiki links handle their
             // own double tap in every tool.
             interactive:

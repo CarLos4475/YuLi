@@ -5,9 +5,16 @@
 // content lays out at width `w/scale` (text reflow) and is uniformly scaled by
 // a FittedBox up to `w`.
 
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../domain/models/note.dart';
+import '../../providers/flight_workspace_providers.dart';
 import '../../widgets/yuli_design.dart';
+import 'flight_wiki_links.dart';
+import 'flight_wiki_suggestions.dart';
 import 'note_block_widgets.dart' show NoteMarkdownPreview, fixMarkdownTables;
 import 'note_cell_model.dart';
 
@@ -19,9 +26,13 @@ const double kCanvasTextBlockDefaultW = 220.0;
 /// floor — the user often zooms in to write, so a large min feels huge.
 const double kCanvasTextBlockMinW = 40.0;
 
-class CanvasTextBlockOverlay extends StatefulWidget {
+class CanvasTextBlockOverlay extends ConsumerStatefulWidget {
   final CanvasTextBlock block;
   final Color accent;
+  final int? sourceNoteId;
+  final int? sourceCanvasBlockId;
+  final Future<List<FlightWorkspaceTarget>> Function(String query)?
+  wikiTargetSearch;
 
   /// True when a tap on the box opens the editor. True in lasso mode (when not
   /// selected) and in text mode; false while a drawing tool without palm-
@@ -52,6 +63,9 @@ class CanvasTextBlockOverlay extends StatefulWidget {
     super.key,
     required this.block,
     required this.accent,
+    this.sourceNoteId,
+    this.sourceCanvasBlockId,
+    this.wikiTargetSearch,
     required this.interactive,
     this.movable = false,
     required this.onPersist,
@@ -63,12 +77,18 @@ class CanvasTextBlockOverlay extends StatefulWidget {
   });
 
   @override
-  State<CanvasTextBlockOverlay> createState() => _CanvasTextBlockOverlayState();
+  ConsumerState<CanvasTextBlockOverlay> createState() =>
+      _CanvasTextBlockOverlayState();
 }
 
-class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
+class _CanvasTextBlockOverlayState
+    extends ConsumerState<CanvasTextBlockOverlay> {
   final _contentKey = GlobalKey();
   OverlayEntry? _editorEntry;
+  TextEditingController? _editorController;
+  FocusNode? _editorFocus;
+  _CanvasWikiDraft? _wikiDraft;
+  Future<List<FlightWorkspaceTarget>>? _wikiMatches;
 
   // Cache the parsed markdown widget: the overlay rebuilds on every editor
   // setState (e.g. once per frame during a lasso drag), and re-parsing markdown
@@ -121,6 +141,10 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
     if (_editorEntry != null) return;
     final ctrl = TextEditingController(text: widget.block.markdown);
     final focus = FocusNode();
+    _editorController = ctrl;
+    _editorFocus = focus;
+    ctrl.addListener(_refreshWikiDraft);
+    focus.addListener(_refreshWikiDraft);
     _editorEntry = OverlayEntry(
       builder: (ctx) => _buildEditorBar(ctx, ctrl, focus),
     );
@@ -131,6 +155,101 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
   void _removeEditor() {
     _editorEntry?.remove();
     _editorEntry = null;
+    _editorController?.removeListener(_refreshWikiDraft);
+    _editorFocus?.removeListener(_refreshWikiDraft);
+    _editorController?.dispose();
+    _editorFocus?.dispose();
+    _editorController = null;
+    _editorFocus = null;
+    _wikiDraft = null;
+    _wikiMatches = null;
+  }
+
+  void _refreshWikiDraft() {
+    final ctrl = _editorController;
+    final focus = _editorFocus;
+    _CanvasWikiDraft? next;
+    if (ctrl != null && focus?.hasFocus == true) {
+      final selection = ctrl.selection;
+      if (selection.isValid && selection.isCollapsed) {
+        final before = ctrl.text.substring(0, selection.extentOffset);
+        final start = before.lastIndexOf('[[');
+        if (start >= 0) {
+          final query = before.substring(start + 2);
+          if (!query.contains(']]') &&
+              !query.contains('\n') &&
+              query.length <= 120) {
+            next = _CanvasWikiDraft(
+              start: start,
+              end: selection.extentOffset,
+              query: query,
+            );
+          }
+        }
+      }
+    }
+    if (next == _wikiDraft) return;
+    _wikiDraft = next;
+    final sourceNoteId = widget.sourceNoteId;
+    final targetSearch = widget.wikiTargetSearch;
+    _wikiMatches =
+        next == null
+            ? null
+            : targetSearch != null
+            ? targetSearch(next.query)
+            : sourceNoteId == null
+            ? null
+            : findFlightWikiTargets(
+              ref,
+              sourceNoteId: sourceNoteId,
+              query: next.query,
+            );
+    _editorEntry?.markNeedsBuild();
+  }
+
+  String? _replaceWikiDraft(String label) {
+    final draft = _wikiDraft;
+    final ctrl = _editorController;
+    if (draft == null || ctrl == null || draft.end > ctrl.text.length) {
+      return null;
+    }
+    final clean = label.replaceAll(RegExp(r'[\[\]\r\n]'), ' ').trim();
+    final replacement = '[[$clean]]';
+    final updated = ctrl.text.replaceRange(draft.start, draft.end, replacement);
+    ctrl.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(
+        offset: draft.start + replacement.length,
+      ),
+    );
+    _wikiDraft = null;
+    _wikiMatches = null;
+    return updated;
+  }
+
+  Future<void> _commitWikiTarget(FlightWorkspaceTarget target) async {
+    final updated = _replaceWikiDraft(target.label);
+    if (updated == null) return;
+    await _saveEditor(updated);
+    if (!mounted) return;
+    widget.onWikiLinkTap?.call(target.label);
+  }
+
+  Future<void> _createWikiTarget(NoteKind kind) async {
+    final draft = _wikiDraft;
+    final sourceNoteId = widget.sourceNoteId;
+    if (draft == null || sourceNoteId == null || draft.query.trim().isEmpty) {
+      return;
+    }
+    final target = await resolveFlightWikiTarget(
+      ref,
+      sourceNoteId: sourceNoteId,
+      label: draft.query,
+      createKind: kind,
+      sourceCanvasBlockId: widget.sourceCanvasBlockId,
+    );
+    if (target == null || !mounted) return;
+    await _commitWikiTarget(target);
   }
 
   Future<void> _saveEditor(String value) async {
@@ -246,6 +365,20 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
                           ),
                         ),
                       ),
+                      if (_wikiDraft != null && _wikiMatches != null) ...[
+                        const SizedBox(height: 6),
+                        FlightWikiLinkSuggestions(
+                          query: _wikiDraft!.query,
+                          matches: _wikiMatches!,
+                          accent: widget.accent,
+                          onSelect: (target) {
+                            unawaited(_commitWikiTarget(target));
+                          },
+                          onCreate: (kind) {
+                            unawaited(_createWikiTarget(kind));
+                          },
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -333,4 +466,26 @@ class _CanvasTextBlockOverlayState extends State<CanvasTextBlockOverlay> {
       child: card,
     );
   }
+}
+
+class _CanvasWikiDraft {
+  final int start;
+  final int end;
+  final String query;
+
+  const _CanvasWikiDraft({
+    required this.start,
+    required this.end,
+    required this.query,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is _CanvasWikiDraft &&
+      other.start == start &&
+      other.end == end &&
+      other.query == query;
+
+  @override
+  int get hashCode => Object.hash(start, end, query);
 }
