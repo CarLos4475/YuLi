@@ -4613,6 +4613,8 @@ class _WhiteboardCanvasEditorState
           key: ValueKey(b.id),
           block: b,
           accent: _accent,
+          sourceNoteId: widget.note.id,
+          sourceCanvasBlockId: _blockId,
           // Editing and moving remain tool-specific; wiki links handle their
           // own double tap in every tool.
           interactive:
@@ -5530,19 +5532,11 @@ class _WhiteboardCanvasEditorState
   double _dpr = 1.0;
 
   Rect? _contentBounds() {
-    double minX = double.infinity, minY = double.infinity;
-    double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-    for (final s in _data.strokes) {
-      final sp = s.points;
-      for (int i = 0; i < sp.length; i++) {
-        final x = sp.x(i);
-        final y = sp.y(i);
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
+    final ink = whiteboardInkBounds(_data.strokes);
+    double minX = ink?.left ?? double.infinity;
+    double minY = ink?.top ?? double.infinity;
+    double maxX = ink?.right ?? double.negativeInfinity;
+    double maxY = ink?.bottom ?? double.negativeInfinity;
     for (final im in _data.images) {
       if (im.x < minX) minX = im.x;
       if (im.y < minY) minY = im.y;

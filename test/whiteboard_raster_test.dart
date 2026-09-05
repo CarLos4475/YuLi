@@ -41,6 +41,58 @@ void main() {
     return data!.buffer.asUint8List();
   }
 
+  test(
+    'overview bounds preserve ink extending beyond its centerline',
+    () async {
+      final strokes = [
+        shape(x: 16, y: 16).copyWith(strokeWidth: 12),
+        DrawingStroke(
+          colorValue: 0xFF2468AA,
+          strokeWidth: 4,
+          isFountainPen: true,
+          points: StrokePoints.fromNested([
+            [16, 24, 18],
+            [24, 16, 18],
+            [40, 16, 18],
+            [48, 24, 18],
+          ]),
+        ),
+        DrawingStroke(
+          colorValue: 0xFF2468AA,
+          strokeWidth: 12,
+          points: StrokePoints.fromNested([
+            [32, 32],
+          ]),
+        ),
+      ];
+      for (final stroke in strokes) {
+        final bounds = whiteboardInkBounds([stroke])!;
+        expect(bounds.width, greaterThan(0));
+        expect(bounds.height, greaterThan(0));
+        final expected = await render((canvas) => drawStroke(canvas, stroke));
+        final actual = await render((canvas) {
+          canvas.clipRect(bounds, doAntiAlias: false);
+          drawStroke(canvas, stroke);
+        });
+        expect(await pixels(actual), orderedEquals(await pixels(expected)));
+      }
+    },
+  );
+
+  test('centerline-only bounds reproduce the flat top clipping', () async {
+    final stroke = shape(x: 16, y: 16).copyWith(strokeWidth: 12);
+    final expected = await render((canvas) => drawStroke(canvas, stroke));
+    final clipped = await render((canvas) {
+      canvas.clipRect(const Rect.fromLTWH(16, 16, 24, 24));
+      drawStroke(canvas, stroke);
+    });
+    const aboveCenterline = (12 * 64 + 28) * 4 + 3;
+    expect((await pixels(expected))[aboveCenterline], greaterThan(0));
+    expect((await pixels(clipped))[aboveCenterline], 0);
+    expect(whiteboardInkBounds([stroke])!.top, lessThan(12));
+    expect(whiteboardInkBounds([]), isNull);
+  });
+
   test('whiteboard low zoom preserves shape fill and curved ink', () async {
     final strokes = [
       shape(),

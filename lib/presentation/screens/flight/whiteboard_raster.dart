@@ -7,8 +7,30 @@ import 'note_cell_model.dart';
 import 'stroke_bounds.dart';
 
 const double whiteboardMinScale = 0.1;
-const int whiteboardRasterVersion = 2;
+const int whiteboardRasterVersion = 3;
 const int whiteboardPathCacheLimit = 60000;
+
+Rect? whiteboardInkBounds(Iterable<DrawingStroke> strokes) {
+  Rect? bounds;
+  for (final stroke in strokes) {
+    if (stroke.points.isEmpty) continue;
+    var ink = strokeBounds(stroke);
+    if (stroke.isFountainPen) {
+      var width = stroke.strokeWidth;
+      final points = stroke.points;
+      if (points.comps == 3) {
+        for (var i = 0; i < points.length; i++) {
+          if (points.z(i) > width) width = points.z(i);
+        }
+      } else if (points.comps >= 4) {
+        width *= 1.25;
+      }
+      ink = ink.inflate((width - stroke.strokeWidth) / 2);
+    }
+    bounds = bounds?.expandToInclude(ink) ?? ink;
+  }
+  return bounds;
+}
 
 ui.Picture recordWhiteboardPatch({
   required ui.Image base,
