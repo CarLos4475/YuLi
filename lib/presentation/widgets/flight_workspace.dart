@@ -921,7 +921,7 @@ class _FlightWorkspacePanelState extends ConsumerState<_FlightWorkspacePanel> {
     );
     return Column(
       children: [
-        if (note != null)
+        if (note != null && target == null)
           _reorderTarget(data: data, before: note, indent: indent),
         interactiveRow,
         if (expanded && !cyclic)
@@ -1419,6 +1419,7 @@ FlightWorkspaceTree buildFlightWorkspaceTree({
             label: 'Pizarra 1',
             kind: note.kind,
             folderId: folder.id,
+            noteId: note.id,
             target: target,
           ),
         );
@@ -1441,6 +1442,7 @@ FlightWorkspaceTree buildFlightWorkspaceTree({
                       : 'Pizarra ${index + 1}',
               kind: note.kind,
               folderId: folder.id,
+              noteId: note.id,
               target: target,
             ),
           );

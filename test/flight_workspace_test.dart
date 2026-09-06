@@ -215,6 +215,7 @@ void main() {
     expect(mother.target, isNull);
     expect(mother.label, 'Temario');
     expect(mother.children.map((node) => node.label), ['Álgebra', 'Cálculo']);
+    expect(mother.children.map((node) => node.noteId), [10, 10]);
     final childWhiteboard = mother.children[1].children.single;
     expect(childWhiteboard.target, isNull);
     expect(childWhiteboard.label, 'Derivadas');
@@ -440,6 +441,40 @@ void main() {
       throwsStateError,
     );
   });
+
+  test(
+    'a wiki whiteboard stays movable and deletable with its branch',
+    () async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final folderId = await db
+          .into(db.folders)
+          .insert(FoldersCompanion.insert(name: 'Cálculo', color: '#2D3F8C'));
+      final repository = LocalNoteRepository(db);
+      final parent = await repository.create(folderId, title: 'Temario');
+      final whiteboard = await repository.create(
+        folderId,
+        title: 'Derivadas',
+        kind: NoteKind.whiteboard,
+        parentNoteId: parent.id,
+      );
+      final child = await repository.create(
+        folderId,
+        title: 'Regla de la cadena',
+        parentNoteId: whiteboard.id,
+      );
+
+      await repository.moveWorkspaceBranch(whiteboard.id, folderId: folderId);
+      final moved = await repository.getById(whiteboard.id);
+      expect(moved?.parentNoteId, isNull);
+      expect(moved?.isWikiCreated, isTrue);
+
+      final deletedIds = await repository.softDeleteBranch(whiteboard.id);
+      expect(deletedIds.toSet(), {whiteboard.id, child.id});
+      expect((await repository.getById(whiteboard.id))?.isActive, isFalse);
+      expect((await repository.getById(child.id))?.isActive, isFalse);
+    },
+  );
 
   test('workspace order persists when wiki siblings are rearranged', () async {
     final db = AppDatabase.forTesting(NativeDatabase.memory());

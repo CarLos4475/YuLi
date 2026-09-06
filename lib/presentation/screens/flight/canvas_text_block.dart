@@ -235,6 +235,20 @@ class _CanvasTextBlockOverlayState
     widget.onWikiLinkTap?.call(target.label);
   }
 
+  Future<void> _commitCreatedWikiTarget(FlightWorkspaceTarget target) async {
+    final updated = _replaceWikiDraft(target.label);
+    if (updated == null) return;
+    final trimmed = updated.trim();
+    if (trimmed != widget.block.markdown) {
+      widget.block.markdown = trimmed;
+      await widget.onPersist();
+      widget.onChanged();
+    }
+    if (!mounted) return;
+    _editorEntry?.markNeedsBuild();
+    setState(() {});
+  }
+
   Future<void> _createWikiTarget(NoteKind kind) async {
     final draft = _wikiDraft;
     final sourceNoteId = widget.sourceNoteId;
@@ -249,7 +263,7 @@ class _CanvasTextBlockOverlayState
       sourceCanvasBlockId: widget.sourceCanvasBlockId,
     );
     if (target == null || !mounted) return;
-    await _commitWikiTarget(target);
+    await _commitCreatedWikiTarget(target);
   }
 
   Future<void> _saveEditor(String value) async {
