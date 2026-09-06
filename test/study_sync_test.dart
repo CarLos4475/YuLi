@@ -160,6 +160,26 @@ void main() {
     expect(drive.files.length, count);
     expect(await temp.list().length, 0);
   });
+  test('persistent prepared PDF survives a failed upload', () async {
+    final prepared = File('${temp.path}/prepared.pdf')
+      ..writeAsStringSync('%PDF-test');
+    drive.failAfterUpload = true;
+    await expectLater(
+      run([
+        StudyItem(
+          key: 'note:1',
+          folderKey: 'folder:1',
+          folderName: 'Carpeta',
+          name: 'Nota.pdf',
+          hash: 'v1',
+          render: () async => prepared,
+          persistentFile: true,
+        ),
+      ]),
+      throwsA(isA<SocketException>()),
+    );
+    expect(await prepared.exists(), isTrue);
+  });
   test('disabling stops publication before any remote operation', () async {
     await expectLater(
       sync.run(Stream.value(item()), () => false, (_) {}),

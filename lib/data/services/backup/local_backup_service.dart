@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -19,7 +20,19 @@ class LocalBackupService {
 
   LocalBackupService(this.database, this.documents, this.preferences);
 
-  Stream<void> get studyChanges => database.tableUpdates().map((_) {});
+  Stream<void> get studyChanges => database
+      .tableUpdates(
+        TableUpdateQuery.onAllTables({
+          database.notes,
+          database.folders,
+          database.noteImages,
+          database.noteTaskLinks,
+          database.noteBlocks,
+          database.drawingStrokes,
+          database.tasks,
+        }),
+      )
+      .map((_) {});
 
   Future<T> readConsistent<T>(Future<T> Function() read) =>
       database.transaction(read);

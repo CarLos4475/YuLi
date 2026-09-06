@@ -10,6 +10,8 @@ import 'drive_backup_client.dart';
 class StudyItem {
   final String key, folderKey, folderName, name, hash;
   final Future<File> Function() render;
+  final bool persistentFile;
+  final Future<void> Function()? onComplete;
   StudyItem({
     required this.key,
     required this.folderKey,
@@ -17,6 +19,8 @@ class StudyItem {
     required this.name,
     required this.hash,
     required this.render,
+    this.persistentFile = false,
+    this.onComplete,
   });
 }
 
@@ -118,6 +122,7 @@ class StudySync {
       }
       if (properties?['hash'] == item.hash &&
           properties?['state'] == 'complete') {
+        await item.onComplete?.call();
         continue;
       }
       check();
@@ -131,6 +136,7 @@ class StudySync {
         failedRenders = true;
         continue;
       }
+      var uploaded = false;
       try {
         check();
         await drive.upload(
@@ -147,9 +153,13 @@ class StudySync {
             'hash': item.hash,
           },
         );
+        uploaded = true;
+        await item.onComplete?.call();
       } finally {
         try {
-          if (await file.exists()) await file.delete();
+          if ((!item.persistentFile || uploaded) && await file.exists()) {
+            await file.delete();
+          }
         } on FileSystemException {
           /* Retried by startup cleanup. */
         }

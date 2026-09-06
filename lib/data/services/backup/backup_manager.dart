@@ -11,6 +11,8 @@ import 'backup_bundle.dart';
 import 'drive_backup_client.dart';
 import 'google_backup_auth.dart';
 import 'local_backup_service.dart';
+import 'study_background_sync.dart';
+import 'study_upload_queue.dart';
 
 class BackupManager extends ChangeNotifier {
   final LocalBackupService local;
@@ -30,8 +32,23 @@ class BackupManager extends ChangeNotifier {
   }
 
   Future<void> setAutomaticStudy(bool enabled) async {
+    final configuredAccount = local.preferences.getString(
+      'study_auto_account_v1',
+    );
+    final previousAccount = configuredAccount ?? auth.account?.id;
     if (enabled && auth.account == null) {
       throw const BackupFailure('Conecta tu cuenta primero.');
+    }
+    if (enabled) {
+      await auth.cacheBackgroundAuthorization(auth.account!.id);
+      if (configuredAccount != null && configuredAccount != auth.account!.id) {
+        await StudyBackgroundSync.cancelPending();
+        await GoogleBackupAuth.clearBackgroundAuthorization(configuredAccount);
+        await StudyUploadQueue(
+          local.documents,
+          local.preferences,
+        ).discardAccount(configuredAccount);
+      }
     }
     final saved =
         enabled
@@ -41,6 +58,18 @@ class BackupManager extends ChangeNotifier {
             )
             : await local.preferences.remove('study_auto_account_v1');
     if (!saved) throw const BackupFailure('No se pudo guardar la preferencia.');
+    if (enabled) {
+      await StudyBackgroundSync.ensureCatchUp(true);
+    } else {
+      await StudyBackgroundSync.cancelPending();
+      if (previousAccount != null) {
+        await GoogleBackupAuth.clearBackgroundAuthorization(previousAccount);
+        await StudyUploadQueue(
+          local.documents,
+          local.preferences,
+        ).discardAccount(previousAccount);
+      }
+    }
     setStudyStatus(
       enabled
           ? 'PDF pendientes de actualizar'

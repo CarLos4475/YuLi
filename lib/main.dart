@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data/services/backup/local_backup_service.dart';
+import 'data/services/backup/study_background_sync.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/services/crash_logger.dart';
 import 'data/services/launcher_icon_lifecycle.dart';
@@ -48,6 +49,11 @@ void main() {
         );
         return;
       }
+      await StudyBackgroundSync.initialize();
+      final startupPreferences = await SharedPreferences.getInstance();
+      await StudyBackgroundSync.ensureCatchUp(
+        startupPreferences.getString('study_auto_account_v1') != null,
+      );
       // Immersive full-screen: hide the status & nav bars entirely (swipe from an
       // edge to peek them; "sticky" re-hides them automatically). This reclaims
       // the whole screen and removes the status-bar strip that used to bleed a
