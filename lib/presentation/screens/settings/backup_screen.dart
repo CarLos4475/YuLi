@@ -207,6 +207,18 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                             ),
                             const SizedBox(height: 24),
                             if (manager.email != null) ...[
+                              Row(children: [
+                                Checkbox(value: manager.automaticStudy, activeColor: accentJournal,
+                                  shape: const RoundedRectangleBorder(),
+                                  onChanged: (v) => _action((m) => m.setAutomaticStudy(v ?? false))),
+                                Expanded(child: Text('Actualizar mis PDF en Drive automáticamente',
+                                  style: yBody(color: inkColor(context), size: 16))),
+                              ]),
+                              Text('Publica todos tus apuntes en Respaldo, organizados por carpeta. Actualiza el mismo PDF al terminar de editar, con YuLi abierta y en reposo. Requiere conexión y puede usar datos móviles.',
+                                style: yBody(color: inkColor(context), size: 13)),
+                              if (manager.studyStatus.isNotEmpty) Text(manager.studyStatus,
+                                style: yBody(color: inkColor(context), size: 13)),
+                              const SizedBox(height: 16),
                               Row(
                                 children: [
                                   Checkbox(

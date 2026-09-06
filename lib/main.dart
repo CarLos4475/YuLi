@@ -19,6 +19,7 @@ import 'presentation/providers/floating_pin_providers.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/widgets/app_banner.dart';
 import 'presentation/widgets/backup_activity_gate.dart';
+import 'presentation/widgets/study_sync_host.dart';
 import 'presentation/screens/settings/backup_recovery_screen.dart';
 import 'presentation/widgets/yuli_design.dart';
 import 'presentation/widgets/yuli_splash_screen.dart';
@@ -97,6 +98,7 @@ class YuLiApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp(
+      navigatorKey: studyNavigatorKey,
       title: 'YuLi',
       debugShowCheckedModeBanner: false,
       theme: lightTheme(),
@@ -119,7 +121,7 @@ class YuLiApp extends ConsumerWidget {
                 isLight ? Brightness.dark : Brightness.light,
             systemNavigationBarContrastEnforced: false,
           ),
-          child: BackupActivityGate(child: child!),
+          child: StudySyncHost(child: BackupActivityGate(child: child!)),
         );
       },
       home: const _AppInit(),

@@ -13,6 +13,20 @@ En Ajustes → Almacenamiento → Respaldos y Google Drive:
 
 La edición sincronizada entre tablets queda para la fase 2.
 
+## PDF automáticos
+
+La casilla **Actualizar mis PDF en Drive automáticamente** publica todos los apuntes activos en `Respaldo / Nombre de carpeta / Apunte.pdf`. Nota, pizarra y cuaderno se leen desde una transacción consistente; el cuaderno conserva una página PDF por página y la pizarra una por lienzo. Los PDF sirven para estudiar: el archivo `.yuli` sigue siendo el respaldo que permite recuperar datos editables.
+
+El trabajo se inicia con YuLi abierta y activa, sin editores abiertos y después de 10 segundos sin interacción. Al salir de un editor se retoma automáticamente. No se ejecuta con la app cerrada ni durante una sesión larga dentro de un editor: el renderizador necesita Flutter. Se procesan bloques/páginas y lotes de trazos con puntos de interrupción; al tocar o abrir un editor se pausa antes del siguiente paso. Una operación gráfica individual ya iniciada no se puede cancelar instantáneamente.
+
+Los cambios de la base de datos invalidan la revisión terminada. Al reiniciar se vuelve a reconciliar la biblioteca con Drive. Se compara una huella del contenido, trazos, tareas e imágenes para no regenerar PDF sin cambios. La cola es una reconciliación de datos guardados, no una lista volátil de eventos. Los fallos se reintentan después de dos minutos; un apunte que no se puede renderizar no bloquea los demás.
+
+La identidad de biblioteca se incluye en los nuevos respaldos `.yuli`; la cuenta habilitada y los IDs remotos locales se excluyen. Restaurar desactiva la publicación automática. Cada archivo/carpeta usa propiedades privadas de Drive e IDs reservados persistidos antes de crear, de modo que un cierre o timeout no crea otra copia. Renombrar/mover actualiza nombre/padre del mismo archivo; una edición reemplaza su contenido mediante subida reanudable y comprobación de checksum. Los PDF de apuntes eliminados se conservan en Drive; esta publicación no borra archivos remotos ni replica ediciones hechas en Drive. Las exportaciones manuales antiguas permanecen en `YuLi — Apuntes`.
+
+Referencia de API: [IDs reservados y reintentos sin duplicados](https://developers.google.com/workspace/drive/api/guides/manage-uploads), [actualización de archivos](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update).
+
+Validación adicional: `study_sync_test.dart`, `study_pdf_renderer_test.dart` y actualización de PDF por HTTP en `drive_backup_test.dart`. Confirmar en TGR la primera publicación, renombrar/mover, editar/reabrir, interrupción por interacción y funcionamiento sin red. Entregar APK **release** para verificar fluidez.
+
 ## Formato y recuperación
 
 `BackupBundle` usa un formato binario versionado: identificador, longitud de manifiesto, JSON y archivos concatenados. La lectura y escritura de archivos son por bloques, con SHA-256 por archivo; no usa extracción ZIP ni ejecuta contenido del archivo.
@@ -38,13 +52,13 @@ Antes de dar por validada la integración real, probar en tablet Android: conect
 Security check:
 - Data touched: Base de datos completa, adjuntos y preferencias seleccionadas; son datos privados del usuario.
 - Auth required: Google Sign-In y consentimiento para `drive.file`; OAuth real pendiente de validar en tablet.
-- Authorization enforced at: Google Drive limita el acceso del token a archivos autorizados para YuLi; copia e historial separados por cuenta.
+- Authorization enforced at: Google Drive limita el token a archivos autorizados para YuLi. Publicación automática opt-in por cuenta; cada petición comprueba la cuenta activa y la opción. Biblioteca e identidad se verifican antes de reutilizar un ID local.
 - Secrets: Tokens gestionados por el SDK, usados en cabeceras; claves y tokens excluidos del paquete; solo el ID público del cliente está en código.
 - Input validation: Rutas permitidas, tamaños limitados, hashes, conteos, esquema y adjuntos; rechazo de copias incompletas y de objetos SQL adicionales incompatibles.
-- Output rendering: Exportadores existentes de PDF/PNG; la importación no ejecuta código del paquete.
+- Output rendering: Exportadores existentes de PDF/PNG, snapshots guardados, memoria liberada por bloque/página y pausas por interacción; la importación no ejecuta código del paquete.
 - Logs/errors: No se registran tokens, cabeceras ni respuestas HTTP; mensajes de operación genéricos y código de error OAuth sin descripción privada.
 - DB/storage rules: Restauración antes de abrir SQLite y antes de GC; copia previa conservada; archivos de Drive sin permisos públicos añadidos.
 - Dependencies: Plugin oficial `google_sign_in`; `crypto` y `sqlite3` ya estaban instalados transitivamente y ahora se declaran directamente.
-- Rate limiting / abuse controls: Subida por bloques reanudables con reintentos limitados; automatización diaria y rechazo de instalación vacía; límite de descarga.
+- Rate limiting / abuse controls: Un documento a la vez, huella para omitir contenido idéntico, reintentos limitados y espera de dos minutos tras fallos. El respaldo completo mantiene su automatización diaria y límite de descarga.
 - Web risks: URL de subida limitada a HTTPS en `www.googleapis.com/upload/drive/`; credenciales en cabeceras, nunca en enlaces compartidos.
 - Prototype/security debt: Integración inicial; validar OAuth y recuperación en Android antes de depender de ella para datos irremplazables. Sin sincronización entre tablets ni ejecución con la app cerrada.

@@ -112,6 +112,7 @@ double exportPixelRatio(
 /// Layer order mirrors the on-screen painters exactly: paper color → pattern →
 /// images → text/task block rasters → strokes (strokes sit on top).
 Future<ui.Image> renderCanvasRegion({
+  Future<void> Function()? checkpoint,
   required DrawingData data,
   required Rect region,
   required double pixelRatio,
@@ -160,15 +161,24 @@ Future<ui.Image> renderCanvasRegion({
     canvas.restore();
   }
 
-  for (final s in data.strokes) {
-    if (!strokeOverlapsRect(s, region)) continue;
-    drawStroke(canvas, s);
+  var batch = 0;
+  try {
+    for (final s in data.strokes) {
+      if (checkpoint != null && batch++ % 200 == 0) await checkpoint();
+      if (!strokeOverlapsRect(s, region)) continue;
+      drawStroke(canvas, s);
+    }
+  } catch (_) {
+    recorder.endRecording().dispose();
+    rethrow;
   }
 
   final picture = recorder.endRecording();
-  final img = await picture.toImage(pxW, pxH);
-  picture.dispose();
-  return img;
+  try {
+    return await picture.toImage(pxW, pxH);
+  } finally {
+    picture.dispose();
+  }
 }
 
 /// Stack [images] top-to-bottom into one image (centered horizontally), with

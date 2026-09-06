@@ -18,6 +18,36 @@ class BackupManager extends ChangeNotifier {
   final http.Client _http;
   late final DriveBackupClient drive = DriveBackupClient(_http, auth.headers);
   bool busy = false;
+  bool studyRunning = false;
+  String studyStatus = '';
+  bool get automaticStudy =>
+      auth.account != null &&
+      local.preferences.getString('study_auto_account_v1') == auth.account!.id;
+
+  void setStudyStatus(String value) {
+    studyStatus = value;
+    notifyListeners();
+  }
+
+  Future<void> setAutomaticStudy(bool enabled) async {
+    if (enabled && auth.account == null) {
+      throw const BackupFailure('Conecta tu cuenta primero.');
+    }
+    final saved =
+        enabled
+            ? await local.preferences.setString(
+              'study_auto_account_v1',
+              auth.account!.id,
+            )
+            : await local.preferences.remove('study_auto_account_v1');
+    if (!saved) throw const BackupFailure('No se pudo guardar la preferencia.');
+    setStudyStatus(
+      enabled
+          ? 'PDF pendientes de actualizar'
+          : 'Actualización de PDF desactivada',
+    );
+  }
+
   bool restorePending = false;
   String status = '';
   String? error;
@@ -33,7 +63,7 @@ class BackupManager extends ChangeNotifier {
   String? get lastSuccess => local.preferences.getString(_successKey);
 
   Future<T> _run<T>(String label, Future<T> Function() operation) async {
-    if (busy || restorePending) {
+    if (busy || restorePending || studyRunning) {
       throw const BackupFailure('Hay otra operación pendiente.');
     }
     busy = true;
@@ -67,6 +97,7 @@ class BackupManager extends ChangeNotifier {
   });
 
   Future<void> disconnect() => _run('Desconectando Google Drive', () async {
+    await setAutomaticStudy(false);
     await setAutomatic(false);
     await auth.disconnect();
     backups = [];

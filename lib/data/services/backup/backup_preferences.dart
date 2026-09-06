@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 bool isBackupPreference(String key) {
   const exact = {
+    'study_library_id_v1',
     'theme_mode',
     'pinned_folder_ids',
     'pinned_note_ids',

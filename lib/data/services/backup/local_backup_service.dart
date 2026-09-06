@@ -19,6 +19,26 @@ class LocalBackupService {
 
   LocalBackupService(this.database, this.documents, this.preferences);
 
+  Stream<void> get studyChanges => database.tableUpdates().map((_) {});
+
+  Future<T> readConsistent<T>(Future<T> Function() read) =>
+      database.transaction(read);
+
+  Future<void> cleanupStudyExports() async {
+    final root = Directory(p.join(documents.path, 'study_exports'));
+    if (!await root.exists()) return;
+    await for (final file in root.list(followLinks: false)) {
+      if (file is File &&
+          RegExp(r'^[0-9a-f-]{36}\.pdf$').hasMatch(p.basename(file.path))) {
+        try {
+          await file.delete();
+        } on FileSystemException {
+          /* Retry on next run. */
+        }
+      }
+    }
+  }
+
   Future<String> deviceId() async {
     final existing = preferences.getString('backup_device_id_v1');
     if (existing != null) return existing;
@@ -344,6 +364,11 @@ class LocalBackupService {
     if (!await prefs.remove('backup_auto_account_v1')) {
       throw const BackupFailure(
         'No se pudo desactivar el respaldo automático.',
+      );
+    }
+    if (!await prefs.remove('study_auto_account_v1')) {
+      throw const BackupFailure(
+        'No se pudo desactivar la publicación automática.',
       );
     }
     await prefs.remove('backup_last_success_v1');

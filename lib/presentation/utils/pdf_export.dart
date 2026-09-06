@@ -16,6 +16,7 @@
 
 import 'dart:ui' as ui;
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -40,6 +41,8 @@ const double _pixelRatio = 3.0;
 final PdfColor _paperPdf = PdfColor.fromInt(yCream.toARGB32());
 
 Future<void> exportNoteToPdf({
+  Future<void> Function(Uint8List)? onBytes,
+  Future<void> Function()? checkpoint,
   Future<void> Function(File)? uploadToDrive,
   required BuildContext context,
   required String title,
@@ -70,12 +73,16 @@ Future<void> exportNoteToPdf({
     includeTasks: options.includeTasks,
   );
 
-  final images = await _rasterizeItems(
-    context: context,
-    items: items,
-    widthLogical: contentW,
-  );
-  if (images.isEmpty) {
+  final images =
+      checkpoint != null
+          ? <ui.Image>[]
+          : await _rasterizeItems(
+            context: context,
+            items: items,
+            widthLogical: contentW,
+            checkpoint: checkpoint,
+          );
+  if (items.isEmpty || (checkpoint == null && images.isEmpty)) {
     // Nothing renderable (empty note): emit a single near-blank page.
     final doc = pw.Document();
     doc.addPage(
@@ -85,6 +92,7 @@ Future<void> exportNoteToPdf({
         build: (_) => pw.SizedBox(),
       ),
     );
+    if (onBytes != null) return onBytes(await doc.save());
     await shareExportBytes(
       await doc.save(),
       '${sanitizeFilename(cleanTitle)}.pdf',
@@ -96,10 +104,29 @@ Future<void> exportNoteToPdf({
 
   final maxStripPx = (contentH * _pixelRatio).floor().clamp(1, 1 << 14);
   final widgets = <pw.Widget>[];
-  final toDispose = <ui.Image>[];
+  Stream<ui.Image> frames() async* {
+    if (checkpoint == null) {
+      yield* Stream.fromIterable(images);
+      return;
+    }
+    for (final item in items) {
+      await checkpoint();
+      if (!context.mounted) throw StateError('Exportación interrumpida.');
+      final batch = await _rasterizeItems(
+        context: context,
+        items: [item],
+        widthLogical: contentW,
+        checkpoint: checkpoint,
+      );
+      yield* Stream.fromIterable(batch);
+    }
+  }
+
+  final toDispose = <ui.Image>{...images};
   try {
-    for (final img in images) {
+    await for (final img in frames()) {
       toDispose.add(img);
+      await checkpoint?.call();
       final strips = await _sliceImage(img, maxStripPx);
       for (final strip in strips) {
         if (!identical(strip, img)) toDispose.add(strip);
@@ -108,6 +135,10 @@ Future<void> exportNoteToPdf({
         final hPts = strip.height / _pixelRatio;
         widgets.add(pw.Image(pw.MemoryImage(png), width: wPts, height: hPts));
         widgets.add(pw.SizedBox(height: 8));
+      }
+      for (final image in {img, ...strips}) {
+        image.dispose();
+        toDispose.remove(image);
       }
     }
   } finally {
@@ -119,6 +150,7 @@ Future<void> exportNoteToPdf({
   final doc = pw.Document();
   doc.addPage(
     pw.MultiPage(
+      maxPages: 2000,
       pageTheme: pw.PageTheme(
         pageFormat: format,
         margin: pw.EdgeInsets.all(margin),
@@ -132,6 +164,8 @@ Future<void> exportNoteToPdf({
     ),
   );
 
+  await checkpoint?.call();
+  if (onBytes != null) return onBytes(await doc.save());
   await shareExportBytes(
     await doc.save(),
     '${sanitizeFilename(cleanTitle)}.pdf',
@@ -164,7 +198,31 @@ Future<List<ui.Image>> _rasterizeItems({
   required BuildContext context,
   required List<Widget> items,
   required double widthLogical,
+  Future<void> Function()? checkpoint,
 }) async {
+  if (checkpoint != null && items.length > 1) {
+    final result = <ui.Image>[];
+    try {
+      for (final item in items) {
+        await checkpoint();
+        if (!context.mounted) throw StateError('Exportación interrumpida.');
+        result.addAll(
+          await _rasterizeItems(
+            context: context,
+            items: [item],
+            widthLogical: widthLogical,
+            checkpoint: checkpoint,
+          ),
+        );
+      }
+      return result;
+    } catch (_) {
+      for (final image in result) {
+        image.dispose();
+      }
+      rethrow;
+    }
+  }
   if (items.isEmpty) return const [];
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
   if (overlay == null) return const [];
@@ -214,14 +272,30 @@ Future<List<ui.Image>> _rasterizeItems({
   await WidgetsBinding.instance.endOfFrame;
 
   final out = <ui.Image>[];
-  for (final key in keys) {
-    final ro = key.currentContext?.findRenderObject();
-    if (ro is! RenderRepaintBoundary) continue;
-    try {
-      out.add(await ro.toImage(pixelRatio: _pixelRatio));
-    } catch (_) {}
+  try {
+    for (final key in keys) {
+      final ro = key.currentContext?.findRenderObject();
+      if (ro is! RenderRepaintBoundary) {
+        if (checkpoint != null) {
+          throw StateError('No se pudo renderizar el apunte.');
+        }
+        continue;
+      }
+      try {
+        out.add(await ro.toImage(pixelRatio: _pixelRatio));
+      } catch (_) {
+        if (checkpoint != null) rethrow;
+      }
+    }
+  } catch (_) {
+    for (final image in out) {
+      image.dispose();
+    }
+    rethrow;
+  } finally {
+    entry.remove();
+    entry.dispose();
   }
-  entry.remove();
   return out;
 }
 

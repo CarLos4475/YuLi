@@ -1,5 +1,6 @@
 import '../../utils/drive_study_export.dart';
 import '../../../domain/services/pending_saves.dart';
+import '../../../domain/services/study_activity.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -185,8 +186,15 @@ class _WhiteboardEditorScreenState
   @override
   void initState() {
     super.initState();
+    StudyActivity.editors.add(this);
     _blockRepo = ref.read(noteBlockRepositoryProvider);
     unawaited(_loadCanvases());
+  }
+
+  @override
+  void dispose() {
+    StudyActivity.editors.remove(this);
+    super.dispose();
   }
 
   Future<void> _loadCanvases() async {

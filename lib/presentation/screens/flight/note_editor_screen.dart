@@ -1,4 +1,5 @@
 import '../../../domain/services/pending_saves.dart';
+import '../../../domain/services/study_activity.dart';
 import 'dart:async';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/gestures.dart';
@@ -71,6 +72,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   @override
   void initState() {
     super.initState();
+    StudyActivity.editors.add(this);
     _titleCtrl = TextEditingController(text: widget.note.title ?? '');
     _titleCtrl.addListener(_onTitleChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -81,6 +83,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
   @override
   void dispose() {
+    StudyActivity.editors.remove(this);
     _titleSaveTimer?.cancel();
     _saveTitle();
     _titleCtrl.dispose();

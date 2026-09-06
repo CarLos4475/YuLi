@@ -130,6 +130,11 @@ class DriveBackupClient {
     String deviceId, {
     void Function(double)? progress,
     bool study = false,
+    String? targetId,
+    String? parentId,
+    String? name,
+    bool update = false,
+    Map<String, String>? studyProperties,
   }) async {
     final kind = study ? 'yuli-study-v1' : _kind;
     final extension = file.path.toLowerCase();
@@ -145,13 +150,14 @@ class DriveBackupClient {
       throw const BackupFailure('El respaldo es demasiado grande.');
     }
     final checksum = (await md5.bind(file.openRead()).first).toString();
-    final folder = await _folder(study: study);
+    final folder = parentId ?? await _folder(study: study);
     final init = http.Request(
-      'POST',
-      Uri.https('www.googleapis.com', '/upload/drive/v3/files', {
-        'uploadType': 'resumable',
-        'fields': _fields,
-      }),
+      update ? 'PATCH' : 'POST',
+      Uri.https(
+        'www.googleapis.com',
+        '/upload/drive/v3/files${update ? '/$targetId' : ''}',
+        {'uploadType': 'resumable', 'fields': _fields},
+      ),
     );
     init.followRedirects = false;
     init.headers.addAll(await authorization());
@@ -161,10 +167,16 @@ class DriveBackupClient {
       'X-Upload-Content-Length': '$size',
     });
     init.body = jsonEncode({
-      'name': file.uri.pathSegments.last,
-      'parents': [folder],
+      if (!update && targetId != null) 'id': targetId,
+      'name': name ?? file.uri.pathSegments.last,
+      if (!update) 'parents': [folder],
       'mimeType': mime,
-      'appProperties': {'kind': kind, 'device': deviceId, 'state': 'pending'},
+      'appProperties': {
+        'kind': kind,
+        'device': deviceId,
+        ...?studyProperties,
+        'state': 'pending',
+      },
     });
     final start = await http.Response.fromStream(
       await client.send(init).timeout(const Duration(seconds: 60)),
@@ -247,12 +259,99 @@ class DriveBackupClient {
         'appProperties': {
           'kind': kind,
           'device': deviceId,
+          ...?studyProperties,
           'state': 'complete',
         },
       },
     );
     return DriveBackup.fromJson(
       jsonDecode(committed.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<String> reserveId() async {
+    final response = await _json(
+      'GET',
+      Uri.https('www.googleapis.com', '/drive/v3/files/generateIds', {
+        'count': '1',
+      }),
+    );
+    return ((jsonDecode(response.body) as Map)['ids'] as List).single as String;
+  }
+
+  Future<Map<String, dynamic>?> studyFile(String id) async {
+    final request = http.Request(
+      'GET',
+      Uri.https('www.googleapis.com', '/drive/v3/files/$id', {
+        'fields': 'id,name,parents,trashed,appProperties,mimeType',
+      }),
+    )..followRedirects = false;
+    request.headers.addAll(await authorization());
+    final response = await http.Response.fromStream(
+      await client.send(request),
+    ).timeout(const Duration(seconds: 60));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) _fail(response.statusCode);
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> studyFiles(String library) async {
+    final result = <Map<String, dynamic>>[];
+    String? token;
+    do {
+      final response = await _json(
+        'GET',
+        Uri.https('www.googleapis.com', '/drive/v3/files', {
+          'q':
+              "trashed = false and appProperties has { key='library' and value='${library.replaceAll("'", "\\'")}' }",
+          'fields':
+              'nextPageToken,files(id,name,parents,appProperties,mimeType)',
+          'pageSize': '1000',
+          if (token != null) 'pageToken': token,
+        }),
+      );
+      final data = jsonDecode(response.body) as Map;
+      result.addAll((data['files'] as List).cast<Map<String, dynamic>>());
+      token = data['nextPageToken'] as String?;
+    } while (token != null);
+    return result;
+  }
+
+  Future<void> createStudyFolder(
+    String id,
+    String name,
+    String library,
+    String key,
+    String? parent,
+  ) => _json(
+    'POST',
+    Uri.https('www.googleapis.com', '/drive/v3/files'),
+    body: {
+      'id': id,
+      'name': name,
+      'mimeType': 'application/vnd.google-apps.folder',
+      if (parent != null) 'parents': [parent],
+      'appProperties': {'library': library, 'studyKey': key},
+    },
+  ).then((_) {});
+
+  Future<void> moveStudyFile(
+    Map<String, dynamic> remote,
+    String name,
+    String? parent,
+  ) async {
+    final parents = (remote['parents'] as List? ?? []).cast<String>();
+    if (remote['name'] == name && (parent == null || parents.contains(parent))) {
+      return;
+    }
+    await _json(
+      'PATCH',
+      Uri.https('www.googleapis.com', '/drive/v3/files/${remote['id']}', {
+        if (parent != null && !parents.contains(parent)) 'addParents': parent,
+        if (parent != null && !parents.contains(parent) && parents.isNotEmpty)
+          'removeParents': parents.join(','),
+      }),
+      body: {'name': name},
     );
   }
 

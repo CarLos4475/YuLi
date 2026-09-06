@@ -19,6 +19,63 @@ void main() {
     'Authorization': 'Bearer test-token',
   };
 
+  test('study PDF updates use PATCH and retain the assigned ID', () async {
+    final file = File('${root.path}/note.pdf')..writeAsBytesSync([1, 2, 3]);
+    var committed = false;
+    final client = MockClient((request) async {
+      if (request.url.path.startsWith('/upload/drive/v3/files') &&
+          request.method == 'PATCH') {
+        expect(request.url.path, '/upload/drive/v3/files/stable-id');
+        final body = jsonDecode(request.body) as Map;
+        expect(body.containsKey('parents'), isFalse);
+        expect(body['name'], 'Nota.pdf');
+        return http.Response(
+          '',
+          200,
+          headers: {
+            'location':
+                'https://www.googleapis.com/upload/drive/v3/files?upload_id=study',
+          },
+        );
+      }
+      if (request.method == 'PUT') {
+        return http.Response(
+          jsonEncode({
+            'id': 'stable-id',
+            'size': '3',
+            'md5Checksum': md5.convert([1, 2, 3]).toString(),
+          }),
+          200,
+        );
+      }
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/drive/v3/files/stable-id');
+      expect((jsonDecode(request.body) as Map)['appProperties']['hash'], 'v2');
+      committed = true;
+      return http.Response(
+        jsonEncode({
+          'id': 'stable-id',
+          'name': 'Nota.pdf',
+          'size': '3',
+          'createdTime': '2026-09-06T00:00:00Z',
+        }),
+        200,
+      );
+    });
+    await DriveBackupClient(client, headers).upload(
+      file,
+      'library',
+      study: true,
+      targetId: 'stable-id',
+      parentId: 'folder',
+      name: 'Nota.pdf',
+      update: true,
+      studyProperties: {'hash': 'v2'},
+    );
+    expect(committed, isTrue);
+    client.close();
+  });
+
   test(
     'uploads a new object and commits only after checksum confirmation',
     () async {

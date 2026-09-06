@@ -1,5 +1,6 @@
 import '../../utils/drive_study_export.dart';
 import '../../../domain/services/pending_saves.dart';
+import '../../../domain/services/study_activity.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -597,6 +598,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   void initState() {
     super.initState();
+    StudyActivity.editors.add(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref
@@ -697,6 +699,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   @override
   void dispose() {
+    StudyActivity.editors.remove(this);
     if (CrashLogger.perfLogging) {
       SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     }
