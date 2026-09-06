@@ -160,7 +160,6 @@ Multi-pagina A4 con scroll vertical, transiciones animadas y page drawer con min
 - **Paginas infinitas**: pull-to-add, auto-creacion al dibujar fuera, drag-to-reorder.
 - **Fondo por pagina**: patron + color independiente por pagina.
 - **Paginas destacadas** (star) aparecen primero en el drawer.
-- **Historial de versiones** por nota (snapshots automaticos).
 - **Vinculacion nota ↔ tarea** many-to-many: las notas pueden referenciar tareas FIGHT.
 
 ### OCR (Google ML Kit Digital Ink)
@@ -272,6 +271,8 @@ Grafo dirigido por fuerzas que visualiza las relaciones entre todos los elemento
 
 ## Settings — Ajustes
 
+- **Respaldos y Google Drive**: copias completas verificadas, restauración al reiniciar y respaldo diario opcional mientras YuLi está abierta en Inicio. Las exportaciones PDF/PNG pueden guardarse en una carpeta de estudio separada. [Uso y límites](docs/BACKUPS.md).
+
 - **Tema**: alternar modo claro/oscuro con bloques de previsualizacion en vivo.
 - **YuLi AI**: configurar API key de DeepSeek, seleccionar modelo (Flash/Pro), limite diario de requests (150/dia por defecto).
 - **Jina Reader**: configurar API key para fetching de URLs como contexto.
@@ -319,7 +320,7 @@ Sin bordes redondeados, bordes negros marcados, sombras solidas. Colores de acen
 | Web fetching | Jina Reader API |
 | Fuentes | Space Grotesk, Inter (local TTF) |
 
-19 tablas SQLite modeladas con Drift, repositorios con interfaces abstractas preparadas para futura migracion a servidor (PostgreSQL-compatible). 100% offline-first.
+21 tablas SQLite modeladas con Drift, repositorios con interfaces abstractas preparadas para futura migracion a servidor (PostgreSQL-compatible). 100% offline-first.
 
 ---
 
@@ -330,7 +331,7 @@ lib/
 ├── data/                # Implementaciones concretas (Drift, DeepSeek, ML Kit)
 │   ├── local/
 │   │   ├── daos/        # DAOs Drift (folders, notes, kanban, tasks, schedule…)
-│   │   ├── tables/      # 19 tablas SQLite modeladas con Drift
+│   │   ├── tables/      # 21 tablas SQLite modeladas con Drift
 │   │   ├── database.dart
 │   │   └── repositories/  # Implementaciones locales de repositorios
 │   └── services/        # DeepSeek Assistant, ML Kit recognizer, reminder coordinator,

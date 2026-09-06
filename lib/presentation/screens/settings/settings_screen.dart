@@ -12,6 +12,8 @@ import '../../../data/services/image_storage.dart';
 import '../../../data/services/launcher_icon_service.dart';
 import '../../widgets/app_section_divider.dart';
 import 'image_storage_screen.dart';
+import 'backup_screen.dart';
+import '../flight/pin_dialog.dart';
 import 'crash_log_screen.dart';
 import 'math_dataset_screen.dart';
 import 'ai_memory_screen.dart';
@@ -179,6 +181,15 @@ class SettingsScreen extends ConsumerWidget {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: _ImagesStorageBlock(),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: PinPrimaryButton(
+                label: 'Respaldos y Google Drive',
+                accent: accentJournal,
+                onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const BackupScreen())),
+              ),
             ),
 
             const SizedBox(height: 24),

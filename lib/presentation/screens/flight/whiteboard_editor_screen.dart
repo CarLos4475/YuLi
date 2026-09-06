@@ -1,3 +1,5 @@
+import '../../utils/drive_study_export.dart';
+import '../../../domain/services/pending_saves.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -2460,7 +2462,12 @@ class _WhiteboardCanvasEditorState
     if (_persistDirty) await _persistNow();
   }
 
-  Future<void> _persistNow() async {
+  Future<void> _persistNow() {
+    PendingSaves.unschedule(this);
+    return PendingSaves.track(_persistNowTracked());
+  }
+
+  Future<void> _persistNowTracked() async {
     if (_blockId == null) return;
     // Guard against overlapping runs: a debounce can fire while a previous
     // persist is still awaiting. The straggler re-runs once this pass finishes.
@@ -2615,6 +2622,7 @@ class _WhiteboardCanvasEditorState
       }
     } catch (e, st) {
       failed = true;
+      PendingSaves.failed(this, e);
       _persistDirty = true;
       if (fullPersist) {
         _strokesNeedFullPersist = true;
@@ -2626,6 +2634,7 @@ class _WhiteboardCanvasEditorState
     } finally {
       _persisting = false;
     }
+    if (!failed) PendingSaves.saved(this);
     // Edits that arrived mid-persist (or a guarded straggler) → flush once more.
     if (_persistDirty && mounted && !failed) unawaited(_persistNow());
   }
@@ -2635,6 +2644,10 @@ class _WhiteboardCanvasEditorState
   /// non-stroke edits (background/image/block) call this and nothing else, so
   /// they no longer nuke the ring. See NUKES.md for the per-call-site map.
   void _persist() {
+    PendingSaves.schedule(this, () async {
+      await flushBeforeCanvasChange();
+      if (_persistDirty) throw StateError('No se pudo guardar la pizarra.');
+    });
     _persistDirty = true;
     _persistTimer?.cancel();
     _persistTimer = Timer(const Duration(milliseconds: 180), () {
@@ -7955,12 +7968,12 @@ class _WhiteboardCanvasEditorState
       );
       if (opts.format == ExportFormat.png) {
         final png = await imageToPngBytes(rendered);
-        await shareExportBytes(png, '$name.png', text: 'Pizarra · YuLi');
+        await shareExportBytes(png, '$name.png', text: 'Pizarra · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
       } else {
         final pdf = await buildCanvasPdf([
           ExportPage(image: rendered, worldSize: region.size),
         ]);
-        await shareExportBytes(pdf, '$name.pdf', text: 'Pizarra · YuLi');
+        await shareExportBytes(pdf, '$name.pdf', text: 'Pizarra · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
       }
     } catch (_) {
       if (mounted) _showExportEmpty(message: 'No se pudo exportar');

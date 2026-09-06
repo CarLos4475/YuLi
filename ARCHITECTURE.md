@@ -47,7 +47,7 @@ lib/
 ├── data/
 │   ├── local/
 │   │   ├── database.dart      # AppDatabase, runExpiryQueries, hardDeleteCascades, migrations
-│   │   ├── tables/            # 19 Drift table definitions
+│   │   ├── tables/            # 21 Drift table definitions
 │   │   ├── daos/              # Data Access Objects Drift
 │   │   └── repositories/      # Concrete local repository implementations
 │   └── services/              # DeepSeek Assistant, ML Kit recognizer, reminder coordinator,
@@ -87,7 +87,7 @@ main() → ProviderScope → YuLiApp → _AppInit
 
 ## Database
 
-**Tables:** `tasks`, `folders`, `notes`, `note_images`, `note_versions`, `note_task_links`, `note_canvas_links`, `note_blocks`, `lab_spaces`, `kanban_columns`, `kanban_cards`, `space_folder_links`, `space_context_sources`, `onboarding_flags`, `schedule_blocks`, `schedule_settings`, `schedule_week_notes`, `notifications`, `canvas_context_sources` (19 total).
+**Tables:** `tasks`, `folders`, `notes`, `note_images`, `note_versions`, `note_task_links`, `note_canvas_links`, `note_blocks`, `lab_spaces`, `kanban_columns`, `kanban_cards`, `space_folder_links`, `space_context_sources`, `onboarding_flags`, `schedule_blocks`, `schedule_settings`, `schedule_week_notes`, `notifications`, `canvas_context_sources`, `drawing_strokes`, `floating_pins` (21 total).
 
 **Task lifecycle:**
 ```
@@ -114,3 +114,7 @@ Never edit `.g.dart` files manually.
 - **Flight workspace:** Explorador recursivo de carpetas y documentos conectados, con expansión y pestañas persistidas/reordenables en `SharedPreferences`. Cambiar de pestaña usa `pushReplacement` sin transición, por lo que solo el documento activo permanece montado. Al escribir `[[...]]`, el editor permite abrir coincidencias o crear una nota, pizarra o cuaderno hijo. Cada pizarra general es un contenedor no navegable que agrupa sus multipizarras; los hijos guardan `parent_note_id`, `parent_canvas_block_id`, `workspace_order` y `created_from_wiki`, por lo que cuelgan del lienzo exacto, conservan la jerarquía recursiva y mantienen su orden y origen aunque luego se conviertan en raíces. Solo aparecen bajo su madre en EXPLORADOR, mientras que las referencias a documentos ya existentes permanecen como raíces. Un long press sin arrastrar sobre un elemento wiki permite enviar toda la rama a Papelera o eliminar solo el nodo promoviendo sus hijos directos a la carpeta; al arrastrarlo se mueve la rama completa, con destinos validados y actualización transaccional de carpeta. Las multipizarras son destinos, nunca orígenes del arrastre. Restaurar la raíz recupera su rama. Los enlaces se renderizan sin corchetes, navegan al tocarlos y alimentan el grafo de Lab.
 - **Graph (force-directed):** Conexiones cross-mode visualizadas como grafo. 5 tipos de nodo (space, card, folder, note, task), 3 aristas (structure, bridge, AI). Assembly via `GraphAssembler`, simulación D3-like en `GraphSimulation`.
 - **Reminder system:** `ReminderCoordinator` + `LocalReminderScheduler` (flutter_local_notifications). Presets programables, resumen diario, exact reminders. Sincronización con due dates de tasks/cards.
+
+## Respaldos
+
+Respaldo completo y exportación PDF/PNG a Google Drive: [Formato, restauración y límites](docs/BACKUPS.md). La restauración pendiente se aplica antes de abrir la base y ejecutar expiry/GC.

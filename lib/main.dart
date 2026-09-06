@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'data/services/backup/local_backup_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'data/services/crash_logger.dart';
 import 'data/services/launcher_icon_lifecycle.dart';
@@ -15,6 +18,8 @@ import 'presentation/providers/image_storage_providers.dart';
 import 'presentation/providers/floating_pin_providers.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/widgets/app_banner.dart';
+import 'presentation/widgets/backup_activity_gate.dart';
+import 'presentation/screens/settings/backup_recovery_screen.dart';
 import 'presentation/widgets/yuli_design.dart';
 import 'presentation/widgets/yuli_splash_screen.dart';
 import 'presentation/screens/fight/fight_screen.dart';
@@ -31,6 +36,17 @@ void main() {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      try {
+        await LocalBackupService.applyPendingRestore(
+          await getApplicationDocumentsDirectory(),
+          await SharedPreferences.getInstance(),
+        );
+      } catch (_) {
+        runApp(
+          MaterialApp(theme: lightTheme(), home: const BackupRecoveryScreen()),
+        );
+        return;
+      }
       // Immersive full-screen: hide the status & nav bars entirely (swipe from an
       // edge to peek them; "sticky" re-hides them automatically). This reclaims
       // the whole screen and removes the status-bar strip that used to bleed a
@@ -86,9 +102,7 @@ class YuLiApp extends ConsumerWidget {
       theme: lightTheme(),
       darkTheme: darkTheme(),
       themeMode: themeMode,
-      localizationsDelegates: const [
-        AppFlowyEditorLocalizations.delegate,
-      ],
+      localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
       // Transparent system bars so the app background floods them. Icon
       // brightness tracks the active theme (dark icons on cream, light on ink).
       // Wraps the navigator → applies app-wide, across every pushed route.
@@ -105,7 +119,7 @@ class YuLiApp extends ConsumerWidget {
                 isLight ? Brightness.dark : Brightness.light,
             systemNavigationBarContrastEnforced: false,
           ),
-          child: child!,
+          child: BackupActivityGate(child: child!),
         );
       },
       home: const _AppInit(),
@@ -152,12 +166,18 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
+  Timer? _backupTimer;
   bool _bannerDismissed = false;
   StreamSubscription<String>? _reminderSub;
 
   @override
   void initState() {
     super.initState();
+    _backupTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => _tryAutomaticBackup(),
+    );
+    Future<void>.delayed(const Duration(seconds: 30), _tryAutomaticBackup);
     // Listen for cross-mode note navigation requests
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.listenManual(pendingNoteNavigationProvider, (_, noteId) {
@@ -200,8 +220,24 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   void dispose() {
+    _backupTimer?.cancel();
     _reminderSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _tryAutomaticBackup() async {
+    bool available() =>
+        mounted &&
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+        ModalRoute.of(context)?.isCurrent == true &&
+        ref.read(currentModeProvider) == AppMode.home;
+    if (!available()) return;
+    try {
+      await ref.read(imageCleanupProvider.future);
+      await ref.read(floatingPinCleanupProvider.future);
+      final manager = await ref.read(backupManagerProvider.future);
+      if (available()) await manager.automaticIfDue(canRun: available);
+    } catch (_) {}
   }
 
   @override

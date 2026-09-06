@@ -1,3 +1,5 @@
+import '../../utils/drive_study_export.dart';
+import '../../../domain/services/pending_saves.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -595,9 +597,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   void initState() {
     super.initState();
-    ref
-        .read(flightWorkspaceTabsProvider.notifier)
-        .open(flightWorkspaceTarget(note: widget.note, folder: widget.folder));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref
+          .read(flightWorkspaceTabsProvider.notifier)
+          .open(flightWorkspaceTarget(note: widget.note, folder: widget.folder));
+    });
     _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
       vsync: this,
@@ -1576,6 +1581,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     bool drawBurst = false,
   }) {
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
+    PendingSaves.schedule(this, () async {
+      await _flushPendingPersists();
+      if (_dirtyPersistPages.isNotEmpty) throw StateError('No se pudo guardar el cuaderno.');
+    });
     _dirtyPersistPages.add(_pageBlockIds[pageIndex]);
     _persistTimer?.cancel();
     _persistTimer = Timer(const Duration(milliseconds: 180), () {
@@ -2919,7 +2928,12 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     }
   }
 
-  Future<void> _flushPendingPersists() async {
+  Future<void> _flushPendingPersists() {
+    PendingSaves.unschedule(this);
+    return PendingSaves.track(_flushPendingPersistsTracked());
+  }
+
+  Future<void> _flushPendingPersistsTracked() async {
     if (_dirtyPersistPages.isEmpty) return;
     if (_persisting) return;
     _persisting = true;
@@ -2944,12 +2958,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           }
         }
       }
+      PendingSaves.saved(this);
     } catch (e, st) {
-      CrashLogger.instance.record(
-        e,
-        st,
-        context: 'flushPendingPersists cuaderno',
-      );
+      PendingSaves.failed(this, e);
+      CrashLogger.instance.record(e, st, context: 'flushPendingPersists cuaderno');
     } finally {
       _persisting = false;
     }
@@ -8756,13 +8768,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   background: yCream2,
                 ));
         final png = await imageToPngBytes(out);
-        await shareExportBytes(png, '$name.png', text: 'Cuaderno · YuLi');
+        await shareExportBytes(png, '$name.png', text: 'Cuaderno · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
       } else if (opts.onePagePerSheet && pageImages.length > 1) {
         final pdf = await buildCanvasPdf([
           for (int k = 0; k < pageImages.length; k++)
             ExportPage(image: pageImages[k], worldSize: pageSizes[k]),
         ]);
-        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi');
+        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
       } else {
         final single = pageImages.length == 1;
         final out =
@@ -8779,7 +8791,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             worldSize: Size(out.width / pr, out.height / pr),
           ),
         ]);
-        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi');
+        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
       }
     } catch (_) {
       if (mounted) {

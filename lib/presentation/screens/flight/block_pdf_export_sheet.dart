@@ -16,6 +16,7 @@ class BlockPdfExportOptions {
   final BlockPdfMargins margins;
   final bool includeTitle;
   final bool includeTasks;
+  final bool toDrive;
 
   const BlockPdfExportOptions({
     required this.pageSize,
@@ -23,6 +24,7 @@ class BlockPdfExportOptions {
     required this.margins,
     required this.includeTitle,
     required this.includeTasks,
+    this.toDrive = false,
   });
 }
 
@@ -50,6 +52,7 @@ class _BlockPdfExportSheet extends StatefulWidget {
 }
 
 class _BlockPdfExportSheetState extends State<_BlockPdfExportSheet> {
+  bool _toDrive = false;
   BlockPdfPageSize _pageSize = BlockPdfPageSize.a4;
   BlockPdfOrientation _orientation = BlockPdfOrientation.portrait;
   BlockPdfMargins _margins = BlockPdfMargins.normal;
@@ -137,6 +140,13 @@ class _BlockPdfExportSheetState extends State<_BlockPdfExportSheet> {
                 ),
               ],
               const SizedBox(height: 18),
+              _ToggleRow(
+                label: 'Guardar en Google Drive (Conectar en Ajustes)',
+                value: _toDrive,
+                accent: widget.accent,
+                onChanged: (v) => setState(() => _toDrive = v),
+              ),
+              const SizedBox(height: 18),
               _ConfirmBtn(
                 accent: widget.accent,
                 label: 'EXPORTAR',
@@ -149,6 +159,7 @@ class _BlockPdfExportSheetState extends State<_BlockPdfExportSheet> {
                         margins: _margins,
                         includeTitle: _includeTitle,
                         includeTasks: _includeTasks,
+                        toDrive: _toDrive,
                       ),
                     ),
               ),

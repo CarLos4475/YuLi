@@ -1,3 +1,4 @@
+import '../../../domain/services/pending_saves.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -157,6 +158,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         _scheduleLiveStyleSync();
         _refreshWikiDraft();
         _pendingSave = true;
+        PendingSaves.schedule(this, _persist);
         _saveTimer?.cancel();
         _saveTimer = Timer(const Duration(seconds: 2), _persist);
       }
@@ -600,7 +602,12 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       key == yuliLatexDisplay ||
       key == yuliWikiLink;
 
-  Future<void> _persist() async {
+  Future<void> _persist() {
+    PendingSaves.unschedule(this);
+    return PendingSaves.track(_persistNow(), owner: this);
+  }
+
+  Future<void> _persistNow() async {
     _saveTimer?.cancel();
     _pendingSave = false;
     final markdown = YuliMarkdownDocument.encode(_editorState.document);

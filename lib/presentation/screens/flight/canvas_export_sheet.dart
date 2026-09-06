@@ -16,6 +16,7 @@ enum WhiteboardRegion { all, marquee }
 class CanvasExportOptions {
   final ExportFormat format;
   final bool includeTasks;
+  final bool toDrive;
 
   // Whiteboard-only.
   final WhiteboardRegion region;
@@ -26,6 +27,7 @@ class CanvasExportOptions {
   const CanvasExportOptions({
     required this.format,
     required this.includeTasks,
+    this.toDrive = false,
     this.region = WhiteboardRegion.all,
     this.onePagePerSheet = true,
   });
@@ -54,11 +56,12 @@ Future<CanvasExportOptions?> showNotebookExportSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (_) => _NotebookExportSheet(
-      accent: accent,
-      selectedCount: selectedCount,
-      hasTasks: hasTasks,
-    ),
+    builder:
+        (_) => _NotebookExportSheet(
+          accent: accent,
+          selectedCount: selectedCount,
+          hasTasks: hasTasks,
+        ),
   );
 }
 
@@ -78,7 +81,9 @@ class ExportProgressDialog extends StatelessWidget {
         decoration: BoxDecoration(
           color: yCream,
           border: Border.all(color: yBorderStrong, width: yLineHeavy),
-          boxShadow: const [BoxShadow(color: yBorderStrong, offset: Offset(4, 4))],
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(4, 4)),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -119,25 +124,29 @@ class _SheetShell extends StatelessWidget {
       child: Container(
         decoration: const BoxDecoration(
           color: yCream,
-          border: Border(top: BorderSide(color: yBorderStrong, width: yLineHeavy)),
+          border: Border(
+            top: BorderSide(color: yBorderStrong, width: yLineHeavy),
+          ),
         ),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              title,
-              style: yMono(
-                size: 11,
-                weight: FontWeight.w700,
-                tracking: 1.6,
-                color: yMuted,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: yMono(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  tracking: 1.6,
+                  color: yMuted,
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            ...children,
-          ],
+              const SizedBox(height: 14),
+              ...children,
+            ],
+          ),
         ),
       ),
     );
@@ -149,17 +158,17 @@ class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.label);
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          label,
-          style: yMono(
-            size: 9,
-            weight: FontWeight.w700,
-            tracking: 1.4,
-            color: yInk,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      label,
+      style: yMono(
+        size: 9,
+        weight: FontWeight.w700,
+        tracking: 1.4,
+        color: yInk,
+      ),
+    ),
+  );
 }
 
 class _Segmented<T> extends StatelessWidget {
@@ -196,11 +205,7 @@ class _Segmented<T> extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      o.$3,
-                      size: 15,
-                      color: value == o.$1 ? yCream : yInk,
-                    ),
+                    Icon(o.$3, size: 15, color: value == o.$1 ? yCream : yInk),
                     const SizedBox(width: 6),
                     Text(
                       o.$2,
@@ -253,14 +258,13 @@ class _ToggleRow extends StatelessWidget {
               color: value ? accent : yCream,
               border: Border.all(color: yBorderStrong, width: yLineMid),
             ),
-            child: value
-                ? const Icon(YuLiIcons.check, size: 15, color: yCream)
-                : null,
+            child:
+                value
+                    ? const Icon(YuLiIcons.check, size: 15, color: yCream)
+                    : null,
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text(label, style: yBody(size: 14, color: yInk)),
-          ),
+          Expanded(child: Text(label, style: yBody(size: 14, color: yInk))),
         ],
       ),
     );
@@ -288,7 +292,9 @@ class _ConfirmBtn extends StatelessWidget {
         decoration: BoxDecoration(
           color: accent,
           border: Border.all(color: yBorderStrong, width: yLineHeavy),
-          boxShadow: const [BoxShadow(color: yBorderStrong, offset: Offset(3, 3))],
+          boxShadow: const [
+            BoxShadow(color: yBorderStrong, offset: Offset(3, 3)),
+          ],
         ),
         child: Text(
           label,
@@ -316,6 +322,7 @@ class _WhiteboardExportSheet extends StatefulWidget {
 }
 
 class _WhiteboardExportSheetState extends State<_WhiteboardExportSheet> {
+  bool _toDrive = false;
   WhiteboardRegion _region = WhiteboardRegion.all;
   ExportFormat _format = ExportFormat.pdf;
   bool _includeTasks = true;
@@ -355,20 +362,30 @@ class _WhiteboardExportSheetState extends State<_WhiteboardExportSheet> {
             onChanged: (v) => setState(() => _includeTasks = v),
           ),
         ],
+        const SizedBox(height: 16),
+        _ToggleRow(
+          label: 'Guardar en Google Drive (Conectar en Ajustes)',
+          value: _toDrive,
+          accent: widget.accent,
+          onChanged: (v) => setState(() => _toDrive = v),
+        ),
         const SizedBox(height: 18),
         _ConfirmBtn(
           accent: widget.accent,
-          label: _region == WhiteboardRegion.marquee
-              ? 'SELECCIONAR ÁREA  →'
-              : 'EXPORTAR',
-          onTap: () => Navigator.pop(
-            context,
-            CanvasExportOptions(
-              format: _format,
-              includeTasks: _includeTasks,
-              region: _region,
-            ),
-          ),
+          label:
+              _region == WhiteboardRegion.marquee
+                  ? 'SELECCIONAR ÁREA  →'
+                  : 'EXPORTAR',
+          onTap:
+              () => Navigator.pop(
+                context,
+                CanvasExportOptions(
+                  format: _format,
+                  includeTasks: _includeTasks,
+                  region: _region,
+                  toDrive: _toDrive,
+                ),
+              ),
         ),
       ],
     );
@@ -392,6 +409,7 @@ class _NotebookExportSheet extends StatefulWidget {
 }
 
 class _NotebookExportSheetState extends State<_NotebookExportSheet> {
+  bool _toDrive = false;
   ExportFormat _format = ExportFormat.pdf;
   bool _includeTasks = true;
   bool _onePagePerSheet = true;
@@ -430,18 +448,27 @@ class _NotebookExportSheetState extends State<_NotebookExportSheet> {
             onChanged: (v) => setState(() => _includeTasks = v),
           ),
         ],
+        const SizedBox(height: 16),
+        _ToggleRow(
+          label: 'Guardar en Google Drive (Conectar en Ajustes)',
+          value: _toDrive,
+          accent: widget.accent,
+          onChanged: (v) => setState(() => _toDrive = v),
+        ),
         const SizedBox(height: 18),
         _ConfirmBtn(
           accent: widget.accent,
           label: 'EXPORTAR',
-          onTap: () => Navigator.pop(
-            context,
-            CanvasExportOptions(
-              format: _format,
-              includeTasks: _includeTasks,
-              onePagePerSheet: _onePagePerSheet,
-            ),
-          ),
+          onTap:
+              () => Navigator.pop(
+                context,
+                CanvasExportOptions(
+                  format: _format,
+                  includeTasks: _includeTasks,
+                  onePagePerSheet: _onePagePerSheet,
+                  toDrive: _toDrive,
+                ),
+              ),
         ),
       ],
     );

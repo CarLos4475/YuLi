@@ -79,10 +79,7 @@ void disposeExportImages(Map<String, ui.Image> images) {
 /// Bounding box (world space) of all content in [data]: strokes, images and the
 /// given [blockRects]. Returns null when there is nothing to export. Used by
 /// "export everything" so the user doesn't have to marquee the whole canvas.
-Rect? contentBounds(
-  DrawingData data, {
-  List<Rect> blockRects = const [],
-}) {
+Rect? contentBounds(DrawingData data, {List<Rect> blockRects = const []}) {
   Rect? acc;
   void add(Rect r) => acc = acc == null ? r : acc!.expandToInclude(r);
   for (final s in data.strokes) {
@@ -247,9 +244,14 @@ Future<void> shareExportBytes(
   Uint8List bytes,
   String filename, {
   String? text,
+  Future<void> Function(File)? uploadToDrive,
 }) async {
   final dir = await getTemporaryDirectory();
   final file = File(p.join(dir.path, filename));
   await file.writeAsBytes(bytes);
-  await Share.shareXFiles([XFile(file.path)], text: text);
+  if (uploadToDrive != null) {
+    await uploadToDrive(file);
+  } else {
+    await Share.shareXFiles([XFile(file.path)], text: text);
+  }
 }

@@ -1,3 +1,4 @@
+import '../../../domain/services/pending_saves.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -252,22 +253,25 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
   Future<void> Function()? _pendingSave;
 
   void scheduleSave(Future<void> Function() doSave) {
+    PendingSaves.schedule(this, () => flushSave(doSave));
     _hasPendingSave = true;
     _pendingSave = doSave;
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(seconds: 2), () async {
+      PendingSaves.unschedule(this);
       _hasPendingSave = false;
       _pendingSave = null;
-      await doSave();
+      await PendingSaves.track(doSave(), owner: this);
     });
   }
 
   Future<void> flushSave(Future<void> Function() doSave) async {
+    PendingSaves.unschedule(this);
     _saveTimer?.cancel();
     if (_hasPendingSave) {
       _hasPendingSave = false;
       _pendingSave = null;
-      await doSave();
+      await PendingSaves.track(doSave(), owner: this);
     }
   }
 
@@ -276,12 +280,13 @@ mixin _AutosaveMixin<T extends StatefulWidget> on State<T> {
   /// torn down — otherwise a debounced edit is silently dropped when the block
   /// unmounts (e.g. leaving the screen within the 2s debounce window).
   void commitPendingSave() {
+    PendingSaves.unschedule(this);
     _saveTimer?.cancel();
     if (_hasPendingSave) {
       _hasPendingSave = false;
       final save = _pendingSave;
       _pendingSave = null;
-      save?.call();
+      if (save != null) PendingSaves.track(save(), owner: this);
     }
   }
 
@@ -3601,7 +3606,7 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
     _persistTail = _persistTail
         .catchError((_) {})
         .then((_) => _persistNow(snapshot));
-    await _persistTail;
+    await PendingSaves.track(_persistTail, owner: this);
   }
 
   Future<void> _persistNow(DrawingData data) async {

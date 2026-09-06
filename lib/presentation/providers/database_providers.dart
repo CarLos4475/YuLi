@@ -1,4 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../data/services/backup/backup_manager.dart';
+import '../../data/services/backup/google_backup_auth.dart';
+import '../../data/services/backup/local_backup_service.dart';
 import '../../data/local/database.dart';
 import '../../data/repositories/local/local_task_repository.dart';
 import '../../data/repositories/local/local_folder_repository.dart';
@@ -42,6 +48,15 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   ref.onDispose(db.close);
   return db;
+});
+
+final backupManagerProvider = FutureProvider<BackupManager>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final documents = await getApplicationDocumentsDirectory();
+  final prefs = await SharedPreferences.getInstance();
+  final manager = BackupManager(LocalBackupService(db, documents, prefs), GoogleBackupAuth(), http.Client());
+  ref.onDispose(manager.dispose);
+  return manager;
 });
 
 // ─── Repositories ─────────────────────────────────────────────────────────────

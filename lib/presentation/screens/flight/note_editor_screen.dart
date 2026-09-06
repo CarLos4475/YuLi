@@ -1,3 +1,4 @@
+import '../../../domain/services/pending_saves.dart';
 import 'dart:async';
 import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/gestures.dart';
@@ -11,6 +12,7 @@ import '../../providers/note_block_providers.dart';
 import '../../providers/note_providers.dart';
 import '../../providers/flight_workspace_providers.dart';
 import '../../utils/pdf_export.dart';
+import '../../utils/drive_study_export.dart';
 import '../../widgets/flight_workspace.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
@@ -71,7 +73,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     super.initState();
     _titleCtrl = TextEditingController(text: widget.note.title ?? '');
     _titleCtrl.addListener(_onTitleChanged);
-    ref.read(flightWorkspaceTabsProvider.notifier).open(_workspaceTarget);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(flightWorkspaceTabsProvider.notifier).open(_workspaceTarget);
+    });
   }
 
   @override
@@ -84,12 +89,18 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   void _onTitleChanged() {
+    PendingSaves.schedule(this, _saveTitle);
     if (!_dirty) setState(() => _dirty = true);
     _titleSaveTimer?.cancel();
     _titleSaveTimer = Timer(const Duration(seconds: 2), _saveTitle);
   }
 
-  Future<void> _saveTitle() async {
+  Future<void> _saveTitle() {
+    PendingSaves.unschedule(this);
+    return PendingSaves.track(_saveTitleNow(), owner: this);
+  }
+
+  Future<void> _saveTitleNow() async {
     final newTitle = _titleCtrl.text.trim();
     final currentTitle = widget.note.title?.trim() ?? '';
     if (newTitle == currentTitle) {
@@ -194,6 +205,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       final drawingStrokesByBlock = await _loadExportDrawingStrokes(blocks);
       if (!mounted) return;
       await exportNoteToPdf(
+        uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null,
         context: context,
         title:
             _titleCtrl.text.trim().isEmpty

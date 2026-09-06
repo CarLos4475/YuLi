@@ -15,6 +15,7 @@
 // `shareExportBytes`) are reused from `canvas_export.dart` unchanged.
 
 import 'dart:ui' as ui;
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -39,6 +40,7 @@ const double _pixelRatio = 3.0;
 final PdfColor _paperPdf = PdfColor.fromInt(yCream.toARGB32());
 
 Future<void> exportNoteToPdf({
+  Future<void> Function(File)? uploadToDrive,
   required BuildContext context,
   required String title,
   required List<NoteBlock> blocks,
@@ -87,6 +89,7 @@ Future<void> exportNoteToPdf({
       await doc.save(),
       '${sanitizeFilename(cleanTitle)}.pdf',
       text: 'Nota · YuLi',
+      uploadToDrive: uploadToDrive,
     );
     return;
   }
@@ -133,6 +136,7 @@ Future<void> exportNoteToPdf({
     await doc.save(),
     '${sanitizeFilename(cleanTitle)}.pdf',
     text: 'Nota · YuLi',
+    uploadToDrive: uploadToDrive,
   );
 }
 

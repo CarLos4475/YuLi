@@ -6,8 +6,81 @@ import 'package:yuli/presentation/providers/flight_workspace_providers.dart';
 import 'package:yuli/presentation/screens/flight/canvas_text_block.dart';
 import 'package:yuli/presentation/screens/flight/flight_wiki_suggestions.dart';
 import 'package:yuli/presentation/screens/flight/note_cell_model.dart';
+import 'package:yuli/presentation/screens/flight/note_block_widgets.dart';
 
 void main() {
+  testWidgets('moving canvas text reuses Markdown without searches or saves', (
+    tester,
+  ) async {
+    final block = CanvasTextBlock(
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 100,
+      markdown: 'Texto [[Referencia]]',
+    );
+    var searches = 0;
+    var saves = 0;
+    var measurements = 0;
+    final position = ValueNotifier<double>(0);
+    addTearDown(position.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<double>(
+              valueListenable: position,
+              builder: (context, x, child) {
+                return Stack(
+                  children: [
+                    Positioned(
+                      left: x,
+                      top: 0,
+                      child: CanvasTextBlockOverlay(
+                        block: block,
+                        accent: const Color(0xFF315C9E),
+                        interactive: true,
+                        wikiTargetSearch: (_) async {
+                          searches++;
+                          return [];
+                        },
+                        onPersist: () async {
+                          saves++;
+                        },
+                        onChanged: () {},
+                        onHeightMeasured: (h) {
+                          measurements++;
+                          block.h = h;
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final markdown = tester.widget<NoteMarkdownPreview>(
+      find.byType(NoteMarkdownPreview),
+    );
+    final initialMeasurements = measurements;
+    for (var i = 1; i <= 60; i++) {
+      position.value = i.toDouble();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        identical(tester.widget(find.byType(NoteMarkdownPreview)), markdown),
+        isTrue,
+      );
+    }
+    expect(searches, 0);
+    expect(saves, 0);
+    expect(measurements, initialMeasurements);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'canvas muestra sugerencias wiki con el color de la carpeta destino',
     (tester) async {
