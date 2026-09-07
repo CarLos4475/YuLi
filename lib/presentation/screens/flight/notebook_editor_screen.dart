@@ -5788,7 +5788,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   void _lassoDuplicate() {
     _lassoMutate(
-      (s, im, b, tx) => _lassoCtrl.duplicateSelected(s, im),
+      (s, im, b, tx) => _lassoCtrl.duplicateSelected(s, im, b, tx),
       syncMode: _LassoSyncMode.appendSelected,
     );
     HapticFeedback.lightImpact();
@@ -7645,7 +7645,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
               syncMode: _LassoSyncMode.lengthStable,
             ),
         onCopy: () {
-          _lassoCtrl.copySelected(_allVisibleStrokes, _allVisibleImages);
+          _lassoCtrl.copySelected(
+            _allVisibleStrokes,
+            _allVisibleImages,
+            _allVisibleTextBlocks,
+          );
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -7656,7 +7660,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         },
         onCut: () {
           _lassoMutate(
-            (s, im, b, _) => _lassoCtrl.cutSelected(s, im, b),
+            (s, im, b, tx) => _lassoCtrl.cutSelected(s, im, b, tx),
             syncMode: _LassoSyncMode.deleteSelected,
           );
           HapticFeedback.lightImpact();
@@ -7686,7 +7690,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             setState(() => _tool = DrawTool.lasso);
           }
           _lassoMutate(
-            (s, im, b, _) => _lassoCtrl.pasteAt(_showPasteAt!, s, im),
+            (s, im, b, tx) => _lassoCtrl.pasteAt(_showPasteAt!, s, im, 0, tx),
             syncMode: _LassoSyncMode.appendSelected,
           );
           HapticFeedback.mediumImpact();

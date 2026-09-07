@@ -70,6 +70,7 @@ class LassoController {
 
   List<DrawingStroke>? _clipboard;
   List<CanvasImage>? _imageClipboard;
+  List<CanvasTextBlock>? _textBlockClipboard;
 
   VoidCallback? onChanged;
 
@@ -680,14 +681,17 @@ class LassoController {
 
   bool get hasClipboard =>
       (_clipboard != null && _clipboard!.isNotEmpty) ||
-      (_imageClipboard != null && _imageClipboard!.isNotEmpty);
+      (_imageClipboard != null && _imageClipboard!.isNotEmpty) ||
+      (_textBlockClipboard != null && _textBlockClipboard!.isNotEmpty);
 
   void copySelected(
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
+    List<CanvasTextBlock> textBlocks = const [],
   ]) {
     _clipboard = _snapshotRelativeToCenter(strokes);
     _imageClipboard = _snapshotImagesRelativeToCenter(images);
+    _textBlockClipboard = _snapshotTextBlocksRelativeToCenter(textBlocks);
     deselect();
   }
 
@@ -695,14 +699,15 @@ class LassoController {
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
     List<CanvasTaskBlock> blocks = const [],
+    List<CanvasTextBlock> textBlocks = const [],
   ]) {
     _clipboard = _snapshotRelativeToCenter(strokes);
     _imageClipboard = _snapshotImagesRelativeToCenter(images);
-    // Task/text blocks are never cloned to the clipboard, so leave any selected
-    // block in place instead of losing it.
+    _textBlockClipboard = _snapshotTextBlocksRelativeToCenter(textBlocks);
+    // Task blocks point at shared Fight entities, so cutting them would need a
+    // distinct move contract. Text blocks are self-contained and can move.
     selectedBlockIndices = {};
-    selectedTextBlockIndices = {};
-    deleteSelected(strokes, images, blocks);
+    deleteSelected(strokes, images, blocks, textBlocks);
   }
 
   List<DrawingStroke> _snapshotRelativeToCenter(List<DrawingStroke> strokes) {
@@ -742,15 +747,44 @@ class LassoController {
     return out;
   }
 
+  List<CanvasTextBlock> _snapshotTextBlocksRelativeToCenter(
+    List<CanvasTextBlock> textBlocks,
+  ) {
+    final cx = boundingBox?.center.dx ?? 0;
+    final cy = boundingBox?.center.dy ?? 0;
+    final out = <CanvasTextBlock>[];
+    for (final i in selectedTextBlockIndices) {
+      if (i >= textBlocks.length) continue;
+      final block = textBlocks[i];
+      out.add(
+        CanvasTextBlock(
+          x: block.x - cx,
+          y: block.y - cy,
+          w: block.w,
+          h: block.h,
+          rotation: block.rotation,
+          scale: block.scale,
+          markdown: block.markdown,
+          isSquare: block.isSquare,
+        ),
+      );
+    }
+    return out;
+  }
+
   LassoDuplicateResult pasteAt(
     Offset worldPos,
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
     double snapStep = 0,
+    List<CanvasTextBlock> textBlocks = const [],
   ]) {
     final clip = _clipboard ?? const [];
     final imgClip = _imageClipboard ?? const [];
-    if (clip.isEmpty && imgClip.isEmpty) return LassoDuplicateResult(0);
+    final textClip = _textBlockClipboard ?? const [];
+    if (clip.isEmpty && imgClip.isEmpty && textClip.isEmpty) {
+      return LassoDuplicateResult(0);
+    }
     if (snapStep > 0) {
       worldPos = Offset(
         (worldPos.dx / snapStep).round() * snapStep,
@@ -782,16 +816,34 @@ class LassoController {
           ..y += worldPos.dy,
       );
     }
+    final textStart = textBlocks.length;
+    for (final block in textClip) {
+      textBlocks.add(
+        CanvasTextBlock(
+          x: block.x + worldPos.dx,
+          y: block.y + worldPos.dy,
+          w: block.w,
+          h: block.h,
+          rotation: block.rotation,
+          scale: block.scale,
+          markdown: block.markdown,
+          isSquare: block.isSquare,
+        ),
+      );
+    }
 
     selectedIndices = Set.from(List.generate(clip.length, (i) => startIdx + i));
     selectedImageIndices = Set.from(
       List.generate(imgClip.length, (i) => imgStart + i),
     );
     selectedBlockIndices = {};
-    boundingBox = _computeBoundingBox(strokes, images);
+    selectedTextBlockIndices = Set.from(
+      List.generate(textClip.length, (i) => textStart + i),
+    );
+    boundingBox = _computeBoundingBox(strokes, images, const [], textBlocks);
     phase = LassoPhase.selected;
     _notify();
-    return LassoDuplicateResult(clip.length + imgClip.length);
+    return LassoDuplicateResult(clip.length + imgClip.length + textClip.length);
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────
@@ -886,6 +938,8 @@ class LassoController {
   LassoDuplicateResult duplicateSelected(
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
+    List<CanvasTaskBlock> blocks = const [],
+    List<CanvasTextBlock> textBlocks = const [],
   ]) {
     final copies = <DrawingStroke>[];
     for (final i in selectedIndices) {
@@ -914,10 +968,29 @@ class LassoController {
         );
       }
     }
+    final textCopies = <CanvasTextBlock>[];
+    for (final i in selectedTextBlockIndices) {
+      if (i >= textBlocks.length) continue;
+      final block = textBlocks[i];
+      textCopies.add(
+        CanvasTextBlock(
+          x: block.x + 15,
+          y: block.y + 15,
+          w: block.w,
+          h: block.h,
+          rotation: block.rotation,
+          scale: block.scale,
+          markdown: block.markdown,
+          isSquare: block.isSquare,
+        ),
+      );
+    }
     final startIdx = strokes.length;
     strokes.addAll(copies);
     final imgStart = images.length;
     images.addAll(imgCopies);
+    final textStart = textBlocks.length;
+    textBlocks.addAll(textCopies);
 
     selectedIndices = Set.from(
       List.generate(copies.length, (i) => startIdx + i),
@@ -925,13 +998,17 @@ class LassoController {
     selectedImageIndices = Set.from(
       List.generate(imgCopies.length, (i) => imgStart + i),
     );
-    // Task/text blocks are not duplicated (shared task entities / would need a
-    // new id); drop them from the post-duplicate selection.
+    // Task blocks point at shared Fight entities, so only self-contained text
+    // blocks participate in duplicate/copy/paste.
     selectedBlockIndices = {};
-    selectedTextBlockIndices = {};
-    boundingBox = _computeBoundingBox(strokes, images);
+    selectedTextBlockIndices = Set.from(
+      List.generate(textCopies.length, (i) => textStart + i),
+    );
+    boundingBox = _computeBoundingBox(strokes, images, blocks, textBlocks);
     _notify();
-    return LassoDuplicateResult(copies.length + imgCopies.length);
+    return LassoDuplicateResult(
+      copies.length + imgCopies.length + textCopies.length,
+    );
   }
 
   // ─── Select range (after duplicate) ────────────────────────────────────

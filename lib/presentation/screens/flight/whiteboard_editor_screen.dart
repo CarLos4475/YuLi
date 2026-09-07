@@ -4413,7 +4413,12 @@ class _WhiteboardCanvasEditorState
 
   void _lassoDuplicate() {
     _lassoMutate(
-      () => _lassoCtrl.duplicateSelected(_data.strokes, _data.images),
+      () => _lassoCtrl.duplicateSelected(
+        _data.strokes,
+        _data.images,
+        _data.taskBlocks,
+        _data.textBlocks,
+      ),
     );
     HapticFeedback.lightImpact();
   }
@@ -4801,7 +4806,11 @@ class _WhiteboardCanvasEditorState
         onFlipV:
             () => _lassoMutate(() => _lassoCtrl.flipVertical(_data.strokes)),
         onCopy: () {
-          _lassoCtrl.copySelected(_data.strokes, _data.images);
+          _lassoCtrl.copySelected(
+            _data.strokes,
+            _data.images,
+            _data.textBlocks,
+          );
           HapticFeedback.lightImpact();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -4816,6 +4825,7 @@ class _WhiteboardCanvasEditorState
               _data.strokes,
               _data.images,
               _data.taskBlocks,
+              _data.textBlocks,
             ),
           );
           HapticFeedback.lightImpact();
@@ -4850,6 +4860,7 @@ class _WhiteboardCanvasEditorState
               _data.strokes,
               _data.images,
               0,
+              _data.textBlocks,
             ),
           );
           HapticFeedback.mediumImpact();
