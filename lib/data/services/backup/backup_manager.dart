@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../domain/services/pending_saves.dart';
 import 'backup_bundle.dart';
+import 'backup_preferences.dart';
 import 'drive_backup_client.dart';
 import 'google_backup_auth.dart';
 import 'local_backup_service.dart';
@@ -59,9 +60,17 @@ class BackupManager extends ChangeNotifier {
             : await local.preferences.remove('study_auto_account_v1');
     if (!saved) throw const BackupFailure('No se pudo guardar la preferencia.');
     if (enabled) {
+      if (!await local.preferences.setBool(
+        studyPendingChangesPreference,
+        true,
+      )) {
+        throw const BackupFailure('No se pudo programar la publicación.');
+      }
       await StudyBackgroundSync.ensureCatchUp(true);
     } else {
       await StudyBackgroundSync.cancelPending();
+      await local.clearStudyCache();
+      await local.preferences.remove(studyPendingChangesPreference);
       if (previousAccount != null) {
         await GoogleBackupAuth.clearBackgroundAuthorization(previousAccount);
         await StudyUploadQueue(

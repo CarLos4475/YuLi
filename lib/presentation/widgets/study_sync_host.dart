@@ -5,9 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/services/backup/backup_manager.dart';
+import '../../data/services/backup/backup_preferences.dart';
 import '../../data/services/backup/study_background_sync.dart';
 import '../../data/services/backup/study_sync.dart';
 import '../../data/services/backup/study_upload_queue.dart';
+import '../../data/services/crash_logger.dart';
+import '../../domain/models/note.dart';
 import '../../domain/services/pending_saves.dart';
 import '../../domain/services/study_activity.dart';
 import '../providers/database_providers.dart';
@@ -22,13 +25,19 @@ class StudySyncHost extends ConsumerStatefulWidget {
   ConsumerState<StudySyncHost> createState() => _StudySyncHostState();
 }
 
-class _StudySyncHostState extends ConsumerState<StudySyncHost> {
+class _StudySyncHostState extends ConsumerState<StudySyncHost>
+    with WidgetsBindingObserver {
   Timer? _timer;
   StreamSubscription<void>? _changes;
+  StreamSubscription<int>? _opportunities;
   BackupManager? _manager;
   bool _running = false;
   bool _dirty = true;
   int _revision = 0;
+  int _preparedRevision = -1;
+  final Set<int> _priorityNotes = {};
+  bool _catchUp = false;
+  bool _pendingPersisted = false;
   DateTime _lastInput = DateTime.now();
   DateTime _lastChange = DateTime.now();
   DateTime _retryAfter = DateTime.fromMillisecondsSinceEpoch(0);
@@ -37,28 +46,65 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    _opportunities = StudyActivity.opportunities.listen((noteId) {
+      _priorityNotes.add(noteId);
+      unawaited(_tick());
+    });
     unawaited(_initialize());
   }
 
-  bool get _canRender =>
+  bool get _canWork =>
       mounted &&
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
       DateTime.now().difference(_lastInput) >=
-          const Duration(milliseconds: 600) &&
-      DateTime.now().difference(_lastChange) >= const Duration(seconds: 2);
+          const Duration(milliseconds: 600);
+
+  bool get _canPrepare =>
+      _canWork &&
+      DateTime.now().difference(_lastChange) >= const Duration(seconds: 5);
+
+  bool get _longIdle =>
+      _canWork &&
+      DateTime.now().difference(_lastChange) >= const Duration(seconds: 90);
 
   Future<void> _initialize() async {
     final manager = await ref.read(backupManagerProvider.future);
     if (!mounted) return;
     _manager = manager;
+    await manager.local.preferences.reload();
+    _observedAccount = manager.local.preferences.getString(
+      'study_auto_account_v1',
+    );
+    _pendingPersisted =
+        manager.local.preferences.getBool(studyPendingChangesPreference) ??
+        false;
+    _catchUp = _pendingPersisted;
     await _changes?.cancel();
     _changes = manager.local.studyChanges.listen((_) {
       _revision++;
       _dirty = true;
       _lastChange = DateTime.now();
+      if (!_pendingPersisted) {
+        _pendingPersisted = true;
+        unawaited(_persistPending(manager));
+      }
     });
-    _dirty = true;
+    _dirty = _pendingPersisted;
+  }
+
+  Future<void> _persistPending(BackupManager manager) async {
+    try {
+      if (!await manager.local.preferences.setBool(
+        studyPendingChangesPreference,
+        true,
+      )) {
+        _pendingPersisted = false;
+      }
+    } catch (_) {
+      _pendingPersisted = false;
+    }
   }
 
   void _input() {
@@ -68,10 +114,15 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
   Future<void> _tick() async {
     if (!Platform.isAndroid ||
         _running ||
-        !_canRender ||
+        !_canPrepare ||
         DateTime.now().isBefore(_retryAfter)) {
       return;
     }
+    final priority = Set<int>.from(_priorityNotes);
+    final publishAll = _longIdle || _catchUp;
+    final publishPriority = !publishAll && priority.isNotEmpty;
+    final prepareOnly = !publishAll && !publishPriority;
+    if (prepareOnly && _preparedRevision == _revision) return;
     _running = true;
     OverlayEntry? entry;
     BackupManager? operationManager;
@@ -92,6 +143,7 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
       if (account != _observedAccount) {
         _observedAccount = account;
         _dirty = account != null;
+        _catchUp = account != null;
       }
       if (account == null || !_dirty) return;
       if (manager.busy || manager.restorePending || manager.studyRunning) {
@@ -99,7 +151,7 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
       }
       final activeManager = manager;
       bool canContinue() =>
-          _canRender &&
+          _canWork &&
           !activeManager.busy &&
           !activeManager.restorePending &&
           activeManager.local.preferences.getString('study_auto_account_v1') ==
@@ -107,7 +159,9 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
       if (!canContinue()) return;
       manager.studyRunning = true;
       await manager.local.cleanupStudyExports();
-      if (StudyActivity.editors.isEmpty) await PendingSaves.flush();
+      if (!prepareOnly || StudyActivity.editors.isEmpty) {
+        await PendingSaves.flush();
+      }
       final revision = _revision;
       final overlay = studyNavigatorKey.currentState?.overlay;
       if (overlay == null) return;
@@ -136,9 +190,12 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
       );
       final known = await queue.knownVersions(account);
       queued = (await queue.pending(account: account)).isNotEmpty;
-      var invalidSnapshots = false;
+      var failedNotes = 0;
+      final activeNoteIds = <int>{};
       for (final folder in await folders.getActive()) {
         for (final note in await notes.getByFolder(folder.id)) {
+          activeNoteIds.add(note.id);
+          if (publishPriority && !priority.contains(note.id)) continue;
           await checkpoint();
           StudySnapshot? snapshot;
           String hash;
@@ -156,13 +213,35 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
             );
             if (snapshot == null) continue;
             hash = await snapshot.fingerprint();
-          } catch (_) {
-            invalidSnapshots = true;
+          } catch (error, stack) {
+            failedNotes++;
+            _recordStudyFailure(note.id, 'snapshot', error, stack);
             continue;
           }
           final key = 'note:${note.id}';
           final version = '$key\u0000$hash';
           if (known.contains(version)) continue;
+          if (prepareOnly) {
+            if (snapshot.note.kind != NoteKind.block) {
+              try {
+                activeManager.setStudyStatus(
+                  'Preparando ${snapshot.note.displayTitle}',
+                );
+                if (!renderContext.mounted) throw StudySyncInterrupted();
+                await snapshot.prepareDrawingCache(
+                  renderContext,
+                  activeManager.local.documents,
+                  checkpoint,
+                );
+              } on StudySyncInterrupted {
+                rethrow;
+              } catch (error, stack) {
+                failedNotes++;
+                _recordStudyFailure(note.id, 'cache', error, stack);
+              }
+            }
+            continue;
+          }
           activeManager.setStudyStatus(
             'Preparando ${snapshot.note.displayTitle}',
           );
@@ -189,8 +268,9 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
             queued = true;
           } on StudySyncInterrupted {
             rethrow;
-          } catch (_) {
-            invalidSnapshots = true;
+          } catch (error, stack) {
+            failedNotes++;
+            _recordStudyFailure(note.id, 'render', error, stack);
           } finally {
             if (rendered != null && await rendered.exists()) {
               await rendered.delete();
@@ -198,8 +278,34 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
           }
         }
       }
-      if (invalidSnapshots) throw StateError('Hay apuntes pendientes.');
-      _dirty = _revision != revision;
+      await cleanupStudyPdfCache(activeManager.local.documents, activeNoteIds);
+      if (failedNotes > 0) {
+        _dirty = true;
+        _retryAfter = DateTime.now().add(const Duration(minutes: 2));
+        manager.setStudyStatus(
+          failedNotes == 1
+              ? '1 PDF pendiente; los demás continuarán sincronizándose'
+              : '$failedNotes PDF pendientes; los demás continuarán sincronizándose',
+        );
+        return;
+      }
+      if (prepareOnly) {
+        if (_revision == revision) _preparedRevision = revision;
+        manager.setStudyStatus('Cambios preparados; PDF pendientes');
+        return;
+      }
+      if (publishPriority) {
+        _priorityNotes.removeAll(priority);
+        _dirty = true;
+      } else {
+        _priorityNotes.clear();
+        _dirty = _revision != revision;
+        if (!_dirty) {
+          _catchUp = false;
+          _pendingPersisted = false;
+          await manager.local.preferences.remove(studyPendingChangesPreference);
+        }
+      }
       queued = (await queue.pending(account: account)).isNotEmpty;
       manager.setStudyStatus(
         queued ? 'PDF preparados para subir' : 'PDF actualizados en Drive',
@@ -239,10 +345,33 @@ class _StudySyncHostState extends ConsumerState<StudySyncHost> {
     }
   }
 
+  void _recordStudyFailure(
+    int noteId,
+    String phase,
+    Object error,
+    StackTrace stack,
+  ) {
+    CrashLogger.instance.record(
+      StateError('StudyPdfFailure(${error.runtimeType})'),
+      stack,
+      context: 'Study PDF $phase note=$noteId',
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _pendingPersisted) {
+      _catchUp = true;
+      unawaited(_tick());
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _changes?.cancel();
+    _opportunities?.cancel();
     super.dispose();
   }
 

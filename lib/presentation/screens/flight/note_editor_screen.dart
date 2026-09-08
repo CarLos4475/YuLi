@@ -72,7 +72,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   @override
   void initState() {
     super.initState();
-    StudyActivity.editors.add(this);
+    StudyActivity.enter(this);
     _titleCtrl = TextEditingController(text: widget.note.title ?? '');
     _titleCtrl.addListener(_onTitleChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,7 +83,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
 
   @override
   void dispose() {
-    StudyActivity.editors.remove(this);
+    StudyActivity.leave(this, widget.note.id);
     _titleSaveTimer?.cancel();
     _saveTitle();
     _titleCtrl.dispose();

@@ -186,14 +186,14 @@ class _WhiteboardEditorScreenState
   @override
   void initState() {
     super.initState();
-    StudyActivity.editors.add(this);
+    StudyActivity.enter(this);
     _blockRepo = ref.read(noteBlockRepositoryProvider);
     unawaited(_loadCanvases());
   }
 
   @override
   void dispose() {
-    StudyActivity.editors.remove(this);
+    StudyActivity.leave(this, widget.note.id);
     super.dispose();
   }
 
@@ -260,6 +260,7 @@ class _WhiteboardEditorScreenState
     }
     _mutating = true;
     await _flushCurrentCanvas();
+    StudyActivity.leaveUnit(widget.note.id);
     if (!mounted) return;
     setState(() {
       _selectedBlockId = blockId;

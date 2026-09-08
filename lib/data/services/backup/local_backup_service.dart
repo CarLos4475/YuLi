@@ -52,6 +52,17 @@ class LocalBackupService {
     }
   }
 
+  Future<void> clearStudyCache() async {
+    final root = Directory(
+      p.join(documents.path, 'study_exports', 'cache'),
+    );
+    try {
+      if (await root.exists()) await root.delete(recursive: true);
+    } on FileSystemException {
+      return;
+    }
+  }
+
   Future<String> deviceId() async {
     final existing = preferences.getString('backup_device_id_v1');
     if (existing != null) return existing;
@@ -384,6 +395,7 @@ class LocalBackupService {
         'No se pudo desactivar la publicación automática.',
       );
     }
+    await prefs.remove(studyPendingChangesPreference);
     await prefs.remove('backup_last_success_v1');
     await journal.delete();
   }

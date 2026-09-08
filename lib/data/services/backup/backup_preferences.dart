@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+const studyPendingChangesPreference = 'study_pending_changes_v1';
+
 bool isBackupPreference(String key) {
   const exact = {
     'study_library_id_v1',

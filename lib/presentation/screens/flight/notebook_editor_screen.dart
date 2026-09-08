@@ -559,6 +559,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   late final Animation<Offset> _drawerSlide;
   final Set<int> _starredBlockIds = {};
   int _drawerSnapshotPage = 0;
+  int _lastStudyPage = 0;
 
   bool _widthPickerOpen = false;
   List<double> _recentWidths = const [3.0, 6.0, 10.0];
@@ -598,7 +599,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   void initState() {
     super.initState();
-    StudyActivity.editors.add(this);
+    StudyActivity.enter(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref
@@ -699,7 +700,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   @override
   void dispose() {
-    StudyActivity.editors.remove(this);
+    StudyActivity.leave(this, widget.note.id);
     if (CrashLogger.perfLogging) {
       SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     }
@@ -1586,7 +1587,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
     PendingSaves.schedule(this, () async {
       await _flushPendingPersists();
-      if (_dirtyPersistPages.isNotEmpty) throw StateError('No se pudo guardar el cuaderno.');
+      if (_dirtyPersistPages.isNotEmpty) {
+        throw StateError('No se pudo guardar el cuaderno.');
+      }
     });
     _dirtyPersistPages.add(_pageBlockIds[pageIndex]);
     _persistTimer?.cancel();
@@ -3570,8 +3573,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final dx = (vw - kNotebookPageWidth) / 2;
     final dy = -pageTop + 40;
     _viewCtrl.value = Matrix4.translationValues(dx, dy, 0);
+    _reportStudyPageChange();
     _scheduleDeferredDecode(Duration.zero);
     _togglePageDrawer();
+  }
+
+  void _reportStudyPageChange() {
+    final page = _currentVisiblePage;
+    if (page == _lastStudyPage) return;
+    _lastStudyPage = page;
+    StudyActivity.leaveUnit(widget.note.id);
   }
 
   Future<void> _toggleStarred(int blockId) async {
@@ -8002,6 +8013,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                     );
                                                   }
                                                   _scheduleDeferredDecode();
+                                                  _reportStudyPageChange();
                                                 },
                                                 boundaryMargin:
                                                     EdgeInsets.symmetric(
