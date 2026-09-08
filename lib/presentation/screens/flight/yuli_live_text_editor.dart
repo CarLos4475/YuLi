@@ -270,7 +270,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   }
 
   Future<void> _commitWikiTarget(FlightWorkspaceTarget target) async {
-    await _replaceWikiDraft(target.label);
+    await _replaceWikiDraft(flightWikiTargetLabel(target));
     if (!mounted) return;
     widget.onOpenWorkspaceTarget?.call(target);
   }

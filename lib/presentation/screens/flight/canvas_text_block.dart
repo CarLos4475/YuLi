@@ -203,6 +203,7 @@ class _CanvasTextBlockOverlayState
               ref,
               sourceNoteId: sourceNoteId,
               query: next.query,
+              sourceCanvasBlockId: widget.sourceCanvasBlockId,
             );
     _editorEntry?.markNeedsBuild();
   }
@@ -228,15 +229,16 @@ class _CanvasTextBlockOverlayState
   }
 
   Future<void> _commitWikiTarget(FlightWorkspaceTarget target) async {
-    final updated = _replaceWikiDraft(target.label);
+    final label = flightWikiTargetLabel(target);
+    final updated = _replaceWikiDraft(label);
     if (updated == null) return;
     await _saveEditor(updated);
     if (!mounted) return;
-    widget.onWikiLinkTap?.call(target.label);
+    widget.onWikiLinkTap?.call(label);
   }
 
   Future<void> _commitCreatedWikiTarget(FlightWorkspaceTarget target) async {
-    final updated = _replaceWikiDraft(target.label);
+    final updated = _replaceWikiDraft(flightWikiTargetLabel(target));
     if (updated == null) return;
     final trimmed = updated.trim();
     if (trimmed != widget.block.markdown) {

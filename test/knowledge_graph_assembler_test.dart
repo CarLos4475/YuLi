@@ -114,4 +114,61 @@ void main() {
       expect(snapshot.graph(includeIslands: true).nodes, hasLength(3));
     },
   );
+
+  test('trata cada multipizarra como nodo y destino wiki exacto', () {
+    const blue = Color(0xFF2D3F8C);
+    final snapshot = assembleKnowledgeGraph(
+      notes: [
+        note(1, 1, 'Apuntes', markdown: 'Ver [[Derivadas#Reglas]]'),
+        note(2, 1, 'Derivadas', kind: NoteKind.whiteboard),
+      ],
+      folders: [folder(1, 'Cálculo', blue)],
+      blocks: const [
+        DrawingBlock(
+          id: 20,
+          noteId: 2,
+          position: 0,
+          height: 300,
+          strokesJson: '[]',
+          name: 'Reglas',
+          textBlocksJson: '[{"md":"[[Apuntes]]"}]',
+        ),
+        DrawingBlock(
+          id: 21,
+          noteId: 2,
+          position: 1,
+          height: 300,
+          strokesJson: '[]',
+          name: 'Ejercicios',
+        ),
+      ],
+      folderId: null,
+    );
+
+    expect(snapshot.nodes.map((node) => node.id), contains('canvas:2:20'));
+    expect(snapshot.nodes.map((node) => node.id), contains('canvas:2:21'));
+    expect(snapshot.nodes.map((node) => node.id), isNot(contains('note:2')));
+    expect(
+      snapshot.mentions
+          .where(
+            (mention) =>
+                mention.sourceNodeId == 'note:1' &&
+                mention.targetNodeId == 'canvas:2:20',
+          )
+          .single
+          .count,
+      1,
+    );
+    expect(
+      snapshot.mentions.any(
+        (mention) =>
+            mention.sourceNodeId == 'canvas:2:20' &&
+            mention.targetNodeId == 'note:1',
+      ),
+      isTrue,
+    );
+    final canvas = snapshot.nodeFor('canvas:2:20');
+    expect(canvas?.label, 'Derivadas · Reglas');
+    expect(canvas?.canvasBlockId, 20);
+  });
 }

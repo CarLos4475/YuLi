@@ -33,6 +33,10 @@ class GraphNode {
   /// Underlying DB id (null for url nodes).
   final int? refId;
 
+  /// Exact drawing block for a Flight multipizarra node. A null value means
+  /// the node represents the whole note rather than one canvas inside it.
+  final int? canvasBlockId;
+
   /// Set only for [GraphNodeKind.task].
   final TaskGraphState? taskState;
 
@@ -51,6 +55,7 @@ class GraphNode {
     required this.label,
     required this.color,
     this.refId,
+    this.canvasBlockId,
     this.taskState,
     this.cardPriority,
     this.noteVariant,

@@ -257,9 +257,11 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
       FlightWorkspaceTarget(
         noteId: note.id,
         folderId: note.folderId,
+        canvasBlockId: node.canvasBlockId,
         kind: note.kind,
-        label: note.displayTitle,
+        label: node.label,
         folderLabel: folder.name,
+        folderColor: folder.color,
       ),
     );
   }
@@ -351,10 +353,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
               accent: selected.color,
               onClose: () => setState(() => _selectedId = null),
               onOpen: _openSelected,
-              onSelect:
-                  (id) => _centerNode(
-                    GraphNode.idFor(GraphNodeKind.note, refId: id),
-                  ),
+              onSelect: _centerNode,
             ),
         ],
       ),
@@ -569,7 +568,7 @@ class _KnowledgeInspector extends StatelessWidget {
   final Color accent;
   final VoidCallback onClose;
   final VoidCallback onOpen;
-  final ValueChanged<int> onSelect;
+  final ValueChanged<String> onSelect;
 
   const _KnowledgeInspector({
     required this.node,
@@ -584,10 +583,8 @@ class _KnowledgeInspector extends StatelessWidget {
   Widget build(BuildContext context) {
     final note = snapshot.notesById[node.refId];
     final folder = note == null ? null : snapshot.foldersById[note.folderId];
-    final outgoing =
-        note == null ? const <KnowledgeMention>[] : snapshot.outgoing(note.id);
-    final incoming =
-        note == null ? const <KnowledgeMention>[] : snapshot.incoming(note.id);
+    final outgoing = snapshot.outgoing(node.id);
+    final incoming = snapshot.incoming(node.id);
     final width = MediaQuery.sizeOf(context).width;
     final panel = Container(
       width: width >= 720 ? 334 : null,
@@ -648,7 +645,7 @@ class _KnowledgeInspector extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Text(
-              '${_noteKindLabel(note?.kind)} · ${(folder?.name ?? 'SIN CARPETA').toUpperCase()}',
+              '${node.canvasBlockId == null ? _noteKindLabel(note?.kind) : 'MULTIPIZARRA'} · ${(folder?.name ?? 'SIN CARPETA').toUpperCase()}',
               style: yMono(
                 size: 9,
                 weight: FontWeight.w700,
@@ -722,28 +719,26 @@ class _KnowledgeInspector extends StatelessWidget {
         Text('NINGUNA', style: yBody(size: 11, color: yMuted))
       else
         for (final mention in mentions)
-          _ConnectionRow(
-            note:
-                snapshot.notesById[source
-                    ? mention.sourceNoteId
-                    : mention.targetNoteId]!,
-            count: mention.count,
-            onTap:
-                () => onSelect(
-                  source ? mention.sourceNoteId : mention.targetNoteId,
-                ),
-          ),
+          if (snapshot.nodeFor(
+                source ? mention.sourceNodeId : mention.targetNodeId,
+              )
+              case final target?)
+            _ConnectionRow(
+              node: target,
+              count: mention.count,
+              onTap: () => onSelect(target.id),
+            ),
     ],
   );
 }
 
 class _ConnectionRow extends StatelessWidget {
-  final Note note;
+  final GraphNode node;
   final int count;
   final VoidCallback onTap;
 
   const _ConnectionRow({
-    required this.note,
+    required this.node,
     required this.count,
     required this.onTap,
   });
@@ -761,7 +756,7 @@ class _ConnectionRow extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              note.displayTitle,
+              node.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: yBody(size: 12, weight: FontWeight.w600, color: yInk),
@@ -940,14 +935,8 @@ class _KnowledgeGraphPainter extends CustomPainter {
     _grid(canvas, size);
     final visibleIds = data.nodes.map((node) => node.id).toSet();
     for (final mention in snapshot.mentions) {
-      final from = GraphNode.idFor(
-        GraphNodeKind.note,
-        refId: mention.sourceNoteId,
-      );
-      final to = GraphNode.idFor(
-        GraphNodeKind.note,
-        refId: mention.targetNoteId,
-      );
+      final from = mention.sourceNodeId;
+      final to = mention.targetNodeId;
       if (!visibleIds.contains(from) || !visibleIds.contains(to)) continue;
       final a = simulation.posOf(from);
       final b = simulation.posOf(to);
