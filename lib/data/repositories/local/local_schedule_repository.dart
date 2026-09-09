@@ -12,18 +12,17 @@ class LocalScheduleRepository implements ScheduleRepository {
   LocalScheduleRepository(this._db);
 
   @override
-  Stream<List<ScheduleBlock>> watchBySpace(int labSpaceId) =>
-      _db.scheduleDao.watchBySpace(labSpaceId).map(
-          (rows) => rows.map(_rowToBlock).toList());
+  Stream<List<ScheduleBlock>> watchBySpace(int labSpaceId) => _db.scheduleDao
+      .watchBySpace(labSpaceId)
+      .map((rows) => rows.map(_rowToBlock).toList());
 
   @override
   Stream<List<ScheduleBlock>> watchAll() =>
-      _db.scheduleDao.watchAll().map(
-          (rows) => rows.map(_rowToBlock).toList());
+      _db.scheduleDao.watchAll().map((rows) => rows.map(_rowToBlock).toList());
 
   @override
   Future<ScheduleBlock> createBlock({
-    required int labSpaceId,
+    int? labSpaceId,
     int? folderId,
     required String title,
     String? location,
@@ -35,7 +34,7 @@ class LocalScheduleRepository implements ScheduleRepository {
   }) async {
     final row = await _db.scheduleDao.insertBlock(
       ScheduleBlocksCompanion.insert(
-        labSpaceId: labSpaceId,
+        labSpaceId: Value(labSpaceId),
         folderId: Value(folderId),
         title: title,
         location: Value(location),
@@ -71,20 +70,20 @@ class LocalScheduleRepository implements ScheduleRepository {
   Future<void> deleteBlock(int id) => _db.scheduleDao.deleteBlock(id);
 
   @override
-  Future<ScheduleSettings> getOrCreateSettings(int labSpaceId) async {
-    final row = await _db.scheduleDao.getSettings(labSpaceId);
+  Future<ScheduleSettings> getOrCreateSettings() async {
+    final row = await _db.scheduleDao.getSettings();
     if (row != null) return _rowToSettings(row);
     await _db.scheduleDao.insertSettings(
-      ScheduleSettingsCompanion.insert(labSpaceId: Value(labSpaceId)),
+      const ScheduleSettingsCompanion(id: Value(1)),
     );
-    return ScheduleSettings(labSpaceId: labSpaceId);
+    return const ScheduleSettings();
   }
 
   @override
   Future<void> updateSettings(ScheduleSettings settings) async {
     await _db.scheduleDao.updateSettings(
       ScheduleSettingsCompanion(
-        labSpaceId: Value(settings.labSpaceId),
+        id: const Value(1),
         showSaturday: Value(settings.showSaturday ? 1 : 0),
         showSunday: Value(settings.showSunday ? 1 : 0),
         dayStartTime: Value(settings.dayStartTime),
@@ -94,33 +93,29 @@ class LocalScheduleRepository implements ScheduleRepository {
   }
 
   @override
-  Future<ScheduleWeekNote?> getWeekNote(
-      int labSpaceId, DateTime weekStart) async {
+  Future<ScheduleWeekNote?> getWeekNote(DateTime weekStart) async {
     final startStr =
         '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
-    final row = await _db.scheduleDao.getWeekNote(labSpaceId, startStr);
+    final row = await _db.scheduleDao.getWeekNote(startStr);
     return row != null ? _rowToWeekNote(row) : null;
   }
 
   @override
-  Stream<ScheduleWeekNote?> watchWeekNote(
-      int labSpaceId, DateTime weekStart) {
+  Stream<ScheduleWeekNote?> watchWeekNote(DateTime weekStart) {
     final startStr =
         '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
     return _db.scheduleDao
-        .watchWeekNote(labSpaceId, startStr)
+        .watchWeekNote(startStr)
         .map((row) => row != null ? _rowToWeekNote(row) : null);
   }
 
   @override
-  Future<void> setWeekNote(
-      int labSpaceId, DateTime weekStart, String note) async {
+  Future<void> setWeekNote(DateTime weekStart, String note) async {
     final startStr =
         '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
     await _db.scheduleDao.upsertWeekNote(
       ScheduleWeekNotesCompanion(
         id: const Value.absent(),
-        labSpaceId: Value(labSpaceId),
         weekStartDate: Value(startStr),
         note: Value(note),
       ),
@@ -128,8 +123,7 @@ class LocalScheduleRepository implements ScheduleRepository {
   }
 
   @override
-  Future<void> deleteWeekNote(int id) =>
-      _db.scheduleDao.deleteWeekNote(id);
+  Future<void> deleteWeekNote(int id) => _db.scheduleDao.deleteWeekNote(id);
 
   @override
   Future<List<ScheduleBlock>> getByFolderId(int folderId) async {
@@ -138,33 +132,29 @@ class LocalScheduleRepository implements ScheduleRepository {
   }
 
   ScheduleBlock _rowToBlock(ScheduleBlockRow row) => ScheduleBlock(
-        id: row.id,
-        labSpaceId: row.labSpaceId,
-        folderId: row.folderId,
-        title: row.title,
-        location: row.location,
-        startTime: row.startTime,
-        endTime: row.endTime,
-        days: ScheduleBlock.daysFromJson(row.days),
-        color: row.color,
-        useFolderColor: row.useFolderColor == 1,
-        createdAt: row.createdAt,
-      );
+    id: row.id,
+    labSpaceId: row.labSpaceId,
+    folderId: row.folderId,
+    title: row.title,
+    location: row.location,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    days: ScheduleBlock.daysFromJson(row.days),
+    color: row.color,
+    useFolderColor: row.useFolderColor == 1,
+    createdAt: row.createdAt,
+  );
 
-  ScheduleSettings _rowToSettings(ScheduleSettingsRow row) =>
-      ScheduleSettings(
-        labSpaceId: row.labSpaceId,
-        showSaturday: (row.showSaturday ?? 0) == 1,
-        showSunday: (row.showSunday ?? 0) == 1,
-        dayStartTime: row.dayStartTime,
-        dayEndTime: row.dayEndTime,
-      );
+  ScheduleSettings _rowToSettings(ScheduleSettingsRow row) => ScheduleSettings(
+    showSaturday: (row.showSaturday ?? 0) == 1,
+    showSunday: (row.showSunday ?? 0) == 1,
+    dayStartTime: row.dayStartTime,
+    dayEndTime: row.dayEndTime,
+  );
 
-  ScheduleWeekNote _rowToWeekNote(ScheduleWeekNoteRow row) =>
-      ScheduleWeekNote(
-        id: row.id,
-        labSpaceId: row.labSpaceId,
-        weekStartDate: DateTime.parse(row.weekStartDate),
-        note: row.note,
-      );
+  ScheduleWeekNote _rowToWeekNote(ScheduleWeekNoteRow row) => ScheduleWeekNote(
+    id: row.id,
+    weekStartDate: DateTime.parse(row.weekStartDate),
+    note: row.note,
+  );
 }

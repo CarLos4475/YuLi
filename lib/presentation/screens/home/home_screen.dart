@@ -1,46 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
-import '../../widgets/yuli_splash_screen.dart';
 import '../../providers/database_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/folder_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../providers/note_providers.dart';
+import '../../providers/navigation_provider.dart';
 import '../../../domain/models/task.dart' as domain_task;
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
+import '../../../domain/models/note.dart';
 import '../../../domain/models/schedule_block.dart';
 import '../settings/settings_screen.dart';
-
-// ─── Design tokens (V1 Command Triptych) ──────────────────────────────────
-
-const Color _yCream = Color(0xFFF2EFE6);
-const Color _yInk = Color(0xFF0A0A0A);
-const Color _yMuted = Color(0xFF7A6F60);
-const Color _yFight = Color(0xFFC8332C);
-const Color _yFlight = Color(0xFF2D3F8C);
-const Color _yLab = Color(0xFF3F6E3E);
-const Color _yAmber = Color(0xFFE29A3A);
-const Color _ySoftBorder = Color(0xCC0A0A0A);
-
-const double _hLine = 3.0;
-const double _mLine = 2.5;
-
-TextStyle _mono({
-  double size = 11,
-  Color color = _yMuted,
-  double tracking = 1.4,
-}) => TextStyle(
-  fontFamily: 'monospace',
-  fontSize: size,
-  letterSpacing: tracking,
-  color: color,
-  fontWeight: FontWeight.w500,
-  height: 1.2,
-);
+import '../flight/schedule_screen.dart';
 
 // ─── All-schedule-blocks provider for "próxima clase" aggregation ─────────
 
@@ -64,16 +41,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   OverlayEntry? _overlayEntry;
   List<Folder> _mentionFolders = [];
   int? _mentionStart;
+  Timer? _clockTimer;
 
   @override
   void initState() {
     super.initState();
     _taskController.addListener(_onTextChanged);
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _removeOverlay();
+    _clockTimer?.cancel();
     _taskController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -233,83 +215,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final dateLong = _formatDateLong(now).toUpperCase();
 
     return Scaffold(
-      backgroundColor: _yCream,
+      backgroundColor: paperColor(context),
       resizeToAvoidBottomInset: false,
       body: SafeArea(
         top: false,
-        child: LayoutBuilder(
-          builder: (ctx, constraints) {
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-                  child: _HeaderStrip(
-                    greeting: greeting,
-                    timeStr: timeStr,
-                    dateLong: dateLong,
-                    onSettings:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        ),
+        child: Column(
+          children: [
+            _CommandHeader(
+              greeting: greeting,
+              timeStr: timeStr,
+              dateLong: dateLong,
+              onSettings:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
                   ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child:
-                        constraints.maxWidth >= 900
-                            ? _ThreePillarsRow(
-                              fight: _buildFightPillar(),
-                              flight: _buildFlightPillar(),
-                              lab: _buildLabPillar(),
-                            )
-                            : SingleChildScrollView(
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    height: 560,
-                                    child: _buildFightPillar(),
-                                  ),
-                                  SizedBox(
-                                    height: 560,
-                                    child: _buildFlightPillar(),
-                                  ),
-                                  SizedBox(
-                                    height: 700,
-                                    child: _buildLabPillar(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                  ),
-                ),
-              ],
-            );
-          },
+            ),
+            Expanded(
+              child: _DailyHome(
+                controller: _taskController,
+                focusNode: _focusNode,
+                layerLink: _layerLink,
+                onSubmit: _addQuickTask,
+                onFight: () => _goTo(AppMode.fight),
+                onFlight: () => _goTo(AppMode.flight),
+                onLab: () => _goTo(AppMode.lab),
+                onOpenSchedule:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ScheduleScreen()),
+                    ),
+                onOpenNote: (noteId) {
+                  ref.read(pendingNoteNavigationProvider.notifier).state =
+                      noteId;
+                  _goTo(AppMode.flight);
+                },
+                onOpenSpace: (spaceId) {
+                  ref.read(pendingLabSpaceNavigationProvider.notifier).state =
+                      spaceId;
+                  _goTo(AppMode.lab);
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  Widget _buildFightPillar() {
-    return _FightPillar(
-      controller: _taskController,
-      focusNode: _focusNode,
-      layerLink: _layerLink,
-      onSubmit: _addQuickTask,
-      onEnter: () => _goTo(AppMode.fight),
-    );
-  }
-
-  Widget _buildFlightPillar() {
-    return _FlightPillar(onEnter: () => _goTo(AppMode.flight));
-  }
-
-  Widget _buildLabPillar() {
-    return _LabPillar(onEnter: () => _goTo(AppMode.lab));
   }
 
   String _greeting(int hour) {
@@ -350,15 +301,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-// ─── Header strip ─────────────────────────────────────────────────────────
-
-class _HeaderStrip extends StatelessWidget {
+class _CommandHeader extends StatelessWidget {
   final String greeting;
   final String timeStr;
   final String dateLong;
   final VoidCallback onSettings;
 
-  const _HeaderStrip({
+  const _CommandHeader({
     required this.greeting,
     required this.timeStr,
     required this.dateLong,
@@ -368,156 +317,97 @@ class _HeaderStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 120,
-      decoration: const BoxDecoration(
-        color: _yCream,
-        border: Border.fromBorderSide(
-          BorderSide(color: _ySoftBorder, width: 1),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x660A0A0A),
-            offset: Offset(0, 2),
-            blurRadius: 0,
-          ),
-        ],
+      height: 94,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
+        boxShadow: const [BoxShadow(color: yInk, offset: Offset(0, 3))],
       ),
       child: Row(
         children: [
-          Container(width: 12, color: _yAmber),
-          Expanded(
-            flex: 8,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(44, 22, 34, 18),
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: _ySoftBorder, width: 2),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              RichText(
+                text: TextSpan(
+                  style: ySans(
+                    size: 42,
+                    weight: FontWeight.w800,
+                    color: inkColor(context),
+                    height: 0.9,
+                  ).copyWith(letterSpacing: -2.5),
+                  children: const [
+                    TextSpan(text: 'Yu'),
+                    TextSpan(text: 'Li', style: TextStyle(color: yAmber2)),
+                  ],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const SizedBox(height: 9),
+              Row(
                 children: [
-                  Text(
-                    '$greeting · Carlos',
-                    style: _mono(size: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        timeStr,
-                        style: const TextStyle(
-                          fontFamily: 'SpaceGrotesk',
-                          fontSize: 54,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -2.2,
-                          height: 1.0,
-                          color: _yInk,
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Container(width: 2, height: 44, color: _ySoftBorder),
-                      const SizedBox(width: 24),
-                      Flexible(
-                        child: Text(
-                          dateLong,
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 1.0,
-                            color: _yMuted,
-                            height: 1.1,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+                  Container(width: 26, height: 3, color: yFight),
+                  const SizedBox(width: 7),
+                  Container(width: 26, height: 3, color: yFlight),
+                  const SizedBox(width: 7),
+                  Container(width: 26, height: 3, color: yLab),
                 ],
               ),
+            ],
+          ),
+          const SizedBox(width: 30),
+          Container(width: yLineThin, height: 56, color: yBorderStrong),
+          const SizedBox(width: 30),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$greeting · Carlos',
+                  style: yMono(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    tracking: 1.8,
+                    color: inkColor(context),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  dateLong,
+                  style: yMono(size: 10, tracking: 1.4, color: yMuted),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-          Flexible(
-            flex: 6,
+          Container(width: yLineThin, height: 56, color: yBorderStrong),
+          const SizedBox(width: 26),
+          Text(
+            timeStr,
+            style: ySans(
+              size: 44,
+              weight: FontWeight.w800,
+              color: inkColor(context),
+              height: 0.9,
+            ).copyWith(letterSpacing: -2),
+          ),
+          const SizedBox(width: 22),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onSettings,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(34, 12, 32, 12),
-              child: Stack(
-                children: [
-                  Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const YuliAnimatedCube(
-                          accent: _yFight,
-                          accents: [_yFight, _yFlight, _yLab],
-                          size: 54,
-                        ),
-                        const SizedBox(width: 18),
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            RichText(
-                              text: const TextSpan(
-                                style: TextStyle(
-                                  fontFamily: 'SpaceGrotesk',
-                                  fontSize: 74,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -4.2,
-                                  height: 0.92,
-                                  color: _yInk,
-                                ),
-                                children: [
-                                  TextSpan(text: 'Yu'),
-                                  TextSpan(
-                                    text: 'Li',
-                                    style: TextStyle(color: _yAmber),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(width: 34, height: 4, color: _yFight),
-                                const SizedBox(width: 10),
-                                Container(
-                                  width: 34,
-                                  height: 4,
-                                  color: _yFlight,
-                                ),
-                                const SizedBox(width: 10),
-                                Container(width: 34, height: 4, color: _yLab),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onSettings,
-                      child: Container(
-                        width: 68,
-                        height: 68,
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          YuLiIcons.settings,
-                          color: _yInk,
-                          size: 38,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              width: 54,
+              height: 54,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yAmber2,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
               ),
+              child: const Icon(YuLiIcons.settings, color: yCream, size: 25),
             ),
           ),
         ],
@@ -526,571 +416,1006 @@ class _HeaderStrip extends StatelessWidget {
   }
 }
 
-// ─── Three pillars row ────────────────────────────────────────────────────
+class _DailyHome extends ConsumerWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final LayerLink layerLink;
+  final VoidCallback onSubmit;
+  final VoidCallback onFight;
+  final VoidCallback onFlight;
+  final VoidCallback onLab;
+  final VoidCallback onOpenSchedule;
+  final ValueChanged<int> onOpenNote;
+  final ValueChanged<int> onOpenSpace;
 
-class _ThreePillarsRow extends StatelessWidget {
-  final Widget fight;
-  final Widget flight;
-  final Widget lab;
+  const _DailyHome({
+    required this.controller,
+    required this.focusNode,
+    required this.layerLink,
+    required this.onSubmit,
+    required this.onFight,
+    required this.onFlight,
+    required this.onLab,
+    required this.onOpenSchedule,
+    required this.onOpenNote,
+    required this.onOpenSpace,
+  });
 
-  const _ThreePillarsRow({
-    required this.fight,
-    required this.flight,
-    required this.lab,
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = ref.watch(pendingTasksProvider).valueOrNull ?? [];
+    final yesterday = ref.watch(yesterdayTasksProvider).valueOrNull ?? [];
+    final expired = ref.watch(vencidasTasksProvider).valueOrNull ?? [];
+    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
+    final notes = List.of(ref.watch(recentNotesProvider).valueOrNull ?? [])
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final spaces =
+        List<LabSpace>.of(ref.watch(activeLabSpacesProvider).valueOrNull ?? [])
+          ..removeWhere((space) => space.status != LabSpaceStatus.active)
+          ..sort((a, b) {
+            final aDue = a.dueDate;
+            final bDue = b.dueDate;
+            if (aDue == null && bDue == null) {
+              return b.createdAt.compareTo(a.createdAt);
+            }
+            if (aDue == null) return 1;
+            if (bDue == null) return -1;
+            return aDue.compareTo(bDue);
+          });
+    final blocks = ref.watch(_allScheduleBlocksProvider).valueOrNull ?? [];
+    final urgent = _collectUrgentTasks(pending, yesterday, expired);
+    final nextClass = _findNextClass(blocks, DateTime.now());
+    final nextFolder =
+        nextClass?.block.folderId == null
+            ? null
+            : _findFolder(folders, nextClass!.block.folderId!);
+    final recentNote = notes.isEmpty ? null : notes.first;
+    final recentFolder =
+        recentNote == null ? null : _findFolder(folders, recentNote.folderId);
+    final activeSpace = spaces.isEmpty ? null : spaces.first;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 900;
+        final nowPanel = _NowPanel(
+          controller: controller,
+          focusNode: focusNode,
+          layerLink: layerLink,
+          onSubmit: onSubmit,
+          urgent: urgent,
+          folders: folders,
+          nextClass: nextClass,
+          nextClassAccent: nextFolder?.color ?? yFlight,
+          recentNote: recentNote,
+          recentNoteAccent: recentFolder?.color ?? yFlight,
+          activeSpace: activeSpace,
+          onFight: onFight,
+          onOpenSchedule: onOpenSchedule,
+          onOpenNote: onOpenNote,
+          onOpenSpace: onOpenSpace,
+        );
+        final modes = _ModeLaunchStack(
+          urgentCount: urgent.length,
+          folderCount: folders.length,
+          spaceCount: spaces.length,
+          onFight: onFight,
+          onFlight: onFlight,
+          onLab: onLab,
+        );
+
+        if (!wide) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                SizedBox(height: 680, child: nowPanel),
+                const SizedBox(height: 12),
+                SizedBox(height: 390, child: modes),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 2, child: nowPanel),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: (constraints.maxWidth * 0.32).clamp(310.0, 500.0),
+                child: modes,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _NowPanel extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final LayerLink layerLink;
+  final VoidCallback onSubmit;
+  final List<domain_task.Task> urgent;
+  final List<Folder> folders;
+  final _NextOccurrence? nextClass;
+  final Color nextClassAccent;
+  final Note? recentNote;
+  final Color recentNoteAccent;
+  final LabSpace? activeSpace;
+  final VoidCallback onFight;
+  final VoidCallback onOpenSchedule;
+  final ValueChanged<int> onOpenNote;
+  final ValueChanged<int> onOpenSpace;
+
+  const _NowPanel({
+    required this.controller,
+    required this.focusNode,
+    required this.layerLink,
+    required this.onSubmit,
+    required this.urgent,
+    required this.folders,
+    required this.nextClass,
+    required this.nextClassAccent,
+    required this.recentNote,
+    required this.recentNoteAccent,
+    required this.activeSpace,
+    required this.onFight,
+    required this.onOpenSchedule,
+    required this.onOpenNote,
+    required this.onOpenSpace,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: fight),
-        const SizedBox(width: 8),
-        Expanded(child: flight),
-        const SizedBox(width: 8),
-        Expanded(child: lab),
+        Text(
+          'AHORA',
+          style: ySans(
+            size: 54,
+            weight: FontWeight.w800,
+            color: inkColor(context),
+            height: 0.9,
+          ).copyWith(letterSpacing: -2.2),
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          flex: 5,
+          child: _NextClassSpotlight(
+            occurrence: nextClass,
+            accent: nextClassAccent,
+            onTap: onOpenSchedule,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _QuickCaptureBar(
+          controller: controller,
+          focusNode: focusNode,
+          layerLink: layerLink,
+          onSubmit: onSubmit,
+        ),
+        const SizedBox(height: 12),
+        _SectionLabel(label: 'TAREAS URGENTES', count: urgent.length),
+        const SizedBox(height: 7),
+        Expanded(
+          flex: 4,
+          child: _UrgentTaskList(
+            tasks: urgent,
+            folders: folders,
+            onTap: onFight,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          flex: 4,
+          child: _RecentActivityStrip(
+            note: recentNote,
+            noteAccent: recentNoteAccent,
+            space: activeSpace,
+            onOpenNote: onOpenNote,
+            onOpenSpace: onOpenSpace,
+          ),
+        ),
       ],
     );
   }
 }
 
-// ─── Pillar shell ─────────────────────────────────────────────────────────
+class _NextClassSpotlight extends StatelessWidget {
+  final _NextOccurrence? occurrence;
+  final Color accent;
+  final VoidCallback onTap;
 
-class _PillarShell extends StatelessWidget {
-  final String mode;
-  final String subtitle;
-  final Color color;
-  final Widget child;
-  final String footerLabel;
-  final VoidCallback onEnter;
-  final String? bigNumber;
-  final String? bigNumberUnit;
+  const _NextClassSpotlight({
+    required this.occurrence,
+    required this.accent,
+    required this.onTap,
+  });
 
-  const _PillarShell({
-    required this.mode,
-    required this.subtitle,
-    required this.color,
-    required this.child,
-    required this.footerLabel,
-    required this.onEnter,
-    this.bigNumber,
-    this.bigNumberUnit,
+  @override
+  Widget build(BuildContext context) {
+    final block = occurrence?.block;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: paperColor(context),
+          border: Border.all(color: yBorderStrong, width: yLineHeavy),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 10, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 18, 20, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'PRÓXIMA CLASE',
+                      style: yMono(
+                        size: 11,
+                        weight: FontWeight.w700,
+                        tracking: 1.8,
+                        color: yMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      block?.title ?? 'Sin clases programadas',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: ySans(
+                        size: 38,
+                        weight: FontWeight.w800,
+                        color: inkColor(context),
+                        height: 0.95,
+                      ).copyWith(letterSpacing: -1.2),
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        Icon(YuLiIcons.calendarDays, size: 18, color: accent),
+                        const SizedBox(width: 8),
+                        Text(
+                          occurrence == null
+                              ? 'Abrir horario'
+                              : '${occurrence!.label} · ${block!.startTime}',
+                          style: yMono(
+                            size: 11,
+                            weight: FontWeight.w700,
+                            tracking: 1.2,
+                            color: inkColor(context),
+                          ),
+                        ),
+                        if (block?.location != null &&
+                            block!.location!.isNotEmpty) ...[
+                          const SizedBox(width: 20),
+                          Container(
+                            width: yLineThin,
+                            height: 18,
+                            color: yBorderSoft,
+                          ),
+                          const SizedBox(width: 20),
+                          Icon(YuLiIcons.mapPin, size: 18, color: accent),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              block.location!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: yMono(
+                                size: 11,
+                                weight: FontWeight.w700,
+                                tracking: 1.2,
+                                color: inkColor(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        Icon(YuLiIcons.arrowRight, size: 20, color: accent),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickCaptureBar extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final LayerLink layerLink;
+  final VoidCallback onSubmit;
+
+  const _QuickCaptureBar({
+    required this.controller,
+    required this.focusNode,
+    required this.layerLink,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: layerLink,
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: yFight,
+          border: Border.all(color: yBorderStrong, width: yLineHeavy),
+          boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
+        ),
+        child: ValueListenableBuilder(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            final contentLength =
+                value.text.replaceAll(RegExp(r'@\S+'), '').length;
+            final overLimit = contentLength > _HomeScreenState._maxChars;
+            final enabled = value.text.trim().isNotEmpty && !overLimit;
+            return Row(
+              children: [
+                const SizedBox(
+                  width: 58,
+                  child: Icon(YuLiIcons.plus, size: 25, color: yCream),
+                ),
+                Container(width: yLineThin, color: yCream),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    onSubmitted: (_) => onSubmit(),
+                    cursorColor: yCream,
+                    style: yBody(
+                      size: 15,
+                      weight: FontWeight.w600,
+                      color: yCream,
+                    ),
+                    decoration: InputDecoration(
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                      ),
+                      hintText: 'Captura una tarea…',
+                      hintStyle: yBody(
+                        size: 15,
+                        weight: FontWeight.w600,
+                        color: yCream.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ),
+                ),
+                if (value.text.isNotEmpty)
+                  Text(
+                    contentLength.toString(),
+                    style: yMono(
+                      size: 10,
+                      weight: FontWeight.w700,
+                      color: overLimit ? yCream : yCream.withValues(alpha: 0.7),
+                    ),
+                  ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: enabled ? onSubmit : null,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    margin: const EdgeInsets.only(right: 8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: enabled ? yAmber2 : yCream.withValues(alpha: 0.2),
+                      border: Border.all(color: yCream, width: yLineThin),
+                    ),
+                    child: const Icon(
+                      YuLiIcons.arrowRight,
+                      size: 20,
+                      color: yCream,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  final int? count;
+
+  const _SectionLabel({required this.label, this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: yMono(
+            size: 10,
+            weight: FontWeight.w700,
+            tracking: 1.7,
+            color: inkColor(context),
+          ),
+        ),
+        if (count != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            '· ${count.toString().padLeft(2, '0')}',
+            style: yMono(size: 10, tracking: 1.4, color: yMuted),
+          ),
+        ],
+        const SizedBox(width: 12),
+        Expanded(child: Container(height: 1, color: yBorderSoft)),
+      ],
+    );
+  }
+}
+
+class _UrgentTaskList extends StatelessWidget {
+  final List<domain_task.Task> tasks;
+  final List<Folder> folders;
+  final VoidCallback onTap;
+
+  const _UrgentTaskList({
+    required this.tasks,
+    required this.folders,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (tasks.isEmpty) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: yCream2,
+            border: Border.all(color: yBorderSoft, width: yLineThin),
+          ),
+          child: Text(
+            'SIN URGENCIAS',
+            style: yMono(
+              size: 10,
+              weight: FontWeight.w700,
+              tracking: 1.8,
+              color: yMuted,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: tasks.length.clamp(0, 3),
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
+      itemBuilder: (context, index) {
+        final task = tasks[index];
+        final folder =
+            task.folderId == null ? null : _findFolder(folders, task.folderId!);
+        final accent = folder?.color ?? yFight;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: paperColor(context),
+              border: Border.all(color: yBorderStrong, width: yLineThin),
+            ),
+            child: Row(
+              children: [
+                Container(width: 7, color: accent),
+                const SizedBox(width: 12),
+                Container(
+                  width: 19,
+                  height: 19,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    cleanMention(task.content),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yBody(
+                      size: 13,
+                      weight: FontWeight.w600,
+                      color: inkColor(context),
+                    ),
+                  ),
+                ),
+                Text(
+                  _urgentTaskLabel(task),
+                  style: yMono(
+                    size: 9,
+                    weight: FontWeight.w700,
+                    tracking: 1.1,
+                    color: yFight,
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RecentActivityStrip extends StatelessWidget {
+  final Note? note;
+  final Color noteAccent;
+  final LabSpace? space;
+  final ValueChanged<int> onOpenNote;
+  final ValueChanged<int> onOpenSpace;
+
+  const _RecentActivityStrip({
+    required this.note,
+    required this.noteAccent,
+    required this.space,
+    required this.onOpenNote,
+    required this.onOpenSpace,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: _ySoftBorder, width: _mLine),
+        color: paperColor(context),
+        border: Border.all(color: yBorderStrong, width: yLineMid),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(26, 28, 26, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const _SectionLabel(label: 'ACTIVIDAD RECIENTE'),
+          const SizedBox(height: 9),
+          Expanded(
+            child: Row(
               children: [
-                Text(
-                  mode,
-                  style: const TextStyle(
-                    fontFamily: 'SpaceGrotesk',
-                    fontSize: 62,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -1.8,
-                    height: 0.92,
-                    color: _yCream,
+                Expanded(
+                  child: _RecentNoteCard(
+                    note: note,
+                    accent: noteAccent,
+                    onTap: note == null ? null : () => onOpenNote(note!.id),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: _mono(
-                    size: 11,
-                    color: _yCream.withValues(alpha: 0.7),
-                    tracking: 1.4,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _ActiveProjectCard(
+                    space: space,
+                    onTap: space == null ? null : () => onOpenSpace(space!.id),
                   ),
                 ),
-                const SizedBox(height: 10),
-                Container(height: 2, color: _yCream.withValues(alpha: 0.42)),
-                if (bigNumber != null) ...[
-                  const SizedBox(height: 14),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentNoteCard extends StatelessWidget {
+  final Note? note;
+  final Color accent;
+  final VoidCallback? onTap;
+
+  const _RecentNoteCard({
+    required this.note,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: yCream2,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: const Icon(YuLiIcons.notebook, size: 20, color: yCream),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'NOTA RECIENTE',
+                    style: yMono(
+                      size: 8,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    note?.displayTitle ?? 'Sin notas recientes',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yBody(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: inkColor(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(YuLiIcons.arrowRight, size: 16, color: accent),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveProjectCard extends StatelessWidget {
+  final LabSpace? space;
+  final VoidCallback? onTap;
+
+  const _ActiveProjectCard({required this.space, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = space?.accentColor ?? yLab;
+    final progress = space == null ? null : _projectProgress(space!);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: yCream2,
+          border: Border.all(color: yBorderStrong, width: yLineThin),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent,
+                border: Border.all(color: yBorderStrong, width: yLineThin),
+              ),
+              child: const Icon(
+                YuLiIcons.flaskConical,
+                size: 20,
+                color: yCream,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'PROYECTO ACTIVO',
+                    style: yMono(
+                      size: 8,
+                      weight: FontWeight.w700,
+                      tracking: 1.4,
+                      color: yMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    space?.name ?? 'Sin proyectos activos',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: yBody(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: inkColor(context),
+                    ),
+                  ),
+                  if (progress != null) ...[
+                    const SizedBox(height: 6),
+                    _MiniProgress(value: progress, accent: accent),
+                  ],
+                ],
+              ),
+            ),
+            Icon(YuLiIcons.arrowRight, size: 16, color: accent),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniProgress extends StatelessWidget {
+  final double value;
+  final Color accent;
+
+  const _MiniProgress({required this.value, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 8,
+      decoration: BoxDecoration(
+        color: paperColor(context),
+        border: Border.all(color: yBorderStrong, width: 1),
+      ),
+      child: FractionallySizedBox(
+        widthFactor: value,
+        alignment: Alignment.centerLeft,
+        child: ColoredBox(color: accent),
+      ),
+    );
+  }
+}
+
+class _ModeLaunchStack extends StatelessWidget {
+  final int urgentCount;
+  final int folderCount;
+  final int spaceCount;
+  final VoidCallback onFight;
+  final VoidCallback onFlight;
+  final VoidCallback onLab;
+
+  const _ModeLaunchStack({
+    required this.urgentCount,
+    required this.folderCount,
+    required this.spaceCount,
+    required this.onFight,
+    required this.onFlight,
+    required this.onLab,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: _ModeLaunchCard(
+            mode: 'FIGHT',
+            count: urgentCount,
+            unit: 'Urgentes',
+            color: yFight,
+            icon: YuLiIcons.listChecks,
+            onTap: onFight,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          child: _ModeLaunchCard(
+            mode: 'FLIGHT',
+            count: folderCount,
+            unit: 'Carpetas',
+            color: yFlight,
+            icon: YuLiIcons.folder,
+            onTap: onFlight,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          child: _ModeLaunchCard(
+            mode: 'LAB',
+            count: spaceCount,
+            unit: 'En proceso',
+            color: yLab,
+            icon: YuLiIcons.flaskConical,
+            onTap: onLab,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModeLaunchCard extends StatelessWidget {
+  final String mode;
+  final int count;
+  final String unit;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ModeLaunchCard({
+    required this.mode,
+    required this.count,
+    required this.unit,
+    required this.color,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: color,
+          border: Border.all(color: yBorderStrong, width: yLineHeavy),
+          boxShadow: const [BoxShadow(color: yInk, offset: Offset(4, 4))],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: yCream,
+                border: Border.all(color: yBorderStrong, width: yLineMid),
+              ),
+              child: Icon(icon, size: 29, color: color),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    mode,
+                    style: ySans(
+                      size: 36,
+                      weight: FontWeight.w800,
+                      color: yCream,
+                      height: 0.9,
+                    ).copyWith(letterSpacing: -1.2),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(height: 2, color: yCream.withValues(alpha: 0.72)),
+                  const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        bigNumber!,
-                        style: const TextStyle(
-                          fontFamily: 'SpaceGrotesk',
-                          fontSize: 96,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -2.0,
+                        count.toString(),
+                        style: ySans(
+                          size: 34,
+                          weight: FontWeight.w700,
+                          color: yCream,
                           height: 0.9,
-                          color: _yCream,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.only(bottom: 3),
                         child: Text(
-                          bigNumberUnit ?? '',
-                          style: _mono(
-                            size: 11,
-                            color: _yCream.withValues(alpha: 0.75),
+                          unit.toUpperCase(),
+                          style: yMono(
+                            size: 9,
+                            weight: FontWeight.w700,
+                            tracking: 1.3,
+                            color: yCream.withValues(alpha: 0.8),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(26, 18, 26, 0),
-              child: child,
-            ),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onEnter,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 18),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: _yCream, width: _hLine)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    footerLabel,
-                    style: const TextStyle(
-                      fontFamily: 'SpaceGrotesk',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                      color: _yCream,
-                    ),
-                  ),
-                  const Text(
-                    '→',
-                    style: TextStyle(
-                      fontFamily: 'SpaceGrotesk',
-                      fontSize: 22,
-                      color: _yCream,
-                      height: 1.0,
-                    ),
-                  ),
-                ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── FIGHT pillar ─────────────────────────────────────────────────────────
-
-class _FightPillar extends ConsumerWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final LayerLink layerLink;
-  final VoidCallback onSubmit;
-  final VoidCallback onEnter;
-
-  const _FightPillar({
-    required this.controller,
-    required this.focusNode,
-    required this.layerLink,
-    required this.onSubmit,
-    required this.onEnter,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pendingAsync = ref.watch(pendingTasksProvider);
-    final doneAsync = ref.watch(doneTodayTasksProvider);
-    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
-
-    final pending = pendingAsync.valueOrNull ?? [];
-    final done = doneAsync.valueOrNull ?? [];
-
-    return _PillarShell(
-      mode: 'FIGHT',
-      subtitle: 'MODO CAPTURA',
-      color: _yFight,
-      footerLabel: 'ENTRAR EN FIGHT',
-      onEnter: onEnter,
-      bigNumber: '${pending.length}',
-      bigNumberUnit: 'Pendientes',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Captura input
-          CompositedTransformTarget(
-            link: layerLink,
-            child: _BrutalSlab(
-              bg: _yCream,
-              child: ValueListenableBuilder(
-                valueListenable: controller,
-                builder: (context, value, _) {
-                  final contentLen =
-                      value.text.replaceAll(RegExp(r'@\S+'), '').length;
-                  final overLimit = contentLen > _HomeScreenState._maxChars;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 1,
-                          child: TextField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: _yInk,
-                            ),
-                            cursorColor: _yInk,
-                            decoration: InputDecoration(
-                              isCollapsed: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14,
-                              ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              filled: false,
-                              hintText: 'Captura una tarea…',
-                              hintStyle: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                color: _yMuted,
-                              ),
-                            ),
-                            onSubmitted: (_) => onSubmit(),
-                          ),
-                        ),
-                        if (value.text.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            '$contentLen',
-                            style: TextStyle(
-                              fontFamily: 'JetBrainsMono',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                              color:
-                                  overLimit
-                                      ? _yFight
-                                      : contentLen > 260
-                                      ? const Color(0xFFC7822F)
-                                      : _yMuted,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap:
-                              (value.text.trim().isEmpty || overLimit)
-                                  ? null
-                                  : onSubmit,
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color:
-                                  (value.text.trim().isEmpty || overLimit)
-                                      ? _yMuted.withValues(alpha: 0.3)
-                                      : _yFight,
-                              border: Border.all(color: _ySoftBorder, width: 2),
-                            ),
-                            child: const Text(
-                              '+',
-                              style: TextStyle(
-                                fontFamily: 'SpaceGrotesk',
-                                color: _yCream,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            '── Completadas hoy ──',
-            style: _mono(color: _yCream.withValues(alpha: 0.65)),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child:
-                done.isEmpty
-                    ? const Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: _PillarEmpty(text: 'NADA TODAVÍA'),
-                    )
-                    : ListView.separated(
-                      padding: EdgeInsets.zero,
-                      itemBuilder: (ctx, i) {
-                        final t = done[i];
-                        final folder =
-                            t.folderId == null
-                                ? null
-                                : folders.firstWhere(
-                                  (f) => f.id == t.folderId,
-                                  orElse:
-                                      () =>
-                                          folders.isEmpty
-                                              ? Folder(
-                                                id: -1,
-                                                name: '',
-                                                color: _yMuted,
-                                                createdAt: DateTime.now(),
-                                              )
-                                              : folders.first,
-                                );
-                        return _DoneTaskRow(task: t, folder: folder);
-                      },
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemCount: done.length,
-                    ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-}
-
-class _DoneTaskRow extends StatelessWidget {
-  final domain_task.Task task;
-  final Folder? folder;
-
-  const _DoneTaskRow({required this.task, this.folder});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _yCream,
-        border: Border.all(color: _ySoftBorder, width: 2),
-      ),
-      child: Row(
-        children: [
-          if (folder != null && folder!.id != -1)
-            Container(
-              width: 4,
-              height: 16,
-              margin: const EdgeInsets.only(right: 8),
-              color: folder!.color,
-            ),
-          Expanded(
-            child: Text(
-              cleanMention(task.content),
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: yInk,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── FLIGHT pillar ────────────────────────────────────────────────────────
-
-class _FlightPillar extends ConsumerWidget {
-  final VoidCallback onEnter;
-
-  const _FlightPillar({required this.onEnter});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final folders = ref.watch(activeFoldersProvider).valueOrNull ?? [];
-    final allNotes = ref.watch(recentNotesProvider).valueOrNull ?? [];
-
-    // count notes per folder
-    final counts = <int, int>{};
-    for (final n in allNotes) {
-      counts[n.folderId] = (counts[n.folderId] ?? 0) + 1;
-    }
-
-    return _PillarShell(
-      mode: 'FLIGHT',
-      subtitle: 'MODO NOTAS',
-      color: _yFlight,
-      footerLabel: 'ENTRAR EN FLIGHT',
-      onEnter: onEnter,
-      bigNumber: '${folders.length}',
-      bigNumberUnit: 'Carpetas',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '── Carpetas ──',
-            style: _mono(color: _yCream.withValues(alpha: 0.65)),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child:
-                folders.isEmpty
-                    ? _PillarEmpty(text: 'SIN CARPETAS')
-                    : GridView.builder(
-                      padding: EdgeInsets.zero,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                            mainAxisExtent: 60,
-                          ),
-                      itemBuilder: (ctx, i) {
-                        final f = folders[i];
-                        return _FolderCard(folder: f, count: counts[f.id] ?? 0);
-                      },
-                      itemCount: folders.length,
-                    ),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-}
-
-class _FolderCard extends StatelessWidget {
-  final Folder folder;
-  final int count;
-
-  const _FolderCard({required this.folder, required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: folder.color,
-        border: Border.all(color: _ySoftBorder, width: 2.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            folder.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'SpaceGrotesk',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              height: 1.1,
-              color: _yCream,
-            ),
-          ),
-          Text(
-            '$count notas',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 10,
-              color: _yCream.withValues(alpha: 0.85),
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── LAB pillar ───────────────────────────────────────────────────────────
-
-class _LabPillar extends ConsumerWidget {
-  final VoidCallback onEnter;
-
-  const _LabPillar({required this.onEnter});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final spacesAsync = ref.watch(activeLabSpacesProvider);
-    final blocksAsync = ref.watch(_allScheduleBlocksProvider);
-
-    final spaces =
-        (spacesAsync.valueOrNull ?? [])
-            .where((s) => s.status == LabSpaceStatus.active)
-            .toList();
-    final allBlocks = blocksAsync.valueOrNull ?? [];
-
-    final activeSpaceIds = spaces.map((s) => s.id).toSet();
-    final relevantBlocks =
-        allBlocks.where((b) => activeSpaceIds.contains(b.labSpaceId)).toList();
-
-    final nextClass = _findNextClass(relevantBlocks, DateTime.now());
-
-    return _PillarShell(
-      mode: 'LAB',
-      subtitle: 'MODO PROYECTOS',
-      color: _yLab,
-      footerLabel: 'ENTRAR EN LAB',
-      onEnter: onEnter,
-      bigNumber: '${spaces.length}',
-      bigNumberUnit: 'En proceso',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (nextClass != null) ...[
-            Text(
-              '── Próxima clase ──',
-              style: _mono(color: _yCream.withValues(alpha: 0.65)),
-            ),
-            const SizedBox(height: 8),
-            _NextClassCard(block: nextClass.block, when: nextClass.label),
-            const SizedBox(height: 18),
+            const Icon(YuLiIcons.arrowRight, size: 22, color: yCream),
           ],
-          Text(
-            '── Spaces activos ──',
-            style: _mono(color: _yCream.withValues(alpha: 0.65)),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child:
-                spaces.isEmpty
-                    ? _PillarEmpty(text: 'SIN SPACES ACTIVOS')
-                    : ListView.separated(
-                      padding: EdgeInsets.zero,
-                      itemBuilder: (ctx, i) => _SpaceCard(space: spaces[i]),
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemCount: spaces.length,
-                    ),
-          ),
-          const SizedBox(height: 12),
-        ],
+        ),
       ),
     );
   }
+}
+
+List<domain_task.Task> _collectUrgentTasks(
+  List<domain_task.Task> pending,
+  List<domain_task.Task> yesterday,
+  List<domain_task.Task> expired,
+) {
+  final limit = DateTime.now().add(const Duration(hours: 48));
+  final tasks = <domain_task.Task>[
+    ...expired,
+    ...yesterday,
+    ...pending.where(
+      (task) => task.dueDate != null && !task.dueDate!.isAfter(limit),
+    ),
+  ];
+  tasks.sort((a, b) {
+    final aRank = _urgentTaskRank(a);
+    final bRank = _urgentTaskRank(b);
+    if (aRank != bRank) return aRank.compareTo(bRank);
+    final aDate = a.dueDate ?? a.createdAt;
+    final bDate = b.dueDate ?? b.createdAt;
+    return aDate.compareTo(bDate);
+  });
+  return tasks;
+}
+
+int _urgentTaskRank(domain_task.Task task) => switch (task.status) {
+  domain_task.TaskStatus.archivedFailed => 0,
+  domain_task.TaskStatus.yesterday => 1,
+  _ => 2,
+};
+
+String _urgentTaskLabel(domain_task.Task task) {
+  if (task.status == domain_task.TaskStatus.archivedFailed) return 'VENCIDA';
+  if (task.status == domain_task.TaskStatus.yesterday) return 'AYER';
+  final due = task.dueDate;
+  if (due == null) return 'PRÓXIMA';
+  final now = DateTime.now();
+  final isDateOnly = due.hour == 0 && due.minute == 0 && due.second == 0;
+  final endOfDueDay = DateTime(due.year, due.month, due.day, 23, 59, 59, 999);
+  if ((isDateOnly ? endOfDueDay : due).isBefore(now)) return 'VENCIDA';
+  if (due.year == now.year && due.month == now.month && due.day == now.day) {
+    return 'HOY';
+  }
+  final tomorrow = now.add(const Duration(days: 1));
+  if (due.year == tomorrow.year &&
+      due.month == tomorrow.month &&
+      due.day == tomorrow.day) {
+    return 'MAÑANA';
+  }
+  return '${due.day.toString().padLeft(2, '0')}/'
+      '${due.month.toString().padLeft(2, '0')}';
+}
+
+Folder? _findFolder(List<Folder> folders, int id) {
+  for (final folder in folders) {
+    if (folder.id == id) return folder;
+  }
+  return null;
+}
+
+double? _projectProgress(LabSpace space) {
+  final start = space.startDate;
+  final end = space.dueDate;
+  if (start == null || end == null || !end.isAfter(start)) return null;
+  return (DateTime.now().difference(start).inMinutes /
+          end.difference(start).inMinutes)
+      .clamp(0.0, 1.0);
 }
 
 class _NextOccurrence {
@@ -1137,287 +1462,6 @@ _NextOccurrence? _findNextClass(List<ScheduleBlock> blocks, DateTime now) {
 
   return bestBlock == null ? null : _NextOccurrence(bestBlock, bestLabel);
 }
-
-class _NextClassCard extends StatelessWidget {
-  final ScheduleBlock block;
-  final String when;
-
-  const _NextClassCard({required this.block, required this.when});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _parseHex(block.color);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _yCream,
-        border: Border.all(color: _ySoftBorder, width: _hLine),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  block.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'SpaceGrotesk',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: _yInk,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$when · ${block.startTime}'
-                  '${block.location != null && block.location!.isNotEmpty ? ' · ${block.location}' : ''}',
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 10,
-                    color: _yMuted,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          _Badge(
-            label:
-                block.title.length > 12
-                    ? block.title.substring(0, 12)
-                    : block.title,
-            bg: color,
-            fg: _yCream,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Color _parseHex(String hex) {
-  final h = hex.replaceFirst('#', '');
-  if (h.length == 6) return Color(int.parse('FF$h', radix: 16));
-  if (h.length == 8) return Color(int.parse(h, radix: 16));
-  return _yMuted;
-}
-
-class _SpaceCard extends StatelessWidget {
-  final LabSpace space;
-
-  const _SpaceCard({required this.space});
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final stage = _stageLabel(space, now);
-    final progress = _timeProgress(space, now);
-    final dueText = space.dueDate != null ? _fmtDate(space.dueDate!) : null;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _yCream,
-        border: Border.all(color: _ySoftBorder, width: _hLine),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            space.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'SpaceGrotesk',
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.6,
-              height: 1.0,
-              color: _yInk,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _Badge(label: stage, bg: space.accentColor, fg: _yCream),
-              if (dueText != null)
-                _Badge(label: dueText, bg: _yFlight, fg: _yCream),
-            ],
-          ),
-          if (progress != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Progreso · ${(progress * 100).round()}%',
-              style: _mono(size: 10, color: _yMuted, tracking: 1.2),
-            ),
-            const SizedBox(height: 4),
-            _ProgressBar(value: progress, color: space.accentColor),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _stageLabel(LabSpace s, DateTime now) {
-    if (s.status == LabSpaceStatus.completed) return 'Completado';
-    if (s.status == LabSpaceStatus.archived) return 'Archivado';
-    if (s.dueDate != null && now.isAfter(s.dueDate!)) return 'Vencido';
-    if (s.startDate != null && now.isBefore(s.startDate!)) return 'Por iniciar';
-    if (s.startDate == null && s.dueDate == null) return 'Sin fechas';
-    return 'En proceso';
-  }
-
-  double? _timeProgress(LabSpace s, DateTime now) {
-    final start = s.startDate;
-    final end = s.dueDate;
-    if (start == null || end == null) return null;
-    if (!end.isAfter(start)) return null;
-    final total = end.difference(start).inMinutes;
-    final elapsed = now.difference(start).inMinutes;
-    return (elapsed / total).clamp(0.0, 1.0);
-  }
-
-  String _fmtDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-}
-
-class _ProgressBar extends StatelessWidget {
-  final double value;
-  final Color color;
-
-  const _ProgressBar({required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 14,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEBE6D9),
-        border: Border.all(color: _ySoftBorder, width: 2),
-      ),
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: value,
-              heightFactor: 1.0,
-              child: ClipRect(
-                child: CustomPaint(painter: _HatchedFillPainter(color: color)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HatchedFillPainter extends CustomPainter {
-  final Color color;
-  _HatchedFillPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.clipRect(Offset.zero & size);
-
-    final bgPaint = Paint()..color = color;
-    canvas.drawRect(Offset.zero & size, bgPaint);
-
-    final hatchPaint =
-        Paint()
-          ..color = const Color(0x2E000000)
-          ..strokeWidth = 1.2;
-    const step = 7.0;
-    for (double x = -size.height; x < size.width; x += step) {
-      canvas.drawLine(
-        Offset(x, size.height),
-        Offset(x + size.height, 0),
-        hatchPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _HatchedFillPainter old) => old.color != color;
-}
-
-// ─── Shared visual atoms ──────────────────────────────────────────────────
-
-class _BrutalSlab extends StatelessWidget {
-  final Color bg;
-  final Widget child;
-
-  const _BrutalSlab({required this.bg, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: _ySoftBorder, width: _hLine),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  final String label;
-  final Color bg;
-  final Color fg;
-
-  const _Badge({required this.label, required this.bg, required this.fg});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 4, 10, 5),
-      decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: _ySoftBorder, width: 2.5),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: 'Inter',
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-          letterSpacing: 0.2,
-          height: 1.1,
-          color: fg,
-        ),
-      ),
-    );
-  }
-}
-
-class _PillarEmpty extends StatelessWidget {
-  final String text;
-  const _PillarEmpty({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        text,
-        style: _mono(
-          size: 11,
-          color: _yCream.withValues(alpha: 0.5),
-          tracking: 1.4,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Mention popup (reused from prior home) ───────────────────────────────
 
 class _MentionPopup extends StatelessWidget {
   final List<Folder> folders;

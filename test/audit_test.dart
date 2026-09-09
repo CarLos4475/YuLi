@@ -9,6 +9,7 @@ import 'package:yuli/data/repositories/local/local_folder_repository.dart';
 import 'package:yuli/data/repositories/local/local_kanban_repository.dart';
 import 'package:yuli/data/repositories/local/local_lab_space_repository.dart';
 import 'package:yuli/data/repositories/local/local_note_repository.dart';
+import 'package:yuli/data/repositories/local/local_schedule_repository.dart';
 import 'package:yuli/data/repositories/local/local_task_repository.dart';
 import 'package:yuli/domain/models/kanban_card.dart';
 import 'package:yuli/domain/models/reminder_preset.dart';
@@ -371,11 +372,13 @@ void main() {
     late AppDatabase db;
     late LocalLabSpaceRepository labRepo;
     late LocalKanbanRepository kanbanRepo;
+    late LocalScheduleRepository scheduleRepo;
 
     setUp(() {
       db = AppDatabase.forTesting(NativeDatabase.memory());
       labRepo = LocalLabSpaceRepository(db);
       kanbanRepo = LocalKanbanRepository(db);
+      scheduleRepo = LocalScheduleRepository(db);
     });
     tearDown(() => db.close());
 
@@ -440,6 +443,14 @@ void main() {
               expiresAt: DateTime.now(),
             ),
           );
+      final scheduleBlock = await scheduleRepo.createBlock(
+        folderId: folderId,
+        title: 'F',
+        startTime: '08:00',
+        endTime: '09:00',
+        days: const ['Lun'],
+        color: '#FFFFFF',
+      );
 
       await db.hardDeleteFolderCascade(folderId);
 
@@ -458,6 +469,15 @@ void main() {
           await (db.select(db.tasks)
             ..where((x) => x.id.equals(taskId))).getSingle();
       expect(t.folderId, isNull, reason: 'la tarea sobrevive sin carpeta');
+      final detachedBlock =
+          (await scheduleRepo.watchAll().first)
+              .where((block) => block.id == scheduleBlock.id)
+              .single;
+      expect(
+        detachedBlock.folderId,
+        isNull,
+        reason: 'la clase global sobrevive sin carpeta',
+      );
     });
 
     test('hardDeleteSpaceCascade borra columnas y cards del espacio', () async {
@@ -467,6 +487,14 @@ void main() {
         labSpaceId: space.id,
         columnId: cols.first.id,
         title: 'c',
+      );
+      final scheduleBlock = await scheduleRepo.createBlock(
+        labSpaceId: space.id,
+        title: 'Clase',
+        startTime: '10:00',
+        endTime: '11:00',
+        days: const ['Mar'],
+        color: '#123456',
       );
 
       await db.hardDeleteSpaceCascade(space.id);
@@ -485,6 +513,15 @@ void main() {
         await (db.select(db.kanbanCards)
           ..where((c) => c.labSpaceId.equals(space.id))).get(),
         isEmpty,
+      );
+      final detachedBlock =
+          (await scheduleRepo.watchAll().first)
+              .where((block) => block.id == scheduleBlock.id)
+              .single;
+      expect(
+        detachedBlock.labSpaceId,
+        isNull,
+        reason: 'la clase global sobrevive al borrar el proyecto',
       );
     });
   });

@@ -12,7 +12,6 @@ import '../../providers/navigation_provider.dart';
 import '../../../domain/models/schedule_block.dart';
 import '../../../domain/models/schedule_settings.dart';
 import '../../../domain/models/schedule_week_note.dart';
-import '../../../domain/models/lab_space.dart';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -130,34 +129,28 @@ List<_LaneInfo> _assignLanesForCluster(List<ScheduleBlock> cluster) {
 
 // ─── Providers ────────────────────────────────────────────────────────────
 
-final _scheduleSettingsProvider = FutureProvider.family<ScheduleSettings, int>((
-  ref,
-  spaceId,
-) async {
+final _scheduleSettingsProvider = FutureProvider<ScheduleSettings>((ref) async {
   final repo = ref.watch(scheduleRepositoryProvider);
-  return repo.getOrCreateSettings(spaceId);
+  return repo.getOrCreateSettings();
 });
 
-final _scheduleBlocksProvider = StreamProvider.family<List<ScheduleBlock>, int>(
-  (ref, spaceId) {
-    final repo = ref.watch(scheduleRepositoryProvider);
-    return repo.watchBySpace(spaceId);
-  },
-);
+final _scheduleBlocksProvider = StreamProvider<List<ScheduleBlock>>((ref) {
+  return ref.watch(scheduleRepositoryProvider).watchAll();
+});
 
-final _weekNoteProvider =
-    StreamProvider.family<ScheduleWeekNote?, (int, String)>((ref, key) {
-      final (spaceId, weekStart) = key;
-      final date = DateTime.parse(weekStart);
-      final repo = ref.watch(scheduleRepositoryProvider);
-      return repo.watchWeekNote(spaceId, date);
-    });
+final _weekNoteProvider = StreamProvider.family<ScheduleWeekNote?, String>((
+  ref,
+  weekStart,
+) {
+  final date = DateTime.parse(weekStart);
+  final repo = ref.watch(scheduleRepositoryProvider);
+  return repo.watchWeekNote(date);
+});
 
 // ─── Main Widget ───────────────────────────────────────────────────────────
 
 class ScheduleTab extends ConsumerStatefulWidget {
-  final LabSpace space;
-  const ScheduleTab({super.key, required this.space});
+  const ScheduleTab({super.key});
 
   @override
   ConsumerState<ScheduleTab> createState() => _ScheduleTabState();
@@ -209,11 +202,9 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
   @override
   Widget build(BuildContext context) {
     final ink = inkColor(context);
-    final settingsAsync = ref.watch(_scheduleSettingsProvider(widget.space.id));
-    final blocksAsync = ref.watch(_scheduleBlocksProvider(widget.space.id));
-    final weekNoteAsync = ref.watch(
-      _weekNoteProvider((widget.space.id, _weekStartStr())),
-    );
+    final settingsAsync = ref.watch(_scheduleSettingsProvider);
+    final blocksAsync = ref.watch(_scheduleBlocksProvider);
+    final weekNoteAsync = ref.watch(_weekNoteProvider(_weekStartStr()));
 
     final settings = settingsAsync.valueOrNull;
     final blocks = blocksAsync.valueOrNull ?? [];
@@ -254,14 +245,14 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
               onToday: _today,
               onSettings: () => _showSettings(context, settings),
               creatingMode: _creatingMode,
-              accentColor: widget.space.accentColor,
+              accentColor: y.yFlight,
               onToggleCreate:
                   () => setState(() => _creatingMode = !_creatingMode),
             ),
             if (weekNote != null)
               _WeekNoteBanner(
                 note: weekNote.note,
-                accentColor: widget.space.accentColor,
+                accentColor: y.yFlight,
                 onEdit: () => _editWeekNote(context, weekNote),
                 onDismiss: () async {
                   await ref
@@ -282,7 +273,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                         days: days,
                         dayWidth: dayWidth,
                         weekStart: _currentWeekStart,
-                        accentColor: widget.space.accentColor,
+                        accentColor: y.yFlight,
                       ),
                       // Scrollable grid
                       Expanded(
@@ -366,8 +357,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                                                 dayIndex: _dragDayIndex!,
                                                 dayWidth: dayWidth,
                                                 hoursWidth: _hoursWidth,
-                                                accentColor:
-                                                    widget.space.accentColor,
+                                                accentColor: y.yFlight,
                                               ),
                                             // Drag gesture detector for each day
                                             for (
@@ -548,7 +538,6 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
             maxChildSize: 0.95,
             builder:
                 (ctx, sc) => _BlockFormSheet(
-                  space: widget.space,
                   scrollController: sc,
                   initialStartTime: _minutesToTime(startMins),
                   initialEndTime: _minutesToTime(endMins),
@@ -571,7 +560,6 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
             builder:
                 (ctx, sc) => _BlockDetailSheet(
                   block: block,
-                  space: widget.space,
                   scrollController: sc,
                   onEdit: () {
                     Navigator.pop(ctx);
@@ -595,7 +583,6 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
             maxChildSize: 0.95,
             builder:
                 (ctx, sc) => _BlockFormSheet(
-                  space: widget.space,
                   scrollController: sc,
                   existingBlock: block,
                   initialStartTime: block.startTime,
@@ -660,10 +647,10 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                 (ctx, sc) => _SettingsSheet(
                   settings: settings,
                   scrollController: sc,
-                  accentColor: widget.space.accentColor,
+                  accentColor: y.yFlight,
                   onChanged: (s) {
                     ref.read(scheduleRepositoryProvider).updateSettings(s);
-                    ref.invalidate(_scheduleSettingsProvider(widget.space.id));
+                    ref.invalidate(_scheduleSettingsProvider);
                   },
                 ),
           ),
@@ -721,11 +708,7 @@ class _ScheduleTabState extends ConsumerState<ScheduleTab> {
                   if (ctrl.text.trim().isNotEmpty) {
                     await ref
                         .read(scheduleRepositoryProvider)
-                        .setWeekNote(
-                          widget.space.id,
-                          _currentWeekStart,
-                          ctrl.text.trim(),
-                        );
+                        .setWeekNote(_currentWeekStart, ctrl.text.trim());
                   }
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
@@ -1249,14 +1232,12 @@ class _ScheduleBlockWidget extends StatelessWidget {
 
 class _BlockDetailSheet extends ConsumerWidget {
   final ScheduleBlock block;
-  final LabSpace space;
   final ScrollController scrollController;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _BlockDetailSheet({
     required this.block,
-    required this.space,
     required this.scrollController,
     required this.onEdit,
     required this.onDelete,
@@ -1321,7 +1302,7 @@ class _BlockDetailSheet extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
-                      color: space.accentColor,
+                      color: y.yFlight,
                       border: Border.all(
                         color: y.yBorderStrong,
                         width: y.yLineMid,
@@ -1433,7 +1414,6 @@ const _arrow = '\u2192';
 // ─── Block Form Sheet (Create / Edit) ──────────────────────────────────────
 
 class _BlockFormSheet extends ConsumerStatefulWidget {
-  final LabSpace space;
   final ScrollController scrollController;
   final String initialStartTime;
   final String initialEndTime;
@@ -1441,7 +1421,6 @@ class _BlockFormSheet extends ConsumerStatefulWidget {
   final ScheduleBlock? existingBlock;
 
   const _BlockFormSheet({
-    required this.space,
     required this.scrollController,
     required this.initialStartTime,
     required this.initialEndTime,
@@ -1462,7 +1441,6 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
   int? _selectedFolderId;
   late String _selectedColor;
 
-
   @override
   void initState() {
     super.initState();
@@ -1473,7 +1451,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     _endTime = widget.initialEndTime;
     _selectedDays = List.from(widget.initialDays);
     _selectedFolderId = b?.folderId;
-    _selectedColor = b?.color ?? _colorToHex(widget.space.accentColor);
+    _selectedColor = b?.color ?? _colorToHex(y.yFlight);
   }
 
   @override
@@ -1514,11 +1492,11 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
           days: List.from(_selectedDays),
           color: color,
           folderId: _selectedFolderId,
+          clearFolderId: _selectedFolderId == null,
         ),
       );
     } else {
       await repo.createBlock(
-        labSpaceId: widget.space.id,
         folderId: _selectedFolderId,
         title: title,
         location:
@@ -1541,7 +1519,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
     final foldersAsync = ref.read(activeFoldersProvider);
     final folders = foldersAsync.valueOrNull ?? [];
     final folder = folders.where((f) => f.id == folderId).firstOrNull;
-    return folder?.color ?? widget.space.accentColor;
+    return folder?.color ?? y.yFlight;
   }
 
   @override
@@ -1795,7 +1773,7 @@ class _BlockFormSheetState extends ConsumerState<_BlockFormSheet> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color: widget.space.accentColor,
+                color: y.yFlight,
                 border: Border.all(color: y.yBorderStrong, width: y.yLineMid),
                 boxShadow: shadowM,
               ),

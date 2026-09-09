@@ -56,7 +56,7 @@ lib/
     ├── theme/                 # app_tokens.dart — todos los tokens de diseño neobrutalista
     ├── providers/             # Riverpod providers (database, tasks, notes, AI, theme, etc.)
     ├── screens/
-    │   ├── home/              # Dashboard (triptico Fight/Flight/Lab, progreso, próxima clase)
+    │   ├── home/              # Centro diario (urgencias, próxima clase, actividad reciente)
     │   ├── fight/             # Task capture inline, buckets Hoy/Ayer/Vencidas
     │   ├── flight/            # LIVE block editor, whiteboard, notebook, OCR, AI chat
     │   ├── lab/               # Kanban, calendar, timeline, schedule, graph, AI, sources
@@ -109,7 +109,7 @@ Never edit `.g.dart` files manually.
 - **Note ↔ Kanban link:** Notes pueden crear cards con `sourceNoteId`. Cards linkean a nota de origen.
 - **Note ↔ Task link:** Many-to-many via `note_task_links`.
 - **Canvas ↔ Source note link (AI context):** `note_canvas_links` — el OCR redirigido escribe en la nota fuente.
-- **Schedule ↔ Flight:** Schedule blocks linkean a carpetas Flight. Widget "Próxima clase" en home y folder detail.
+- **Schedule ↔ Flight:** horario global con bloques vinculables a carpetas Flight y vínculo opcional legado con Lab. Ajustes y notas semanales son globales; Home agrega la próxima clase.
 - **AI context system:** `space_context_sources` + `canvas_context_sources` (notas, carpetas, URLs vía Jina Reader). Caché por hash de contenido en `context_cache.dart`.
 - **Flight workspace:** Explorador recursivo de carpetas y documentos conectados, con expansión y pestañas persistidas/reordenables en `SharedPreferences`. Cambiar de pestaña usa `pushReplacement` sin transición, por lo que solo el documento activo permanece montado. Al escribir `[[...]]`, el editor permite abrir coincidencias o crear una nota, pizarra o cuaderno hijo. Cada pizarra general es un contenedor no navegable que agrupa sus multipizarras; los hijos guardan `parent_note_id`, `parent_canvas_block_id`, `workspace_order` y `created_from_wiki`, por lo que cuelgan del lienzo exacto, conservan la jerarquía recursiva y mantienen su orden y origen aunque luego se conviertan en raíces. Solo aparecen bajo su madre en EXPLORADOR, mientras que las referencias a documentos ya existentes permanecen como raíces. Un long press sin arrastrar sobre un elemento wiki permite enviar toda la rama a Papelera o eliminar solo el nodo promoviendo sus hijos directos a la carpeta; al arrastrarlo se mueve la rama completa, con destinos validados y actualización transaccional de carpeta. Las multipizarras son destinos, nunca orígenes del arrastre. Restaurar la raíz recupera su rama. Los enlaces se renderizan sin corchetes, navegan al tocarlos y alimentan el grafo de Lab.
 - **Graph (force-directed):** Conexiones cross-mode visualizadas como grafo. 5 tipos de nodo (space, card, folder, note, task), 3 aristas (structure, bridge, AI). Assembly via `GraphAssembler`, simulación D3-like en `GraphSimulation`.

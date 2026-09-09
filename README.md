@@ -72,14 +72,14 @@ YuLi integra un asistente de inteligencia artificial basado en **DeepSeek V4** (
 
 ## Home — Panel central
 
-Home es el centro de comando con los tres pilares de YuLi.
+Home es el centro de comando diario de YuLi.
 
-- **Triptico Fight / Flight / Lab** con contadores de tareas pendientes, notas activas y espacios en curso.
-- **Captura rapida** inline desde el panel Fight sin salir del home.
-- **Barra de progreso** con relleno hatchado por espacio.
-- **Widget "Proxima clase"** agrega el bloque de horario mas proximo.
-- **Cubo animado de YuLi** como cabecera.
-- **Saludo** segun la hora del dia y reloj en vivo.
+- **Panel "Ahora"** con la próxima clase del horario global.
+- **Tareas urgentes**: vencidas, arrastradas de ayer y próximas a vencer.
+- **Captura rápida** inline sin salir del Home.
+- **Actividad reciente** con acceso directo a la última nota y al proyecto activo.
+- **Accesos Fight / Flight / Lab** compactos con sus contadores.
+- **Wordmark plano de YuLi**, saludo, fecha y reloj en vivo.
 
 ---
 
@@ -152,6 +152,18 @@ Lienzo virtual de 10000x10000px con pan + zoom (0.1x–4x). Disenado para pensam
 
 **Exportacion a PNG/PDF:** renderizado offline fiel del canvas completo o region seleccionada, con opcion de incluir bloques de tareas.
 
+### Horario semanal
+
+Horario es una vista global de Flight para organizar clases y sesiones de estudio.
+
+- Bloques semanales vinculables a carpetas Flight.
+- Vinculo opcional heredado con espacios Lab para conservar relaciones existentes.
+- Soporte para sabado/domingo configurable.
+- Horas de inicio y fin globales.
+- Drag-to-create, resolución de overlaps y bloque "EN VIVO".
+- Línea de hora actual y notas semanales.
+- La próxima clase se agrega en Home desde todos los bloques globales.
+
 ### Modo Cuaderno (Notebook)
 
 Multi-pagina A4 con scroll vertical, transiciones animadas y page drawer con miniaturas.
@@ -197,7 +209,7 @@ La pantalla principal de Lab lista todos tus espacios con filtros y resumen visu
 - **Quick-add**: dialogo para crear tarjetas rapidamente.
 - **Gestion de columnas**: renombrar, recolorar, reordenar, toggle de flags (isTerminal, isExpired, isInProgress) y eliminar desde popover.
 - **Editor de fechas de proyecto**: rango inicio-fin del espacio con control granular.
-- **Pestañas multiples**: Kanban, Calendario, Timeline, Horario y Grafo — pestañas persistidas y reordenables.
+- **Pestañas multiples**: Kanban, Calendario, Timeline y Grafo — pestañas persistidas y reordenables.
 
 ### Lab AI
 
@@ -218,21 +230,6 @@ Cada espacio Lab puede alimentarse de contenido externo para enriquecer el AI y 
 - **Habilitar/deshabilitar fuentes**: cada fuente tiene un toggle individual.
 - **Cache de URLs**: el contenido fetcheado se persiste en disco por hash; refetch disponible.
 - **Cache de contexto**: compactacion por hash de contenido para evitar re-procesar fuentes identicas.
-
-### Schedule (Horario Semanal)
-
-Grid hora × dia con bloques de horario por proyecto.
-
-- Soporte para sabado/domingo configurable.
-- Horas inicio/fin configurables por espacio.
-- Bloques con titulo, ubicacion, color.
-- Vinculacion de bloques con carpetas de Flight.
-- Notas semanales por espacio.
-- Asignacion automatica de lanes para resolucion de overlap.
-- **Drag-to-create**: arrastre vertical en una columna de dia para crear bloques.
-- **Bloque "EN VIVO"**: badge que identifica el bloque actualmente en curso.
-- **Linea de hora actual** con marcador "HOY".
-- **Detalle de bloque**: hoja con edicion de titulo, ubicacion, hora, dias, carpeta vinculada y color.
 
 ### Calendar
 

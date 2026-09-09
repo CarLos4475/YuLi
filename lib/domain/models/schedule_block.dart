@@ -2,7 +2,7 @@ import 'dart:convert';
 
 class ScheduleBlock {
   final int id;
-  final int labSpaceId;
+  final int? labSpaceId;
   final int? folderId;
   final String title;
   final String? location;
@@ -15,7 +15,7 @@ class ScheduleBlock {
 
   const ScheduleBlock({
     required this.id,
-    required this.labSpaceId,
+    this.labSpaceId,
     this.folderId,
     required this.title,
     this.location,
@@ -48,6 +48,7 @@ class ScheduleBlock {
   ScheduleBlock copyWith({
     int? id,
     int? labSpaceId,
+    bool clearLabSpaceId = false,
     int? folderId,
     bool clearFolderId = false,
     String? title,
@@ -59,20 +60,17 @@ class ScheduleBlock {
     String? color,
     bool? useFolderColor,
     DateTime? createdAt,
-  }) =>
-      ScheduleBlock(
-        id: id ?? this.id,
-        labSpaceId: labSpaceId ?? this.labSpaceId,
-        folderId:
-            clearFolderId ? null : (folderId ?? this.folderId),
-        title: title ?? this.title,
-        location:
-            clearLocation ? null : (location ?? this.location),
-        startTime: startTime ?? this.startTime,
-        endTime: endTime ?? this.endTime,
-        days: days ?? this.days,
-        color: color ?? this.color,
-        useFolderColor: useFolderColor ?? this.useFolderColor,
-        createdAt: createdAt ?? this.createdAt,
-      );
+  }) => ScheduleBlock(
+    id: id ?? this.id,
+    labSpaceId: clearLabSpaceId ? null : (labSpaceId ?? this.labSpaceId),
+    folderId: clearFolderId ? null : (folderId ?? this.folderId),
+    title: title ?? this.title,
+    location: clearLocation ? null : (location ?? this.location),
+    startTime: startTime ?? this.startTime,
+    endTime: endTime ?? this.endTime,
+    days: days ?? this.days,
+    color: color ?? this.color,
+    useFolderColor: useFolderColor ?? this.useFolderColor,
+    createdAt: createdAt ?? this.createdAt,
+  );
 }

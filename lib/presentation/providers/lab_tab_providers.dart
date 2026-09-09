@@ -4,11 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final labTabsProvider =
     StateNotifierProvider.family<LabTabsNotifier, List<String>, int>(
-  (ref, spaceId) => LabTabsNotifier(spaceId),
-);
+      (ref, spaceId) => LabTabsNotifier(spaceId),
+    );
 
 const _baseTabs = ['Kanban', 'Grafo'];
-const _availableTabs = ['Calendario', 'Timeline', 'Horario'];
+const _availableTabs = ['Calendario', 'Timeline'];
 
 class LabTabsNotifier extends StateNotifier<List<String>> {
   final int spaceId;
@@ -23,7 +23,9 @@ class LabTabsNotifier extends StateNotifier<List<String>> {
     final raw = _prefs!.getString(_key);
     if (raw != null) {
       final decoded = jsonDecode(raw) as List<dynamic>;
-      final tabs = List<String>.from(decoded);
+      final tabs = List<String>.from(decoded)
+        ..removeWhere((tab) => tab == 'Horario');
+      final removedSchedule = decoded.length != tabs.length;
       // Migration: spaces saved before the Grafo tab existed don't have it.
       // Inject it right after Kanban so it shows by default.
       if (!tabs.contains('Grafo')) {
@@ -34,6 +36,7 @@ class LabTabsNotifier extends StateNotifier<List<String>> {
         return;
       }
       state = tabs;
+      if (removedSchedule) _save();
     }
   }
 

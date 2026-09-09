@@ -21,6 +21,7 @@ import 'notebook_editor_screen.dart';
 import 'whiteboard_editor_screen.dart';
 import 'new_folder_dialog.dart';
 import 'knowledge_graph_screen.dart';
+import 'schedule_screen.dart';
 import '../../widgets/edit_item_dialog.dart';
 
 class FlightScreen extends ConsumerStatefulWidget {
@@ -163,6 +164,11 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
                       builder: (_) => const KnowledgeGraphScreen(),
                     ),
                   ),
+              onOpenSchedule:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ScheduleScreen()),
+                  ),
             ),
             Expanded(
               child: Container(
@@ -247,8 +253,9 @@ class _FlightScreenState extends ConsumerState<FlightScreen> {
 
 class _Toolbar extends ConsumerWidget {
   final VoidCallback onOpenGraph;
+  final VoidCallback onOpenSchedule;
 
-  const _Toolbar({required this.onOpenGraph});
+  const _Toolbar({required this.onOpenGraph, required this.onOpenSchedule});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -256,6 +263,7 @@ class _Toolbar extends ConsumerWidget {
     final notifier = ref.read(flightToolbarProvider.notifier);
 
     return Container(
+      width: double.infinity,
       decoration: const BoxDecoration(
         color: yCream,
         border: Border(
@@ -263,94 +271,138 @@ class _Toolbar extends ConsumerWidget {
         ),
       ),
       padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
-      child: Row(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap:
-                () => showDialog(
-                  context: context,
-                  builder: (_) => const NewFolderDialog(),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap:
+                  () => showDialog(
+                    context: context,
+                    builder: (_) => const NewFolderDialog(),
+                  ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
                 ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              decoration: BoxDecoration(
-                color: yFlight,
-                border: Border.all(color: yBorderStrong, width: yLineMid),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '+',
-                    style: TextStyle(fontSize: 18, color: yCream, height: 1.0),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'NUEVA CARPETA',
-                    style: yBody(
-                      size: 13,
-                      weight: FontWeight.w700,
-                      color: yCream,
-                    ).copyWith(letterSpacing: 1.2),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onOpenGraph,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: yCream,
-                border: Border.all(color: yBorderStrong, width: yLineThin),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(YuLiIcons.gitGraph, size: 15, color: yInk),
-                  const SizedBox(width: 7),
-                  Text(
-                    'MAPA',
-                    style: yMono(
-                      size: 10,
-                      weight: FontWeight.w700,
-                      tracking: 1.2,
-                      color: yInk,
+                decoration: BoxDecoration(
+                  color: yFlight,
+                  border: Border.all(color: yBorderStrong, width: yLineMid),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '+',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: yCream,
+                        height: 1.0,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'NUEVA CARPETA',
+                      style: yBody(
+                        size: 13,
+                        weight: FontWeight.w700,
+                        color: yCream,
+                      ).copyWith(letterSpacing: 1.2),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          ToolChip(
-            label: 'ORDEN',
-            value: _sortLabel(toolbar.sort),
-            onTap: () => _showSortMenu(context, ref),
-          ),
-          const SizedBox(width: 6),
-          ToolChip(
-            label: 'FILTRO',
-            value: _filterLabel(toolbar.filter),
-            onTap: () => _showFilterMenu(context, ref),
-          ),
-          const Spacer(),
-          ViewToggleBtn(
-            icon: YuLiIcons.layoutGrid,
-            active: toolbar.view == FlightView.grid,
-            onTap: () => notifier.setView(FlightView.grid),
-          ),
-          const SizedBox(width: 4),
-          ViewToggleBtn(
-            icon: YuLiIcons.menu,
-            active: toolbar.view == FlightView.list,
-            onTap: () => notifier.setView(FlightView.list),
-          ),
-        ],
+            const SizedBox(width: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onOpenGraph,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: yCream,
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(YuLiIcons.gitGraph, size: 15, color: yInk),
+                    const SizedBox(width: 7),
+                    Text(
+                      'MAPA',
+                      style: yMono(
+                        size: 10,
+                        weight: FontWeight.w700,
+                        tracking: 1.2,
+                        color: yInk,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onOpenSchedule,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: yFlight,
+                  border: Border.all(color: yBorderStrong, width: yLineThin),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(YuLiIcons.calendarDays, size: 15, color: yCream),
+                    const SizedBox(width: 7),
+                    Text(
+                      'HORARIO',
+                      style: yMono(
+                        size: 10,
+                        weight: FontWeight.w700,
+                        tracking: 1.2,
+                        color: yCream,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ToolChip(
+              label: 'ORDEN',
+              value: _sortLabel(toolbar.sort),
+              onTap: () => _showSortMenu(context, ref),
+            ),
+            const SizedBox(width: 6),
+            ToolChip(
+              label: 'FILTRO',
+              value: _filterLabel(toolbar.filter),
+              onTap: () => _showFilterMenu(context, ref),
+            ),
+            const SizedBox(width: 10),
+            ViewToggleBtn(
+              icon: YuLiIcons.layoutGrid,
+              active: toolbar.view == FlightView.grid,
+              onTap: () => notifier.setView(FlightView.grid),
+            ),
+            const SizedBox(width: 4),
+            ViewToggleBtn(
+              icon: YuLiIcons.menu,
+              active: toolbar.view == FlightView.list,
+              onTap: () => notifier.setView(FlightView.list),
+            ),
+          ],
+        ),
       ),
     );
   }

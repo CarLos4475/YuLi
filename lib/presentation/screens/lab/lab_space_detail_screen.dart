@@ -23,7 +23,6 @@ import 'kanban_card_tile.dart';
 import 'kanban_card_detail.dart';
 import 'calendar_tab.dart';
 import 'timeline_tab.dart';
-import 'schedule_tab.dart';
 import 'graph_tab.dart';
 import 'lab_space_sources_sheet.dart';
 
@@ -234,8 +233,6 @@ class _LabSpaceDetailScreenState extends ConsumerState<LabSpaceDetailScreen> {
           onToggleSelection: _toggleSelection,
           selectionMode: _selectionMode,
         );
-      case 'Horario':
-        return ScheduleTab(space: widget.space);
       case 'Grafo':
         return GraphTab(
           space: widget.space,

@@ -6,7 +6,7 @@ abstract class ScheduleRepository {
   Stream<List<ScheduleBlock>> watchBySpace(int labSpaceId);
   Stream<List<ScheduleBlock>> watchAll();
   Future<ScheduleBlock> createBlock({
-    required int labSpaceId,
+    int? labSpaceId,
     int? folderId,
     required String title,
     String? location,
@@ -19,12 +19,12 @@ abstract class ScheduleRepository {
   Future<void> updateBlock(ScheduleBlock block);
   Future<void> deleteBlock(int id);
 
-  Future<ScheduleSettings> getOrCreateSettings(int labSpaceId);
+  Future<ScheduleSettings> getOrCreateSettings();
   Future<void> updateSettings(ScheduleSettings settings);
 
-  Future<ScheduleWeekNote?> getWeekNote(int labSpaceId, DateTime weekStart);
-  Stream<ScheduleWeekNote?> watchWeekNote(int labSpaceId, DateTime weekStart);
-  Future<void> setWeekNote(int labSpaceId, DateTime weekStart, String note);
+  Future<ScheduleWeekNote?> getWeekNote(DateTime weekStart);
+  Stream<ScheduleWeekNote?> watchWeekNote(DateTime weekStart);
+  Future<void> setWeekNote(DateTime weekStart, String note);
   Future<void> deleteWeekNote(int id);
   Future<List<ScheduleBlock>> getByFolderId(int folderId);
 }

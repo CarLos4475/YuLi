@@ -80,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -298,6 +298,47 @@ class AppDatabase extends _$AppDatabase {
           'UPDATE notes SET created_from_wiki = 1 '
           'WHERE parent_note_id IS NOT NULL',
         );
+      }
+      if (from <= 26) {
+        await customStatement(
+          'ALTER TABLE schedule_blocks RENAME TO schedule_blocks_v26',
+        );
+        await m.createTable(scheduleBlocks);
+        await customStatement(
+          'INSERT INTO schedule_blocks '
+          '(id, lab_space_id, folder_id, title, location, start_time, '
+          'end_time, days, color, use_folder_color, created_at) '
+          'SELECT id, lab_space_id, folder_id, title, location, start_time, '
+          'end_time, days, color, use_folder_color, created_at '
+          'FROM schedule_blocks_v26',
+        );
+        await customStatement('DROP TABLE schedule_blocks_v26');
+
+        await customStatement(
+          'ALTER TABLE schedule_settings RENAME TO schedule_settings_v26',
+        );
+        await m.createTable(scheduleSettings);
+        await customStatement(
+          'INSERT INTO schedule_settings '
+          '(id, show_saturday, show_sunday, day_start_time, day_end_time) '
+          'SELECT 1, MAX(COALESCE(show_saturday, 0)), '
+          'MAX(COALESCE(show_sunday, 0)), MIN(day_start_time), '
+          'MAX(day_end_time) FROM schedule_settings_v26 '
+          'HAVING COUNT(*) > 0',
+        );
+        await customStatement('DROP TABLE schedule_settings_v26');
+
+        await customStatement(
+          'ALTER TABLE schedule_week_notes RENAME TO schedule_week_notes_v26',
+        );
+        await m.createTable(scheduleWeekNotes);
+        await customStatement(
+          'INSERT INTO schedule_week_notes (week_start_date, note) '
+          'SELECT week_start_date, GROUP_CONCAT(note, char(10) || char(10)) '
+          'FROM schedule_week_notes_v26 WHERE TRIM(note) <> \'\' '
+          'GROUP BY week_start_date',
+        );
+        await customStatement('DROP TABLE schedule_week_notes_v26');
       }
     },
   );
@@ -920,18 +961,16 @@ class AppDatabase extends _$AppDatabase {
     await (delete(folders)..where((f) => f.id.equals(folderId))).go();
   });
 
-  /// Permanently deletes a lab space and everything scoped to it.
+  /// Permanently deletes a lab space and everything scoped to it. Global
+  /// schedule blocks survive and simply lose their optional project link.
   Future<void> hardDeleteSpaceCascade(int spaceId) => transaction(() async {
     await (delete(kanbanCards)
       ..where((c) => c.labSpaceId.equals(spaceId))).go();
     await (delete(kanbanColumns)
       ..where((c) => c.labSpaceId.equals(spaceId))).go();
-    await (delete(scheduleBlocks)
-      ..where((s) => s.labSpaceId.equals(spaceId))).go();
-    await (delete(scheduleSettings)
-      ..where((s) => s.labSpaceId.equals(spaceId))).go();
-    await (delete(scheduleWeekNotes)
-      ..where((s) => s.labSpaceId.equals(spaceId))).go();
+    await (update(scheduleBlocks)..where(
+      (s) => s.labSpaceId.equals(spaceId),
+    )).write(const ScheduleBlocksCompanion(labSpaceId: Value(null)));
     await (delete(spaceFolderLinks)
       ..where((s) => s.labSpaceId.equals(spaceId))).go();
     await (delete(spaceContextSources)
