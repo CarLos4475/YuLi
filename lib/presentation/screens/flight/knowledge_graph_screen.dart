@@ -44,6 +44,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
   bool _moved = false;
   bool _includeIslands = true;
   bool _needsFit = false;
+  bool _initialLayoutReady = false;
   double _scaleStart = 1;
 
   @override
@@ -64,8 +65,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
     if (simulation == null) return;
     final hot = simulation.step();
     if (!hot && _needsFit && _dragId == null) {
-      _fitToView();
-      _needsFit = false;
+      _completePendingFit();
     }
     _repaint.value++;
     if (!hot && _dragId == null) _ticker.stop();
@@ -77,8 +77,9 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
 
   void _applySnapshot(KnowledgeGraphSnapshot snapshot) {
     if (identical(snapshot, _snapshot)) return;
+    final isFirstSnapshot = _snapshot == null;
     _snapshot = snapshot;
-    _rebuildSimulation(reframe: true);
+    _rebuildSimulation(reframe: isFirstSnapshot);
   }
 
   void _rebuildSimulation({bool reframe = false}) {
@@ -86,6 +87,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
     if (snapshot == null) return;
     final previous = _simulation?.positions;
     _data = snapshot.graph(includeIslands: _includeIslands);
+    final needsInitialFit = !_initialLayoutReady && _data.nodes.isNotEmpty;
     if (_selectedId != null &&
         !_data.nodes.any((node) => node.id == _selectedId)) {
       _selectedId = null;
@@ -96,23 +98,32 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
       layout: GraphLayoutMode.knowledge,
     );
     _dragId = null;
-    if (reframe || previous == null) _needsFit = true;
+    if (reframe || previous == null || needsInitialFit) _needsFit = true;
+    if (_data.nodes.isEmpty) _needsFit = false;
     _ticker.stop();
     if (_data.nodes.length > 1) {
       _ensureTicking();
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _fitToView();
+        _completePendingFit();
         _repaint.value++;
       });
     }
   }
 
-  void _fitToView() {
+  void _completePendingFit() {
+    if (!_needsFit || !_fitToView()) return;
+    _needsFit = false;
+    if (!_initialLayoutReady && mounted) {
+      setState(() => _initialLayoutReady = true);
+    }
+  }
+
+  bool _fitToView() {
     final simulation = _simulation;
     if (simulation == null || _viewport == Size.zero || _data.nodes.isEmpty) {
-      return;
+      return false;
     }
     var minX = double.infinity;
     var minY = double.infinity;
@@ -127,7 +138,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
       maxX = math.max(maxX, position.dx + radius);
       maxY = math.max(maxY, position.dy + radius);
     }
-    if (minX > maxX) return;
+    if (minX > maxX) return false;
     final graphWidth = math.max(maxX - minX, 1.0);
     final graphHeight = math.max(maxY - minY, 1.0);
     final center = Offset((minX + maxX) / 2, (minY + maxY) / 2);
@@ -141,6 +152,7 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
     _transform
       ..scale = scale
       ..pan = -center * scale;
+    return true;
   }
 
   Offset _screenToWorld(Offset point) => Offset(
@@ -320,19 +332,34 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
             child: LayoutBuilder(
               builder: (_, constraints) {
                 _viewport = constraints.biggest;
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onScaleStart: _onScaleStart,
-                  onScaleUpdate: _onScaleUpdate,
-                  onScaleEnd: _onScaleEnd,
-                  child: CustomPaint(
-                    painter: _KnowledgeGraphPainter(
-                      data: _data,
-                      snapshot: snapshot,
-                      simulation: _simulation!,
-                      transform: _transform,
-                      selectedId: _selectedId,
-                      repaint: _repaint,
+                if (_needsFit && !_ticker.isTicking) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    _completePendingFit();
+                    _repaint.value++;
+                  });
+                }
+                return IgnorePointer(
+                  ignoring: !_initialLayoutReady,
+                  child: AnimatedOpacity(
+                    opacity: _initialLayoutReady ? 1 : 0,
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onScaleStart: _onScaleStart,
+                      onScaleUpdate: _onScaleUpdate,
+                      onScaleEnd: _onScaleEnd,
+                      child: CustomPaint(
+                        painter: _KnowledgeGraphPainter(
+                          data: _data,
+                          snapshot: snapshot,
+                          simulation: _simulation!,
+                          transform: _transform,
+                          selectedId: _selectedId,
+                          repaint: _repaint,
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -340,6 +367,36 @@ class _KnowledgeGraphScreenState extends ConsumerState<KnowledgeGraphScreen>
             ),
           ),
           if (_data.isEmpty) _emptyState(),
+          if (!_initialLayoutReady && !_data.isEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          color: widget.accent,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'ORDENANDO MAPA',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          tracking: 1.4,
+                          color: yMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             top: 12,
             right: selected != null && wide ? 346 : 12,
