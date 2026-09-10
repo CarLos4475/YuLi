@@ -595,10 +595,44 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
                           return GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () async {
+                              final folder = await ref
+                                  .read(folderRepositoryProvider)
+                                  .getById(h.folderId);
+                              if (folder == null ||
+                                  !folder.isActive ||
+                                  !context.mounted) {
+                                return;
+                              }
+                              final navigator = Navigator.of(context);
                               Navigator.pop(context);
-                              ref
-                                  .read(pendingNoteNavigationProvider.notifier)
-                                  .state = h.note.id;
+                              navigator.push(
+                                MaterialPageRoute<void>(
+                                  builder:
+                                      (_) => switch (h.note.kind) {
+                                        NoteKind.whiteboard =>
+                                          WhiteboardEditorScreen(
+                                            note: h.note,
+                                            folder: folder,
+                                            initialCanvasBlockId:
+                                                h.ocr?.blockId,
+                                            initialOcrBounds:
+                                                h.ocr?.segment.bounds,
+                                          ),
+                                        NoteKind.notebook =>
+                                          NotebookEditorScreen(
+                                            note: h.note,
+                                            folder: folder,
+                                            initialOcrBlockId: h.ocr?.blockId,
+                                            initialOcrBounds:
+                                                h.ocr?.segment.bounds,
+                                          ),
+                                        _ => NoteEditorScreen(
+                                          note: h.note,
+                                          folder: folder,
+                                        ),
+                                      },
+                                ),
+                              );
                             },
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -606,7 +640,7 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    h.note.title ?? '(sin título)',
+                                    h.note.title ?? '(Sin título)',
                                     style: ySans(
                                       size: 15,
                                       weight: FontWeight.w700,
@@ -614,6 +648,13 @@ class _SearchDialogState extends ConsumerState<_SearchDialog> {
                                     ),
                                   ),
                                   const SizedBox(height: 2),
+                                  if (h.ocr != null)
+                                    Text(
+                                      h.ocr!.segment.effectiveText,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: yBody(size: 13),
+                                    ),
                                   Text(
                                     h.folderName,
                                     style: yMono(

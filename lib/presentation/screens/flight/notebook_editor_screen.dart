@@ -63,6 +63,8 @@ import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
 import 'lasso_mini_toolbar.dart';
 import 'ocr_flow.dart';
+import 'canvas_ocr_panel.dart';
+import '../../providers/canvas_ocr_provider.dart';
 import 'lasso_painter.dart';
 import 'note_cell_model.dart';
 import 'pdf_pin_body.dart';
@@ -237,11 +239,15 @@ enum _LassoSyncMode { full, lengthStable, deleteSelected, appendSelected }
 class NotebookEditorScreen extends ConsumerStatefulWidget {
   final Note note;
   final Folder folder;
+  final int? initialOcrBlockId;
+  final Rect? initialOcrBounds;
 
   const NotebookEditorScreen({
     super.key,
     required this.note,
     required this.folder,
+    this.initialOcrBlockId,
+    this.initialOcrBounds,
   });
 
   @override
@@ -604,7 +610,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (!mounted) return;
       ref
           .read(flightWorkspaceTabsProvider.notifier)
-          .open(flightWorkspaceTarget(note: widget.note, folder: widget.folder));
+          .open(
+            flightWorkspaceTarget(note: widget.note, folder: widget.folder),
+          );
     });
     _palette = buildPenPalette(widget.note.color ?? widget.folder.color);
     _lassoAnimCtrl = AnimationController(
@@ -701,6 +709,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   @override
   void dispose() {
     StudyActivity.leave(this, widget.note.id);
+    ref.read(canvasOcrCoordinatorProvider).releasePointers();
     if (CrashLogger.perfLogging) {
       SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
     }
@@ -837,6 +846,17 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // last page). _currentVisiblePage needs _pageBlockIds (populated above) + a valid
     // context (we're post-frame) — both ready here. No saved camera (first open) ->
     // last page, as before.
+    final ocrIndex = _pageBlockIds.indexOf(widget.initialOcrBlockId ?? -1);
+    if (ocrIndex >= 0 && widget.initialOcrBounds != null && mounted) {
+      final bounds = widget.initialOcrBounds!.shift(
+        Offset(0, ocrIndex * (kNotebookPageHeight + kNotebookPageGap)),
+      );
+      restoreCamera = Matrix4.translationValues(
+        MediaQuery.sizeOf(context).width / 2 - bounds.center.dx,
+        160 - bounds.center.dy,
+        0,
+      );
+    }
     if (restoreCamera != null && mounted) {
       _viewCtrl.value = restoreCamera;
       _scrollApplied = true;
@@ -2967,7 +2987,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       PendingSaves.saved(this);
     } catch (e, st) {
       PendingSaves.failed(this, e);
-      CrashLogger.instance.record(e, st, context: 'flushPendingPersists cuaderno');
+      CrashLogger.instance.record(
+        e,
+        st,
+        context: 'flushPendingPersists cuaderno',
+      );
     } finally {
       _persisting = false;
     }
@@ -3585,6 +3609,22 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     StudyActivity.leaveUnit(widget.note.id);
   }
 
+  void _locateOcr(int blockId, Rect bounds) {
+    final index = _pageBlockIds.indexOf(blockId);
+    if (index < 0 || _viewport.isEmpty) return;
+    final box = bounds.shift(
+      Offset(0, index * (kNotebookPageHeight + kNotebookPageGap)),
+    );
+    final scale = _viewCtrl.value.getMaxScaleOnAxis();
+    _viewCtrl.value =
+        Matrix4.translationValues(_viewport.width / 2, _viewport.height / 2, 0)
+          ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
+          ..multiply(
+            Matrix4.translationValues(-box.center.dx, -box.center.dy, 0),
+          );
+    _scheduleDeferredDecode(Duration.zero);
+  }
+
   Future<void> _toggleStarred(int blockId) async {
     final idx = _pageBlockIds.indexOf(blockId);
     if (idx < 0) return;
@@ -4118,6 +4158,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _onDown(PointerDownEvent e) {
+    ref.read(canvasOcrCoordinatorProvider).pointerDown(e.pointer);
     if (_eyedropperMode) {
       _activePointers.add(e.pointer);
       // 1 pointer drags the loupe; 2+ hands the gesture to pan/zoom.
@@ -4302,6 +4343,24 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   /// Finger tap (touch only) in lasso mode selects the stroke/image under it.
   void _onLassoTap(TapUpDetails d) {
     if (d.kind != PointerDeviceKind.touch) return;
+    if (_palmRejection &&
+        _tool != DrawTool.text &&
+        _tool != DrawTool.task &&
+        _tool != DrawTool.eraser &&
+        _lassoCtrl.phase == LassoPhase.idle) {
+      final world = _screenToWorld(d.localPosition);
+      final index = _pageIndexFromWorldY(world.dy);
+      if (index >= 0 &&
+          index < _pageBlockIds.length &&
+          showCanvasSpellingAt(
+            ref,
+            _pageBlockIds[index],
+            _worldToPageLocal(world, index),
+            d.kind,
+          )) {
+        return;
+      }
+    }
     if (_tool == DrawTool.text) {
       final p = _screenToWorld(d.localPosition);
       _insertTextBlockAt(p);
@@ -4443,6 +4502,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _onUp(PointerUpEvent e) {
+    ref.read(canvasOcrCoordinatorProvider).pointerUp(e.pointer);
     if (_eyedropperMode) {
       _activePointers.remove(e.pointer);
       setState(() {});
@@ -4525,6 +4585,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   }
 
   void _onCancel(PointerCancelEvent e) {
+    ref.read(canvasOcrCoordinatorProvider).pointerUp(e.pointer);
     if (_eyedropperMode) {
       _activePointers.remove(e.pointer);
       setState(() {});
@@ -7784,14 +7845,23 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _CollapsedNotebookHeader(
-                      folder: widget.folder,
-                      pageCount: _pageBlockIds.length,
-                      background: _currentBg,
+                    CanvasOcrHeader(
+                      blockIds: List.of(_pageBlockIds),
                       accent: _accent,
-                      noteTitle: widget.note.title ?? '',
-                      onOpenPages: _togglePageDrawer,
-                      onLink: () => _linkToLab(spaces),
+                      onLocate: _locateOcr,
+                      child: _CollapsedNotebookHeader(
+                        ocrAction: CanvasOcrButton(
+                          blockIds: List.of(_pageBlockIds),
+                          accent: _accent,
+                        ),
+                        folder: widget.folder,
+                        pageCount: _pageBlockIds.length,
+                        background: _currentBg,
+                        accent: _accent,
+                        noteTitle: widget.note.title ?? '',
+                        onOpenPages: _togglePageDrawer,
+                        onLink: () => _linkToLab(spaces),
+                      ),
                     ),
                     FlightWorkspaceTabsBar(
                       current: _workspaceTarget,
@@ -8182,6 +8252,25 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                             (c) => _palettes
                                                                 ?.addColor(c),
                                                       ),
+                                                ),
+                                          ),
+                                        ),
+                                      if (_pageBlockIds.isNotEmpty)
+                                        Positioned.fill(
+                                          child: AnimatedBuilder(
+                                            animation: _viewCtrl,
+                                            builder:
+                                                (_, _) => CanvasOcrMarks(
+                                                  blockId:
+                                                      _pageBlockIds[_currentVisiblePage],
+                                                  pageOffset: Offset(
+                                                    0,
+                                                    _currentVisiblePage *
+                                                        (kNotebookPageHeight +
+                                                            kNotebookPageGap),
+                                                  ),
+                                                  transform: _viewCtrl,
+                                                  accent: _accent,
                                                 ),
                                           ),
                                         ),
@@ -8787,13 +8876,29 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                   background: yCream2,
                 ));
         final png = await imageToPngBytes(out);
-        await shareExportBytes(png, '$name.png', text: 'Cuaderno · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
+        await shareExportBytes(
+          png,
+          '$name.png',
+          text: 'Cuaderno · YuLi',
+          uploadToDrive:
+              opts.toDrive
+                  ? (file) => uploadStudyExport(ref, context, file)
+                  : null,
+        );
       } else if (opts.onePagePerSheet && pageImages.length > 1) {
         final pdf = await buildCanvasPdf([
           for (int k = 0; k < pageImages.length; k++)
             ExportPage(image: pageImages[k], worldSize: pageSizes[k]),
         ]);
-        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
+        await shareExportBytes(
+          pdf,
+          '$name.pdf',
+          text: 'Cuaderno · YuLi',
+          uploadToDrive:
+              opts.toDrive
+                  ? (file) => uploadStudyExport(ref, context, file)
+                  : null,
+        );
       } else {
         final single = pageImages.length == 1;
         final out =
@@ -8810,7 +8915,15 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             worldSize: Size(out.width / pr, out.height / pr),
           ),
         ]);
-        await shareExportBytes(pdf, '$name.pdf', text: 'Cuaderno · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
+        await shareExportBytes(
+          pdf,
+          '$name.pdf',
+          text: 'Cuaderno · YuLi',
+          uploadToDrive:
+              opts.toDrive
+                  ? (file) => uploadStudyExport(ref, context, file)
+                  : null,
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -9190,6 +9303,7 @@ class _SpacePickerDialog extends StatelessWidget {
 }
 
 class _CollapsedNotebookHeader extends StatelessWidget {
+  final Widget ocrAction;
   final Folder folder;
   final int pageCount;
   final PageBackground background;
@@ -9199,6 +9313,7 @@ class _CollapsedNotebookHeader extends StatelessWidget {
   final VoidCallback onLink;
 
   const _CollapsedNotebookHeader({
+    required this.ocrAction,
     required this.folder,
     required this.pageCount,
     required this.background,
@@ -9268,6 +9383,8 @@ class _CollapsedNotebookHeader extends StatelessWidget {
               child: const Icon(YuLiIcons.bookOpen, color: yInk, size: 15),
             ),
           ),
+          const SizedBox(width: 4),
+          ocrAction,
           const SizedBox(width: 4),
           GestureDetector(
             behavior: HitTestBehavior.opaque,

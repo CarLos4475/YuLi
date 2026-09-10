@@ -83,10 +83,12 @@ class LocalNoteBlockRepository implements NoteBlockRepository {
       );
 
   @override
-  Future<void> delete(int blockId) async {
+  Future<void> delete(int blockId) => _db.transaction(() async {
+    await (_db.delete(_db.canvasOcrPages)
+      ..where((p) => p.blockId.equals(blockId))).go();
     await _db.drawingStrokesDao.deleteByBlock(blockId);
     await _db.noteBlocksDao.deleteBlock(blockId);
-  }
+  });
 
   @override
   Future<void> reorder(int noteId, List<int> orderedIds) =>

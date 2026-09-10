@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/models/lab_space.dart';
 import '../../domain/models/note.dart';
+import '../../domain/models/canvas_ocr.dart';
+import 'canvas_ocr_provider.dart';
 import 'database_providers.dart';
 
 // ─── Folder enrichment ────────────────────────────────────────────────────
@@ -185,33 +187,46 @@ class NoteSearchHit {
   final Note note;
   final String folderName;
   final int folderId;
+  final CanvasOcrHit? ocr;
   const NoteSearchHit({
     required this.note,
     required this.folderName,
     required this.folderId,
+    this.ocr,
   });
 }
 
 final globalNoteSearchProvider =
     FutureProvider.family<List<NoteSearchHit>, String>((ref, query) async {
-      final q = query.trim().toLowerCase();
+      ref.watch(canvasOcrVersionProvider);
+      final q = normalizeCanvasSearch(query.trim());
       if (q.isEmpty) return const [];
       final noteRepo = ref.watch(noteRepositoryProvider);
       final folders = await ref.watch(folderRepositoryProvider).getActive();
       final folderById = {for (final f in folders) f.id: f};
       final results = <NoteSearchHit>[];
+      final ocrHits = await ref.watch(canvasOcrRepositoryProvider).search(q);
       for (final f in folders) {
         final notes = await noteRepo.getByFolder(f.id);
         for (final n in notes) {
-          if (n.isWorkspaceChild) continue;
-          final title = (n.title ?? '').toLowerCase();
-          final body = n.rawMarkdown.toLowerCase();
+          final title = normalizeCanvasSearch(n.title ?? '');
+          final body = normalizeCanvasSearch(n.rawMarkdown);
           if (title.contains(q) || body.contains(q)) {
             results.add(
               NoteSearchHit(
                 note: n,
                 folderId: f.id,
                 folderName: folderById[f.id]?.name ?? '',
+              ),
+            );
+          }
+          for (final hit in ocrHits.where((h) => h.noteId == n.id)) {
+            results.add(
+              NoteSearchHit(
+                note: n,
+                folderId: f.id,
+                folderName: f.name,
+                ocr: hit,
               ),
             );
           }

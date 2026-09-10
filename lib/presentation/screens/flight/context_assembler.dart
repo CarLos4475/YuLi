@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/ai_providers.dart';
@@ -5,7 +7,6 @@ import '../../providers/database_providers.dart';
 import '../../providers/note_block_providers.dart';
 import '../../../data/services/context_cache.dart';
 import '../../../domain/models/canvas_context_source.dart';
-import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/services/ai_assistant.dart';
 import 'ai_chat_session.dart'
@@ -14,8 +15,7 @@ import 'ai_chat_session.dart'
 /// Shared context-assembly used by both the canvas chat (Flight) and the lab
 /// space chat (Lab). Keeps the "sources → compacted anchor" logic in one place.
 
-/// Flatten a block note's content to markdown text for AI context. Tasks and
-/// drawings are skipped.
+/// Flatten text, formulas and typed canvas boxes; ink is assembled separately.
 String extractNoteContext(List<NoteBlock> blocks) {
   final buf = StringBuffer();
   for (final b in blocks) {
@@ -28,9 +28,33 @@ String extractNoteContext(List<NoteBlock> blocks) {
       buf.writeln();
     } else if (b is MathBlock) {
       if (b.latex.trim().isNotEmpty) buf.writeln('\$\$${b.latex}\$\$\n');
+    } else if (b is DrawingBlock) {
+      final boxes = jsonDecode(b.textBlocksJson) as List;
+      for (final box in boxes) {
+        if (box is Map && box['md'] is String) buf.writeln(box['md']);
+      }
     }
   }
   return buf.toString().trim();
+}
+
+Future<String> extractNoteContextWithInk(
+  WidgetRef ref,
+  int noteId,
+  List<NoteBlock> blocks, {
+  int? blockId,
+}) async {
+  final text = extractNoteContext(
+    blockId == null ? blocks : blocks.where((b) => b.id == blockId).toList(),
+  );
+  final ink = await ref
+      .read(canvasOcrRepositoryProvider)
+      .contextForNote(noteId, blockId: blockId);
+  return [
+    text,
+    if (ink.isNotEmpty)
+      'Transcripción automática de escritura (puede contener errores):\n$ink',
+  ].where((s) => s.isNotEmpty).join('\n\n');
 }
 
 const kAggressiveCompactPrompt =
@@ -43,7 +67,7 @@ const kAggressiveCompactPrompt =
     'Mantén el idioma original. Responde SOLO con el contexto compactado.';
 
 /// Cap on how many notes a single linked folder contributes to the AI context:
-/// the most-recently-edited block notes win. Folders are secondary support, so
+/// the most-recently-edited notes win. Folders are secondary support, so
 /// an uncapped folder could flood the context and cost one compaction call per
 /// long note. Surfaced in the Fuentes sheet so the user knows the folder may not
 /// send everything. Explicitly linked notes are never capped (they win dedup).
@@ -71,12 +95,16 @@ Future<String> compactPieceWithPrompt(
   await limiter.record();
   final buf = StringBuffer();
   try {
-    final resolvedPrompt = prompt ??
+    final resolvedPrompt =
+        prompt ??
         (raw.length > kLongDocThreshold ? kSynthesizePrompt : kCompactPrompt);
     await for (final tok in ref
         .read(aiAssistantProvider)
         .streamReply(
-          [AiMessage(AiRole.system, resolvedPrompt), AiMessage(AiRole.user, raw)],
+          [
+            AiMessage(AiRole.system, resolvedPrompt),
+            AiMessage(AiRole.user, raw),
+          ],
           model: AiModel.flash,
           maxTokens: 4096,
           temperature: 0.2,
@@ -113,7 +141,7 @@ Future<_AssembledSource?> _buildExplicitNoteSource(
   final nid = s.noteId;
   if (nid == null) return null;
   final blocks = await ref.read(noteBlocksProvider(nid).future);
-  final raw = extractNoteContext(blocks);
+  final raw = await extractNoteContextWithInk(ref, nid, blocks);
   if (raw.trim().isEmpty) return null;
   return _AssembledSource(
     raw: raw,
@@ -130,20 +158,18 @@ Future<Map<int, _AssembledSource>> _buildFolderNoteSources(
   final fid = s.folderId;
   if (fid == null) return const {};
   final noteRepo = ref.read(noteRepositoryProvider);
-  // Block notes only (matching the explicit "+ NOTA" picker — canvas/notebook
-  // notes carry no useful text), most-recent first, capped at kMaxFolderNotes.
-  final notes = (await noteRepo.getByFolder(fid))
-      .where((n) => n.isActive && n.kind == NoteKind.block)
-      .toList()
-    ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  final notes =
+      (await noteRepo.getByFolder(fid)).where((n) => n.isActive).toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   final out = <int, _AssembledSource>{};
   for (final note in notes.take(kMaxFolderNotes)) {
     final blocks = await ref.read(noteBlocksProvider(note.id).future);
-    final raw = extractNoteContext(blocks);
+    final raw = await extractNoteContextWithInk(ref, note.id, blocks);
     if (raw.trim().isEmpty) continue;
     out[note.id] = _AssembledSource(
       raw: raw,
-      label: note.displayTitle.trim().isEmpty ? 'Nota' : note.displayTitle.trim(),
+      label:
+          note.displayTitle.trim().isEmpty ? 'Nota' : note.displayTitle.trim(),
       key: 'note:${note.id}:folder',
       aggressive: true,
     );
@@ -171,12 +197,14 @@ Future<String> assembleEnabledSources(
     } else if (s.isUrl) {
       final raw = (await readUrlContent(s.ref)) ?? '';
       if (raw.trim().isEmpty) continue;
-      urlPieces.add(_AssembledSource(
-        raw: raw,
-        label: (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim(),
-        key: 'url:${contextStableHash(s.ref)}',
-        aggressive: false,
-      ));
+      urlPieces.add(
+        _AssembledSource(
+          raw: raw,
+          label: (s.label?.trim().isEmpty ?? true) ? s.ref : s.label!.trim(),
+          key: 'url:${contextStableHash(s.ref)}',
+          aggressive: false,
+        ),
+      );
     } else {
       final expanded = await _buildFolderNoteSources(ref, s);
       expanded.forEach((noteId, source) {

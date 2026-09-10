@@ -3874,6 +3874,373 @@ class DrawingStrokesCompanion extends UpdateCompanion<DrawingStrokeRow> {
   }
 }
 
+class $CanvasOcrPagesTable extends CanvasOcrPages
+    with TableInfo<$CanvasOcrPagesTable, CanvasOcrPageRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CanvasOcrPagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _blockIdMeta = const VerificationMeta(
+    'blockId',
+  );
+  @override
+  late final GeneratedColumn<int> blockId = GeneratedColumn<int>(
+    'block_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES note_blocks (id)',
+    ),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _indexedRevisionMeta = const VerificationMeta(
+    'indexedRevision',
+  );
+  @override
+  late final GeneratedColumn<int> indexedRevision = GeneratedColumn<int>(
+    'indexed_revision',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _segmentsMeta = const VerificationMeta(
+    'segments',
+  );
+  @override
+  late final GeneratedColumn<String> segments = GeneratedColumn<String>(
+    'segments',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _searchTextMeta = const VerificationMeta(
+    'searchText',
+  );
+  @override
+  late final GeneratedColumn<String> searchText = GeneratedColumn<String>(
+    'search_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    blockId,
+    revision,
+    indexedRevision,
+    segments,
+    searchText,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'canvas_ocr_pages';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CanvasOcrPageRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('block_id')) {
+      context.handle(
+        _blockIdMeta,
+        blockId.isAcceptableOrUnknown(data['block_id']!, _blockIdMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('indexed_revision')) {
+      context.handle(
+        _indexedRevisionMeta,
+        indexedRevision.isAcceptableOrUnknown(
+          data['indexed_revision']!,
+          _indexedRevisionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('segments')) {
+      context.handle(
+        _segmentsMeta,
+        segments.isAcceptableOrUnknown(data['segments']!, _segmentsMeta),
+      );
+    }
+    if (data.containsKey('search_text')) {
+      context.handle(
+        _searchTextMeta,
+        searchText.isAcceptableOrUnknown(data['search_text']!, _searchTextMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {blockId};
+  @override
+  CanvasOcrPageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CanvasOcrPageRow(
+      blockId:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}block_id'],
+          )!,
+      revision:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.int,
+            data['${effectivePrefix}revision'],
+          )!,
+      indexedRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}indexed_revision'],
+      ),
+      segments:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}segments'],
+          )!,
+      searchText:
+          attachedDatabase.typeMapping.read(
+            DriftSqlType.string,
+            data['${effectivePrefix}search_text'],
+          )!,
+    );
+  }
+
+  @override
+  $CanvasOcrPagesTable createAlias(String alias) {
+    return $CanvasOcrPagesTable(attachedDatabase, alias);
+  }
+}
+
+class CanvasOcrPageRow extends DataClass
+    implements Insertable<CanvasOcrPageRow> {
+  final int blockId;
+  final int revision;
+  final int? indexedRevision;
+  final String segments;
+  final String searchText;
+  const CanvasOcrPageRow({
+    required this.blockId,
+    required this.revision,
+    this.indexedRevision,
+    required this.segments,
+    required this.searchText,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['block_id'] = Variable<int>(blockId);
+    map['revision'] = Variable<int>(revision);
+    if (!nullToAbsent || indexedRevision != null) {
+      map['indexed_revision'] = Variable<int>(indexedRevision);
+    }
+    map['segments'] = Variable<String>(segments);
+    map['search_text'] = Variable<String>(searchText);
+    return map;
+  }
+
+  CanvasOcrPagesCompanion toCompanion(bool nullToAbsent) {
+    return CanvasOcrPagesCompanion(
+      blockId: Value(blockId),
+      revision: Value(revision),
+      indexedRevision:
+          indexedRevision == null && nullToAbsent
+              ? const Value.absent()
+              : Value(indexedRevision),
+      segments: Value(segments),
+      searchText: Value(searchText),
+    );
+  }
+
+  factory CanvasOcrPageRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CanvasOcrPageRow(
+      blockId: serializer.fromJson<int>(json['blockId']),
+      revision: serializer.fromJson<int>(json['revision']),
+      indexedRevision: serializer.fromJson<int?>(json['indexedRevision']),
+      segments: serializer.fromJson<String>(json['segments']),
+      searchText: serializer.fromJson<String>(json['searchText']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'blockId': serializer.toJson<int>(blockId),
+      'revision': serializer.toJson<int>(revision),
+      'indexedRevision': serializer.toJson<int?>(indexedRevision),
+      'segments': serializer.toJson<String>(segments),
+      'searchText': serializer.toJson<String>(searchText),
+    };
+  }
+
+  CanvasOcrPageRow copyWith({
+    int? blockId,
+    int? revision,
+    Value<int?> indexedRevision = const Value.absent(),
+    String? segments,
+    String? searchText,
+  }) => CanvasOcrPageRow(
+    blockId: blockId ?? this.blockId,
+    revision: revision ?? this.revision,
+    indexedRevision:
+        indexedRevision.present ? indexedRevision.value : this.indexedRevision,
+    segments: segments ?? this.segments,
+    searchText: searchText ?? this.searchText,
+  );
+  CanvasOcrPageRow copyWithCompanion(CanvasOcrPagesCompanion data) {
+    return CanvasOcrPageRow(
+      blockId: data.blockId.present ? data.blockId.value : this.blockId,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      indexedRevision:
+          data.indexedRevision.present
+              ? data.indexedRevision.value
+              : this.indexedRevision,
+      segments: data.segments.present ? data.segments.value : this.segments,
+      searchText:
+          data.searchText.present ? data.searchText.value : this.searchText,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasOcrPageRow(')
+          ..write('blockId: $blockId, ')
+          ..write('revision: $revision, ')
+          ..write('indexedRevision: $indexedRevision, ')
+          ..write('segments: $segments, ')
+          ..write('searchText: $searchText')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(blockId, revision, indexedRevision, segments, searchText);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CanvasOcrPageRow &&
+          other.blockId == this.blockId &&
+          other.revision == this.revision &&
+          other.indexedRevision == this.indexedRevision &&
+          other.segments == this.segments &&
+          other.searchText == this.searchText);
+}
+
+class CanvasOcrPagesCompanion extends UpdateCompanion<CanvasOcrPageRow> {
+  final Value<int> blockId;
+  final Value<int> revision;
+  final Value<int?> indexedRevision;
+  final Value<String> segments;
+  final Value<String> searchText;
+  const CanvasOcrPagesCompanion({
+    this.blockId = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.indexedRevision = const Value.absent(),
+    this.segments = const Value.absent(),
+    this.searchText = const Value.absent(),
+  });
+  CanvasOcrPagesCompanion.insert({
+    this.blockId = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.indexedRevision = const Value.absent(),
+    this.segments = const Value.absent(),
+    this.searchText = const Value.absent(),
+  });
+  static Insertable<CanvasOcrPageRow> custom({
+    Expression<int>? blockId,
+    Expression<int>? revision,
+    Expression<int>? indexedRevision,
+    Expression<String>? segments,
+    Expression<String>? searchText,
+  }) {
+    return RawValuesInsertable({
+      if (blockId != null) 'block_id': blockId,
+      if (revision != null) 'revision': revision,
+      if (indexedRevision != null) 'indexed_revision': indexedRevision,
+      if (segments != null) 'segments': segments,
+      if (searchText != null) 'search_text': searchText,
+    });
+  }
+
+  CanvasOcrPagesCompanion copyWith({
+    Value<int>? blockId,
+    Value<int>? revision,
+    Value<int?>? indexedRevision,
+    Value<String>? segments,
+    Value<String>? searchText,
+  }) {
+    return CanvasOcrPagesCompanion(
+      blockId: blockId ?? this.blockId,
+      revision: revision ?? this.revision,
+      indexedRevision: indexedRevision ?? this.indexedRevision,
+      segments: segments ?? this.segments,
+      searchText: searchText ?? this.searchText,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (blockId.present) {
+      map['block_id'] = Variable<int>(blockId.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (indexedRevision.present) {
+      map['indexed_revision'] = Variable<int>(indexedRevision.value);
+    }
+    if (segments.present) {
+      map['segments'] = Variable<String>(segments.value);
+    }
+    if (searchText.present) {
+      map['search_text'] = Variable<String>(searchText.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CanvasOcrPagesCompanion(')
+          ..write('blockId: $blockId, ')
+          ..write('revision: $revision, ')
+          ..write('indexedRevision: $indexedRevision, ')
+          ..write('segments: $segments, ')
+          ..write('searchText: $searchText')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LabSpacesTable extends LabSpaces
     with TableInfo<$LabSpacesTable, LabSpaceRow> {
   @override
@@ -9947,6 +10314,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NoteTaskLinksTable noteTaskLinks = $NoteTaskLinksTable(this);
   late final $NoteBlocksTable noteBlocks = $NoteBlocksTable(this);
   late final $DrawingStrokesTable drawingStrokes = $DrawingStrokesTable(this);
+  late final $CanvasOcrPagesTable canvasOcrPages = $CanvasOcrPagesTable(this);
   late final $LabSpacesTable labSpaces = $LabSpacesTable(this);
   late final $KanbanColumnsTable kanbanColumns = $KanbanColumnsTable(this);
   late final $KanbanCardsTable kanbanCards = $KanbanCardsTable(this);
@@ -10000,6 +10368,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     noteTaskLinks,
     noteBlocks,
     drawingStrokes,
+    canvasOcrPages,
     labSpaces,
     kanbanColumns,
     kanbanCards,
@@ -13456,6 +13825,27 @@ final class $$NoteBlocksTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$CanvasOcrPagesTable, List<CanvasOcrPageRow>>
+  _canvasOcrPagesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.canvasOcrPages,
+    aliasName: $_aliasNameGenerator(
+      db.noteBlocks.id,
+      db.canvasOcrPages.blockId,
+    ),
+  );
+
+  $$CanvasOcrPagesTableProcessedTableManager get canvasOcrPagesRefs {
+    final manager = $$CanvasOcrPagesTableTableManager(
+      $_db,
+      $_db.canvasOcrPages,
+    ).filter((f) => f.blockId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_canvasOcrPagesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$NoteBlocksTableFilterComposer
@@ -13536,6 +13926,31 @@ class $$NoteBlocksTableFilterComposer
           }) => $$DrawingStrokesTableFilterComposer(
             $db: $db,
             $table: $db.drawingStrokes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> canvasOcrPagesRefs(
+    Expression<bool> Function($$CanvasOcrPagesTableFilterComposer f) f,
+  ) {
+    final $$CanvasOcrPagesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasOcrPages,
+      getReferencedColumn: (t) => t.blockId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasOcrPagesTableFilterComposer(
+            $db: $db,
+            $table: $db.canvasOcrPages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -13683,6 +14098,31 @@ class $$NoteBlocksTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> canvasOcrPagesRefs<T extends Object>(
+    Expression<T> Function($$CanvasOcrPagesTableAnnotationComposer a) f,
+  ) {
+    final $$CanvasOcrPagesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.canvasOcrPages,
+      getReferencedColumn: (t) => t.blockId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CanvasOcrPagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.canvasOcrPages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$NoteBlocksTableTableManager
@@ -13698,7 +14138,11 @@ class $$NoteBlocksTableTableManager
           $$NoteBlocksTableUpdateCompanionBuilder,
           (NoteBlockRow, $$NoteBlocksTableReferences),
           NoteBlockRow,
-          PrefetchHooks Function({bool noteId, bool drawingStrokesRefs})
+          PrefetchHooks Function({
+            bool noteId,
+            bool drawingStrokesRefs,
+            bool canvasOcrPagesRefs,
+          })
         > {
   $$NoteBlocksTableTableManager(_$AppDatabase db, $NoteBlocksTable table)
     : super(
@@ -13760,11 +14204,13 @@ class $$NoteBlocksTableTableManager
           prefetchHooksCallback: ({
             noteId = false,
             drawingStrokesRefs = false,
+            canvasOcrPagesRefs = false,
           }) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
                 if (drawingStrokesRefs) db.drawingStrokes,
+                if (canvasOcrPagesRefs) db.canvasOcrPages,
               ],
               addJoins: <
                 T extends TableManagerState<
@@ -13820,6 +14266,28 @@ class $$NoteBlocksTableTableManager
                           ),
                       typedResults: items,
                     ),
+                  if (canvasOcrPagesRefs)
+                    await $_getPrefetchedData<
+                      NoteBlockRow,
+                      $NoteBlocksTable,
+                      CanvasOcrPageRow
+                    >(
+                      currentTable: table,
+                      referencedTable: $$NoteBlocksTableReferences
+                          ._canvasOcrPagesRefsTable(db),
+                      managerFromTypedResult:
+                          (p0) =>
+                              $$NoteBlocksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).canvasOcrPagesRefs,
+                      referencedItemsForCurrentItem:
+                          (item, referencedItems) => referencedItems.where(
+                            (e) => e.blockId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
                 ];
               },
             );
@@ -13840,7 +14308,11 @@ typedef $$NoteBlocksTableProcessedTableManager =
       $$NoteBlocksTableUpdateCompanionBuilder,
       (NoteBlockRow, $$NoteBlocksTableReferences),
       NoteBlockRow,
-      PrefetchHooks Function({bool noteId, bool drawingStrokesRefs})
+      PrefetchHooks Function({
+        bool noteId,
+        bool drawingStrokesRefs,
+        bool canvasOcrPagesRefs,
+      })
     >;
 typedef $$DrawingStrokesTableCreateCompanionBuilder =
     DrawingStrokesCompanion Function({
@@ -14282,6 +14754,336 @@ typedef $$DrawingStrokesTableProcessedTableManager =
       $$DrawingStrokesTableUpdateCompanionBuilder,
       (DrawingStrokeRow, $$DrawingStrokesTableReferences),
       DrawingStrokeRow,
+      PrefetchHooks Function({bool blockId})
+    >;
+typedef $$CanvasOcrPagesTableCreateCompanionBuilder =
+    CanvasOcrPagesCompanion Function({
+      Value<int> blockId,
+      Value<int> revision,
+      Value<int?> indexedRevision,
+      Value<String> segments,
+      Value<String> searchText,
+    });
+typedef $$CanvasOcrPagesTableUpdateCompanionBuilder =
+    CanvasOcrPagesCompanion Function({
+      Value<int> blockId,
+      Value<int> revision,
+      Value<int?> indexedRevision,
+      Value<String> segments,
+      Value<String> searchText,
+    });
+
+final class $$CanvasOcrPagesTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $CanvasOcrPagesTable, CanvasOcrPageRow> {
+  $$CanvasOcrPagesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $NoteBlocksTable _blockIdTable(_$AppDatabase db) =>
+      db.noteBlocks.createAlias(
+        $_aliasNameGenerator(db.canvasOcrPages.blockId, db.noteBlocks.id),
+      );
+
+  $$NoteBlocksTableProcessedTableManager get blockId {
+    final $_column = $_itemColumn<int>('block_id')!;
+
+    final manager = $$NoteBlocksTableTableManager(
+      $_db,
+      $_db.noteBlocks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_blockIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CanvasOcrPagesTableFilterComposer
+    extends Composer<_$AppDatabase, $CanvasOcrPagesTable> {
+  $$CanvasOcrPagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get indexedRevision => $composableBuilder(
+    column: $table.indexedRevision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get segments => $composableBuilder(
+    column: $table.segments,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NoteBlocksTableFilterComposer get blockId {
+    final $$NoteBlocksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.blockId,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableFilterComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasOcrPagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CanvasOcrPagesTable> {
+  $$CanvasOcrPagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get indexedRevision => $composableBuilder(
+    column: $table.indexedRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get segments => $composableBuilder(
+    column: $table.segments,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NoteBlocksTableOrderingComposer get blockId {
+    final $$NoteBlocksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.blockId,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableOrderingComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasOcrPagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CanvasOcrPagesTable> {
+  $$CanvasOcrPagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<int> get indexedRevision => $composableBuilder(
+    column: $table.indexedRevision,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get segments =>
+      $composableBuilder(column: $table.segments, builder: (column) => column);
+
+  GeneratedColumn<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => column,
+  );
+
+  $$NoteBlocksTableAnnotationComposer get blockId {
+    final $$NoteBlocksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.blockId,
+      referencedTable: $db.noteBlocks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NoteBlocksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.noteBlocks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CanvasOcrPagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CanvasOcrPagesTable,
+          CanvasOcrPageRow,
+          $$CanvasOcrPagesTableFilterComposer,
+          $$CanvasOcrPagesTableOrderingComposer,
+          $$CanvasOcrPagesTableAnnotationComposer,
+          $$CanvasOcrPagesTableCreateCompanionBuilder,
+          $$CanvasOcrPagesTableUpdateCompanionBuilder,
+          (CanvasOcrPageRow, $$CanvasOcrPagesTableReferences),
+          CanvasOcrPageRow,
+          PrefetchHooks Function({bool blockId})
+        > {
+  $$CanvasOcrPagesTableTableManager(
+    _$AppDatabase db,
+    $CanvasOcrPagesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer:
+              () => $$CanvasOcrPagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer:
+              () =>
+                  $$CanvasOcrPagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer:
+              () => $$CanvasOcrPagesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> blockId = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<int?> indexedRevision = const Value.absent(),
+                Value<String> segments = const Value.absent(),
+                Value<String> searchText = const Value.absent(),
+              }) => CanvasOcrPagesCompanion(
+                blockId: blockId,
+                revision: revision,
+                indexedRevision: indexedRevision,
+                segments: segments,
+                searchText: searchText,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> blockId = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<int?> indexedRevision = const Value.absent(),
+                Value<String> segments = const Value.absent(),
+                Value<String> searchText = const Value.absent(),
+              }) => CanvasOcrPagesCompanion.insert(
+                blockId: blockId,
+                revision: revision,
+                indexedRevision: indexedRevision,
+                segments: segments,
+                searchText: searchText,
+              ),
+          withReferenceMapper:
+              (p0) =>
+                  p0
+                      .map(
+                        (e) => (
+                          e.readTable(table),
+                          $$CanvasOcrPagesTableReferences(db, table, e),
+                        ),
+                      )
+                      .toList(),
+          prefetchHooksCallback: ({blockId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                T extends TableManagerState<
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic,
+                  dynamic
+                >
+              >(state) {
+                if (blockId) {
+                  state =
+                      state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.blockId,
+                            referencedTable: $$CanvasOcrPagesTableReferences
+                                ._blockIdTable(db),
+                            referencedColumn:
+                                $$CanvasOcrPagesTableReferences
+                                    ._blockIdTable(db)
+                                    .id,
+                          )
+                          as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$CanvasOcrPagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CanvasOcrPagesTable,
+      CanvasOcrPageRow,
+      $$CanvasOcrPagesTableFilterComposer,
+      $$CanvasOcrPagesTableOrderingComposer,
+      $$CanvasOcrPagesTableAnnotationComposer,
+      $$CanvasOcrPagesTableCreateCompanionBuilder,
+      $$CanvasOcrPagesTableUpdateCompanionBuilder,
+      (CanvasOcrPageRow, $$CanvasOcrPagesTableReferences),
+      CanvasOcrPageRow,
       PrefetchHooks Function({bool blockId})
     >;
 typedef $$LabSpacesTableCreateCompanionBuilder =
@@ -19565,6 +20367,8 @@ class $AppDatabaseManager {
       $$NoteBlocksTableTableManager(_db, _db.noteBlocks);
   $$DrawingStrokesTableTableManager get drawingStrokes =>
       $$DrawingStrokesTableTableManager(_db, _db.drawingStrokes);
+  $$CanvasOcrPagesTableTableManager get canvasOcrPages =>
+      $$CanvasOcrPagesTableTableManager(_db, _db.canvasOcrPages);
   $$LabSpacesTableTableManager get labSpaces =>
       $$LabSpacesTableTableManager(_db, _db.labSpaces);
   $$KanbanColumnsTableTableManager get kanbanColumns =>

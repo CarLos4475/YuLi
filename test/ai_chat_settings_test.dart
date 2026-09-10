@@ -36,6 +36,51 @@ void main() {
     expect(decoded.useActionDrafts, isFalse);
   });
 
+  test(
+    'current canvas OCR changes without resetting history or persisting an anchor',
+    () async {
+      final session = AiChatSession(905, scope: 'canvas_12');
+      final assistant = _CapturingAssistant();
+      const limiter = AiUsageLimiter(dailyLimit: 50);
+      await session.send(
+        assistant,
+        limiter,
+        'Primera pregunta',
+        canvasContext: 'Tinta anterior',
+      );
+      await session.send(
+        assistant,
+        limiter,
+        'Segunda pregunta',
+        canvasContext: 'Tinta corregida',
+      );
+      expect(session.messages.where((m) => m.role == AiRole.user).length, 2);
+      expect(session.anchor, isNull);
+      expect(
+        assistant.messages.any(
+          (m) => m.role == AiRole.user && m.content.contains('Tinta corregida'),
+        ),
+        isTrue,
+      );
+      expect(
+        assistant.messages.any((m) => m.content.contains('Tinta anterior')),
+        isFalse,
+      );
+      session.setSettings(session.settings.copyWith(useNoteContext: false));
+      await session.send(
+        assistant,
+        limiter,
+        'Sin contexto',
+        canvasContext: 'No enviar',
+      );
+      expect(
+        assistant.messages.any((m) => m.content.contains('No enviar')),
+        isFalse,
+      );
+      session.dispose();
+    },
+  );
+
   test('response lengths use aligned budgets without flattening YuLi tone', () {
     expect(AiResponseLength.brief.maxTokens, 512);
     expect(AiResponseLength.normal.maxTokens, 1280);
@@ -161,26 +206,29 @@ void main() {
     },
   );
 
-  test('deep reasoning uses one high ceiling for every response length', () async {
-    for (final length in AiResponseLength.values) {
-      final assistant = _CapturingAssistant();
-      final session = AiChatSession(98 + length.index)..setSettings(
-        const AiChatSettings.savings().copyWith(
-          responseLength: length,
-          useDeepReasoning: true,
-        ),
-      );
+  test(
+    'deep reasoning uses one high ceiling for every response length',
+    () async {
+      for (final length in AiResponseLength.values) {
+        final assistant = _CapturingAssistant();
+        final session = AiChatSession(98 + length.index)..setSettings(
+          const AiChatSettings.savings().copyWith(
+            responseLength: length,
+            useDeepReasoning: true,
+          ),
+        );
 
-      await session.send(
-        assistant,
-        const AiUsageLimiter(dailyLimit: 50),
-        'Analiza el problema',
-      );
+        await session.send(
+          assistant,
+          const AiUsageLimiter(dailyLimit: 50),
+          'Analiza el problema',
+        );
 
-      expect(assistant.deepReasoning, isTrue);
-      expect(assistant.maxTokens, kDeepReasoningMaxOutputTokens);
-    }
-  });
+        expect(assistant.deepReasoning, isTrue);
+        expect(assistant.maxTokens, kDeepReasoningMaxOutputTokens);
+      }
+    },
+  );
 
   test(
     'enabled related context and detailed output reach the request',

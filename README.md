@@ -176,6 +176,15 @@ Multi-pagina A4 con scroll vertical, transiciones animadas y page drawer con min
 
 ### OCR (Google ML Kit Digital Ink)
 
+- **Escritura buscable en pizarra y cuaderno:** transcripción automática tras una pausa,
+  búsqueda en el encabezado con contador y navegación entre coincidencias sobre la hoja.
+- **Revisión ortográfica automática:** subrayados por palabra cuando su posición puede
+  asociarse a los trazos; tocar con el dedo muestra sugerencias sin modificar la escritura.
+  Requiere corrector/idioma disponibles; sus fallos se distinguen de «sin errores».
+- **Contexto de escritura en el chat:** se lee al enviar el mensaje y conserva el historial.
+- [Funcionamiento, límites y verificación en Android](docs/CANVAS_OCR.md).
+- Ajustes → Reconocimiento (OCR): reconocimiento automático y revisión ortográfica se pueden desactivar por separado, sin borrar el texto reconocido ni desactivar el OCR manual del lazo.
+
 Reconocimiento de escritura a mano on-device (descarga bajo demanda del modelo de idioma).
 
 - OCR de trazos seleccionados con lasso → texto editable.

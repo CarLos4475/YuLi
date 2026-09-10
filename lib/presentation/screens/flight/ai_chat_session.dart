@@ -795,6 +795,7 @@ class AiChatSession extends ChangeNotifier {
     List<String> widgetDocs = const [],
     List<String> knowledgeDocs = const [],
     List<String> memoryDocs = const [],
+    String? canvasContext,
     List<AiImageInput> images = const [],
     bool displayUserMessage = true,
   }) async {
@@ -842,6 +843,10 @@ class AiChatSession extends ChangeNotifier {
         AiMessage(AiRole.user, _anchorContent(anchor!)),
       if (settings.useRelatedSources && hasRelatedAnchor)
         AiMessage(AiRole.user, _anchorContent(relatedAnchor!, kind: 'related')),
+      if (settings.useNoteContext &&
+          canvasContext != null &&
+          canvasContext.isNotEmpty)
+        AiMessage(AiRole.user, _anchorContent(canvasContext, kind: 'canvas')),
       // Keep this canonical policy inside the stable prefix. Per-turn retrieval
       // docs and the growing transcript follow it, so they cannot spoil its hit.
       if (scope == 'note')

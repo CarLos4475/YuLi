@@ -72,6 +72,8 @@ import 'canvas_export_sheet.dart';
 import '../../utils/canvas_block_raster.dart';
 import '../../utils/canvas_export.dart';
 import 'ocr_flow.dart';
+import 'canvas_ocr_panel.dart';
+import '../../providers/canvas_ocr_provider.dart';
 import 'canvas_image_cache.dart';
 import 'canvas_task_block.dart';
 import 'canvas_text_block.dart';
@@ -158,12 +160,14 @@ class WhiteboardEditorScreen extends ConsumerStatefulWidget {
   final Note note;
   final Folder folder;
   final int? initialCanvasBlockId;
+  final Rect? initialOcrBounds;
 
   const WhiteboardEditorScreen({
     super.key,
     required this.note,
     required this.folder,
     this.initialCanvasBlockId,
+    this.initialOcrBounds,
   });
 
   @override
@@ -603,6 +607,10 @@ class _WhiteboardEditorScreenState
           note: widget.note,
           folder: widget.folder,
           canvasBlockId: selected.id,
+          initialOcrBounds:
+              selected.id == widget.initialCanvasBlockId
+                  ? widget.initialOcrBounds
+                  : null,
           canvasName: selected.name,
           canvasOrdinal: safeIndex + 1,
           canvasCount: _canvases.length,
@@ -1041,6 +1049,7 @@ class _WhiteboardPreviewBackgroundPainter extends CustomPainter {
 }
 
 class _WhiteboardCanvasEditor extends ConsumerStatefulWidget {
+  final Rect? initialOcrBounds;
   final Note note;
   final Folder folder;
   final int canvasBlockId;
@@ -1055,6 +1064,7 @@ class _WhiteboardCanvasEditor extends ConsumerStatefulWidget {
 
   const _WhiteboardCanvasEditor({
     super.key,
+    this.initialOcrBounds,
     required this.note,
     required this.folder,
     required this.canvasBlockId,
@@ -1975,6 +1985,7 @@ class _WhiteboardCanvasEditorState
   @override
   void dispose() {
     SchedulerBinding.instance.removeTimingsCallback(_onFrameTimings);
+    ref.read(canvasOcrCoordinatorProvider).releasePointers();
     _overviewTimer?.cancel();
     // Persist the overview so the next open blits it instead of re-baking every
     // stroke; free it only after the encode finishes (toByteData needs it alive).
@@ -3360,6 +3371,7 @@ class _WhiteboardCanvasEditorState
   }
 
   void _onDown(PointerDownEvent e) {
+    ref.read(canvasOcrCoordinatorProvider).pointerDown(e.pointer);
     if (_exportMarquee) {
       _marqueePointers.add(e.pointer);
       if (_marqueePointers.length >= 2) {
@@ -3564,6 +3576,19 @@ class _WhiteboardCanvasEditorState
   /// InteractiveViewer pan in the gesture arena.
   void _onLassoTap(TapUpDetails d) {
     if (d.kind != PointerDeviceKind.touch) return;
+    if (_palmRejection &&
+        _tool != DrawTool.text &&
+        _tool != DrawTool.task &&
+        _tool != DrawTool.eraser &&
+        _lassoCtrl.phase == LassoPhase.idle &&
+        showCanvasSpellingAt(
+          ref,
+          widget.canvasBlockId,
+          _screenToWorld(d.localPosition),
+          d.kind,
+        )) {
+      return;
+    }
     if (_tool == DrawTool.text) {
       final p = _screenToWorld(d.localPosition);
       _insertTextBlockAt(p);
@@ -3726,6 +3751,7 @@ class _WhiteboardCanvasEditorState
   }
 
   void _onUp(PointerUpEvent e) {
+    ref.read(canvasOcrCoordinatorProvider).pointerUp(e.pointer);
     if (_eyedropperMode) {
       _activePointers.remove(e.pointer);
       setState(() {});
@@ -3839,6 +3865,7 @@ class _WhiteboardCanvasEditorState
   }
 
   void _onCancel(PointerCancelEvent e) {
+    ref.read(canvasOcrCoordinatorProvider).pointerUp(e.pointer);
     if (_eyedropperMode) {
       _activePointers.remove(e.pointer);
       setState(() {});
@@ -6528,6 +6555,12 @@ class _WhiteboardCanvasEditorState
   void _maybeInitView() {
     if (_viewInitialized || _blockId == null || _viewport == Size.zero) return;
     _viewInitialized = true;
+    if (widget.initialOcrBounds != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _locateOcr(widget.canvasBlockId, widget.initialOcrBounds!);
+      });
+      return;
+    }
     final cam = _savedCamera;
     if (cam != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -6555,14 +6588,19 @@ class _WhiteboardCanvasEditorState
                 _lassoCtrl.boundingBox != null)
             ? _lassoCtrl.boundingBox!
             : _contentBounds();
-    if (box == null || box.width < 1 || box.height < 1) return;
+    if (box == null) return;
+    _locateOcr(widget.canvasBlockId, box);
+  }
+
+  void _locateOcr(int blockId, Rect box, {bool preserveScale = false}) {
+    if (box.width < 1 || box.height < 1) return;
     final vw = _viewport.width, vh = _viewport.height;
     if (vw < 1 || vh < 1) return;
     const pad = 60.0;
     final sx = (vw - pad) / box.width;
     final sy = (vh - pad) / box.height;
     final scale = sx < sy ? sx : sy;
-    final s = scale.clamp(whiteboardMinScale, 4.0);
+    final s = preserveScale ? _viewScale : scale.clamp(whiteboardMinScale, 4.0);
     setState(() {
       _viewCtrl.value =
           Matrix4.translationValues(vw / 2, vh / 2, 0)
@@ -7253,17 +7291,27 @@ class _WhiteboardCanvasEditorState
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _CollapsedWhiteboardHeader(
-                      folder: widget.folder,
+                    CanvasOcrHeader(
+                      blockIds: [widget.canvasBlockId],
                       accent: _accent,
-                      noteTitle: widget.note.title ?? '',
-                      canvasOrdinal: widget.canvasOrdinal,
-                      canvasCount: widget.canvasCount,
-                      onCanvases: widget.onOpenCanvases,
-                      onReset: _resetView,
-                      onZoomToFit: _zoomToFit,
-                      onExport: _startExport,
-                      onLink: () => _linkToLab(spaces),
+                      onLocate:
+                          (id, box) => _locateOcr(id, box, preserveScale: true),
+                      child: _CollapsedWhiteboardHeader(
+                        folder: widget.folder,
+                        accent: _accent,
+                        noteTitle: widget.note.title ?? '',
+                        canvasOrdinal: widget.canvasOrdinal,
+                        canvasCount: widget.canvasCount,
+                        onCanvases: widget.onOpenCanvases,
+                        ocrAction: CanvasOcrButton(
+                          blockIds: [widget.canvasBlockId],
+                          accent: _accent,
+                        ),
+                        onReset: _resetView,
+                        onZoomToFit: _zoomToFit,
+                        onExport: _startExport,
+                        onLink: () => _linkToLab(spaces),
+                      ),
                     ),
                     FlightWorkspaceTabsBar(
                       current: widget.workspaceTarget,
@@ -7538,6 +7586,13 @@ class _WhiteboardCanvasEditorState
                                         ),
                                   ),
                                 ),
+                              Positioned.fill(
+                                child: CanvasOcrMarks(
+                                  blockId: widget.canvasBlockId,
+                                  transform: _viewCtrl,
+                                  accent: _accent,
+                                ),
+                              ),
                               Positioned.fill(
                                 child: FloatingPinsLayer(
                                   controller: _pinController,
@@ -7988,12 +8043,28 @@ class _WhiteboardCanvasEditorState
       );
       if (opts.format == ExportFormat.png) {
         final png = await imageToPngBytes(rendered);
-        await shareExportBytes(png, '$name.png', text: 'Pizarra · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
+        await shareExportBytes(
+          png,
+          '$name.png',
+          text: 'Pizarra · YuLi',
+          uploadToDrive:
+              opts.toDrive
+                  ? (file) => uploadStudyExport(ref, context, file)
+                  : null,
+        );
       } else {
         final pdf = await buildCanvasPdf([
           ExportPage(image: rendered, worldSize: region.size),
         ]);
-        await shareExportBytes(pdf, '$name.pdf', text: 'Pizarra · YuLi', uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null);
+        await shareExportBytes(
+          pdf,
+          '$name.pdf',
+          text: 'Pizarra · YuLi',
+          uploadToDrive:
+              opts.toDrive
+                  ? (file) => uploadStudyExport(ref, context, file)
+                  : null,
+        );
       }
     } catch (_) {
       if (mounted) _showExportEmpty(message: 'No se pudo exportar');
@@ -8488,6 +8559,7 @@ class _WhiteboardCanvasSwitchButton extends StatelessWidget {
 }
 
 class _CollapsedWhiteboardHeader extends StatelessWidget {
+  final Widget ocrAction;
   final Folder folder;
   final Color accent;
   final String noteTitle;
@@ -8500,6 +8572,7 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
   final VoidCallback onLink;
 
   const _CollapsedWhiteboardHeader({
+    required this.ocrAction,
     required this.folder,
     required this.accent,
     required this.noteTitle,
@@ -8565,6 +8638,8 @@ class _CollapsedWhiteboardHeader extends StatelessWidget {
             compact: true,
             onTap: onCanvases,
           ),
+          const SizedBox(width: 4),
+          ocrAction,
           const SizedBox(width: 6),
           GestureDetector(
             behavior: HitTestBehavior.opaque,

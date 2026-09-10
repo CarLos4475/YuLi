@@ -3,11 +3,40 @@ import 'package:drift/drift.dart';
 import '../../../domain/models/drawing_stroke_record.dart';
 import '../../../domain/repositories/drawing_stroke_repository.dart';
 import '../../local/database.dart';
+import 'local_canvas_ocr_repository.dart';
 
 class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
   final AppDatabase _db;
 
-  LocalDrawingStrokeRepository(this._db);
+  final void Function(Iterable<int>)? onChanged;
+
+  LocalDrawingStrokeRepository(this._db, {this.onChanged});
+
+  Future<T> _change<T>(Iterable<int> ids, Future<T> Function() write) async {
+    final result = await _db.transaction(() async {
+      final result = await write();
+      await LocalCanvasOcrRepository.invalidate(_db, ids);
+      return result;
+    });
+    try {
+      onChanged?.call(ids);
+    } catch (_) {
+      // A derived-index observer must never turn a committed ink save into a retry.
+    }
+    return result;
+  }
+
+  Future<T> _changeStrokes<T>(List<int> ids, Future<T> Function() write) async {
+    final blocks =
+        await (_db.selectOnly(_db.drawingStrokes, distinct: true)
+              ..addColumns([_db.drawingStrokes.blockId])
+              ..where(_db.drawingStrokes.id.isIn(ids)))
+            .get();
+    return _change(
+      blocks.map((r) => r.read(_db.drawingStrokes.blockId)!),
+      write,
+    );
+  }
 
   @override
   Future<List<DrawingStrokeRecord>> getByBlock(int blockId) async {
@@ -77,8 +106,9 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
   }
 
   @override
-  Future<int> insert(int blockId, DrawingStrokeWrite stroke) =>
-      _db.drawingStrokesDao.insertStroke(_toCompanion(blockId, stroke));
+  Future<int> insert(int blockId, DrawingStrokeWrite stroke) => _change([
+    blockId,
+  ], () => _db.drawingStrokesDao.insertStroke(_toCompanion(blockId, stroke)));
 
   @override
   Future<List<int>> insertMany(
@@ -90,23 +120,33 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     final rows = [
       for (final stroke in strokes) _toCompanion(blockId, stroke, now: now),
     ];
-    final inserted = await _db.drawingStrokesDao.insertStrokes(blockId, rows);
+    final inserted = await _change([
+      blockId,
+    ], () => _db.drawingStrokesDao.insertStrokes(blockId, rows));
     return inserted.map((r) => r.id).toList();
   }
 
   @override
-  Future<void> update(int strokeId, DrawingStrokeWrite stroke) => _db
-      .drawingStrokesDao
-      .updateStroke(strokeId, _updateCompanion(stroke, DateTime.now()));
+  Future<void> update(int strokeId, DrawingStrokeWrite stroke) =>
+      _changeStrokes(
+        [strokeId],
+        () => _db.drawingStrokesDao.updateStroke(
+          strokeId,
+          _updateCompanion(stroke, DateTime.now()),
+        ),
+      );
 
   @override
   Future<void> updateMany(Map<int, DrawingStrokeWrite> strokesById) {
     if (strokesById.isEmpty) return Future.value();
     final now = DateTime.now();
-    return _db.drawingStrokesDao.updateStrokes({
-      for (final entry in strokesById.entries)
-        entry.key: _updateCompanion(entry.value, now),
-    });
+    return _changeStrokes(
+      strokesById.keys.toList(),
+      () => _db.drawingStrokesDao.updateStrokes({
+        for (final entry in strokesById.entries)
+          entry.key: _updateCompanion(entry.value, now),
+      }),
+    );
   }
 
   @override
@@ -114,9 +154,12 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
     int blockId,
     List<DrawingStrokeWrite> strokes,
   ) async {
-    await _db.drawingStrokesDao.replaceBlock(
-      blockId,
-      strokes.map((s) => _toCompanion(blockId, s)).toList(),
+    await _change(
+      [blockId],
+      () => _db.drawingStrokesDao.replaceBlock(
+        blockId,
+        strokes.map((s) => _toCompanion(blockId, s)).toList(),
+      ),
     );
     final rows = await _db.drawingStrokesDao.getByBlock(blockId);
     return rows.map((r) => r.read<int>('id')).toList();
@@ -124,11 +167,13 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
 
   @override
   Future<void> deleteByBlock(int blockId) =>
-      _db.drawingStrokesDao.deleteByBlock(blockId);
+      _change([blockId], () => _db.drawingStrokesDao.deleteByBlock(blockId));
 
   @override
   Future<void> deleteByIds(List<int> ids) =>
-      _db.drawingStrokesDao.deleteByIds(ids);
+      ids.isEmpty
+          ? Future.value()
+          : _changeStrokes(ids, () => _db.drawingStrokesDao.deleteByIds(ids));
 
   DrawingStrokesCompanion _updateCompanion(
     DrawingStrokeWrite stroke,

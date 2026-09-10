@@ -11,6 +11,9 @@ import '../../data/repositories/local/local_folder_repository.dart';
 import '../../data/repositories/local/local_note_repository.dart';
 import '../../data/repositories/local/local_note_block_repository.dart';
 import '../../data/repositories/local/local_drawing_stroke_repository.dart';
+import '../../data/repositories/local/local_canvas_ocr_repository.dart';
+import '../../domain/repositories/canvas_ocr_repository.dart';
+import 'canvas_ocr_provider.dart';
 import '../../data/repositories/local/local_lab_space_repository.dart';
 import '../../data/repositories/local/local_kanban_repository.dart';
 import '../../data/repositories/local/local_notification_repository.dart';
@@ -54,7 +57,11 @@ final backupManagerProvider = FutureProvider<BackupManager>((ref) async {
   final db = ref.watch(databaseProvider);
   final documents = await getApplicationDocumentsDirectory();
   final prefs = await SharedPreferences.getInstance();
-  final manager = BackupManager(LocalBackupService(db, documents, prefs), GoogleBackupAuth(), http.Client());
+  final manager = BackupManager(
+    LocalBackupService(db, documents, prefs),
+    GoogleBackupAuth(),
+    http.Client(),
+  );
   ref.onDispose(manager.dispose);
   return manager;
 });
@@ -80,11 +87,29 @@ final noteBlockRepositoryProvider = Provider<NoteBlockRepository>((ref) {
   return LocalNoteBlockRepository(ref.watch(databaseProvider));
 });
 
+// The reader has no observer, avoiding a Riverpod cycle back to the writer.
+final canvasOcrStrokeReaderProvider = Provider<DrawingStrokeRepository>(
+  (ref) => LocalDrawingStrokeRepository(ref.watch(databaseProvider)),
+);
+
 final drawingStrokeRepositoryProvider = Provider<DrawingStrokeRepository>((
   ref,
 ) {
-  return LocalDrawingStrokeRepository(ref.watch(databaseProvider));
+  return LocalDrawingStrokeRepository(
+    ref.watch(databaseProvider),
+    onChanged: (ids) {
+      for (final id in ids) {
+        ref.read(canvasOcrCoordinatorProvider).schedule(id);
+        ref.read(canvasOcrBlockVersionProvider(id).notifier).state++;
+      }
+      ref.read(canvasOcrVersionProvider.notifier).state++;
+    },
+  );
 });
+
+final canvasOcrRepositoryProvider = Provider<CanvasOcrRepository>(
+  (ref) => LocalCanvasOcrRepository(ref.watch(databaseProvider)),
+);
 
 final labSpaceRepositoryProvider = Provider<LabSpaceRepository>((ref) {
   return LocalLabSpaceRepository(ref.watch(databaseProvider));

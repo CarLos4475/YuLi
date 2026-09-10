@@ -12,6 +12,7 @@ import 'tables/note_versions_table.dart';
 import 'tables/note_task_links_table.dart';
 import 'tables/note_blocks_table.dart';
 import 'tables/drawing_strokes_table.dart';
+import 'tables/canvas_ocr_pages_table.dart';
 import 'tables/lab_spaces_table.dart';
 import 'tables/kanban_columns_table.dart';
 import 'tables/kanban_cards_table.dart';
@@ -48,6 +49,7 @@ part 'database.g.dart';
     NoteTaskLinks,
     NoteBlocks,
     DrawingStrokes,
+    CanvasOcrPages,
     LabSpaces,
     KanbanColumns,
     KanbanCards,
@@ -80,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -88,6 +90,9 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
     },
     onUpgrade: (Migrator m, int from, int to) async {
+      if (from < 28) {
+        await m.createTable(canvasOcrPages);
+      }
       if (from == 1) {
         await m.addColumn(tasks, tasks.dueDate);
       }
@@ -574,6 +579,13 @@ class AppDatabase extends _$AppDatabase {
   // the future "enable FK + onDelete" alternative.
 
   Future<void> _deleteNoteChildren(int noteId) async {
+    await customUpdate(
+      'DELETE FROM canvas_ocr_pages WHERE block_id IN '
+      '(SELECT id FROM note_blocks WHERE note_id = ?)',
+      variables: [Variable.withInt(noteId)],
+      updates: {canvasOcrPages},
+      updateKind: UpdateKind.delete,
+    );
     await customUpdate(
       "DELETE FROM drawing_strokes WHERE block_id IN "
       "(SELECT id FROM note_blocks WHERE note_id = ?)",

@@ -5,6 +5,7 @@ import '../../theme/app_tokens.dart';
 import '../../theme/lab_icons.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/ink_recognizer_provider.dart';
+import '../../providers/canvas_ocr_settings_provider.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/image_storage_providers.dart';
 import '../../providers/database_providers.dart';
@@ -148,7 +149,13 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: _OcrModelBlock(),
+              child: Column(
+                children: [
+                  CanvasOcrSettingsBlock(),
+                  SizedBox(height: 12),
+                  _OcrModelBlock(),
+                ],
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -188,7 +195,13 @@ class SettingsScreen extends ConsumerWidget {
               child: PinPrimaryButton(
                 label: 'Respaldos y Google Drive',
                 accent: accentJournal,
-                onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const BackupScreen())),
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const BackupScreen(),
+                      ),
+                    ),
               ),
             ),
 
@@ -1236,11 +1249,13 @@ class _SettingsToggleRow extends StatelessWidget {
   final String label;
   final bool value;
   final VoidCallback onTap;
+  final Color accent;
 
   const _SettingsToggleRow({
     required this.label,
     required this.value,
     required this.onTap,
+    this.accent = accentFight,
   });
 
   @override
@@ -1252,25 +1267,27 @@ class _SettingsToggleRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: value ? accentFight.withAlpha(35) : paperColor(context),
+          color: value ? accent.withAlpha(35) : paperColor(context),
           border: Border.all(color: ink, width: borderWidth),
         ),
         child: Row(
           children: [
-            Text(
-              label,
-              style: labelBold.copyWith(
-                color: ink,
-                fontSize: 11,
-                letterSpacing: 1.2,
+            Expanded(
+              child: Text(
+                label,
+                style: labelBold.copyWith(
+                  color: ink,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 12),
             Container(
               width: 34,
               height: 20,
               decoration: BoxDecoration(
-                color: value ? accentFight : paperColor(context),
+                color: value ? accent : paperColor(context),
                 border: Border.all(color: ink, width: borderWidth),
               ),
               alignment: value ? Alignment.centerRight : Alignment.centerLeft,
@@ -1278,6 +1295,114 @@ class _SettingsToggleRow extends StatelessWidget {
               child: Container(width: 10, height: 10, color: ink),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class CanvasOcrSettingsBlock extends ConsumerStatefulWidget {
+  const CanvasOcrSettingsBlock({super.key});
+
+  @override
+  ConsumerState<CanvasOcrSettingsBlock> createState() =>
+      _CanvasOcrSettingsBlockState();
+}
+
+class _CanvasOcrSettingsBlockState
+    extends ConsumerState<CanvasOcrSettingsBlock> {
+  bool _busy = false;
+
+  Future<void> _update({bool? automatic, bool? spelling}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(canvasOcrSettingsProvider.notifier)
+          .setOptions(automatic: automatic, spelling: spelling);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo guardar el ajuste. Inténtalo de nuevo.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ref
+        .watch(canvasOcrSettingsProvider)
+        .when(
+          loading: () => Text('Cargando ajustes…', style: labelBold),
+          error:
+              (_, _) => TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: accentFlight,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                  textStyle: labelBold,
+                ),
+                onPressed: () => ref.invalidate(canvasOcrSettingsProvider),
+                child: const Text(
+                  'No se pudieron cargar los ajustes. Reintentar',
+                ),
+              ),
+          data:
+              (settings) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _toggle(
+                    'Reconocimiento automático',
+                    settings.automatic,
+                    () => _update(automatic: !settings.automatic),
+                  ),
+                  const SizedBox(height: 8),
+                  _toggle(
+                    'Revisión ortográfica',
+                    settings.spelling,
+                    () => _update(spelling: !settings.spelling),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Reconoce la escritura al dejar de dibujar. La revisión muestra sugerencias sin modificar tus trazos. Al desactivar, se conserva el texto reconocido y el OCR del lazo sigue disponible.',
+                    style: labelBold.copyWith(
+                      color: inkColor(context),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+        );
+  }
+
+  Widget _toggle(String label, bool value, VoidCallback onTap) {
+    return Semantics(
+      label: label,
+      toggled: value,
+      enabled: !_busy,
+      child: FocusableActionDetector(
+        enabled: !_busy,
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              onTap();
+              return null;
+            },
+          ),
+        },
+        child: _SettingsToggleRow(
+          label: label,
+          value: value,
+          accent: accentFlight,
+          onTap: () {
+            if (!_busy) onTap();
+          },
         ),
       ),
     );
