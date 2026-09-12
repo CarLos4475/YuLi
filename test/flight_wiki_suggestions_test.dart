@@ -4,11 +4,45 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/domain/models/note.dart';
 import 'package:yuli/presentation/providers/flight_workspace_providers.dart';
 import 'package:yuli/presentation/screens/flight/canvas_text_block.dart';
+import 'package:yuli/presentation/screens/flight/flight_wiki_links.dart';
 import 'package:yuli/presentation/screens/flight/flight_wiki_suggestions.dart';
 import 'package:yuli/presentation/screens/flight/note_cell_model.dart';
 import 'package:yuli/presentation/screens/flight/note_block_widgets.dart';
 
 void main() {
+  test(
+    'las pizarras usan una referencia breve y se desambiguan al repetir',
+    () {
+      const first = FlightWorkspaceTarget(
+        noteId: 2,
+        folderId: 1,
+        canvasBlockId: 21,
+        kind: NoteKind.whiteboard,
+        label: 'Matemáticas · Ecuaciones',
+        folderLabel: 'Cálculo',
+      );
+      const second = FlightWorkspaceTarget(
+        noteId: 3,
+        folderId: 1,
+        canvasBlockId: 22,
+        kind: NoteKind.whiteboard,
+        label: 'Física · Ecuaciones',
+        folderLabel: 'Cálculo',
+      );
+
+      expect(flightWikiTargetLabel(first), 'Ecuaciones');
+      expect(
+        displayFlightWikiLinkLabel('Matemáticas#Ecuaciones'),
+        'Ecuaciones',
+      );
+      expect(flightWikiTargetSubtitle(first), 'PIZARRA · Matemáticas');
+      expect(
+        flightWikiTargetReferenceLabel(first, const [first, second]),
+        'Ecuaciones · Matemáticas',
+      );
+    },
+  );
+
   testWidgets('moving canvas text reuses Markdown without searches or saves', (
     tester,
   ) async {
@@ -143,7 +177,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(block.markdown, '[[Derivadas]]');
-      expect(opened, isTrue);
+      expect(opened, isFalse);
       expect(tester.takeException(), isNull);
     },
   );

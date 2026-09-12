@@ -4,12 +4,13 @@ import '../../../domain/models/note.dart';
 import '../../providers/flight_workspace_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import 'flight_wiki_links.dart';
 
 class FlightWikiLinkSuggestions extends StatelessWidget {
   final String query;
   final Future<List<FlightWorkspaceTarget>> matches;
   final Color accent;
-  final ValueChanged<FlightWorkspaceTarget> onSelect;
+  final void Function(FlightWorkspaceTarget target, String label) onSelect;
   final ValueChanged<NoteKind> onCreate;
 
   const FlightWikiLinkSuggestions({
@@ -45,10 +46,14 @@ class FlightWikiLinkSuggestions extends StatelessWidget {
                   for (final target in targets)
                     _FlightWikiSuggestionRow(
                       icon: flightWikiKindIcon(target.kind),
-                      title: target.label,
-                      subtitle: target.folderLabel,
+                      title: flightWikiTargetReferenceLabel(target, targets),
+                      subtitle: flightWikiTargetSubtitle(target),
                       accent: target.folderColor ?? accent,
-                      onTap: () => onSelect(target),
+                      onTap:
+                          () => onSelect(
+                            target,
+                            flightWikiTargetReferenceLabel(target, targets),
+                          ),
                     ),
                   if (query.trim().isNotEmpty) ...[
                     _FlightWikiSuggestionRow(

@@ -44,8 +44,7 @@ String flightWikiLinkLabel(FlightWorkspaceTarget target) {
   if (target.canvasBlockId != null) {
     final separator = label.lastIndexOf(' · ');
     if (separator >= 0) {
-      label =
-          '${label.substring(0, separator)}#${label.substring(separator + 3)}';
+      label = label.substring(separator + 3);
     }
   }
   final clean =

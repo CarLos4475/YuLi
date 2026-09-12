@@ -32,6 +32,7 @@ import '../../../data/services/ai_chat_image_storage.dart';
 import 'ai_chat_sheet.dart';
 import 'drawing_stroke_persistence.dart';
 import 'drawing_cell.dart';
+import 'flight_wiki_links.dart';
 import 'note_block_actions.dart';
 import 'note_cell_model.dart';
 import 'ocr_flow.dart';
@@ -4116,23 +4117,24 @@ class _WikiLinkNode extends SpanNode {
 
   @override
   InlineSpan build() {
+    final displayLabel = displayFlightWikiLinkLabel(label);
     final style = (parentStyle ?? const TextStyle()).copyWith(
       color: accent,
       fontWeight: FontWeight.w700,
       decoration: TextDecoration.underline,
       decorationColor: accent.withValues(alpha: 0.55),
     );
-    if (onTap == null) return TextSpan(text: label, style: style);
+    if (onTap == null) return TextSpan(text: displayLabel, style: style);
     return WidgetSpan(
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
       child: Semantics(
         button: true,
-        label: 'Abrir $label',
+        label: 'Abrir $displayLabel',
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onDoubleTap: () => onTap!(label),
-          child: Text(label, style: style),
+          child: Text(displayLabel, style: style),
         ),
       ),
     );

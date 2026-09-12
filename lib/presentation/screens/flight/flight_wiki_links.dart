@@ -85,17 +85,61 @@ Future<List<FlightWorkspaceTarget>> findFlightWikiTargets(
   return matches.take(limit).toList();
 }
 
-String flightWikiTargetLabel(FlightWorkspaceTarget target) {
+String flightWikiTargetLabel(FlightWorkspaceTarget target) =>
+    flightWikiTargetTitle(target);
+
+String displayFlightWikiLinkLabel(String label) {
+  final separator = label.lastIndexOf('#');
+  if (separator <= 0 || separator >= label.length - 1) return label;
+  return label.substring(separator + 1).trim();
+}
+
+String flightWikiTargetTitle(FlightWorkspaceTarget target) {
   if (target.canvasBlockId == null) return target.label;
   final separator = target.label.lastIndexOf(' · ');
   if (separator < 0) return target.label;
-  return '${target.label.substring(0, separator)}#${target.label.substring(separator + 3)}';
+  return target.label.substring(separator + 3);
+}
+
+String flightWikiTargetSubtitle(FlightWorkspaceTarget target) {
+  if (target.canvasBlockId == null) return target.folderLabel;
+  final separator = target.label.lastIndexOf(' · ');
+  final owner =
+      separator < 0 ? target.folderLabel : target.label.substring(0, separator);
+  return 'PIZARRA · $owner';
+}
+
+String flightWikiTargetDisambiguatedLabel(FlightWorkspaceTarget target) {
+  if (target.canvasBlockId == null) {
+    return '${target.label} · ${target.folderLabel}';
+  }
+  final separator = target.label.lastIndexOf(' · ');
+  if (separator < 0) return target.label;
+  return '${target.label.substring(separator + 3)} · ${target.label.substring(0, separator)}';
+}
+
+String flightWikiTargetReferenceLabel(
+  FlightWorkspaceTarget target,
+  Iterable<FlightWorkspaceTarget> candidates,
+) {
+  final title = flightWikiTargetLabel(target);
+  final normalized = normalizeFlightWikiLabel(title);
+  final duplicate = candidates.any(
+    (candidate) =>
+        candidate.key != target.key &&
+        normalizeFlightWikiLabel(flightWikiTargetLabel(candidate)) ==
+            normalized,
+  );
+  return duplicate ? flightWikiTargetDisambiguatedLabel(target) : title;
 }
 
 bool _matchesWikiQuery(FlightWorkspaceTarget target, String query) =>
     query.isEmpty ||
     normalizeFlightWikiLabel(target.label).contains(query) ||
-    normalizeFlightWikiLabel(flightWikiTargetLabel(target)).contains(query);
+    normalizeFlightWikiLabel(flightWikiTargetLabel(target)).contains(query) ||
+    normalizeFlightWikiLabel(
+      flightWikiTargetDisambiguatedLabel(target),
+    ).contains(query);
 
 Future<FlightWorkspaceTarget?> resolveFlightWikiTarget(
   WidgetRef ref, {
@@ -119,7 +163,9 @@ Future<FlightWorkspaceTarget?> resolveFlightWikiTarget(
   final exact = matches.where(
     (target) =>
         normalizeFlightWikiLabel(target.label) == normalized ||
-        normalizeFlightWikiLabel(flightWikiTargetLabel(target)) == normalized,
+        normalizeFlightWikiLabel(flightWikiTargetLabel(target)) == normalized ||
+        normalizeFlightWikiLabel(flightWikiTargetDisambiguatedLabel(target)) ==
+            normalized,
   );
   FlightWorkspaceTarget? target;
   if (exact.isNotEmpty) {

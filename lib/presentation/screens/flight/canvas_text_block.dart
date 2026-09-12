@@ -228,17 +228,14 @@ class _CanvasTextBlockOverlayState
     return updated;
   }
 
-  Future<void> _commitWikiTarget(FlightWorkspaceTarget target) async {
-    final label = flightWikiTargetLabel(target);
-    final updated = _replaceWikiDraft(label);
-    if (updated == null) return;
-    await _saveEditor(updated);
-    if (!mounted) return;
-    widget.onWikiLinkTap?.call(label);
-  }
+  Future<void> _commitWikiTarget(FlightWorkspaceTarget _, String label) =>
+      _commitWikiDraft(label);
 
-  Future<void> _commitCreatedWikiTarget(FlightWorkspaceTarget target) async {
-    final updated = _replaceWikiDraft(flightWikiTargetLabel(target));
+  Future<void> _commitCreatedWikiTarget(FlightWorkspaceTarget target) =>
+      _commitWikiDraft(flightWikiTargetLabel(target));
+
+  Future<void> _commitWikiDraft(String label) async {
+    final updated = _replaceWikiDraft(label);
     if (updated == null) return;
     final trimmed = updated.trim();
     if (trimmed != widget.block.markdown) {
@@ -387,8 +384,8 @@ class _CanvasTextBlockOverlayState
                           query: _wikiDraft!.query,
                           matches: _wikiMatches!,
                           accent: widget.accent,
-                          onSelect: (target) {
-                            unawaited(_commitWikiTarget(target));
+                          onSelect: (target, label) {
+                            unawaited(_commitWikiTarget(target, label));
                           },
                           onCreate: (kind) {
                             unawaited(_createWikiTarget(kind));

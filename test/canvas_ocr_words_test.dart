@@ -61,6 +61,22 @@ void main() {
     );
   });
 
+  test('Only words shared by multiple OCR candidates are spell-checkable', () {
+    final words = alignCanvasWords(
+      ink([
+        [const Offset(0, 0), const Offset(30, 20)],
+        [const Offset(55, 0), const Offset(100, 20)],
+      ]),
+      'Tiemp promedio',
+    );
+    final stable = stableCanvasOcrWords(words, 'Tiemp promedio', [
+      'Tiemp promedio',
+      'Tiempo promedio',
+      'Tiemoo promedio',
+    ]);
+    expect(stable, [words.last]);
+  });
+
   const segment = CanvasOcrSegment(
     hash: 'words',
     bounds: Rect.fromLTWH(0, 0, 120, 20),

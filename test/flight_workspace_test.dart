@@ -31,7 +31,7 @@ void main() {
     expect(restored.label, target.label);
     expect(restored.kind, NoteKind.whiteboard);
     expect(restored.folderColor?.toARGB32(), 0xFF315C9E);
-    expect(flightWikiLinkLabel(restored), 'Cálculo#Derivadas');
+    expect(flightWikiLinkLabel(restored), 'Derivadas');
   });
 
   test('note workspace target emits a readable wiki label', () {

@@ -119,7 +119,7 @@ void main() {
     const blue = Color(0xFF2D3F8C);
     final snapshot = assembleKnowledgeGraph(
       notes: [
-        note(1, 1, 'Apuntes', markdown: 'Ver [[Derivadas#Reglas]]'),
+        note(1, 1, 'Apuntes', markdown: 'Ver [[Reglas · Derivadas]]'),
         note(2, 1, 'Derivadas', kind: NoteKind.whiteboard),
       ],
       folders: [folder(1, 'Cálculo', blue)],

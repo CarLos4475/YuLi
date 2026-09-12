@@ -240,7 +240,7 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
       }
       if (page == null) return;
       if (page.isCurrent &&
-          page.segments.every((s) => s.alignmentVersion == 1)) {
+          page.segments.every((s) => s.alignmentVersion == 2)) {
         if (!spellingEnabled || page.segments.every((s) => s.spellingChecked)) {
           return;
         }
@@ -250,7 +250,12 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
           reviewed.add(
             segment.spellingChecked
                 ? segment
-                : segment.reviewed(await _spelling(segment.effectiveText)),
+                : segment.reviewed(
+                  await _spelling(
+                    segment.effectiveText,
+                    spellableWords: segment.spellableWords,
+                  ),
+                ),
           );
         }
         await _savePage(page, reviewed, generation);
@@ -274,6 +279,7 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
       if (!_disposed) onStatus?.call(id, 'Reconociendo escritura…');
       final cached = {for (final s in page.segments) s.hash: s};
       final result = <CanvasOcrSegment>[];
+      var preContext = '';
       var position = -1;
       while (_canRun(generation)) {
         final records = await strokes.getByBlockAfterPosition(
@@ -291,47 +297,62 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
         for (final group in groups) {
           if (!_canRun(generation)) break;
           final old = cached[group.hash];
-          if (old != null && old.alignmentVersion == 1) {
-            result.add(
-              old.spellingChecked
-                  ? old
-                  : old.reviewed(await _spelling(old.effectiveText)),
-            );
+          if (old != null && old.alignmentVersion == 2) {
+            final reused =
+                old.spellingChecked
+                    ? old
+                    : old.reviewed(
+                      await _spelling(
+                        old.effectiveText,
+                        spellableWords: old.spellableWords,
+                      ),
+                    );
+            result.add(reused);
+            preContext = _appendOcrContext(preContext, reused.effectiveText);
             continue;
           }
-          final candidates =
-              old != null
-                  ? <InkCandidate>[]
-                  : await recognizer.recognize(
-                    group.strokes,
-                    langTag: 'es',
-                    writingArea: Size(
-                      math.max(1, group.bounds.width),
-                      math.max(12, group.bounds.height),
-                    ),
-                  );
+          final candidates = await recognizer.recognize(
+            group.strokes,
+            langTag: 'es',
+            writingArea: Size(
+              math.max(1, group.bounds.width),
+              math.max(12, group.bounds.height),
+            ),
+            preContext: preContext,
+          );
           if (!_canRun(generation)) break;
           final raw =
-              old?.text ??
-              (candidates.isEmpty ? '' : candidates.first.text.trim());
+              candidates.isEmpty
+                  ? old?.text ?? ''
+                  : candidates.first.text.trim();
           final text = raw.length > 8000 ? raw.substring(0, 8000) : raw;
           final effective = old?.effectiveText ?? text;
-          final spelling = await _spelling(effective);
-          result.add(
-            CanvasOcrSegment(
-              hash: group.hash,
-              bounds: group.bounds,
-              text: text,
-              correctedText: old?.correctedText,
-              words:
-                  old?.correctedText != null
-                      ? const []
-                      : alignCanvasWords(group, text),
-              alignmentVersion: 1,
-              spellingChecked: spelling != null,
-              spelling: spelling ?? const [],
-            ),
+          final words =
+              old?.correctedText != null
+                  ? const <CanvasOcrWord>[]
+                  : alignCanvasWords(group, text);
+          final spellableWords = stableCanvasOcrWords(
+            words,
+            text,
+            candidates.map((candidate) => candidate.text.trim()).toList(),
           );
+          final spelling = await _spelling(
+            effective,
+            spellableWords: spellableWords,
+          );
+          final segment = CanvasOcrSegment(
+            hash: group.hash,
+            bounds: group.bounds,
+            text: text,
+            correctedText: old?.correctedText,
+            words: words,
+            spellableWords: spellableWords,
+            alignmentVersion: 2,
+            spellingChecked: spelling != null,
+            spelling: spelling ?? const [],
+          );
+          result.add(segment);
+          preContext = _appendOcrContext(preContext, segment.effectiveText);
         }
         if (result.length > 10000) {
           if (!_disposed) {
@@ -357,9 +378,13 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
     }
   }
 
-  Future<List<OcrSpellingSuggestion>?> _spelling(String text) async {
+  Future<List<OcrSpellingSuggestion>?> _spelling(
+    String text, {
+    List<CanvasOcrWord>? spellableWords,
+  }) async {
     if (!spellingEnabled) return null;
     if (text.isEmpty) return [];
+    if (spellableWords?.isEmpty == true) return [];
     if (_spellUnavailableUntil != null &&
         DateTime.now().isBefore(_spellUnavailableUntil!)) {
       return null;
@@ -376,7 +401,17 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
         for (final s in spans)
           if (s.range.start >= 0 &&
               s.range.end <= text.length &&
-              s.range.end > s.range.start)
+              s.range.end > s.range.start &&
+              (spellableWords == null ||
+                  spellableWords.any(
+                    (word) =>
+                        word.start == s.range.start && word.end == s.range.end,
+                  )) &&
+              !s.suggestions.any(
+                (value) =>
+                    value.toLowerCase() ==
+                    text.substring(s.range.start, s.range.end).toLowerCase(),
+              ))
             OcrSpellingSuggestion(
               s.range.start,
               s.range.end,
@@ -401,4 +436,11 @@ class CanvasOcrCoordinator with WidgetsBindingObserver {
     }
     WidgetsBinding.instance.removeObserver(this);
   }
+}
+
+String _appendOcrContext(String previous, String current) {
+  final combined = '$previous ${current.trim()}'.trim();
+  return combined.length <= 20
+      ? combined
+      : combined.substring(combined.length - 20);
 }

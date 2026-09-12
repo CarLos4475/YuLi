@@ -40,6 +40,7 @@ class CanvasOcrSegment {
   final bool spellingChecked;
   final int alignmentVersion;
   final List<CanvasOcrWord> words;
+  final List<CanvasOcrWord> spellableWords;
 
   const CanvasOcrSegment({
     required this.hash,
@@ -50,6 +51,7 @@ class CanvasOcrSegment {
     this.spellingChecked = false,
     this.alignmentVersion = 0,
     this.words = const [],
+    this.spellableWords = const [],
   });
 
   String get effectiveText => correctedText ?? text;
@@ -65,6 +67,8 @@ class CanvasOcrSegment {
     spelling: suggestions,
     spellingChecked: true,
     alignmentVersion: alignmentVersion,
+    words: words,
+    spellableWords: spellableWords,
   );
 
   CanvasOcrSegment reviewed(List<OcrSpellingSuggestion>? suggestions) =>
@@ -74,13 +78,15 @@ class CanvasOcrSegment {
         text: text,
         correctedText: correctedText,
         words: words,
+        spellableWords: spellableWords,
         alignmentVersion: alignmentVersion,
         spelling: suggestions ?? spelling,
         spellingChecked: suggestions != null,
       );
 
   Rect? wordBoundsFor(OcrSpellingSuggestion suggestion) {
-    for (final word in words) {
+    final eligible = alignmentVersion >= 2 ? spellableWords : words;
+    for (final word in eligible) {
       if (word.start == suggestion.start && word.end == suggestion.end) {
         return word.bounds;
       }
@@ -107,6 +113,7 @@ class CanvasOcrSegment {
     'spellingChecked': spellingChecked,
     'alignmentVersion': alignmentVersion,
     'words': words.map((w) => w.toJson()).toList(),
+    'spellableWords': spellableWords.map((w) => w.toJson()).toList(),
   };
 
   factory CanvasOcrSegment.fromJson(Map<String, dynamic> json) {
@@ -126,6 +133,23 @@ class CanvasOcrSegment {
       words:
           [
                 for (final raw in json['words'] as List? ?? [])
+                  CanvasOcrWord.fromJson(Map<String, dynamic>.from(raw as Map)),
+              ]
+              .where(
+                (w) =>
+                    w.start >= 0 &&
+                    w.end > w.start &&
+                    w.end <=
+                        ((json['corrected'] as String?) ??
+                                (json['text'] as String))
+                            .length &&
+                    w.bounds.isFinite &&
+                    !w.bounds.isEmpty,
+              )
+              .toList(),
+      spellableWords:
+          [
+                for (final raw in json['spellableWords'] as List? ?? [])
                   CanvasOcrWord.fromJson(Map<String, dynamic>.from(raw as Map)),
               ]
               .where(

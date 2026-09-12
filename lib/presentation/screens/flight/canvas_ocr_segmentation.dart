@@ -44,7 +44,6 @@ List<CanvasInkGroup> segmentCanvasInk(List<DrawingStrokeRecord> records) {
     _InkLine? match;
     var nearest = double.infinity;
     for (final group in groups) {
-      if (group.strokes.length >= 64) continue;
       final height = math.max(
         12.0,
         math.max(group.bounds.height, bounds.height),
@@ -75,7 +74,7 @@ List<CanvasInkGroup> segmentCanvasInk(List<DrawingStrokeRecord> records) {
       .map(
         (g) => CanvasInkGroup(
           sha256
-              .convert(utf8.encode('es:v1:${g.identities.join('|')}'))
+              .convert(utf8.encode('es:v2:${g.identities.join('|')}'))
               .toString(),
           g.bounds,
           g.strokes
@@ -129,3 +128,34 @@ List<CanvasOcrWord> alignCanvasWords(CanvasInkGroup group, String text) {
       ),
   ];
 }
+
+List<CanvasOcrWord> stableCanvasOcrWords(
+  List<CanvasOcrWord> words,
+  String primary,
+  List<String> candidates,
+) {
+  final primaryTokens = _canvasTokens(primary);
+  if (words.length != primaryTokens.length || candidates.length < 2) {
+    return const [];
+  }
+  final alternatives =
+      candidates
+          .skip(1)
+          .take(4)
+          .map(_canvasTokens)
+          .where((tokens) => tokens.length == primaryTokens.length)
+          .toList();
+  if (alternatives.isEmpty) return const [];
+  return [
+    for (var i = 0; i < words.length; i++)
+      if (alternatives.any(
+        (tokens) =>
+            tokens[i].group(0)!.toLowerCase() ==
+            primaryTokens[i].group(0)!.toLowerCase(),
+      ))
+        words[i],
+  ];
+}
+
+List<RegExpMatch> _canvasTokens(String text) =>
+    RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ0-9]+').allMatches(text).toList();

@@ -169,6 +169,13 @@ KnowledgeGraphSnapshot assembleKnowledgeGraph({
       if (normalized.isEmpty) continue;
       aliases.putIfAbsent(normalized, () => []).add(document);
     }
+    final folderLabel = folderById[document.note.folderId]?.name.trim();
+    if (folderLabel != null && folderLabel.isNotEmpty) {
+      final normalized = normalizeKnowledgeGraphLabel(
+        '${document.label} · $folderLabel',
+      );
+      aliases.putIfAbsent(normalized, () => []).add(document);
+    }
   }
 
   final mentionCounts = <String, _KnowledgeMentionSeed>{};
@@ -352,6 +359,8 @@ class _KnowledgeGraphDocument {
   Iterable<String> get aliases sync* {
     yield label;
     if (canvasLabel != null) {
+      yield canvasLabel!;
+      yield '$canvasLabel · ${_graphNoteLabel(note)}';
       yield '${_graphNoteLabel(note)}#$canvasLabel';
     }
   }

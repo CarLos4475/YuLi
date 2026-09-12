@@ -269,8 +269,11 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     });
   }
 
-  Future<void> _commitWikiTarget(FlightWorkspaceTarget target) async {
-    await _replaceWikiDraft(flightWikiTargetLabel(target));
+  Future<void> _commitWikiTarget(
+    FlightWorkspaceTarget target,
+    String label,
+  ) async {
+    await _replaceWikiDraft(label);
     if (!mounted) return;
     widget.onOpenWorkspaceTarget?.call(target);
   }
@@ -285,7 +288,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       createKind: kind,
     );
     if (target == null || !mounted) return;
-    await _commitWikiTarget(target);
+    await _commitWikiTarget(target, flightWikiTargetLabel(target));
   }
 
   DoubleTapGestureRecognizer _wikiLinkRecognizer(String label) {

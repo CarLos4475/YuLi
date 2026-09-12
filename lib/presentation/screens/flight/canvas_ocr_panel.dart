@@ -625,15 +625,13 @@ class CanvasOcrMarksPainter extends CustomPainter {
     final paint =
         Paint()
           ..color = accent
-          ..strokeWidth = 1.3;
+          ..style = PaintingStyle.fill;
     for (final region in regions) {
       final rect = MatrixUtils.transformRect(transform.value, region);
       if (!rect.inflate(4).overlaps(Offset.zero & size)) continue;
-      canvas.drawLine(
-        Offset(rect.left, rect.bottom + 3),
-        Offset(rect.right, rect.bottom + 3),
-        paint,
-      );
+      for (final dot in canvasOcrUnderlineDots(rect)) {
+        canvas.drawCircle(dot, 1.05, paint);
+      }
     }
     if (highlight != null) {
       final rect = MatrixUtils.transformRect(
@@ -658,6 +656,15 @@ class CanvasOcrMarksPainter extends CustomPainter {
       old.transform != transform ||
       old.accent != accent ||
       old.highlight != highlight;
+}
+
+List<Offset> canvasOcrUnderlineDots(Rect rect) {
+  if (!rect.isFinite || rect.isEmpty) return const [];
+  final dots = <Offset>[];
+  for (var x = rect.left + 1; x < rect.right; x += 4) {
+    dots.add(Offset(x, rect.bottom + 3));
+  }
+  return dots.isEmpty ? [Offset(rect.center.dx, rect.bottom + 3)] : dots;
 }
 
 bool showCanvasSpellingAt(

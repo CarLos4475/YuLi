@@ -19,12 +19,17 @@ El reconocimiento y la revisión ortográfica no realizan peticiones a YuLi AI.
 La revisión usa el corrector del sistema a través de Flutter. Depende de que el
 dispositivo tenga un servicio de corrección e idioma español disponibles; no se
 garantiza el comportamiento de red de un corrector instalado por terceros.
-Los posibles errores se señalan con una línea fina bajo la palabra. Digital Ink
+Los posibles errores se señalan con una línea punteada bajo la palabra. Digital Ink
 no aporta sus coordenadas: se asocian los tokens con grupos de trazos separados por
 huecos espaciales. Solo se conservan asociaciones uno-a-uno; nunca se reparten
 anchos según el número de letras. Es una heurística conservadora, no una garantía
 de precisión para cursiva, palabras unidas, rotación o diagramas. Si la asociación
 es ambigua, no se dibuja un subrayado de renglón como sustituto.
+Las sugerencias se filtran de forma conservadora: la palabra debe conservarse en
+al menos dos candidatos del OCR y se descartan avisos que solo cambian mayúsculas.
+Los fragmentos reconocidos reciben hasta 20 caracteres de contexto previo, como
+recomienda ML Kit. Es preferible omitir un posible error antes que marcar tinta
+correcta por una transcripción incierta.
 
 Con rechazo de palma activo y sin una selección o herramienta de inserción/borrado,
 tocar la palabra con el dedo muestra una burbuja informativa con las alternativas.

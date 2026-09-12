@@ -40,5 +40,6 @@ abstract class InkRecognizer {
     String langTag = 'es',
     InkRecognitionMode mode = InkRecognitionMode.text,
     Size? writingArea,
+    String preContext = '',
   });
 }

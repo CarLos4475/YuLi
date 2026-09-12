@@ -25,6 +25,7 @@ import 'package:yuli/presentation/screens/flight/note_cell_model.dart';
 
 class _Ink implements InkRecognizer {
   int calls = 0;
+  final contexts = <String>[];
   Completer<List<InkCandidate>>? pending;
   final started = Completer<void>();
   @override
@@ -33,11 +34,17 @@ class _Ink implements InkRecognizer {
     String langTag = 'es',
     InkRecognitionMode mode = InkRecognitionMode.text,
     Size? writingArea,
+    String preContext = '',
   }) async {
     calls++;
+    contexts.add(preContext);
     if (!started.isCompleted) started.complete();
     if (pending != null) return pending!.future;
-    return [const InkCandidate('Canción escrita', 0)];
+    return const [
+      InkCandidate('Canción', 0),
+      InkCandidate('Canción', 1),
+      InkCandidate('Cancion', 2),
+    ];
   }
 
   @override
@@ -67,6 +74,21 @@ class _RecoveringSpelling implements SpellCheckService {
   ) async {
     calls++;
     return alwaysFail || calls == 1 ? null : [];
+  }
+}
+
+class _CaseOnlySpelling implements SpellCheckService {
+  int calls = 0;
+
+  @override
+  Future<List<SuggestionSpan>?> fetchSpellCheckSuggestions(
+    Locale locale,
+    String text,
+  ) async {
+    calls++;
+    return [
+      const SuggestionSpan(TextRange(start: 0, end: 7), ['canción']),
+    ];
   }
 }
 
@@ -214,6 +236,27 @@ void main() {
     expect(saves, 0);
     expect(checker.calls, 0);
     expect((await ocr.read(blockId))!.isCurrent, false);
+  });
+
+  test('case-only spell checker suggestions are not underlined', () async {
+    await strokes.insert(blockId, strokeWrite(0, pen(0, 0)));
+    final checker = _CaseOnlySpelling();
+    final completed = Completer<void>();
+    final service = CanvasOcrCoordinator(
+      repository: ocr,
+      strokes: strokes,
+      recognizer: _Ink(),
+      spellCheck: checker,
+      idleDelay: const Duration(milliseconds: 10),
+      onChanged: completed.complete,
+    );
+    addTearDown(service.dispose);
+    service.schedule(blockId);
+    await completed.future.timeout(const Duration(seconds: 10));
+    final page = (await ocr.read(blockId))!;
+    expect(checker.calls, 1);
+    expect(page.segments.single.spelling, isEmpty);
+    expect(page.segments.single.spellingChecked, true);
   });
 
   test(
@@ -399,6 +442,40 @@ void main() {
     expect(groups.first.strokes.length, 2);
     expect(groups.first.strokes.first.first, Offset.zero);
     expect(segmentCanvasInk(records).first.hash, groups.first.hash);
+  });
+
+  test('a long handwritten line is not split at an arbitrary stroke count', () {
+    final records = [
+      for (var i = 0; i < 80; i++)
+        DrawingStrokeRecord(
+          id: i + 1,
+          position: i,
+          data: pen(i * 5, 0).toBytes(),
+        ),
+    ];
+    expect(segmentCanvasInk(records), hasLength(1));
+  });
+
+  test('automatic recognition passes preceding text as context', () async {
+    await strokes.insert(blockId, strokeWrite(0, pen(0, 0)));
+    await strokes.insert(blockId, strokeWrite(1, pen(0, 60)));
+    final engine = _Ink();
+    final completed = Completer<void>();
+    final service = CanvasOcrCoordinator(
+      repository: ocr,
+      strokes: strokes,
+      recognizer: engine,
+      spellCheck: _Spelling(),
+      idleDelay: const Duration(milliseconds: 10),
+      onChanged: completed.complete,
+    );
+    addTearDown(service.dispose);
+    service.schedule(blockId);
+    await completed.future.timeout(const Duration(seconds: 10));
+    expect(engine.contexts, hasLength(2));
+    expect(engine.contexts.first, isEmpty);
+    expect(engine.contexts.last, isNotEmpty);
+    expect(engine.contexts.last.length, lessThanOrEqualTo(20));
   });
 
   test(

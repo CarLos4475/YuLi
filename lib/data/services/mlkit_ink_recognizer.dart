@@ -31,6 +31,7 @@ class MlkitInkRecognizer implements InkRecognizer {
     String langTag = 'es',
     InkRecognitionMode mode = InkRecognitionMode.text,
     Size? writingArea,
+    String preContext = '',
   }) async {
     if (mode == InkRecognitionMode.math) {
       throw UnsupportedError(
@@ -40,18 +41,20 @@ class MlkitInkRecognizer implements InkRecognizer {
     final ink = _buildInk(strokes);
     if (ink.strokes.isEmpty) return const [];
 
-    final context = writingArea == null
-        ? null
-        : DigitalInkRecognitionContext(
-            preContext: '',
-            writingArea: WritingArea(
-              width: writingArea.width,
-              height: writingArea.height,
-            ),
-          );
+    final context =
+        writingArea == null
+            ? null
+            : DigitalInkRecognitionContext(
+              preContext: preContext,
+              writingArea: WritingArea(
+                width: writingArea.width,
+                height: writingArea.height,
+              ),
+            );
 
-    final candidates =
-        await _recognizerFor(langTag).recognize(ink, context: context);
+    final candidates = await _recognizerFor(
+      langTag,
+    ).recognize(ink, context: context);
     return candidates.map((c) => InkCandidate(c.text, c.score)).toList();
   }
 
@@ -61,12 +64,13 @@ class MlkitInkRecognizer implements InkRecognizer {
   Ink _buildInk(List<List<Offset>> strokes) {
     final ink = Ink();
     int t = 0;
-    ink.strokes = strokes.where((s) => s.length >= 2).map((s) {
-      final stroke = Stroke();
-      stroke.points =
-          s.map((p) => StrokePoint(x: p.dx, y: p.dy, t: t += 16)).toList();
-      return stroke;
-    }).toList();
+    ink.strokes =
+        strokes.where((s) => s.length >= 2).map((s) {
+          final stroke = Stroke();
+          stroke.points =
+              s.map((p) => StrokePoint(x: p.dx, y: p.dy, t: t += 16)).toList();
+          return stroke;
+        }).toList();
     return ink;
   }
 

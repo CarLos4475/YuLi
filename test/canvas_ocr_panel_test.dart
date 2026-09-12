@@ -69,6 +69,13 @@ class _Strokes implements DrawingStrokeRepository {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('spelling underline uses separated dots', () {
+    final dots = canvasOcrUnderlineDots(const Rect.fromLTWH(10, 20, 14, 8));
+    expect(dots, hasLength(greaterThan(1)));
+    expect(dots.map((dot) => dot.dy).toSet(), {31.0});
+    expect(dots[1].dx - dots[0].dx, 4);
+  });
   for (final size in [
     const Size(360, 640),
     const Size(1024, 768),
