@@ -81,6 +81,65 @@ void main() {
     },
   );
 
+  test(
+    'editing a note refreshes context without losing the conversation',
+    () async {
+      final session = AiChatSession(906);
+      final assistant = _CapturingAssistant();
+      const limiter = AiUsageLimiter(dailyLimit: 50);
+      session.setSyncedContexts(primary: 'Texto anterior', related: '');
+      await session.send(assistant, limiter, 'Primera pregunta');
+
+      session.setSyncedContexts(primary: 'Texto corregido', related: '');
+      expect(
+        session.messages.map((message) => message.text),
+        contains('Primera pregunta'),
+      );
+      expect(
+        session.messages.map((message) => message.text),
+        contains('Listo'),
+      );
+
+      await session.send(assistant, limiter, 'Segunda pregunta');
+      expect(
+        session.messages.where((message) => message.role == AiRole.user),
+        hasLength(2),
+      );
+      expect(
+        assistant.messages.any(
+          (message) => message.content.contains('Texto corregido'),
+        ),
+        isTrue,
+      );
+      expect(
+        assistant.messages.any(
+          (message) => message.content.contains('Texto anterior'),
+        ),
+        isFalse,
+      );
+      expect(
+        assistant.messages.any(
+          (message) => message.content == 'Primera pregunta',
+        ),
+        isTrue,
+      );
+
+      session.setSyncedContexts(primary: '', related: '');
+      await session.send(assistant, limiter, 'Tercera pregunta');
+      expect(
+        session.messages.where((m) => m.role == AiRole.user),
+        hasLength(3),
+      );
+      expect(
+        assistant.messages.any(
+          (message) => message.content.contains('Texto corregido'),
+        ),
+        isFalse,
+      );
+      session.dispose();
+    },
+  );
+
   test('response lengths use aligned budgets without flattening YuLi tone', () {
     expect(AiResponseLength.brief.maxTokens, 512);
     expect(AiResponseLength.normal.maxTokens, 1280);

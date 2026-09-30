@@ -8,6 +8,18 @@ const _yuliTableBreakToken = '\uE000';
 final _yuliTableBreakPattern = RegExp(r'<br\s*/?>', caseSensitive: false);
 
 class YuliMarkdownDocument {
+  static Document restore(String markdown, Map<String, dynamic>? saved) {
+    if (saved != null) {
+      try {
+        final document = Document.fromJson(saved);
+        if (encode(document) == markdown) return document;
+      } catch (_) {
+        // Older or externally edited payloads still have their Markdown copy.
+      }
+    }
+    return decode(markdown);
+  }
+
   const YuliMarkdownDocument._();
 
   static Document decode(String markdown) {

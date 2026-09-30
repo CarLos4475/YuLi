@@ -7,26 +7,39 @@ import 'package:appflowy_editor/appflowy_editor.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../providers/database_providers.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/flight_workspace_providers.dart';
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
 import '../../../domain/models/note.dart';
 import '../../../domain/models/note_block.dart';
 import '../../../domain/repositories/note_block_repository.dart';
+import '../../../domain/services/ai_assistant.dart';
 import 'flight_wiki_links.dart';
 import 'flight_wiki_suggestions.dart';
 import 'yuli_code_language_picker.dart';
 import 'yuli_markdown_commands.dart';
 import 'yuli_markdown_document.dart';
 import 'yuli_note_image_importer.dart';
+import 'yuli_block_actions.dart';
+import 'fast_typing_panel.dart';
+import 'yuli_table_tools.dart';
+import 'yuli_image_resize_frame.dart';
 
 typedef YuliEditorFocusChanged =
     void Function(EditorState? editorState, FocusNode? focusNode);
+
+class YuliLiveTextEditorController {
+  VoidCallback? _openFastTyping;
+
+  void openFastTyping() => _openFastTyping?.call();
+}
 
 TextStyle applyYuliLiveTextStyle(
   TextStyle base,
@@ -97,6 +110,7 @@ class YuliLiveTextEditor extends ConsumerStatefulWidget {
   final bool autofocus;
   final Future<String?> Function()? debugPickImagePath;
   final ValueChanged<FlightWorkspaceTarget>? onOpenWorkspaceTarget;
+  final YuliLiveTextEditorController? controller;
 
   const YuliLiveTextEditor({
     super.key,
@@ -106,17 +120,22 @@ class YuliLiveTextEditor extends ConsumerStatefulWidget {
     this.autofocus = false,
     this.debugPickImagePath,
     this.onOpenWorkspaceTarget,
+    this.controller,
   });
 
   @override
   ConsumerState<YuliLiveTextEditor> createState() => _YuliLiveTextEditorState();
 }
 
-class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
+class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
+    with WidgetsBindingObserver {
   late final EditorState _editorState;
   late final EditorScrollController _scrollController;
   late final FocusNode _focusNode;
   late final NoteBlockRepository _repository;
+  late final YuliBlockActions _blockActions;
+  final _actionsOverlay = OverlayPortalController();
+  Selection? _tableMenuSelection;
   StreamSubscription<EditorTransactionValue>? _transactionSubscription;
   Timer? _saveTimer;
   final Map<String, DoubleTapGestureRecognizer> _wikiLinkRecognizers = {};
@@ -124,25 +143,31 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   bool _focused = false;
   bool? _reportedActive;
   bool _syncingStyles = false;
+  bool _repairingEmptyDocument = false;
   bool _styleSyncScheduled = false;
   bool _selectionRefreshScheduled = false;
   bool _snappingMarkdownMarkerSelection = false;
   String? _lastCollapsedSelectionPath;
   int? _lastCollapsedSelectionOffset;
-  final Set<String> _editingTables = {};
-  final Set<String> _editingImages = {};
+  String? _openAtomicMenuKey;
   final Set<String> _editingLatex = {};
-  final Set<String> _editingCode = {};
   _WikiDraft? _wikiDraft;
   Future<List<FlightWorkspaceTarget>>? _wikiMatches;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _editorState = EditorState(
-      document: YuliMarkdownDocument.decode(widget.block.markdown),
+      document: YuliMarkdownDocument.restore(
+        widget.block.markdown,
+        widget.block.document,
+      ),
     );
     _applyInitialLiveStyles();
+    _blockActions = YuliBlockActions(_editorState)
+      ..addListener(_actionsChanged);
+    widget.controller?._openFastTyping = _openFastTyping;
     _scrollController = EditorScrollController(
       editorState: _editorState,
       shrinkWrap: true,
@@ -155,6 +180,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     }
     _transactionSubscription = _editorState.transactionStream.listen((event) {
       if (event.$1 == TransactionTime.after) {
+        if (_editorState.document.root.children.isEmpty) {
+          unawaited(_restoreEditableRow());
+        }
         _scheduleLiveStyleSync();
         _refreshWikiDraft();
         _pendingSave = true;
@@ -168,6 +196,10 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
   @override
   void didUpdateWidget(YuliLiveTextEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._openFastTyping = null;
+      widget.controller?._openFastTyping = _openFastTyping;
+    }
     if (!oldWidget.autofocus && widget.autofocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _activate());
     }
@@ -175,6 +207,8 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.controller?._openFastTyping = null;
     _saveTimer?.cancel();
     if (_pendingSave) {
       _persist();
@@ -188,6 +222,8 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       ..removeListener(_onFocusChanged)
       ..dispose();
     _scrollController.dispose();
+    _blockActions.removeListener(_actionsChanged);
+    _blockActions.dispose();
     _editorState.dispose();
     super.dispose();
   }
@@ -199,8 +235,219 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       widget.onFocusChanged?.call(_editorState, _focusNode);
       return;
     }
-    if (_focused && mounted) setState(() => _focused = false);
-    if (_pendingSave) _persist();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _focusNode.hasFocus || _tableMenuSelection != null) {
+        return;
+      }
+      if (_focused || _openAtomicMenuKey != null) {
+        setState(() {
+          _focused = false;
+          _openAtomicMenuKey = null;
+        });
+      }
+      if (_reportedActive != false) {
+        _reportedActive = false;
+        widget.onFocusChanged?.call(null, null);
+      }
+      if (_pendingSave) _persist();
+    });
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (mounted) setState(() {});
+  }
+
+  void _actionsChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_blockActions.selected.isNotEmpty ||
+        _blockActions.busy ||
+        _blockActions.notice != null) {
+      _actionsOverlay.show();
+    } else {
+      _actionsOverlay.hide();
+    }
+  }
+
+  void _openFastTyping() {
+    _focusNode.requestFocus();
+    _blockActions.selectWholeBlock();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _blockActions.selected.isNotEmpty) {
+        _actionsOverlay.show();
+      }
+    });
+  }
+
+  Future<void> _correctSelected() {
+    return _blockActions.correct(ref.read(aiAssistantProvider), () async {
+      if (!await ref.read(aiKeyStoreProvider).hasKey()) {
+        throw const AiException(
+          'Configura tu clave en Ajustes → YuLi AI para usar Fast Typing.',
+        );
+      }
+      if (!mounted) return false;
+      final limiter = ref.read(aiUsageLimiterProvider);
+      return limiter.tryRecord();
+    });
+  }
+
+  Node? get _activeTable {
+    final path = (_tableMenuSelection ?? _editorState.selection)?.start.path;
+    if (path == null || path.isEmpty) return null;
+    final node = _editorState.getNodeAtPath([path.first]);
+    return node?.type == TableBlockKeys.type ? node : null;
+  }
+
+  bool _atomicMenuOpen(Node node) =>
+      _focused && _openAtomicMenuKey == _nodeKey(node);
+
+  void _toggleAtomicMenu(Node node) {
+    _focusNode.requestFocus();
+    setState(() {
+      final key = _nodeKey(node);
+      _openAtomicMenuKey = _openAtomicMenuKey == key ? null : key;
+    });
+  }
+
+  Future<void> _replaceTable(
+    Node node,
+    Node replacement,
+    int row,
+    int col,
+  ) async {
+    final path = node.path.toList();
+    final transaction =
+        _editorState.transaction
+          ..insertNode(path, replacement)
+          ..deleteNode(node);
+    transaction.afterSelection = null;
+    await _blockActions.applyIsolated(transaction);
+    if (!mounted) return;
+    final inserted = _editorState.getNodeAtPath(path);
+    if (inserted == null) return;
+    final cell = yuliTableCell(inserted, row, col);
+    await _activateNode(cell.children.first, 0);
+  }
+
+  void _tableAction(
+    Node node,
+    TableDirection direction,
+    String action, {
+    int? selectedRow,
+    int? selectedCol,
+  }) {
+    final row = selectedRow ?? _selectedTableRow(node);
+    final col = selectedCol ?? _selectedTableCol(node);
+    final index = direction == TableDirection.row ? row : col;
+    final count =
+        node.attributes[direction == TableDirection.row
+                ? TableBlockKeys.rowsLen
+                : TableBlockKeys.colsLen]
+            as int;
+    if (direction == TableDirection.col &&
+        (action == 'narrow' || action == 'widen')) {
+      unawaited(
+        _resizeTableColumn(node, row, col, action == 'narrow' ? -40 : 40),
+      );
+    } else if (action == 'back' || action == 'forward') {
+      final target = index + (action == 'back' ? -1 : 1);
+      if (target < 0 || target >= count) return;
+      _replaceTable(
+        node,
+        yuliReorderTableAxis(node, direction, index, target),
+        direction == TableDirection.row ? target : row,
+        direction == TableDirection.col ? target : col,
+      );
+    } else if (action == 'delete') {
+      if (count > 1) TableActions.delete(node, index, _editorState, direction);
+    } else if (action == 'duplicate') {
+      if (count < (direction == TableDirection.row ? 100 : 40)) {
+        TableActions.duplicate(node, index, _editorState, direction);
+      }
+    } else {
+      if (count >= (direction == TableDirection.row ? 100 : 40)) return;
+      TableActions.add(
+        node,
+        action == 'append' ? count : index + (action == 'before' ? 0 : 1),
+        _editorState,
+        direction,
+      );
+    }
+  }
+
+  Future<void> _resizeTableColumn(
+    Node node,
+    int row,
+    int col,
+    double delta,
+  ) async {
+    final replacement = node.deepCopy();
+    final table = TableNode(node: replacement);
+    table.setColWidth(col, (table.getColWidth(col) + delta).clamp(80, 800));
+    await _replaceTable(node, replacement, row, col);
+  }
+
+  Widget _tableTools(Node node) {
+    final row = _selectedTableRow(node);
+    final col = _selectedTableCol(node);
+    return YuliTableTools(
+      accent: widget.accent,
+      onMenuOpen: () => _tableMenuSelection = _editorState.selection,
+      onMenuClose: () {
+        _tableMenuSelection = null;
+        _focusNode.requestFocus();
+        _onSelectionChanged();
+      },
+      paste: () => _pasteTable(node),
+      exit: () => _continueAfterAtomic(node),
+      selectTable: () => _selectAtomicNode(node),
+      deleteTable: () => _deleteAtomicNode(node),
+      onAction:
+          (direction, action) => _tableAction(
+            node,
+            direction,
+            action,
+            selectedRow: row,
+            selectedCol: col,
+          ),
+    );
+  }
+
+  void _continueAfterAtomic(Node node) {
+    final next = _editorState.getNodeAtPath([node.path.first + 1]);
+    if (next?.delta != null) {
+      _activateNode(next!, 0);
+    } else {
+      _appendParagraphAfter(node);
+    }
+  }
+
+  Future<void> _pasteTable(Node node) async {
+    final row = _selectedTableRow(node);
+    final col = _selectedTableCol(node);
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted ||
+        data?.text == null ||
+        _editorState.getNodeAtPath(node.path) != node) {
+      return;
+    }
+    try {
+      final values = yuliParseTableClipboard(data!.text!);
+      await _replaceTable(
+        node,
+        yuliPasteTableCells(node, row, col, values),
+        row,
+        col,
+      );
+    } on FormatException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 
   void _onSelectionChanged() {
@@ -211,8 +458,28 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _selectionRefreshScheduled = false;
       if (!mounted) return;
-      final active = _editorState.selection != null;
-      setState(() => _focused = active);
+      final visibleSelection = _tableMenuSelection ?? _editorState.selection;
+      final active =
+          (_focusNode.hasFocus || _tableMenuSelection != null) &&
+          visibleSelection != null;
+      final selectionPath = visibleSelection?.start.path;
+      final activeRoot =
+          selectionPath == null || selectionPath.isEmpty
+              ? null
+              : _editorState.getNodeAtPath([selectionPath.first]);
+      setState(() {
+        _focused = active;
+        if (_openAtomicMenuKey != null &&
+            (activeRoot == null ||
+                _openAtomicMenuKey != _nodeKey(activeRoot))) {
+          _openAtomicMenuKey = null;
+        }
+      });
+      if (_blockActions.selected.isEmpty &&
+          !_blockActions.busy &&
+          _blockActions.notice == null) {
+        _actionsOverlay.hide();
+      }
       if (_reportedActive != active) {
         _reportedActive = active;
         widget.onFocusChanged?.call(
@@ -412,6 +679,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       Selection.single(path: node.path, startOffset: 0, endOffset: 1),
       reason: SelectionUpdateReason.uiEvent,
     );
+    _editorState.selectionType = SelectionType.block;
   }
 
   bool _containsInlineLatex(String source) {
@@ -459,7 +727,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     for (final node in _editorState.document.root.children) {
       if (node.type == ImageBlockKeys.type) {
         final width = node.attributes[ImageBlockKeys.width] as num?;
-        final safeWidth = (width?.toDouble() ?? 320.0).clamp(160.0, 520.0);
+        final safeWidth = (width?.toDouble() ?? 320.0).clamp(80.0, 1200.0);
         final height = node.attributes[ImageBlockKeys.height];
         if (width?.toDouble() != safeWidth || height != null) {
           transaction.updateNode(node, {
@@ -614,7 +882,10 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     _saveTimer?.cancel();
     _pendingSave = false;
     final markdown = YuliMarkdownDocument.encode(_editorState.document);
-    await _repository.updatePayload(widget.block.id, {'md': markdown});
+    await _repository.updatePayload(widget.block.id, {
+      'md': markdown,
+      'document': _editorState.document.toJson(),
+    });
   }
 
   Future<void> _appendParagraphAfter(Node node) async {
@@ -626,6 +897,29 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     await _editorState.apply(transaction);
     _focusNode.requestFocus();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _restoreEditableRow() async {
+    if (_repairingEmptyDocument ||
+        _editorState.document.root.children.isNotEmpty) {
+      return;
+    }
+    _repairingEmptyDocument = true;
+    try {
+      await Future<void>.delayed(Duration.zero);
+      if (!mounted || _editorState.document.root.children.isNotEmpty) return;
+      final transaction =
+          _editorState.transaction
+            ..insertNode([0], paragraphNode())
+            ..afterSelection = Selection.collapsed(Position(path: const [0]));
+      await _editorState.apply(
+        transaction,
+        options: const ApplyOptions(recordUndo: false),
+      );
+      _editorState.selectionType = null;
+    } finally {
+      _repairingEmptyDocument = false;
+    }
   }
 
   Future<void> _deleteAtomicNode(Node node) async {
@@ -664,27 +958,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     _focusNode.requestFocus();
   }
 
-  Future<void> _saveCode(Node node, String language, String code) async {
-    final transaction =
-        _editorState.transaction
-          ..updateNode(node, {
-            blockComponentDelta:
-                (Delta()..insert(code.replaceAll('\r\n', '\n'))).toJson(),
-            'language': yuliNormalizeCodeLanguage(language),
-          })
-          ..afterSelection = Selection.single(
-            path: node.path,
-            startOffset: 0,
-            endOffset: 1,
-          );
-    await _editorState.apply(transaction);
-    if (!mounted) return;
-    setState(() => _editingCode.remove(_nodeKey(node)));
-    _focusNode.requestFocus();
-  }
-
   Node? _selectedTableCell(Node tableNode) {
-    final selection = _editorState.selection?.normalized;
+    final selection =
+        (_tableMenuSelection ?? _editorState.selection)?.normalized;
     final path = selection?.start.path;
     if (selection == null ||
         path == null ||
@@ -710,52 +986,6 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     final cell = _selectedTableCell(tableNode);
     return cell?.attributes[TableCellBlockKeys.colPosition] as int? ??
         (tableNode.attributes[TableBlockKeys.colsLen] as num).toInt() - 1;
-  }
-
-  void _mutateTable(
-    Node node, {
-    required TableDirection direction,
-    required bool add,
-  }) {
-    final rows = (node.attributes[TableBlockKeys.rowsLen] as num).toInt();
-    final cols = (node.attributes[TableBlockKeys.colsLen] as num).toInt();
-    final selectedRow = _selectedTableRow(node).clamp(0, rows - 1);
-    final selectedCol = _selectedTableCol(node).clamp(0, cols - 1);
-    if (direction == TableDirection.row) {
-      final position = add ? selectedRow + 1 : selectedRow;
-      if (add) {
-        TableActions.add(node, position, _editorState, direction);
-      } else {
-        TableActions.delete(node, position, _editorState, direction);
-      }
-    } else {
-      final position = add ? selectedCol + 1 : selectedCol;
-      if (add) {
-        TableActions.add(node, position, _editorState, direction);
-      } else {
-        TableActions.delete(node, position, _editorState, direction);
-      }
-    }
-    _focusNode.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  Future<void> _resizeSelectedTableColumn(Node node, double delta) async {
-    final cols = (node.attributes[TableBlockKeys.colsLen] as num).toInt();
-    final selectedCol = _selectedTableCol(node).clamp(0, cols - 1);
-    final table = TableNode(node: node);
-    final currentWidth = table.getColWidth(selectedCol);
-    final nextWidth = (currentWidth + delta).clamp(80.0, 420.0).toDouble();
-    final transaction = _editorState.transaction;
-    table.setColWidth(selectedCol, nextWidth, transaction: transaction);
-    transaction.afterSelection = _editorState.selection;
-    await _editorState.apply(transaction);
-    _focusNode.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() {});
-    });
   }
 
   Future<void> _setNodeAlignment(Node node, String align) async {
@@ -788,7 +1018,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         _editorState.transaction
           ..updateNode(node, {
             ImageBlockKeys.url: url.trim(),
-            ImageBlockKeys.width: width.clamp(160.0, 520.0),
+            ImageBlockKeys.width: width.clamp(80.0, 1200.0),
             ImageBlockKeys.height: null,
             ImageBlockKeys.align: align,
           })
@@ -799,7 +1029,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
           );
     await _editorState.apply(transaction);
     if (!mounted) return;
-    setState(() => _editingImages.remove(_nodeKey(node)));
+    setState(() {});
     _focusNode.requestFocus();
   }
 
@@ -888,42 +1118,15 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         accent: widget.accent,
       ),
       TableBlockKeys.type: TableBlockComponentBuilder(
-        menuBuilder:
-            (node, editorState, position, direction, _, _) =>
-                _YuliTableAxisControls(
-                  accent: widget.accent,
-                  canDelete:
-                      direction == TableDirection.col
-                          ? (node.attributes[TableBlockKeys.colsLen] as num) > 1
-                          : (node.attributes[TableBlockKeys.rowsLen] as num) >
-                              1,
-                  onAdd:
-                      () => TableActions.add(
-                        node,
-                        position + 1,
-                        editorState,
-                        direction,
-                      ),
-                  onDelete:
-                      () => TableActions.delete(
-                        node,
-                        position,
-                        editorState,
-                        direction,
-                      ),
-                ),
+        menuBuilder: (_, _, _, _, _, _) => const SizedBox.shrink(),
         tableStyle: TableStyle(
           colWidth: 140,
           rowHeight: 44,
           borderWidth: yLineThin,
-          borderColor: yBorderSoft,
-          borderHoverColor: widget.accent,
-          addIcon: Icon(YuLiIcons.plus, size: 18, color: widget.accent),
-          handlerIcon: const Icon(
-            YuLiIcons.gripVertical,
-            size: 16,
-            color: yMuted,
-          ),
+          borderColor: yInk,
+          borderHoverColor: yInk,
+          addIcon: const SizedBox.shrink(),
+          handlerIcon: const SizedBox.shrink(),
         ),
       ),
       yuliCodeBlockType: _YuliCodeBlockComponentBuilder(
@@ -1007,7 +1210,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       );
     }
 
-    Widget blockWrapper(
+    Widget blockContent(
       BuildContext context, {
       required Node node,
       required Widget child,
@@ -1018,7 +1221,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         builder: (context, child) {
           final source = node.delta?.toPlainText() ?? '';
           final text = source.trimLeft();
-          final active = _isNodeActive(node);
+          final active = _focused && _isNodeActive(node);
           final key = _nodeKey(node);
           if (node.type == yuliLatexBlockType) {
             final editing = _editingLatex.contains(key);
@@ -1104,233 +1307,251 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
           }
           Widget result = child!;
           if (node.type == yuliCodeBlockType) {
-            final editing = _editingCode.contains(key);
             final code = node.delta?.toPlainText() ?? '';
-            return _YuliAtomicFrame(
-              key: ValueKey('yuli_atomic_code_${node.path.join('_')}'),
-              accent: widget.accent,
-              selected: active,
-              editing: editing,
-              label: 'CODIGO',
-              interceptContent: !editing,
-              onSelect: () => _selectAtomicNode(node),
-              actions: [
-                if (!editing)
-                  _YuliAtomicAction(
-                    label: 'EDITAR',
-                    icon: YuLiIcons.pencil,
-                    onTap: () {
-                      setState(() => _editingCode.add(key));
-                    },
-                  ),
-                _YuliAtomicAction(
-                  label: 'BORRAR',
-                  icon: YuLiIcons.trash,
-                  destructive: true,
-                  onTap: () => _deleteAtomicNode(node),
-                ),
-              ],
-              child:
-                  editing
-                      ? _YuliCodeInlineEditor(
-                        initialCode: code,
-                        initialLanguage:
-                            node.attributes['language'] as String? ?? '',
-                        accent: widget.accent,
-                        onCancel: () {
-                          setState(() => _editingCode.remove(key));
-                          _selectAtomicNode(node);
-                        },
-                        onSave:
-                            (language, value) =>
-                                _saveCode(node, language, value),
+            final menuOpen = _atomicMenuOpen(node);
+            final availableWidth = MediaQuery.sizeOf(context).width - 24;
+            final toolbarWidth = availableWidth < 620 ? availableWidth : 620.0;
+            return _YuliFloatingAtomicControls(
+              visible: active,
+              controls:
+                  menuOpen
+                      ? SizedBox(
+                        width: toolbarWidth,
+                        child: _YuliAtomicToolbar(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: YuliCodeLanguagePicker(
+                                  language:
+                                      node.attributes['language'] as String? ??
+                                      '',
+                                  accent: widget.accent,
+                                  onChanged: (language) {
+                                    final transaction =
+                                        _editorState.transaction..updateNode(
+                                          node,
+                                          {'language': language},
+                                        );
+                                    transaction.afterSelection =
+                                        _editorState.selection;
+                                    _blockActions.applyIsolated(transaction);
+                                  },
+                                ),
+                              ),
+                              _YuliTableAxisButton(
+                                tooltip: 'Copiar código',
+                                icon: YuLiIcons.copy,
+                                color: widget.accent,
+                                onTap:
+                                    () => Clipboard.setData(
+                                      ClipboardData(text: code),
+                                    ),
+                              ),
+                              _YuliTableAxisButton(
+                                tooltip: 'Seleccionar código',
+                                icon: YuLiIcons.squareDashedMousePointer,
+                                color: widget.accent,
+                                onTap: () => _selectAtomicNode(node),
+                              ),
+                              _YuliTableAxisButton(
+                                tooltip: 'Eliminar código',
+                                icon: YuLiIcons.trash,
+                                color: widget.accent,
+                                onTap: () => _deleteAtomicNode(node),
+                              ),
+                            ],
+                          ),
+                        ),
                       )
-                      : _YuliCodePreview(
-                        code: code,
-                        language: node.attributes['language'] as String? ?? '',
+                      : _YuliAtomicMenuButton(
                         accent: widget.accent,
+                        onTap: () => _toggleAtomicMenu(node),
                       ),
+              child: Container(
+                key: ValueKey('yuli_atomic_code_${node.path.join('_')}'),
+                decoration: BoxDecoration(
+                  color: yCream2,
+                  border: Border.all(color: yBorderSoft, width: yLineThin),
+                ),
+                child:
+                    active
+                        ? result
+                        : GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _activateNode(node, 0),
+                          child: _YuliCodePreview(
+                            code: code,
+                            language:
+                                node.attributes['language'] as String? ?? '',
+                            accent: widget.accent,
+                          ),
+                        ),
+              ),
             );
           }
           if (node.type == TableBlockKeys.type) {
-            final editing = _editingTables.contains(key);
-            final rows =
-                (node.attributes[TableBlockKeys.rowsLen] as num).toInt();
-            final cols =
-                (node.attributes[TableBlockKeys.colsLen] as num).toInt();
-            final align = node.attributes[blockComponentAlign] as String?;
-            final alignment = switch (align) {
-              'center' => Alignment.center,
+            final table = TableNode(node: node);
+            final tableActive = _focused && _activeTable == node;
+            final alignment = switch (node.attributes[blockComponentAlign]) {
+              'left' => Alignment.centerLeft,
               'right' => Alignment.centerRight,
-              _ => Alignment.centerLeft,
+              _ => Alignment.center,
             };
-            final maxWidth = MediaQuery.sizeOf(context).width - 64;
-            final width = (TableNode(node: node).tableWidth + 40).clamp(
-              0,
-              maxWidth,
-            );
-            result = Align(
+            final menuOpen = tableActive && _atomicMenuOpen(node);
+            final controls =
+                menuOpen
+                    ? _tableTools(node)
+                    : _YuliAtomicMenuButton(
+                      accent: widget.accent,
+                      onTap: () => _toggleAtomicMenu(node),
+                    );
+            final contentWidth = table.tableWidth + 12 + yLineThin;
+            return Align(
+              key:
+                  tableActive
+                      ? ValueKey('yuli_atomic_table_${node.path.join('_')}')
+                      : null,
               alignment: alignment,
-              child: SizedBox(width: width.toDouble(), child: result),
-            );
-            return _YuliAtomicFrame(
-              key: ValueKey('yuli_atomic_table_${node.path.join('_')}'),
-              accent: widget.accent,
-              selected: active,
-              editing: editing,
-              label: 'TABLA',
-              interceptContent: !editing,
-              onSelect: () => _selectAtomicNode(node),
-              actions: [
-                _YuliAtomicAction(
-                  label: editing ? 'TERMINAR' : 'EDITAR CELDAS',
-                  icon: editing ? YuLiIcons.check : YuLiIcons.pencil,
-                  onTap: () {
-                    if (editing) {
-                      setState(() => _editingTables.remove(key));
-                      _selectAtomicNode(node);
-                    } else {
-                      setState(() => _editingTables.add(key));
-                    }
-                  },
-                ),
-                _YuliAtomicAction(
-                  label: 'FILA +',
-                  icon: YuLiIcons.plus,
-                  onTap:
-                      () => _mutateTable(
-                        node,
-                        direction: TableDirection.row,
-                        add: true,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: contentWidth),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: yLineThin),
+                    child: _YuliFloatingAtomicControls(
+                      visible: tableActive,
+                      controls: controls,
+                      child: SizedBox(
+                        key: ValueKey(
+                          'yuli_table_frame_${node.path.join('_')}',
+                        ),
+                        width: table.tableWidth + 12,
+                        child: CustomPaint(
+                          foregroundPainter: _YuliTableGridFramePainter(
+                            width: table.tableWidth,
+                            height:
+                                (node.attributes[TableBlockKeys.colsHeight]
+                                        as num?)
+                                    ?.toDouble() ??
+                                0,
+                          ),
+                          child: result,
+                        ),
                       ),
+                    ),
+                  ),
                 ),
-                _YuliAtomicAction(
-                  label: 'FILA -',
-                  icon: YuLiIcons.minus,
-                  enabled: rows > 1,
-                  onTap:
-                      () => _mutateTable(
-                        node,
-                        direction: TableDirection.row,
-                        add: false,
-                      ),
-                ),
-                _YuliAtomicAction(
-                  label: 'COL +',
-                  icon: YuLiIcons.plus,
-                  onTap:
-                      () => _mutateTable(
-                        node,
-                        direction: TableDirection.col,
-                        add: true,
-                      ),
-                ),
-                _YuliAtomicAction(
-                  label: 'COL -',
-                  icon: YuLiIcons.minus,
-                  enabled: cols > 1,
-                  onTap:
-                      () => _mutateTable(
-                        node,
-                        direction: TableDirection.col,
-                        add: false,
-                      ),
-                ),
-                _YuliAtomicAction(
-                  label: 'ANCHO -',
-                  icon: YuLiIcons.chevronLeft,
-                  onTap: () => _resizeSelectedTableColumn(node, -32),
-                ),
-                _YuliAtomicAction(
-                  label: 'ANCHO +',
-                  icon: YuLiIcons.chevronRight,
-                  onTap: () => _resizeSelectedTableColumn(node, 32),
-                ),
-              ],
-              child: result,
+              ),
             );
           }
           if (node.type == ImageBlockKeys.type) {
-            final editing = _editingImages.contains(key);
             final imageUrl =
                 node.attributes[ImageBlockKeys.url] as String? ?? '';
             final imageWidth =
                 (node.attributes[ImageBlockKeys.width] as num?)?.toDouble() ??
-                320.0;
-            final imageAlign =
-                node.attributes[ImageBlockKeys.align] as String? ??
-                node.attributes[blockComponentAlign] as String? ??
-                'center';
-            return _YuliAtomicFrame(
-              key: ValueKey('yuli_atomic_image_${node.path.join('_')}'),
-              accent: widget.accent,
-              selected: active,
-              editing: editing,
-              label: 'IMAGEN',
-              interceptContent: !editing,
-              onSelect: () => _selectAtomicNode(node),
-              actions: [
-                if (!editing)
-                  _YuliAtomicAction(
-                    label: 'EDITAR',
-                    icon: YuLiIcons.pencil,
-                    onTap: () {
-                      setState(() => _editingImages.add(key));
-                    },
-                  ),
-                if (!editing)
-                  _YuliAtomicAction(
-                    label: 'IZQ',
-                    icon: YuLiIcons.textAlignStart,
-                    onTap: () => _setNodeAlignment(node, 'left'),
-                  ),
-                if (!editing)
-                  _YuliAtomicAction(
-                    label: 'CENTRO',
-                    icon: YuLiIcons.textAlignCenter,
-                    onTap: () => _setNodeAlignment(node, 'center'),
-                  ),
-                if (!editing)
-                  _YuliAtomicAction(
-                    label: 'DER',
-                    icon: YuLiIcons.textAlignEnd,
-                    onTap: () => _setNodeAlignment(node, 'right'),
-                  ),
-                _YuliAtomicAction(
-                  label: 'BORRAR',
-                  icon: YuLiIcons.trash,
-                  destructive: true,
-                  onTap: () => _deleteAtomicNode(node),
-                ),
-              ],
-              child:
-                  editing
-                      ? _YuliImageInlineEditor(
-                        initialUrl: imageUrl,
-                        initialWidth: imageWidth,
-                        initialAlign: imageAlign,
-                        accent: widget.accent,
-                        onPickImage: _pickImageForInlineEditor,
-                        onCancel: () {
-                          setState(() => _editingImages.remove(key));
-                          _selectAtomicNode(node);
-                        },
-                        onSave:
-                            (url, width, align) => _saveImage(
-                              node,
-                              url: url,
-                              width: width,
-                              align: align,
+                320;
+            final align =
+                node.attributes[ImageBlockKeys.align] as String? ?? 'center';
+            final menuOpen = _atomicMenuOpen(node);
+            final controls =
+                menuOpen
+                    ? _YuliAtomicToolbar(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _YuliAtomicActionButton(
+                            accent: widget.accent,
+                            action: _YuliAtomicAction(
+                              label: 'Reemplazar',
+                              icon: YuLiIcons.image,
+                              onTap: () async {
+                                final path = await _pickImageForInlineEditor();
+                                if (!mounted ||
+                                    path == null ||
+                                    _editorState.getNodeAtPath(node.path) !=
+                                        node) {
+                                  return;
+                                }
+                                await _saveImage(
+                                  node,
+                                  url: path,
+                                  width: imageWidth,
+                                  align: align,
+                                );
+                              },
                             ),
-                      )
-                      : _YuliImageBlockPreview(
-                        previewKey: ValueKey(
-                          'yuli_image_preview_${node.path.join('_')}',
-                        ),
-                        url: imageUrl,
-                        width: imageWidth,
-                        align: imageAlign,
+                          ),
+                          for (final entry
+                              in {
+                                'left': 'Izquierda',
+                                'center': 'Centro',
+                                'right': 'Derecha',
+                              }.entries)
+                            _YuliAtomicActionButton(
+                              accent: widget.accent,
+                              action: _YuliAtomicAction(
+                                label: entry.value,
+                                icon:
+                                    entry.key == 'left'
+                                        ? YuLiIcons.textAlignStart
+                                        : entry.key == 'right'
+                                        ? YuLiIcons.textAlignEnd
+                                        : YuLiIcons.textAlignCenter,
+                                onTap: () => _setNodeAlignment(node, entry.key),
+                              ),
+                            ),
+                          _YuliAtomicActionButton(
+                            accent: widget.accent,
+                            action: _YuliAtomicAction(
+                              label: 'Eliminar',
+                              icon: YuLiIcons.trash,
+                              onTap: () => _deleteAtomicNode(node),
+                            ),
+                          ),
+                        ],
                       ),
+                    )
+                    : _YuliAtomicMenuButton(
+                      accent: widget.accent,
+                      onTap: () => _toggleAtomicMenu(node),
+                    );
+            return Align(
+              key: ValueKey('yuli_atomic_image_${node.path.join('_')}'),
+              alignment:
+                  align == 'left'
+                      ? Alignment.centerLeft
+                      : align == 'right'
+                      ? Alignment.centerRight
+                      : Alignment.center,
+              child: _YuliFloatingAtomicControls(
+                visible: active,
+                controls: controls,
+                child: GestureDetector(
+                  onTap: () => _selectAtomicNode(node),
+                  child: YuliImageResizeFrame(
+                    width: imageWidth,
+                    maxWidth: MediaQuery.sizeOf(context).width - 112,
+                    selected: active,
+                    accent: widget.accent,
+                    onResize:
+                        (width) => _saveImage(
+                          node,
+                          url: imageUrl,
+                          width: width,
+                          align: align,
+                        ),
+                    builder:
+                        (width) => _YuliImageBlockPreview(
+                          previewKey: ValueKey(
+                            'yuli_image_preview_${node.path.join('_')}',
+                          ),
+                          url: imageUrl,
+                          width: width,
+                          align: align,
+                        ),
+                  ),
+                ),
+              ),
             );
           }
           if (!text.startsWith('>')) return result;
@@ -1348,9 +1569,16 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
       );
     }
 
+    Widget blockWrapper(
+      BuildContext context, {
+      required Node node,
+      required Widget child,
+    }) => blockContent(context, node: node, child: child);
+
     final rootChildren = _editorState.document.root.children;
     final lastNode = rootChildren.isEmpty ? null : rootChildren.last;
     final showContinue =
+        _focused &&
         lastNode != null &&
         (lastNode.type == ImageBlockKeys.type ||
             lastNode.type == TableBlockKeys.type ||
@@ -1383,14 +1611,14 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
     final editor = AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       decoration: BoxDecoration(
-        border:
-            _focused
-                ? Border(
-                  left: BorderSide(color: widget.accent, width: yLineMid),
-                )
-                : null,
+        border: Border(
+          left: BorderSide(
+            color: _focused ? widget.accent : Colors.transparent,
+            width: yLineMid,
+          ),
+        ),
       ),
-      padding: EdgeInsets.only(left: _focused ? 8 : 0, right: 20),
+      padding: const EdgeInsets.only(left: 8, right: 20),
       child: IntrinsicHeight(
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 40),
@@ -1419,20 +1647,56 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor> {
         ),
       ),
     );
-    if (_wikiDraft == null || _wikiMatches == null) return editor;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        editor,
-        FlightWikiLinkSuggestions(
-          query: _wikiDraft!.query,
-          matches: _wikiMatches!,
-          accent: widget.accent,
-          onSelect: _commitWikiTarget,
-          onCreate: _createWikiTarget,
-        ),
-      ],
+    return OverlayPortal(
+      controller: _actionsOverlay,
+      overlayChildBuilder:
+          (context) => Positioned(
+            left: 12,
+            right: 12,
+            bottom:
+                MediaQueryData.fromView(View.of(context)).viewInsets.bottom +
+                MediaQuery.paddingOf(context).bottom +
+                12,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 620,
+                  maxHeight: (MediaQuery.sizeOf(context).height -
+                          MediaQueryData.fromView(
+                            View.of(context),
+                          ).viewInsets.bottom -
+                          48)
+                      .clamp(80, 300),
+                ),
+                child: SingleChildScrollView(
+                  child: FastTypingPanel(
+                    actions: _blockActions,
+                    accent: widget.accent,
+                    onCorrect: _correctSelected,
+                    onClose: _blockActions.clear,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      child:
+          _wikiDraft == null
+              ? editor
+              : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  editor,
+                  if (_wikiMatches != null)
+                    FlightWikiLinkSuggestions(
+                      query: _wikiDraft!.query,
+                      matches: _wikiMatches!,
+                      accent: widget.accent,
+                      onSelect: _commitWikiTarget,
+                      onCreate: _createWikiTarget,
+                    ),
+                ],
+              ),
     );
   }
 }
@@ -1470,19 +1734,215 @@ bool _samePath(List<int> left, List<int> right) {
   return true;
 }
 
+class _YuliFloatingAtomicControls extends StatefulWidget {
+  final bool visible;
+  final Widget controls;
+  final Widget child;
+
+  const _YuliFloatingAtomicControls({
+    required this.visible,
+    required this.controls,
+    required this.child,
+  });
+
+  @override
+  State<_YuliFloatingAtomicControls> createState() =>
+      _YuliFloatingAtomicControlsState();
+}
+
+class _YuliFloatingAtomicControlsState
+    extends State<_YuliFloatingAtomicControls> {
+  final _controller = OverlayPortalController();
+  final _link = LayerLink();
+  final _targetKey = GlobalKey();
+  bool _showBelow = false;
+  double _expandedOffsetX = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncVisibility();
+  }
+
+  @override
+  void didUpdateWidget(_YuliFloatingAtomicControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible != widget.visible ||
+        oldWidget.controls.runtimeType != widget.controls.runtimeType) {
+      _syncVisibility();
+    }
+  }
+
+  void _syncVisibility() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.visible) {
+        final target =
+            _targetKey.currentContext?.findRenderObject() as RenderBox?;
+        final showBelow =
+            target != null && target.localToGlobal(Offset.zero).dy < 80;
+        final expanded = widget.controls is! _YuliAtomicMenuButton;
+        final expandedOffsetX =
+            target == null || !expanded
+                ? 0.0
+                : MediaQuery.sizeOf(context).width / 2 -
+                    target.localToGlobal(Offset(target.size.width / 2, 0)).dx;
+        if (_showBelow != showBelow || _expandedOffsetX != expandedOffsetX) {
+          setState(() {
+            _showBelow = showBelow;
+            _expandedOffsetX = expandedOffsetX;
+          });
+        }
+        _controller.show();
+      } else {
+        _controller.hide();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expanded = widget.controls is! _YuliAtomicMenuButton;
+    final overlayWidth = MediaQuery.sizeOf(context).width - 24;
+    final controls =
+        expanded
+            ? SizedBox(
+              width: overlayWidth,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: overlayWidth),
+                  child: Center(child: widget.controls),
+                ),
+              ),
+            )
+            : widget.controls;
+    return OverlayPortal(
+      controller: _controller,
+      overlayChildBuilder:
+          (_) => UnconstrainedBox(
+            alignment: Alignment.topLeft,
+            child: CompositedTransformFollower(
+              link: _link,
+              showWhenUnlinked: false,
+              targetAnchor:
+                  expanded
+                      ? (_showBelow
+                          ? Alignment.bottomCenter
+                          : Alignment.topCenter)
+                      : (_showBelow
+                          ? Alignment.bottomRight
+                          : Alignment.topRight),
+              followerAnchor:
+                  expanded
+                      ? (_showBelow
+                          ? Alignment.topCenter
+                          : Alignment.bottomCenter)
+                      : (_showBelow
+                          ? Alignment.topRight
+                          : Alignment.bottomRight),
+              offset: Offset(
+                expanded ? _expandedOffsetX : 0,
+                _showBelow ? 8 : -8,
+              ),
+              child: Material(type: MaterialType.transparency, child: controls),
+            ),
+          ),
+      child: CompositedTransformTarget(
+        key: _targetKey,
+        link: _link,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _YuliTableGridFramePainter extends CustomPainter {
+  final double width;
+  final double height;
+
+  const _YuliTableGridFramePainter({required this.width, required this.height});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (height <= 0) return;
+    final paint =
+        Paint()
+          ..color = yInk
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = yLineThin;
+    // AppFlowy reserves space around the grid for its hidden row/column handles.
+    canvas.drawRect(Rect.fromLTWH(10, 14, width, height), paint);
+  }
+
+  @override
+  bool shouldRepaint(_YuliTableGridFramePainter oldDelegate) =>
+      width != oldDelegate.width || height != oldDelegate.height;
+}
+
+class _YuliAtomicMenuButton extends StatelessWidget {
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _YuliAtomicMenuButton({required this.accent, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Más opciones',
+    child: Semantics(
+      button: true,
+      label: 'Más opciones',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          key: const ValueKey('yuli_atomic_more'),
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: accent,
+            border: Border.all(color: yBorderStrong, width: yLineThin),
+            boxShadow: const [
+              BoxShadow(color: yInk, offset: Offset(2, 2), blurRadius: 0),
+            ],
+          ),
+          child: const Icon(YuLiIcons.moreHorizontal, size: 19, color: yCream),
+        ),
+      ),
+    ),
+  );
+}
+
+class _YuliAtomicToolbar extends StatelessWidget {
+  final Widget child;
+
+  const _YuliAtomicToolbar({required this.child});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(4),
+    decoration: BoxDecoration(
+      color: yCream,
+      border: Border.all(color: yBorderStrong, width: yLineThin),
+      boxShadow: const [
+        BoxShadow(color: yInk, offset: Offset(3, 3), blurRadius: 0),
+      ],
+    ),
+    child: child,
+  );
+}
+
 class _YuliAtomicAction {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
   final bool destructive;
-  final bool enabled;
 
   const _YuliAtomicAction({
     required this.label,
     required this.icon,
     required this.onTap,
     this.destructive = false,
-    this.enabled = true,
   });
 }
 
@@ -1600,42 +2060,32 @@ class _YuliAtomicActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        action.enabled ? (action.destructive ? yFight : accent) : yCream2;
+    final color = accent;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: action.enabled ? action.onTap : null,
+      onTap: action.onTap,
       child: Container(
         margin: const EdgeInsets.fromLTRB(2, 0, 2, 2),
-        height: 28,
+        height: 44,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: color,
           border: Border.all(color: yBorderStrong, width: yLineThin),
           boxShadow: [
-            BoxShadow(
-              color:
-                  action.enabled ? yInk : yBorderSoft.withValues(alpha: 0.55),
-              offset: const Offset(2, 2),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: yInk, offset: const Offset(2, 2), blurRadius: 0),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              action.icon,
-              size: 13,
-              color: action.enabled ? yCream : yMuted,
-            ),
+            Icon(action.icon, size: 13, color: yCream),
             const SizedBox(width: 5),
             Text(
               action.label,
               style: yMono(
                 size: 9,
                 weight: FontWeight.w700,
-                color: action.enabled ? yCream : yMuted,
+                color: yCream,
                 tracking: 0.6,
               ),
             ),
@@ -2168,133 +2618,6 @@ Color _accentMix(Color accent, Color target, double amount) {
   return Color.lerp(accent, target, amount) ?? accent;
 }
 
-class _YuliCodeInlineEditor extends StatefulWidget {
-  final String initialCode;
-  final String initialLanguage;
-  final Color accent;
-  final VoidCallback onCancel;
-  final void Function(String language, String code) onSave;
-
-  const _YuliCodeInlineEditor({
-    required this.initialCode,
-    required this.initialLanguage,
-    required this.accent,
-    required this.onCancel,
-    required this.onSave,
-  });
-
-  @override
-  State<_YuliCodeInlineEditor> createState() => _YuliCodeInlineEditorState();
-}
-
-class _YuliCodeInlineEditorState extends State<_YuliCodeInlineEditor> {
-  late final TextEditingController _codeController;
-  late String _language;
-
-  @override
-  void initState() {
-    super.initState();
-    _codeController = TextEditingController(text: widget.initialCode);
-    _language = yuliNormalizeCodeLanguage(widget.initialLanguage);
-  }
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: yCream2,
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          YuliCodeLanguagePicker(
-            language: _language,
-            accent: widget.accent,
-            onChanged: (value) => setState(() => _language = value),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _codeController,
-            autofocus: true,
-            minLines: 4,
-            maxLines: 10,
-            keyboardType: TextInputType.multiline,
-            textInputAction: TextInputAction.newline,
-            onChanged: (_) => setState(() {}),
-            style: yMono(
-              size: 13,
-              color: yInk,
-              tracking: 0,
-            ).copyWith(height: 1.45),
-            decoration: const InputDecoration(
-              hintText: 'CODIGO',
-              border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.zero,
-                borderSide: BorderSide(color: yBorderSoft, width: yLineThin),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.zero,
-                borderSide: BorderSide(color: yBorderStrong, width: yLineMid),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _YuliInlineEditorButton(
-                  label: 'CANCELAR',
-                  color: yCream,
-                  foreground: yInk,
-                  onTap: widget.onCancel,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _YuliInlineEditorButton(
-                  label: 'GUARDAR',
-                  color: widget.accent,
-                  foreground: yCream,
-                  onTap: () => widget.onSave(_language, _codeController.text),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _YuliImageInlineEditor extends StatefulWidget {
-  final String initialUrl;
-  final double initialWidth;
-  final String initialAlign;
-  final Color accent;
-  final Future<String?> Function() onPickImage;
-  final VoidCallback onCancel;
-  final void Function(String url, double width, String align) onSave;
-
-  const _YuliImageInlineEditor({
-    required this.initialUrl,
-    required this.initialWidth,
-    required this.initialAlign,
-    required this.accent,
-    required this.onPickImage,
-    required this.onCancel,
-    required this.onSave,
-  });
-
-  @override
-  State<_YuliImageInlineEditor> createState() => _YuliImageInlineEditorState();
-}
-
 class _YuliImageBlockPreview extends StatelessWidget {
   final Key previewKey;
   final String url;
@@ -2311,8 +2634,8 @@ class _YuliImageBlockPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final availableWidth = MediaQuery.sizeOf(context).width - 64;
-    final safeMaxWidth = availableWidth.clamp(160.0, 640.0).toDouble();
-    final safeWidth = width.clamp(160.0, safeMaxWidth).toDouble();
+    final safeMaxWidth = availableWidth.clamp(80.0, 1200.0).toDouble();
+    final safeWidth = width.clamp(80.0, safeMaxWidth).toDouble();
     final previewAlignment = switch (align) {
       'right' => Alignment.centerRight,
       'left' => Alignment.centerLeft,
@@ -2401,247 +2724,6 @@ class _YuliImageBlockPlaceholder extends StatelessWidget {
   }
 }
 
-class _YuliImageInlineEditorState extends State<_YuliImageInlineEditor> {
-  late String _url;
-  late double _width;
-  late String _align;
-  bool _loading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _url = widget.initialUrl.trim();
-    _width = widget.initialWidth.clamp(160.0, 520.0);
-    _align = widget.initialAlign;
-  }
-
-  Future<void> _pickImage() async {
-    if (_loading) return;
-    setState(() => _loading = true);
-    final path = await widget.onPickImage();
-    if (!mounted) return;
-    setState(() {
-      if (path != null && path.trim().isNotEmpty) {
-        _url = path.trim();
-      }
-      _loading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: yCream2,
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _YuliImageInlinePreview(url: _url),
-          const SizedBox(height: 10),
-          _YuliInlineEditorButton(
-            label: _url.isEmpty ? 'SELECCIONAR IMAGEN' : 'CAMBIAR IMAGEN',
-            color: widget.accent,
-            foreground: yCream,
-            onTap: _loading ? null : _pickImage,
-          ),
-          if (_loading)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'IMPORTANDO...',
-                textAlign: TextAlign.center,
-                style: yMono(size: 10, color: yMuted, tracking: 0.8),
-              ),
-            ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _YuliInlineEditorChip(
-                label: 'PEQUEÑA',
-                active: _width <= 220,
-                accent: widget.accent,
-                onTap: () => setState(() => _width = 180),
-              ),
-              _YuliInlineEditorChip(
-                label: 'MEDIA',
-                active: _width > 220 && _width < 430,
-                accent: widget.accent,
-                onTap: () => setState(() => _width = 320),
-              ),
-              _YuliInlineEditorChip(
-                label: 'GRANDE',
-                active: _width >= 430,
-                accent: widget.accent,
-                onTap: () => setState(() => _width = 520),
-              ),
-              _YuliInlineEditorChip(
-                label: 'IZQ',
-                active: _align == 'left',
-                accent: widget.accent,
-                onTap: () => setState(() => _align = 'left'),
-              ),
-              _YuliInlineEditorChip(
-                label: 'CENTRO',
-                active: _align == 'center',
-                accent: widget.accent,
-                onTap: () => setState(() => _align = 'center'),
-              ),
-              _YuliInlineEditorChip(
-                label: 'DER',
-                active: _align == 'right',
-                accent: widget.accent,
-                onTap: () => setState(() => _align = 'right'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'ANCHO ${_width.round()} PX',
-            style: yMono(size: 10, color: yMuted, tracking: 0.7),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _YuliInlineEditorButton(
-                  label: 'CANCELAR',
-                  color: yCream,
-                  foreground: yInk,
-                  onTap: widget.onCancel,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _YuliInlineEditorButton(
-                  label: 'GUARDAR',
-                  color: widget.accent,
-                  foreground: yCream,
-                  onTap:
-                      _url.isEmpty || _loading
-                          ? null
-                          : () => widget.onSave(_url, _width, _align),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _YuliImageInlinePreview extends StatelessWidget {
-  final String url;
-
-  const _YuliImageInlinePreview({required this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    final file = url.isEmpty ? null : File(url);
-    final exists = file?.existsSync() ?? false;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 96, maxHeight: 180),
-      decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: yBorderStrong, width: yLineThin),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child:
-          url.isEmpty
-              ? _YuliImageInlinePlaceholder(
-                icon: YuLiIcons.image,
-                label: 'Sin imagen seleccionada',
-              )
-              : exists
-              ? Image.file(file!, fit: BoxFit.contain)
-              : url.startsWith('http://') || url.startsWith('https://')
-              ? Image.network(
-                url,
-                fit: BoxFit.contain,
-                errorBuilder:
-                    (_, _, _) => _YuliImageInlinePlaceholder(
-                      icon: YuLiIcons.imageOff,
-                      label: 'Imagen no disponible',
-                    ),
-              )
-              : _YuliImageInlinePlaceholder(
-                icon: YuLiIcons.image,
-                label: url.split(RegExp(r'[\\/]+')).last,
-              ),
-    );
-  }
-}
-
-class _YuliImageInlinePlaceholder extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _YuliImageInlinePlaceholder({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 28, color: yMuted),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: yMono(size: 10, color: yMuted, tracking: 0.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _YuliInlineEditorChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final Color accent;
-  final VoidCallback onTap;
-
-  const _YuliInlineEditorChip({
-    required this.label,
-    required this.active,
-    required this.accent,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? accent : yCream,
-          border: Border.all(color: yBorderStrong, width: yLineThin),
-        ),
-        child: Text(
-          label,
-          style: yMono(
-            size: 10,
-            weight: FontWeight.w700,
-            color: active ? yCream : yInk,
-            tracking: 0.7,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _YuliInlineEditorButton extends StatelessWidget {
   final String label;
   final Color color;
@@ -2680,69 +2762,36 @@ class _YuliInlineEditorButton extends StatelessWidget {
   }
 }
 
-class _YuliTableAxisControls extends StatelessWidget {
-  final Color accent;
-  final bool canDelete;
-  final VoidCallback onAdd;
-  final VoidCallback onDelete;
-
-  const _YuliTableAxisControls({
-    required this.accent,
-    required this.canDelete,
-    required this.onAdd,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: yCream,
-        border: Border.all(color: yBorderStrong, width: yLineThin),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _YuliTableAxisButton(
-            icon: YuLiIcons.minus,
-            color: canDelete ? accent : yMuted,
-            onTap: canDelete ? onDelete : null,
-          ),
-          Container(width: yLineThin, height: 26, color: yBorderStrong),
-          _YuliTableAxisButton(
-            icon: YuLiIcons.plus,
-            color: accent,
-            onTap: onAdd,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _YuliTableAxisButton extends StatelessWidget {
+  final String tooltip;
   final IconData icon;
   final Color color;
   final VoidCallback? onTap;
 
   const _YuliTableAxisButton({
+    required this.tooltip,
     required this.icon,
     required this.color,
     required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        width: 28,
-        height: 26,
-        child: Icon(icon, size: 15, color: color),
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Semantics(
+      button: true,
+      label: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(icon, size: 15, color: color),
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _YuliLatexBlockComponentBuilder extends BlockComponentBuilder {

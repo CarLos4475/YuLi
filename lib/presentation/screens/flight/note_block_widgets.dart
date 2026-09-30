@@ -40,7 +40,7 @@ import 'yuli_live_text_editor.dart';
 
 // ─── Router ───────────────────────────────────────────────────────────────
 
-class BlockRouter extends StatelessWidget {
+class BlockRouter extends ConsumerStatefulWidget {
   final NoteBlock block;
   final Note note;
   final Folder folder;
@@ -62,35 +62,52 @@ class BlockRouter extends StatelessWidget {
     this.onOpenWorkspaceTarget,
   });
 
-  Color get _accent => note.color ?? folder.color;
+  @override
+  ConsumerState<BlockRouter> createState() => _BlockRouterState();
+}
+
+class _BlockRouterState extends ConsumerState<BlockRouter> {
+  late final YuliLiveTextEditorController _textController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = YuliLiveTextEditorController();
+  }
+
+  Color get _accent => widget.note.color ?? widget.folder.color;
 
   @override
   Widget build(BuildContext context) {
     final accent = _accent;
+    final textController = widget.block is TextBlock ? _textController : null;
     return _BlockShell(
-      block: block,
-      index: index,
-      child: switch (block) {
+      block: widget.block,
+      index: widget.index,
+      accent: accent,
+      onFastTyping: textController?.openFastTyping,
+      child: switch (widget.block) {
         TextBlock t => YuliLiveTextEditor(
           block: t,
           accent: accent,
-          onFocusChanged: onTextBlockFocusChanged,
-          autofocus: autofocus,
-          onOpenWorkspaceTarget: onOpenWorkspaceTarget,
+          controller: textController,
+          onFocusChanged: widget.onTextBlockFocusChanged,
+          autofocus: widget.autofocus,
+          onOpenWorkspaceTarget: widget.onOpenWorkspaceTarget,
         ),
         MathBlock m => _MathBlockBody(block: m, accentColor: accent),
         BulletsBlock bl => _BulletsBlockBody(block: bl),
         TareasBlock tb => _TareasBlockBody(
           block: tb,
-          note: note,
-          folder: folder,
+          note: widget.note,
+          folder: widget.folder,
           accent: accent,
         ),
         DrawingBlock d => _DrawingBlockBody(
           block: d,
           accent: accent,
-          folderId: folder.id,
-          onScrollLockChanged: onScrollLockChanged,
+          folderId: widget.folder.id,
+          onScrollLockChanged: widget.onScrollLockChanged,
         ),
       },
     );
@@ -102,11 +119,15 @@ class _BlockShell extends ConsumerStatefulWidget {
   final NoteBlock block;
   final Widget child;
   final int index;
+  final Color accent;
+  final VoidCallback? onFastTyping;
 
   const _BlockShell({
     required this.block,
     required this.child,
     required this.index,
+    required this.accent,
+    this.onFastTyping,
   });
 
   static const _glyphForType = {
@@ -188,18 +209,70 @@ class _BlockShellState extends ConsumerState<_BlockShell> {
                     Positioned(
                       top: 0,
                       right: 0,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _confirmDelete(context),
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            YuLiIcons.close,
-                            size: 14,
-                            color: yMuted.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ),
+                      child:
+                          widget.onFastTyping == null
+                              ? GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => _confirmDelete(context),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(
+                                    YuLiIcons.close,
+                                    size: 14,
+                                    color: yMuted.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                              )
+                              : PopupMenuButton<_TextBlockMenuAction>(
+                                tooltip: 'Más opciones',
+                                color: yCream,
+                                shape: Border.all(
+                                  color: yBorderStrong,
+                                  width: yLineThin,
+                                ),
+                                onSelected: (action) {
+                                  if (action ==
+                                      _TextBlockMenuAction.fastTyping) {
+                                    widget.onFastTyping?.call();
+                                  } else {
+                                    _confirmDelete(context);
+                                  }
+                                },
+                                itemBuilder:
+                                    (_) => [
+                                      PopupMenuItem(
+                                        value: _TextBlockMenuAction.fastTyping,
+                                        child: Text(
+                                          'YuLi Fast Typing',
+                                          style: yBody(size: 13),
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: _TextBlockMenuAction.delete,
+                                        child: Text(
+                                          'Borrar bloque',
+                                          style: yBody(size: 13),
+                                        ),
+                                      ),
+                                    ],
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: widget.accent,
+                                    border: Border.all(
+                                      color: yBorderStrong,
+                                      width: yLineThin,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    YuLiIcons.moreHorizontal,
+                                    size: 17,
+                                    color: yCream,
+                                  ),
+                                ),
+                              ),
                     ),
                 ],
               ),
@@ -245,6 +318,8 @@ class _BlockShellState extends ConsumerState<_BlockShell> {
     }
   }
 }
+
+enum _TextBlockMenuAction { fastTyping, delete }
 
 // ─── Autosave helper ──────────────────────────────────────────────────────
 

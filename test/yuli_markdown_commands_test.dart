@@ -1,6 +1,8 @@
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yuli/presentation/screens/flight/yuli_markdown_commands.dart';
+import 'package:yuli/presentation/screens/flight/yuli_markdown_document.dart';
 
 void main() {
   test('wiki links hide their markers and style their label', () {
@@ -81,6 +83,24 @@ void main() {
     );
     expect(state.selection?.start.offset, 2);
     expect(state.selection?.end.offset, 7);
+  });
+
+  test('toolbar text insertion replaces the current selection', () async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(children: [paragraphNode(delta: Delta()..insert('x2'))]),
+      ),
+    );
+    final selection = Selection.single(
+      path: const [0],
+      startOffset: 1,
+      endOffset: 2,
+    );
+
+    await insertMarkdownAtSelection(state, selection, r'\frac');
+
+    expect(state.document.root.children.single.delta?.toPlainText(), r'x\frac');
+    expect(state.selection?.start.offset, 6);
   });
 
   test('live styling preserves markers and styles only their content', () {
@@ -284,6 +304,102 @@ void main() {
       isTrue,
     );
     expect(table.attributes[TableBlockKeys.colsHeight], 74.0);
+  });
+
+  test(
+    'backspace deletes a selected atomic element and keeps an editor row',
+    () async {
+      final nodes = <Node>[
+        imageNode(url: 'image.png'),
+        TableNode.fromList<String>([
+          ['A'],
+        ]).node,
+        Node(
+          type: yuliCodeBlockType,
+          attributes: {
+            blockComponentDelta: (Delta()..insert('final x = 1;')).toJson(),
+            'language': 'dart',
+          },
+        ),
+        Node(
+          type: yuliLatexBlockType,
+          attributes: {yuliLatexBlockContent: 'x^2'},
+        ),
+      ];
+
+      for (final atomic in nodes) {
+        final state = EditorState(
+          document: Document(root: pageNode(children: [atomic])),
+        );
+        state.selection = Selection.single(
+          path: const [0],
+          startOffset: 0,
+          endOffset: 1,
+        );
+        state.selectionType = SelectionType.block;
+
+        expect(
+          yuliDeleteSelectedAtomicCommand.execute(state),
+          KeyEventResult.handled,
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(state.document.root.children, hasLength(1));
+        expect(
+          state.document.root.children.single.type,
+          ParagraphBlockKeys.type,
+        );
+        expect(state.selection, Selection.collapsed(Position(path: const [0])));
+        state.dispose();
+      }
+    },
+  );
+
+  test('backspace inside table text does not delete the table', () {
+    final table =
+        TableNode.fromList<String>([
+          ['Texto'],
+        ]).node;
+    final state = EditorState(
+      document: Document(root: pageNode(children: [table])),
+    );
+    final textNode = table.children.single.children.single;
+    state.selection = Selection.collapsed(
+      Position(path: textNode.path, offset: 3),
+    );
+
+    expect(
+      yuliDeleteSelectedAtomicCommand.execute(state),
+      KeyEventResult.ignored,
+    );
+    expect(state.document.root.children.single, same(table));
+    state.dispose();
+  });
+
+  test('native backspace deletes a block selection', () async {
+    final state = EditorState(
+      document: Document(
+        root: pageNode(
+          children: [
+            imageNode(url: 'image.png'),
+            paragraphNode(delta: Delta()..insert('Después')),
+          ],
+        ),
+      ),
+    );
+    state.selection = Selection.single(
+      path: const [0],
+      startOffset: 0,
+      endOffset: 1,
+    );
+    state.selectionType = SelectionType.block;
+
+    expect(backspaceCommand.execute(state), KeyEventResult.handled);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(state.document.root.children, hasLength(1));
+    expect(state.document.root.children.single.delta?.toPlainText(), 'Después');
+    state.dispose();
   });
 
   test('inline formatting stays active with trailing spaces', () {
@@ -603,6 +719,38 @@ x^2 + y^2
         ['Antes ', '> Cita', 'despues'],
       );
       expect(state.selection?.start.path, [1]);
+    },
+  );
+
+  test(
+    'atomic insertion selects the element without a fake paragraph',
+    () async {
+      final cases = <(String, String)>[
+        ('\n![Imagen](image.png)\n', ImageBlockKeys.type),
+        ('\n```dart\nfinal x = 1;\n```\n', yuliCodeBlockType),
+        ('\n\$\$\nx^2\n\$\$\n', yuliLatexBlockType),
+        ('\n| A | B |\n| --- | --- |\n| Uno | Dos |\n', TableBlockKeys.type),
+      ];
+
+      for (final (markdown, type) in cases) {
+        final state = EditorState(
+          document: Document(root: pageNode(children: [paragraphNode()])),
+        );
+
+        await insertMarkdownAtSelection(
+          state,
+          Selection.collapsed(Position(path: const [0])),
+          markdown,
+        );
+
+        expect(state.document.root.children, hasLength(1), reason: type);
+        expect(state.document.root.children.first.type, type);
+        expect(state.selection?.start.path, [0]);
+        expect(state.selection?.start.offset, 0);
+        expect(state.selection?.end.offset, 1);
+        expect(state.selectionType, SelectionType.block);
+        state.dispose();
+      }
     },
   );
 

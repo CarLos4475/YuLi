@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AiUsageLimiter {
   static const _kDate = 'ai_usage_date_v1';
   static const _kCount = 'ai_usage_count_v1';
+  static Future<void> _pending = Future.value();
 
   final int dailyLimit;
   const AiUsageLimiter({this.dailyLimit = 150});
@@ -26,7 +27,21 @@ class AiUsageLimiter {
   Future<bool> canSend() async => (await remaining()) > 0;
 
   /// Record one request against today's quota.
-  Future<void> record() async {
+  Future<void> record() => _serialize(() => _record());
+
+  Future<bool> tryRecord() => _serialize(() async {
+    if (!await canSend()) return false;
+    await _record();
+    return true;
+  });
+
+  Future<T> _serialize<T>(Future<T> Function() action) {
+    final result = _pending.then((_) => action());
+    _pending = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
+  Future<void> _record() async {
     final p = await SharedPreferences.getInstance();
     final today = _today();
     final cur = p.getString(_kDate) == today ? (p.getInt(_kCount) ?? 0) : 0;

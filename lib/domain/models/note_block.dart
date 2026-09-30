@@ -50,6 +50,10 @@ sealed class NoteBlock {
           noteId: noteId,
           position: position,
           markdown: (json['md'] as String?) ?? '',
+          document:
+              json['document'] is Map<String, dynamic>
+                  ? json['document'] as Map<String, dynamic>
+                  : null,
         );
       case NoteBlockType.math:
         return MathBlock(
@@ -109,11 +113,13 @@ sealed class NoteBlock {
 
 class TextBlock extends NoteBlock {
   final String markdown;
+  final Map<String, dynamic>? document;
   const TextBlock({
     required super.id,
     required super.noteId,
     required super.position,
     required this.markdown,
+    this.document,
   }) : super(type: NoteBlockType.text);
 
   TextBlock copyWith({String? markdown}) => TextBlock(
@@ -121,10 +127,14 @@ class TextBlock extends NoteBlock {
     noteId: noteId,
     position: position,
     markdown: markdown ?? this.markdown,
+    document: markdown == null || markdown == this.markdown ? document : null,
   );
 
   @override
-  Map<String, dynamic> payloadJson() => {'md': markdown};
+  Map<String, dynamic> payloadJson() => {
+    'md': markdown,
+    if (document != null) 'document': document,
+  };
 }
 
 class MathBlock extends NoteBlock {

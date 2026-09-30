@@ -16,6 +16,7 @@ import '../../providers/note_block_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
 import '../../../domain/services/ai_assistant.dart';
+import '../../../domain/services/pending_saves.dart';
 import '../../../domain/models/note.dart' show NoteKind;
 import '../../../domain/models/note_block.dart';
 import '../../../domain/models/task.dart';
@@ -529,6 +530,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   // ─── Canvas context sources (notes + urls) — assembly & sync ──────────────
 
   DateTime? _syncedAt;
+  int _sourceSyncGeneration = 0;
 
   /// Whether the context bar is expanded. Collapsed by default so the chat gets
   /// the vertical space; the header context button toggles it.
@@ -537,6 +539,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
   bool _refreshingOcr = false;
 
   Future<void> _resyncFromSources() async {
+    final generation = ++_sourceSyncGeneration;
     final repo = ref.read(noteRepositoryProvider);
     final note = await repo.getById(_s.noteId);
     if (note == null) return;
@@ -545,7 +548,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     final relatedPieces = <String>[];
 
     if (_s.settings.useNoteContext) {
-      final blocks = await ref.read(noteBlocksProvider(_s.noteId).future);
+      final blocks = await ref
+          .read(noteBlockRepositoryProvider)
+          .getByNote(_s.noteId);
       final label =
           (note.title?.trim().isEmpty ?? true) ? 'Nota' : note.title!.trim();
       final canvasId =
@@ -585,7 +590,9 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           await repo.removeContextSource(s.id);
           continue;
         }
-        final blocks = await ref.read(noteBlocksProvider(nid).future);
+        final blocks = await ref
+            .read(noteBlockRepositoryProvider)
+            .getByNote(nid);
         label =
             (srcNote.title?.trim().isEmpty ?? true)
                 ? 'Nota'
@@ -602,10 +609,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
       relatedPieces.add('## $label\n\n$piece');
     }
 
-    if (primaryPieces.isEmpty && relatedPieces.isEmpty) {
+    if (primaryPieces.isEmpty &&
+        relatedPieces.isEmpty &&
+        note.kind != NoteKind.block) {
       return;
     }
 
+    if (!mounted || generation != _sourceSyncGeneration) return;
     _s.setSyncedContexts(
       primary:
           _s.settings.useNoteContext
@@ -728,6 +738,26 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
     // hasAnchor — that silently blocked sending on a canvas with no linked
     // sources (pizarra/cuaderno), where the button looked dead.
     if (text.trim().isEmpty || _s.streaming || _refreshingOcr) return;
+    if (_s.settings.useNoteContext || _s.settings.useRelatedSources) {
+      _refreshingOcr = true;
+      try {
+        await PendingSaves.flush();
+        if (!mounted) return;
+        await _resyncFromSources();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo actualizar el contexto de la nota'),
+            ),
+          );
+        }
+        return;
+      } finally {
+        _refreshingOcr = false;
+      }
+      if (!mounted || _s.streaming) return;
+    }
     String? canvasContext;
     if (_s.settings.useNoteContext) {
       _refreshingOcr = true;

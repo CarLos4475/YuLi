@@ -29,6 +29,18 @@ class FormatToolbar extends StatelessWidget {
     });
   }
 
+  void _insert(String text) {
+    final state = editorState;
+    if (state == null) return;
+    onRequestFocus?.call();
+    final selection = state.selection;
+    if (selection == null) return;
+    insertMarkdownAtSelection(state, selection, text);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onRequestFocus?.call();
+    });
+  }
+
   void _line(String prefix, {RegExp? removePattern, bool replaceLine = false}) {
     final state = editorState;
     if (state == null) return;
@@ -61,6 +73,8 @@ class FormatToolbar extends StatelessWidget {
       transaction.updateNode(node, {
         if (node.type == ImageBlockKeys.type)
           ImageBlockKeys.align: align
+        else if (node.type == TableBlockKeys.type)
+          blockComponentAlign: align
         else
           blockComponentAlign: align == 'left' ? null : align,
       });
@@ -98,6 +112,8 @@ class FormatToolbar extends StatelessWidget {
                     (node) =>
                         node.type == ImageBlockKeys.type
                             ? node.attributes[ImageBlockKeys.align] ?? 'center'
+                            : node.type == TableBlockKeys.type
+                            ? node.attributes[blockComponentAlign] ?? 'center'
                             : node.attributes[blockComponentAlign] ?? 'left',
                   )
                   .toSet();
@@ -179,6 +195,20 @@ class FormatToolbar extends StatelessWidget {
                   active: false,
                   accent: accent,
                   onTap: () => _wrap('`'),
+                ),
+                _groupGap(),
+                _TextToolBtn(
+                  label: '\\',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _insert('\\'),
+                ),
+                _sep(),
+                _TextToolBtn(
+                  label: '^',
+                  active: false,
+                  accent: accent,
+                  onTap: () => _insert('^'),
                 ),
                 _groupGap(),
                 _TextToolBtn(

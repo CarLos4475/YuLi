@@ -610,8 +610,7 @@ class AiChatSession extends ChangeNotifier {
 
   /// Set the anchor from the assembled multi-source context. The assembler has
   /// already compacted each source (cached), so skip the lazy whole-blob
-  /// compaction ([compactTried] = true). Resets the thread if the context
-  /// actually changed (see [_applyAnchor]).
+  /// compaction ([compactTried] = true).
   void setSyncedAnchor(String combined) {
     final t = combined.trim();
     _applyAnchor(t.isEmpty ? null : t, compactTried: true);
@@ -625,21 +624,9 @@ class AiChatSession extends ChangeNotifier {
     anchor = nextPrimary.isEmpty ? null : nextPrimary;
     relatedAnchor = nextRelated.isEmpty ? null : nextRelated;
     _compactTried = true;
-    final activeChanged =
-        (settings.useNoteContext && primaryChanged) ||
-        (settings.useRelatedSources && relatedChanged);
-    if (activeChanged && messages.isNotEmpty) {
-      messages.clear();
+    if (primaryChanged || relatedChanged) {
       _previousAnchor = null;
       compactNoticeIndex = null;
-      if (hasActiveContext) {
-        messages.add(
-          const AiChatMsg(
-            AiRole.system,
-            '✦ Contexto actualizado — empecé de cero.',
-          ),
-        );
-      }
     }
     _saveAnchor();
     _saveRelatedAnchor();
@@ -655,26 +642,15 @@ class AiChatSession extends ChangeNotifier {
     }
   }
 
-  /// Replace the anchor, resetting the thread if the context actually changed
-  /// mid-conversation (the prior turns are about the OLD context and would
-  /// mislead the model — it trusts history over the changed anchor; resetting
-  /// is the same as leaving + re-entering the view, but automatic).
+  /// Replace the anchor while retaining the conversation. The next request
+  /// sends the current anchor before the existing message history.
   void _applyAnchor(String? next, {required bool compactTried}) {
     final changed = next != anchor;
     anchor = next;
     _compactTried = compactTried;
-    if (changed && messages.isNotEmpty) {
-      messages.clear();
+    if (changed) {
       _previousAnchor = null;
       compactNoticeIndex = null;
-      if (next != null) {
-        messages.add(
-          const AiChatMsg(
-            AiRole.system,
-            '✦ Contexto actualizado — empecé de cero.',
-          ),
-        );
-      }
     }
     _saveAnchor();
     notifyListeners();
@@ -839,6 +815,13 @@ class AiChatSession extends ChangeNotifier {
     final convo = <AiMessage>[
       AiMessage(AiRole.system, mode.systemPrompt),
       if (toolGuidance != null) AiMessage(AiRole.system, toolGuidance),
+      if (settings.useNoteContext && hasAnchor)
+        const AiMessage(
+          AiRole.system,
+          'El contexto de la nota en esta solicitud es la versión actual. '
+          'Si algún dato del historial difiere, usa la versión actual y '
+          'conserva la continuidad de la conversación.',
+        ),
       if (settings.useNoteContext && hasAnchor)
         AiMessage(AiRole.user, _anchorContent(anchor!)),
       if (settings.useRelatedSources && hasRelatedAnchor)

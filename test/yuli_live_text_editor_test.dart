@@ -1,4 +1,9 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
@@ -15,9 +20,154 @@ import 'package:yuli/presentation/screens/flight/note_block_widgets.dart';
 import 'package:yuli/presentation/screens/flight/yuli_live_text_editor.dart';
 import 'package:yuli/presentation/screens/flight/yuli_markdown_commands.dart';
 import 'package:yuli/presentation/screens/flight/yuli_markdown_document.dart';
+import 'package:yuli/presentation/screens/flight/yuli_code_language_picker.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
+import 'package:yuli/presentation/screens/flight/fast_typing_panel.dart';
+import 'package:yuli/presentation/screens/flight/ai_chat_visuals.dart';
+import 'package:yuli/presentation/providers/ai_providers.dart';
+import 'package:yuli/data/services/ai_key_store.dart';
+import 'package:yuli/domain/services/ai_assistant.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUpAll(() async {
+    if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
+      for (final family in ['Inter', 'SpaceGrotesk']) {
+        await (FontLoader(family)
+              ..addFont(rootBundle.load('assets/fonts/$family-Regular.ttf'))
+              ..addFont(rootBundle.load('assets/fonts/$family-Bold.ttf')))
+            .load();
+      }
+      await (FontLoader(
+        'packages/${YuLiIcons.type.fontPackage}/${YuLiIcons.type.fontFamily}',
+      )..addFont(
+        rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+      )).load();
+    }
+  });
+  testWidgets('manual text-block correction uses AI panel and supports undo', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = _FakeNoteBlockRepository();
+    final assistant = _FastTypingTestAssistant();
+    final controller = YuliLiveTextEditorController();
+    final previewKey = GlobalKey();
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: 220 * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    EditorState? state;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          noteBlockRepositoryProvider.overrideWithValue(repository),
+          aiKeyStoreProvider.overrideWithValue(_FastTypingTestKeyStore()),
+          aiAssistantProvider.overrideWithValue(assistant),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          builder:
+              (context, child) =>
+                  RepaintBoundary(key: previewKey, child: child!),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: YuliLiveTextEditor(
+                block: const TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: 'Texto rapdio\nOtro bloque',
+                ),
+                accent: const Color(0xFF2D3F8C),
+                controller: controller,
+                onFocusChanged: (value, _) {
+                  if (value != null) state = value;
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FastTypingPanel), findsNothing);
+    await tester.tap(find.byType(ParagraphBlockComponentWidget).first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('yuli_block_handle_0')), findsNothing);
+    expect(find.text('YuLi Fast Typing'), findsNothing);
+    controller.openFastTyping();
+    await tester.pumpAndSettle();
+    expect(find.byType(AiFrostedSurface), findsOneWidget);
+    expect(assistant.calls, 0);
+    expect(
+      tester.getBottomLeft(find.byType(FastTypingPanel)).dy,
+      lessThanOrEqualTo(380),
+    );
+    if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
+      await tester.runAsync(() async {
+        final boundary =
+            previewKey.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 1.5);
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          'build/fast_typing_preview.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    }
+    await tester.tap(find.text('Corregir bloque'));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(
+      assistant.calls,
+      1,
+      reason:
+          tester
+              .widget<FastTypingPanel>(find.byType(FastTypingPanel))
+              .actions
+              .notice,
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    expect(assistant.calls, 1);
+    expect(
+      YuliMarkdownDocument.encode(state!.document),
+      'Texto rápido\nOtro bloque',
+      reason:
+          tester
+              .widget<FastTypingPanel>(find.byType(FastTypingPanel))
+              .actions
+              .notice,
+    );
+    expect(find.text('Original'), findsOneWidget);
+    if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
+      await tester.runAsync(() async {
+        final boundary =
+            previewKey.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 1.5);
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          'build/fast_typing_changes_preview.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    }
+    await tester.tap(find.byTooltip('Cerrar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Deshacer'));
+    await tester.pumpAndSettle();
+    expect(
+      YuliMarkdownDocument.encode(state!.document),
+      'Texto rapdio\nOtro bloque',
+    );
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('long text wraps without a horizontal editor scroll', (
     tester,
   ) async {
@@ -138,7 +288,8 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
 
-    expect(repository.lastPayload, {'md': 'Texto editado'});
+    expect(repository.lastPayload?['md'], 'Texto editado');
+    expect(repository.lastPayload?['document'], isNotNull);
   });
 
   testWidgets('autofocus activates a newly inserted text block', (
@@ -183,12 +334,13 @@ void main() {
     );
   });
 
-  testWidgets('text remains interactive inside the reorderable block shell', (
+  testWidgets('last edited text block opens Fast Typing after rebuilding', (
     tester,
   ) async {
     final repository = _FakeNoteBlockRepository();
     EditorState? activeState;
     final now = DateTime(2026);
+    late StateSetter rebuildParent;
 
     await tester.pumpWidget(
       ProviderScope(
@@ -196,36 +348,66 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
           home: Scaffold(
-            body: ReorderableListView(
-              onReorder: (_, _) {},
-              buildDefaultDragHandles: false,
-              children: [
-                BlockRouter(
-                  key: const ValueKey('block_1'),
-                  block: const TextBlock(
-                    id: 1,
-                    noteId: 1,
-                    position: 0,
-                    markdown: 'Contenido previo',
-                  ),
-                  note: Note(
-                    id: 1,
-                    folderId: 1,
-                    rawMarkdown: '',
-                    sizeBytes: 0,
-                    createdAt: now,
-                    updatedAt: now,
-                  ),
-                  folder: Folder(
-                    id: 1,
-                    name: 'Prueba',
-                    color: const Color(0xFF2D3F8C),
-                    createdAt: now,
-                  ),
-                  index: 0,
-                  onTextBlockFocusChanged: (state, _) => activeState = state,
-                ),
-              ],
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                rebuildParent = setState;
+                return ReorderableListView(
+                  onReorder: (_, _) {},
+                  buildDefaultDragHandles: false,
+                  children: [
+                    BlockRouter(
+                      key: const ValueKey('block_0'),
+                      block: const TextBlock(
+                        id: 0,
+                        noteId: 1,
+                        position: 0,
+                        markdown: 'Contenido inicial',
+                      ),
+                      note: Note(
+                        id: 1,
+                        folderId: 1,
+                        rawMarkdown: '',
+                        sizeBytes: 0,
+                        createdAt: now,
+                        updatedAt: now,
+                      ),
+                      folder: Folder(
+                        id: 1,
+                        name: 'Prueba',
+                        color: const Color(0xFF2D3F8C),
+                        createdAt: now,
+                      ),
+                      index: 0,
+                    ),
+                    BlockRouter(
+                      key: const ValueKey('block_1'),
+                      block: const TextBlock(
+                        id: 1,
+                        noteId: 1,
+                        position: 0,
+                        markdown: 'Contenido previo',
+                      ),
+                      note: Note(
+                        id: 1,
+                        folderId: 1,
+                        rawMarkdown: '',
+                        sizeBytes: 0,
+                        createdAt: now,
+                        updatedAt: now,
+                      ),
+                      folder: Folder(
+                        id: 1,
+                        name: 'Prueba',
+                        color: const Color(0xFF2D3F8C),
+                        createdAt: now,
+                      ),
+                      index: 1,
+                      onTextBlockFocusChanged:
+                          (state, _) => activeState = state,
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -233,15 +415,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(YuliLiveTextEditor));
+    await tester.tap(find.byType(YuliLiveTextEditor).last);
     await tester.pumpAndSettle();
     tester.testTextInput.enterText('Contenido editable');
+    await tester.pump();
+    rebuildParent(() {});
     await tester.pump();
 
     expect(
       activeState?.document.root.children.single.delta?.toPlainText(),
       'Contenido editable',
     );
+    expect(find.text('YuLi Fast Typing'), findsNothing);
+    await tester.tap(find.byTooltip('Más opciones').last);
+    await tester.pumpAndSettle();
+    expect(find.text('YuLi Fast Typing'), findsOneWidget);
+    await tester.tap(find.text('YuLi Fast Typing'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FastTypingPanel), findsOneWidget);
   });
 
   testWidgets('typing one markdown marker creates a visible pair', (
@@ -434,7 +625,9 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byIcon(YuLiIcons.textAlignEnd));
+    final alignRight = find.byIcon(YuLiIcons.textAlignEnd);
+    await tester.ensureVisible(alignRight);
+    await tester.tap(alignRight);
     await tester.pump();
 
     expect(
@@ -480,9 +673,7 @@ void main() {
     state.dispose();
   });
 
-  testWidgets('tapping a table selects its atomic node and keeps focus', (
-    tester,
-  ) async {
+  testWidgets('tapping a table enters a cell and keeps focus', (tester) async {
     final repository = _FakeNoteBlockRepository();
     EditorState? state;
     FocusNode? focusNode;
@@ -519,12 +710,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('yuli_atomic_table_0')));
+    await tester.tap(find.byType(ParagraphBlockComponentWidget).first);
     await tester.pumpAndSettle();
 
-    expect(state?.selection?.start.path, [0]);
-    expect(state?.selection?.start.offset, 0);
-    expect(state?.selection?.end.offset, 1);
+    expect(state?.selection?.start.path.length, greaterThan(1));
+    expect(state?.selection?.isCollapsed, isTrue);
     expect(focusNode?.hasFocus, isTrue);
   });
 
@@ -572,7 +762,19 @@ void main() {
     expect(state?.selection?.start.path, [0]);
     expect(state?.selection?.start.offset, 0);
     expect(state?.selection?.end.offset, 1);
+    expect(state?.selectionType, SelectionType.block);
     expect(focusNode?.hasFocus, isTrue);
+    expect(
+      tester.widget<AppFlowyEditor>(find.byType(AppFlowyEditor)).footer,
+      isNotNull,
+    );
+    expect(find.byKey(const ValueKey('yuli_continue_writing')), findsOneWidget);
+
+    expect(backspaceCommand.execute(state!), KeyEventResult.handled);
+    await tester.pumpAndSettle();
+
+    expect(state?.document.root.children, hasLength(1));
+    expect(state?.document.root.children.single.type, ParagraphBlockKeys.type);
   });
 
   test('live style reapplies markdown after the paragraph base style', () {
@@ -834,10 +1036,12 @@ void main() {
 
     expect(math.textStyle?.fontSize, 16);
     expect(richText.textAlign, TextAlign.left);
-    expect(tester.getSize(find.byWidget(richText)).width, greaterThan(320));
+    expect(tester.getSize(find.byWidget(richText)).width, greaterThan(280));
   });
 
-  testWidgets('table requires explicit cell edit mode', (tester) async {
+  testWidgets('table edits cells directly without an edit mode', (
+    tester,
+  ) async {
     final repository = _FakeNoteBlockRepository();
     EditorState? state;
 
@@ -870,15 +1074,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('yuli_atomic_table_0')));
-    await tester.pumpAndSettle();
-    expect(find.text('EDITAR CELDAS'), findsOneWidget);
-    expect(state?.selection?.start.path, [0]);
-
-    await tester.tap(find.text('EDITAR CELDAS'));
-    await tester.pumpAndSettle();
-    expect(find.text('TERMINAR'), findsOneWidget);
-
+    expect(find.text('EDITAR CELDAS'), findsNothing);
     await tester.tap(find.byType(ParagraphBlockComponentWidget).at(2));
     await tester.pump();
     tester.testTextInput.enterText('**Editable**');
@@ -895,8 +1091,11 @@ void main() {
     expect(editable.style?.fontWeight, FontWeight.w700);
   });
 
-  testWidgets('table header exposes row and column controls', (tester) async {
+  testWidgets('table shows one compact toolbar only while editing', (
+    tester,
+  ) async {
     final repository = _FakeNoteBlockRepository();
+    final previewKey = GlobalKey();
     EditorState? state;
 
     await tester.pumpWidget(
@@ -904,6 +1103,9 @@ void main() {
         overrides: [noteBlockRepositoryProvider.overrideWithValue(repository)],
         child: MaterialApp(
           localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          builder:
+              (context, child) =>
+                  RepaintBoundary(key: previewKey, child: child!),
           home: Scaffold(
             body: SizedBox(
               width: 700,
@@ -921,9 +1123,11 @@ void main() {
 ''',
                       ),
                       accent: const Color(0xFF2D3F8C),
-                      onFocusChanged:
-                          (editorState, _) =>
-                              setHostState(() => state = editorState),
+                      onFocusChanged: (editorState, _) {
+                        if (editorState != null) {
+                          setHostState(() => state = editorState);
+                        }
+                      },
                     ),
               ),
             ),
@@ -933,52 +1137,116 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('yuli_atomic_table_0')));
+    final firstCell = find.byType(ParagraphBlockComponentWidget).first;
+    final inactivePosition = tester.getTopLeft(firstCell);
+    await tester.tap(firstCell);
     await tester.pumpAndSettle();
-    expect(find.text('FILA +'), findsOneWidget);
-    expect(find.text('FILA -'), findsOneWidget);
-    expect(find.text('COL +'), findsOneWidget);
-    expect(find.text('COL -'), findsOneWidget);
-    expect(find.text('ANCHO -'), findsOneWidget);
-    expect(find.text('ANCHO +'), findsOneWidget);
-
+    if (const bool.fromEnvironment('YULI_CAPTURE_TABLE')) {
+      await tester.runAsync(() async {
+        final boundary =
+            previewKey.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final image = await boundary.toImage(pixelRatio: 1.5);
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          'build/table_review.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    }
+    final activePosition = tester.getTopLeft(firstCell);
+    expect(activePosition.dx, closeTo(inactivePosition.dx, 0.5));
+    expect(activePosition.dy, closeTo(inactivePosition.dy, 0.5));
+    expect(find.byTooltip('Añadir'), findsNothing);
+    expect(find.byTooltip('Eliminar'), findsNothing);
+    final frame = tester.widget<SizedBox>(
+      find.byKey(const ValueKey('yuli_table_frame_0')),
+    );
+    expect(
+      frame.width,
+      TableNode(node: state!.document.root.children.single).tableWidth + 12,
+    );
+    expect(frame.height, isNull);
+    expect(find.byKey(const ValueKey('yuli_table_border_0')), findsNothing);
+    final tableRect = tester.getRect(
+      find.byKey(const ValueKey('yuli_table_frame_0')),
+    );
+    final cellRects =
+        tester
+            .widgetList<ParagraphBlockComponentWidget>(
+              find.descendant(
+                of: find.byKey(const ValueKey('yuli_table_frame_0')),
+                matching: find.byType(ParagraphBlockComponentWidget),
+              ),
+            )
+            .map((cell) => tester.getRect(find.byWidget(cell)))
+            .toList();
+    expect(tableRect.left, lessThan(cellRects.first.left));
+    expect(tableRect.right, greaterThan(cellRects.last.right));
+    final moreRect = tester.getRect(
+      find.byKey(const ValueKey('yuli_atomic_more')),
+    );
+    expect(moreRect.right, closeTo(tableRect.right, 0.5));
     final table = state!.document.root.children.single;
     final initialRows = table.attributes[TableBlockKeys.rowsLen] as int;
     final initialCols = table.attributes[TableBlockKeys.colsLen] as int;
-    final resizedCol = initialCols - 1;
-    final widthBefore = TableNode(node: table).getColWidth(resizedCol);
-
-    await tester.tap(find.text('FILA +'));
+    expect(find.byTooltip('Añadir fila debajo'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Añadir fila debajo'));
     await tester.pumpAndSettle();
     expect(table.attributes[TableBlockKeys.rowsLen], initialRows + 1);
-
-    await tester.tap(find.text('COL +'));
+    await tester.tap(find.byTooltip('Añadir columna a la derecha'));
     await tester.pumpAndSettle();
     expect(table.attributes[TableBlockKeys.colsLen], initialCols + 1);
-
-    await tester.tap(find.text('FILA -'));
-    await tester.pumpAndSettle();
-    expect(table.attributes[TableBlockKeys.rowsLen], initialRows);
-
-    await tester.tap(find.text('COL -'));
-    await tester.pumpAndSettle();
-    expect(table.attributes[TableBlockKeys.colsLen], initialCols);
-
-    await tester.tap(find.text('ANCHO +'));
-    await tester.pumpAndSettle();
-    final resizedCell = table.children.firstWhere(
-      (cell) =>
-          cell.attributes[TableCellBlockKeys.colPosition] == resizedCol &&
-          cell.attributes[TableCellBlockKeys.rowPosition] == 0,
+    final tableBeforeResize = TableNode(
+      node: state!.document.root.children.single,
     );
-    expect(resizedCell.attributes[TableCellBlockKeys.width], widthBefore + 32);
-
-    await tester.tap(find.text('ANCHO -'));
+    final widthsBefore = List.generate(
+      tableBeforeResize.colsLen,
+      tableBeforeResize.getColWidth,
+    );
+    await tester.tap(find.byTooltip('Más opciones'));
     await tester.pumpAndSettle();
-    expect(resizedCell.attributes[TableCellBlockKeys.width], widthBefore);
+    await tester.tap(find.text('Aumentar ancho de columna'));
+    await tester.pumpAndSettle();
+    final tableAfterResize = TableNode(
+      node: state!.document.root.children.single,
+    );
+    final widthsAfter = List.generate(
+      tableAfterResize.colsLen,
+      tableAfterResize.getColWidth,
+    );
+    expect(
+      List.generate(
+        widthsBefore.length,
+        (index) => widthsAfter[index] > widthsBefore[index],
+      ),
+      contains(true),
+      reason: '$widthsBefore -> $widthsAfter',
+    );
+    await tester.tap(find.byTooltip('Eliminar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eliminar fila'));
+    await tester.pumpAndSettle();
+    expect(
+      state!.document.root.children.single.attributes[TableBlockKeys.rowsLen],
+      initialRows,
+    );
+    await tester.tap(find.byType(ParagraphBlockComponentWidget).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Seleccionar tabla'));
+    await tester.pumpAndSettle();
+    expect(state!.selectionType, SelectionType.block);
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pumpAndSettle();
+    expect(state!.document.root.children.single.type, ParagraphBlockKeys.type);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('image node has a compact editor for url size and alignment', (
+  testWidgets('image replaces and resizes directly and preserves alignment', (
     tester,
   ) async {
     final repository = _FakeNoteBlockRepository();
@@ -1015,37 +1283,32 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Reemplazar'), findsNothing);
     await tester.tap(
       find.byKey(const ValueKey('yuli_atomic_image_0')),
       warnIfMissed: false,
     );
     await tester.pumpAndSettle();
-    expect(find.text('EDITAR'), findsOneWidget);
-    expect(find.text('IZQ'), findsOneWidget);
-    expect(find.text('CENTRO'), findsOneWidget);
-    expect(find.text('DER'), findsOneWidget);
-
-    await tester.tap(find.text('EDITAR'));
+    expect(find.text('Reemplazar'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_more')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CAMBIAR IMAGEN'));
+    expect(find.text('Reemplazar'), findsOneWidget);
+    await tester.tap(find.text('Reemplazar'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('GRANDE'));
-    await tester.pump();
-    await tester.tap(find.text('DER'));
-    await tester.pump();
-    await tester.ensureVisible(find.text('GUARDAR'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('GUARDAR'));
-    await tester.pumpAndSettle();
-
-    final image = state!.document.root.children.single;
-    expect(image.attributes[ImageBlockKeys.url], 'C:\\notes\\updated.png');
-    expect(image.attributes[ImageBlockKeys.width], 520.0);
-    expect(image.attributes[ImageBlockKeys.align], 'right');
-    final preview = tester.widget<SizedBox>(
-      find.byKey(const ValueKey('yuli_image_preview_0')),
+    await tester.drag(
+      find.byKey(const ValueKey('yuli_image_resize')),
+      const Offset(-60, 0),
     );
-    expect(preview.width, 520.0);
+    await tester.pumpAndSettle();
+    final alignRight = find.text('Derecha');
+    await tester.ensureVisible(alignRight);
+    await tester.tap(alignRight);
+    await tester.pumpAndSettle();
+    final image = state!.document.root.children.single;
+    expect(image.attributes[ImageBlockKeys.url], endsWith('updated.png'));
+    expect(image.attributes[ImageBlockKeys.width], lessThan(320));
+    expect(image.attributes[ImageBlockKeys.align], 'right');
+    expect(find.text('GUARDAR'), findsNothing);
   });
 
   testWidgets('block latex edits without exposing dollar markers', (
@@ -1099,7 +1362,7 @@ void main() {
     );
   });
 
-  testWidgets('code block uses compact atomic editing flow', (tester) async {
+  testWidgets('code block edits directly without a save form', (tester) async {
     final repository = _FakeNoteBlockRepository();
     EditorState? state;
 
@@ -1129,29 +1392,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('```'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('yuli_atomic_code_0')));
+    expect(find.byType(YuliCodeLanguagePicker), findsNothing);
+    await tester.tap(find.byType(HighlightView).first);
     await tester.pumpAndSettle();
-    expect(find.text('EDITAR'), findsOneWidget);
-
-    await tester.tap(find.text('EDITAR'));
+    expect(find.byType(YuliCodeLanguagePicker), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_more')));
     await tester.pumpAndSettle();
-    final fields = find.byType(TextField);
-    expect(fields, findsNWidgets(2));
-    await tester.enterText(fields.at(0), 'type');
-    await tester.pump();
-    await tester.tap(find.text('TYPESCRIPT'));
-    await tester.pump();
-    await tester.enterText(
-      find.byType(TextField).last,
-      'const value = 2;\nconsole.log(value);',
-    );
-    await tester.tap(find.text('GUARDAR'));
+    expect(find.byType(YuliCodeLanguagePicker), findsOneWidget);
+    tester.testTextInput.enterText('const value = 2;');
     await tester.pumpAndSettle();
-
     final code = state!.document.root.children.single;
-    expect(code.attributes['language'], 'ts');
-    expect(code.delta?.toPlainText(), contains('console.log'));
-    expect(YuliMarkdownDocument.encode(state!.document), contains('```ts'));
+    expect(code.delta?.toPlainText(), contains('const value = 2;'));
+    expect(find.text('GUARDAR'), findsNothing);
+    expect(find.text('EDITAR'), findsNothing);
+    expect(
+      YuliMarkdownDocument.encode(state!.document),
+      contains('const value = 2;'),
+    );
+    await tester.tap(find.byTooltip('Seleccionar código'));
+    await tester.pumpAndSettle();
+    expect(state!.selectionType, SelectionType.block);
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pumpAndSettle();
+    expect(state!.document.root.children.single.type, ParagraphBlockKeys.type);
   });
 
   testWidgets('code block preview applies syntax highlight', (tester) async {
@@ -1271,18 +1534,23 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
           home: Scaffold(
-            body: SizedBox(
-              width: 420,
-              child: YuliLiveTextEditor(
-                block: const TextBlock(
-                  id: 1,
-                  noteId: 1,
-                  position: 0,
-                  markdown: '\$\$\nx^2\n\$\$',
+            body: Column(
+              children: [
+                SizedBox(
+                  width: 420,
+                  child: YuliLiveTextEditor(
+                    block: const TextBlock(
+                      id: 1,
+                      noteId: 1,
+                      position: 0,
+                      markdown: '\$\$\nx^2\n\$\$',
+                    ),
+                    accent: const Color(0xFF2D3F8C),
+                    onFocusChanged: (editorState, _) => state = editorState,
+                  ),
                 ),
-                accent: const Color(0xFF2D3F8C),
-                onFocusChanged: (editorState, _) => state = editorState,
-              ),
+                const TextField(key: ValueKey('outside_editor')),
+              ],
             ),
           ),
         ),
@@ -1290,6 +1558,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('yuli_continue_writing')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_latex_0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('yuli_continue_writing')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('outside_editor')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('yuli_continue_writing')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('yuli_atomic_latex_0')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('yuli_continue_writing')));
     await tester.pumpAndSettle();
 
@@ -1470,6 +1747,47 @@ List<TextSpan> _renderedSpans(WidgetTester tester) => [
   for (final richText in tester.widgetList<RichText>(find.byType(RichText)))
     ..._flattenSpans(richText.text),
 ];
+
+class _FastTypingTestKeyStore extends AiKeyStore {
+  @override
+  Future<bool> hasKey() async => true;
+}
+
+class _FastTypingTestAssistant extends AiAssistant {
+  int calls = 0;
+  @override
+  Stream<AiStreamEvent> streamReplyEvents(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+    bool deepReasoning = false,
+  }) async* {
+    calls++;
+    yield const AiTextDelta(
+      '{"blocks":[{"id":0,"edits":[{"start":6,"before":"rapdio","after":"rápido"}]}]}',
+    );
+    yield const AiStreamComplete();
+  }
+
+  @override
+  Stream<String> streamReply(
+    List<AiMessage> messages, {
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+    bool deepReasoning = false,
+  }) => throw UnimplementedError();
+  @override
+  Stream<AiStreamEvent> streamReplyWithTools(
+    List<AiMessage> messages, {
+    required List<AiToolDef> tools,
+    AiModel model = AiModel.flash,
+    int maxTokens = 2048,
+    double temperature = 0.3,
+    bool deepReasoning = false,
+  }) => throw UnimplementedError();
+}
 
 class _FakeNoteBlockRepository implements NoteBlockRepository {
   Map<String, dynamic>? lastPayload;

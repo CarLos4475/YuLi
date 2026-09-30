@@ -49,6 +49,26 @@ List<CharacterShortcutEvent> get yuliMarkdownCharacterShortcuts => [
 ];
 
 List<CommandShortcutEvent> get yuliMarkdownCommandShortcuts => [
+  yuliDeleteSelectedAtomicCommand,
+  for (final key in ['enter', 'tab'])
+    CommandShortcutEvent(
+      key: 'YuLi code $key',
+      getDescription: () => 'Editar código',
+      command: key,
+      handler: (state) {
+        final selection = state.selection?.normalized;
+        final node =
+            selection == null
+                ? null
+                : state.getNodeAtPath(selection.start.path);
+        if (node?.type != yuliCodeBlockType ||
+            !selection!.start.path.equals(selection.end.path)) {
+          return KeyEventResult.ignored;
+        }
+        _insertCodeText(state, key == 'enter' ? '\n' : '  ');
+        return KeyEventResult.handled;
+      },
+    ),
   _tableCellLineBreakCommand(key: 'YuLi table cell newline', command: 'enter'),
   _tableCellLineBreakCommand(
     key: 'YuLi table cell shift newline',
@@ -122,6 +142,62 @@ List<CommandShortcutEvent> get yuliMarkdownCommandShortcuts => [
         event != outdentCommand,
   ),
 ];
+
+final CommandShortcutEvent yuliDeleteSelectedAtomicCommand =
+    CommandShortcutEvent(
+      key: 'YuLi delete selected element',
+      getDescription: () => 'Eliminar elemento seleccionado',
+      command: 'backspace, shift+backspace, delete',
+      handler: (editorState) {
+        final selection = editorState.selection?.normalized;
+        if (selection == null ||
+            selection.isCollapsed ||
+            !selection.start.path.equals(selection.end.path)) {
+          return KeyEventResult.ignored;
+        }
+        final node = editorState.getNodeAtPath(selection.start.path);
+        if (node == null ||
+            node.parent != editorState.document.root ||
+            !_yuliAtomicBlockTypes.contains(node.type)) {
+          return KeyEventResult.ignored;
+        }
+        final selectedAsBlock =
+            editorState.selectionType == SelectionType.block;
+        if (!selectedAsBlock ||
+            selection.start.offset != 0 ||
+            selection.end.offset != 1) {
+          return KeyEventResult.ignored;
+        }
+        final children = editorState.document.root.children;
+        final index = node.path.first;
+        final transaction = editorState.transaction..deleteNode(node);
+        if (children.length == 1) {
+          transaction
+            ..insertNode([0], paragraphNode())
+            ..afterSelection = Selection.collapsed(Position(path: [0]));
+        } else if (index > 0) {
+          final previous = children[index - 1];
+          transaction.afterSelection = Selection.collapsed(
+            Position(path: [index - 1], offset: previous.delta?.length ?? 0),
+          );
+        } else {
+          transaction.afterSelection = Selection.collapsed(Position(path: [0]));
+        }
+        unawaited(
+          editorState
+              .apply(transaction)
+              .whenComplete(() => editorState.selectionType = null),
+        );
+        return KeyEventResult.handled;
+      },
+    );
+
+const _yuliAtomicBlockTypes = {
+  ImageBlockKeys.type,
+  TableBlockKeys.type,
+  yuliCodeBlockType,
+  yuliLatexBlockType,
+};
 
 CommandShortcutEvent _tableCellLineBreakCommand({
   required String key,
@@ -399,6 +475,7 @@ Future<void> insertMarkdownAtSelection(
     current.delta!.length,
   );
   final path = current.path;
+  final selectsAtomic = _yuliAtomicBlockTypes.contains(inserted.last.type);
   final nodes = <Node>[
     if (before.isNotEmpty)
       Node(
@@ -425,11 +502,21 @@ Future<void> insertMarkdownAtSelection(
   transaction.deleteNode(current);
   final insertedEndIndex =
       path.first + (before.isNotEmpty ? 1 : 0) + inserted.length - 1;
-  final last = inserted.last;
-  transaction.afterSelection = Selection.collapsed(
-    Position(path: [insertedEndIndex], offset: last.delta?.length ?? 0),
-  );
+  transaction.afterSelection =
+      selectsAtomic
+          ? Selection.single(
+            path: [insertedEndIndex],
+            startOffset: 0,
+            endOffset: 1,
+          )
+          : Selection.collapsed(
+            Position(
+              path: [insertedEndIndex],
+              offset: inserted.last.delta?.length ?? 0,
+            ),
+          );
   await editorState.apply(transaction);
+  if (selectsAtomic) editorState.selectionType = SelectionType.block;
 }
 
 final CharacterShortcutEvent _insertNewLineWithAlignment =
@@ -441,6 +528,11 @@ final CharacterShortcutEvent _insertNewLineWithAlignment =
         if (selection == null) return false;
         final node = editorState.getNodeAtPath(selection.start.path);
         if (node == null) return false;
+        if (node.type == yuliCodeBlockType &&
+            selection.start.path.equals(selection.end.path)) {
+          await _insertCodeText(editorState, '\n');
+          return true;
+        }
         if (node.path.length == 1 &&
             selection.start.path.equals(selection.end.path) &&
             (node.type == ImageBlockKeys.type ||
@@ -476,6 +568,35 @@ final CharacterShortcutEvent _insertNewLineWithAlignment =
         return true;
       },
     );
+
+Future<void> _insertCodeText(EditorState state, String text) {
+  final selection = state.selection!.normalized;
+  final node = state.getNodeAtPath(selection.start.path)!;
+  var inserted = text;
+  if (text == '\n') {
+    final before = node.delta!.toPlainText().substring(
+      0,
+      selection.start.offset,
+    );
+    final line = before.substring(before.lastIndexOf('\n') + 1);
+    inserted += RegExp(r'^[ \t]*').firstMatch(line)!.group(0)!;
+  }
+  final transaction =
+      state.transaction
+        ..deleteText(
+          node,
+          selection.start.offset,
+          selection.end.offset - selection.start.offset,
+        )
+        ..insertText(node, selection.start.offset, inserted)
+        ..afterSelection = Selection.collapsed(
+          Position(
+            path: node.path,
+            offset: selection.start.offset + inserted.length,
+          ),
+        );
+  return state.apply(transaction);
+}
 
 bool isMarkdownMarkerActive({
   required Map<String, dynamic> attributes,
