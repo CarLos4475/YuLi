@@ -59,6 +59,7 @@ YuLi integra un asistente de inteligencia artificial basado en **DeepSeek V4** (
 - **Modelo Flash**: rapido y economico para uso diario (resumir, limpiar, extraer tareas, traducir).
 - **Modelo Pro**: razonamiento profundo para explicaciones complejas, codigo, matematicas.
 - **Contexto persistente por nota**: el contenido que subes al chat sobrevive cierres y reinicios de la app.
+- **Chat lateral o flotante** en notas, pizarras y cuadernos: cambia de vista sin perder el borrador ni la conversación. La ventana flotante se mueve y redimensiona sobre la pantalla; al minimizarla queda el acceso en el borde.
 - **Token-shielding**: el contexto se compacta automaticamente si es muy largo, con opcion a deshacer.
 - **Limite diario configurable** (150 requests/dia) para evitar costos inesperados.
 - **Acciones quick**: Resumir, Extraer tareas, Sugerir titulo, Traducir, Reescribir y Resumir chat — sin necesidad de escribir.

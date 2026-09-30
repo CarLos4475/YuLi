@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../providers/ai_providers.dart';
 import '../../providers/database_providers.dart';
@@ -113,8 +114,7 @@ Future<void> showAiChat(
     await Future.wait(pendingImages.map(deleteAiChatImage));
     return;
   }
-  // A note editor mounts a docked panel (AiChatDockScope) → open it in place
-  // (note + YuLi side by side). Other contexts (no dock) fall back to the modal.
+  // The editor keeps one chat panel mounted across layout changes, preserving its draft.
   final dock = dockController ?? AiChatDockScope.maybeOf(context);
   if (dock != null) {
     if (pendingImages.isNotEmpty) dock.attachImages(pendingImages);
@@ -230,14 +230,57 @@ Widget _bigChoice(String label, Color accent, bool filled, VoidCallback onTap) {
   );
 }
 
-/// Open/closed state of a docked chat panel. A `ChangeNotifier` (not a setState)
-/// so toggling it NEVER rebuilds the host editor — only the [AiChatDock] listens
-/// (same decoupling as the floating pins / palettes).
+/// Keeps chat layout changes outside the host editor's rebuild path.
+enum AiChatDisplayMode { lateral, floating }
+
 class AiChatDockController extends ChangeNotifier {
+  static const _displayModeKey = 'flight_ai_chat_display_mode';
+
+  AiChatDockController() {
+    unawaited(_restoreDisplayMode());
+  }
+
   bool _open = false;
+  bool _modeTouched = false;
+  bool _disposed = false;
+  AiChatDisplayMode _displayMode = AiChatDisplayMode.lateral;
   final List<AiImageInput> _pendingImages = [];
   bool get isOpen => _open;
+  AiChatDisplayMode get displayMode => _displayMode;
   List<AiImageInput> get pendingImages => List.unmodifiable(_pendingImages);
+
+  Future<void> _restoreDisplayMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_disposed || _modeTouched) return;
+      _displayMode =
+          prefs.getString(_displayModeKey) == 'floating'
+              ? AiChatDisplayMode.floating
+              : AiChatDisplayMode.lateral;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _saveDisplayMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_displayModeKey, _displayMode.name);
+    } catch (_) {}
+  }
+
+  void setDisplayMode(AiChatDisplayMode mode) {
+    if (_displayMode == mode) return;
+    _modeTouched = true;
+    _displayMode = mode;
+    notifyListeners();
+    unawaited(_saveDisplayMode());
+  }
+
+  void toggleDisplayMode() => setDisplayMode(
+    _displayMode == AiChatDisplayMode.lateral
+        ? AiChatDisplayMode.floating
+        : AiChatDisplayMode.lateral,
+  );
 
   void attachImages(Iterable<AiImageInput> images) {
     final available = kMaxAiImagesPerMessage - _pendingImages.length;
@@ -285,6 +328,7 @@ class AiChatDockController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     final images = List<AiImageInput>.from(_pendingImages);
     _pendingImages.clear();
     unawaited(Future.wait(images.map(deleteAiChatImage)));
@@ -310,12 +354,8 @@ class AiChatDockScope extends InheritedWidget {
   bool updateShouldNotify(AiChatDockScope old) => controller != old.controller;
 }
 
-/// Edge-docked chat panel for the note editors: a handle on the right edge that
-/// slides the chat in/out. Mounted as a SIBLING of the canvas Listener (so a
-/// tap on it never leaks a stroke) and wrapped in a RepaintBoundary; the open
-/// state is a [ChangeNotifier], so opening/closing or streaming NEVER repaints
-/// the canvas. Its transparent area passes pointers through to the canvas, so
-/// the note stays interactive next to the chat.
+/// Overlays the editor so chat updates leave the canvas untouched and pointer
+/// events outside the panel still reach the note.
 class AiChatDock extends StatefulWidget {
   final AiChatDockController controller;
   final AiChatSession session;
@@ -339,11 +379,29 @@ class AiChatDock extends StatefulWidget {
   State<AiChatDock> createState() => _AiChatDockState();
 }
 
+Rect clampAiChatRect(Rect rect, Rect bounds) {
+  if (bounds.width <= 0 || bounds.height <= 0) return Rect.zero;
+  final minWidth = math.min(320.0, bounds.width);
+  final minHeight = math.min(360.0, bounds.height);
+  final width = rect.width.clamp(minWidth, bounds.width).toDouble();
+  final height = rect.height.clamp(minHeight, bounds.height).toDouble();
+  final left = rect.left.clamp(bounds.left, bounds.right - width).toDouble();
+  final top = rect.top.clamp(bounds.top, bounds.bottom - height).toDouble();
+  return Rect.fromLTWH(left, top, width, height);
+}
+
 class _AiChatDockState extends State<AiChatDock>
     with SingleTickerProviderStateMixin {
   static const double _w = 450;
   static const double _handleW = 30;
   static const double _handleH = 56;
+  static const double _floatingStripHeight = 26;
+
+  Rect? _floatingRect;
+  Rect _floatingBounds = Rect.zero;
+  late Rect _gestureStartRect;
+  late Offset _gestureStartPointer;
+  late bool _hasOpened = widget.controller.isOpen;
 
   late final AnimationController _anim = AnimationController(
     vsync: this,
@@ -357,8 +415,95 @@ class _AiChatDockState extends State<AiChatDock>
     widget.controller.addListener(_onToggle);
   }
 
-  void _onToggle() =>
-      widget.controller.isOpen ? _anim.forward() : _anim.reverse();
+  void _onToggle() {
+    if (widget.controller.isOpen) {
+      _hasOpened = true;
+      _anim.forward();
+    } else {
+      _anim.reverse();
+    }
+  }
+
+  Rect _currentFloatingRect(Rect bounds) {
+    final initialWidth = math.min(400.0, bounds.width);
+    final initialHeight = math.min(520.0, bounds.height * 0.72);
+    final initial = Rect.fromLTWH(
+      bounds.right - initialWidth,
+      bounds.top + math.min(28.0, bounds.height * 0.08),
+      initialWidth,
+      initialHeight,
+    );
+    return clampAiChatRect(_floatingRect ?? initial, bounds);
+  }
+
+  void _startWindowGesture(DragStartDetails details) {
+    _gestureStartRect = _currentFloatingRect(_floatingBounds);
+    _gestureStartPointer = details.globalPosition;
+  }
+
+  void _moveWindow(DragUpdateDetails details) {
+    final delta = details.globalPosition - _gestureStartPointer;
+    setState(() {
+      _floatingRect = clampAiChatRect(
+        _gestureStartRect.shift(delta),
+        _floatingBounds,
+      );
+    });
+  }
+
+  void _resizeWindow(DragUpdateDetails details) {
+    final delta = details.globalPosition - _gestureStartPointer;
+    setState(() {
+      _floatingRect = clampAiChatRect(
+        Rect.fromLTWH(
+          _gestureStartRect.left,
+          _gestureStartRect.top,
+          _gestureStartRect.width + delta.dx,
+          _gestureStartRect.height + delta.dy,
+        ),
+        _floatingBounds,
+      );
+    });
+  }
+
+  Widget _floatingStrip({required bool resize}) {
+    return SizedBox(
+      height:
+          widget.controller.displayMode == AiChatDisplayMode.floating
+              ? _floatingStripHeight
+              : 0,
+      child:
+          widget.controller.displayMode == AiChatDisplayMode.floating
+              ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: _startWindowGesture,
+                onPanUpdate: resize ? _resizeWindow : _moveWindow,
+                child: Container(
+                  color: widget.accent,
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                  child: Row(
+                    children: [
+                      Icon(
+                        resize ? YuLiIcons.maximize : YuLiIcons.gripVertical,
+                        size: 14,
+                        color: yCream,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        resize ? 'REDIMENSIONAR' : 'MOVER CHAT',
+                        style: yMono(
+                          size: 10,
+                          weight: FontWeight.w700,
+                          color: yCream,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              : null,
+    );
+  }
 
   @override
   void dispose() {
@@ -370,83 +515,109 @@ class _AiChatDockState extends State<AiChatDock>
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _anim,
-        builder: (context, _) {
-          final t = Curves.easeOutCubic.transform(_anim.value);
-          final h = MediaQuery.of(context).size.height;
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // The panel, sliding from the right edge (off-screen at t=0).
-              Positioned(
-                top: 0,
-                bottom: 0,
-                width: _w,
-                right: _w * (t - 1),
-                child:
-                    t < 0.02
-                        ? const SizedBox.shrink()
-                        : _AiChatSheet(
-                          session: widget.session,
-                          accent: widget.accent,
-                          dockController: widget.controller,
-                          onSendToCanvas: widget.onSendToCanvas,
-                          embedded: true,
-                          onClose: widget.controller.close,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final media = MediaQuery.of(context);
+          final size = constraints.biggest;
+          final left = math.min(8.0, size.width);
+          final top = math.min(media.padding.top + 8, size.height);
+          _floatingBounds = Rect.fromLTRB(
+            left,
+            top,
+            math.max(left, size.width - 8),
+            math.max(
+              top,
+              size.height - media.viewInsets.bottom - media.padding.bottom - 8,
+            ),
+          );
+          return AnimatedBuilder(
+            animation: Listenable.merge([_anim, widget.controller]),
+            builder: (context, _) {
+              final t = Curves.easeOutCubic.transform(_anim.value);
+              final floating =
+                  widget.controller.displayMode == AiChatDisplayMode.floating;
+              final dockWidth = math.min(_w, math.max(0.0, size.width - 20));
+              final rect =
+                  floating
+                      ? _currentFloatingRect(_floatingBounds)
+                      : Rect.fromLTWH(
+                        size.width - dockWidth * t,
+                        0,
+                        dockWidth,
+                        size.height,
+                      );
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (_hasOpened)
+                    Positioned.fromRect(
+                      rect: rect,
+                      child: IgnorePointer(
+                        ignoring: t < 0.95,
+                        child: Opacity(
+                          opacity: floating ? t : 1,
+                          child: Offstage(
+                            offstage: t == 0,
+                            child: Column(
+                              children: [
+                                _floatingStrip(resize: false),
+                                Expanded(
+                                  child: _AiChatSheet(
+                                    session: widget.session,
+                                    accent: widget.accent,
+                                    dockController: widget.controller,
+                                    onSendToCanvas: widget.onSendToCanvas,
+                                    embedded: true,
+                                    floating: floating,
+                                    onClose: widget.controller.close,
+                                  ),
+                                ),
+                                _floatingStrip(resize: true),
+                              ],
+                            ),
+                          ),
                         ),
-              ),
-              // The handle rides the panel's left edge: at the screen edge when
-              // closed, at the panel edge when open. Carries the active mode's
-              // icon (rebuilds only this tiny widget on mode change / streaming).
-              Positioned(
-                top: h * 0.30,
-                right: (_w - 8) * t,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.controller.toggle,
-                  child: Container(
-                    width: _handleW,
-                    height: _handleH,
-                    decoration: BoxDecoration(
-                      color: widget.accent,
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(14),
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: widget.accent.withValues(alpha: 0.25),
-                          blurRadius: 12,
-                          offset: const Offset(-4, 4),
-                        ),
-                      ],
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedBuilder(
-                          animation: widget.session,
-                          builder:
-                              (_, _) => Icon(
-                                widget.session.mode.icon,
-                                size: 15,
+                  if (!floating || t < 0.02)
+                    Positioned(
+                      top: size.height * 0.30,
+                      right: floating ? 0 : (dockWidth - 8) * t,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: widget.controller.toggle,
+                        child: Container(
+                          width: _handleW,
+                          height: _handleH,
+                          color: widget.accent,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              AnimatedBuilder(
+                                animation: widget.session,
+                                builder:
+                                    (_, _) => Icon(
+                                      widget.session.mode.icon,
+                                      size: 15,
+                                      color: yCream,
+                                    ),
+                              ),
+                              const SizedBox(height: 5),
+                              Icon(
+                                t > 0.5
+                                    ? YuLiIcons.chevronRight
+                                    : YuLiIcons.chevronLeft,
+                                size: 13,
                                 color: yCream,
                               ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 5),
-                        Icon(
-                          t > 0.5
-                              ? YuLiIcons.chevronRight
-                              : YuLiIcons.chevronLeft,
-                          size: 13,
-                          color: yCream,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         },
       ),
@@ -463,9 +634,9 @@ class _AiChatSheet extends ConsumerStatefulWidget {
   final void Function(String markdown)? onSendToCanvas;
   final void Function(String title)? onApplyTitle;
 
-  /// Docked-panel mode: fills the dock (no modal frame); the close button and
-  /// "Enviar a lienzo" call [onClose] instead of Navigator.pop.
+  /// Embedded mode keeps the chat inside the editor instead of a modal route.
   final bool embedded;
+  final bool floating;
   final VoidCallback? onClose;
 
   const _AiChatSheet({
@@ -477,6 +648,7 @@ class _AiChatSheet extends ConsumerStatefulWidget {
     this.onSendToCanvas,
     this.onApplyTitle,
     this.embedded = false,
+    this.floating = false,
     this.onClose,
   });
 
@@ -975,11 +1147,15 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             8,
             8,
             8,
-            MediaQuery.of(context).viewInsets.bottom + 8,
+            (widget.floating ? 0 : MediaQuery.of(context).viewInsets.bottom) +
+                8,
           ),
           child: AiFrostedSurface(
             accent: widget.accent,
+            borderRadius: BorderRadius.zero,
             child: SafeArea(
+              top: !widget.floating,
+              bottom: !widget.floating,
               child: AnimatedBuilder(
                 animation: _s,
                 builder: (_, _) => _buildChat(),
@@ -1029,8 +1205,10 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
                   padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                   children: [
                     if (_s.messages.isEmpty)
-                      SizedBox(
-                        height: math.max(0.0, constraints.maxHeight - 32),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: math.max(0.0, constraints.maxHeight - 32),
+                        ),
                         child: _greeting(),
                       ),
                     for (int i = 0; i < _s.messages.length; i++)
@@ -1914,6 +2092,33 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
             ),
           ),
           const SizedBox(width: 6),
+          if (widget.dockController != null) ...[
+            Tooltip(
+              message:
+                  widget.floating
+                      ? 'Cambiar a panel lateral'
+                      : 'Cambiar a ventana flotante',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.dockController!.toggleDisplayMode,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.accent,
+                    border: Border.all(color: yBorderStrong, width: yLineThin),
+                  ),
+                  child: Icon(
+                    widget.floating ? YuLiIcons.kanban : YuLiIcons.maximize,
+                    size: 16,
+                    color: yCream,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           AiSoftIconButton(
             icon: YuLiIcons.moreHorizontal,
             tooltip: 'Opciones del chat',
@@ -1922,7 +2127,7 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           const SizedBox(width: 4),
           AiSoftIconButton(
             icon: YuLiIcons.close,
-            tooltip: 'Cerrar',
+            tooltip: widget.floating ? 'Minimizar chat' : 'Cerrar',
             onTap: _dismiss,
           ),
         ],

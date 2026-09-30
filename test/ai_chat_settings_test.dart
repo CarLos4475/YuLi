@@ -175,6 +175,43 @@ void main() {
     controller.dispose();
   });
 
+  test('chat display mode is restored for the next editor', () async {
+    final first = AiChatDockController();
+    first.setDisplayMode(AiChatDisplayMode.floating);
+    await Future<void>.delayed(Duration.zero);
+    first.dispose();
+
+    final second = AiChatDockController();
+    await Future<void>.delayed(Duration.zero);
+    expect(second.displayMode, AiChatDisplayMode.floating);
+    second.toggleDisplayMode();
+    expect(second.displayMode, AiChatDisplayMode.lateral);
+    second.dispose();
+  });
+
+  test(
+    'floating chat stays inside the visible area after viewport changes',
+    () {
+      const wideBounds = Rect.fromLTWH(8, 32, 780, 900);
+      final dragged = clampAiChatRect(
+        const Rect.fromLTWH(720, 850, 400, 500),
+        wideBounds,
+      );
+      expect(wideBounds.contains(dragged.topLeft), isTrue);
+      expect(wideBounds.contains(dragged.bottomRight), isFalse);
+      expect(dragged.right, wideBounds.right);
+      expect(dragged.bottom, wideBounds.bottom);
+
+      const keyboardBounds = Rect.fromLTWH(8, 32, 344, 286);
+      final adjusted = clampAiChatRect(dragged, keyboardBounds);
+      expect(adjusted.left, greaterThanOrEqualTo(keyboardBounds.left));
+      expect(adjusted.top, greaterThanOrEqualTo(keyboardBounds.top));
+      expect(adjusted.right, lessThanOrEqualTo(keyboardBounds.right));
+      expect(adjusted.bottom, lessThanOrEqualTo(keyboardBounds.bottom));
+      expect(adjusted.width, keyboardBounds.width);
+    },
+  );
+
   test('note chat settings are shared globally between sessions', () {
     final store = AiChatSettingsStore();
     final first = AiChatSession(81, settingsStore: store);
