@@ -121,7 +121,7 @@ Notas enriquecidas con bloques tipo-dispatch:
 - **DrawingBlock** — canvas de dibujo inline con todas las herramientas.
 - **Format toolbar**: H1/H2/H3, bold, italic, strikethrough, highlight, codigo, listas, tareas, divisor y alineaciones.
 - **Insert menu**: tabla, codigo, cita, LaTeX, imagen y divisor mediante nodos/comandos documentales.
-- **YuLi Fast Typing**: corrección manual del bloque creado con **+ Texto**, con comparación original/corregido y deshacer; usa la interfaz del panel de YuLi AI. [Uso y límites](docs/FAST_TYPING.md).
+- **YuLi Fast Typing**: corrección manual del bloque creado con **+ Texto**, con comparación original/corregido y aceptación o rechazo antes de aplicar; usa la interfaz del panel de YuLi AI. [Uso y límites](docs/FAST_TYPING.md).
 - **Tablas**: edición directa de celdas y barra contextual compacta para insertar, mover, duplicar, redimensionar y pegar contenido tabulado.
 - **Imágenes y código**: tamaño por arrastre y alineación de imágenes; código editable directamente con lenguaje, copia e indentación. LaTeX display conserva su panel compacto.
 - **Render LIVE**: los marcadores Markdown se suavizan o esconden fuera del dominio activo, sin perder el texto fuente.

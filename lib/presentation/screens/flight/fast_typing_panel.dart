@@ -51,7 +51,9 @@ class FastTypingPanel extends StatelessWidget {
           Text(
             actions.notice ??
                 (actions.busy
-                    ? 'Puedes seguir escribiendo. Tus cambios nuevos se conservarán.'
+                    ? 'YuLi está preparando la corrección. Puedes cancelar sin cambiar el texto.'
+                    : actions.eligible.isEmpty
+                    ? 'Este bloque no contiene texto que se pueda corregir.'
                     : 'Corrige errores de tecleo en este bloque de texto. Se omiten imágenes, código y fórmulas.'),
             style: yBody(size: 12, color: aiMuted),
           ),
@@ -60,28 +62,57 @@ class FastTypingPanel extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (!actions.busy && actions.eligible.isNotEmpty)
+              if (!actions.busy &&
+                  actions.correctionAfter == null &&
+                  actions.eligible.isNotEmpty)
+                _action('Corregir bloque', YuLiIcons.type, () => onCorrect()),
+              if (actions.correctionAfter != null && !actions.busy) ...[
+                _action('Aceptar cambios', YuLiIcons.check, () async {
+                  await actions.acceptCorrection();
+                  if (context.mounted) onClose();
+                }),
                 _action(
-                  'Corregir bloque',
-                  YuLiIcons.type,
-                  () => _runCorrection(context),
-                ),
-              if (actions.changes.isNotEmpty && !actions.busy) ...[
-                _action(
-                  'Ver cambios',
-                  YuLiIcons.eye,
-                  () => _showChanges(context),
-                  primary: false,
-                ),
-                _action(
-                  'Deshacer',
-                  YuLiIcons.undo,
-                  actions.undoCorrection,
+                  'Rechazar cambios',
+                  YuLiIcons.close,
+                  onClose,
                   primary: false,
                 ),
               ],
             ],
           ),
+          if (actions.correctionAfter != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: AiSectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Original', style: yBody(size: 12, color: aiMuted)),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      actions.correctionBefore ?? '',
+                      style: yBody(size: 16, color: aiMuted),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Corregido',
+                      style: yBody(
+                        size: 12,
+                        color: accent,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      actions.correctionAfter ?? '',
+                      style: yBody(size: 16, color: aiInk),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -102,85 +133,4 @@ class FastTypingPanel extends StatelessWidget {
       onTap: onTap,
     ),
   );
-
-  Future<void> _runCorrection(BuildContext context) async {
-    await onCorrect();
-    if (context.mounted && actions.changes.isNotEmpty) {
-      _showChanges(context);
-    }
-  }
-
-  void _showChanges(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder:
-          (context) => Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.all(20),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640, maxHeight: 560),
-              child: AiFrostedSurface(
-                accent: accent,
-                role: AiFrostedSurfaceRole.dialog,
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'YuLi Fast Typing',
-                            style: yBody(size: 18, weight: FontWeight.w700),
-                          ),
-                        ),
-                        AiSoftIconButton(
-                          icon: YuLiIcons.close,
-                          tooltip: 'Cerrar',
-                          onTap: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: AiSectionCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Original',
-                                style: yBody(size: 12, color: aiMuted),
-                              ),
-                              const SizedBox(height: 4),
-                              SelectableText(
-                                actions.correctionBefore ?? '',
-                                style: yBody(size: 16, color: aiMuted),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Corregido',
-                                style: yBody(
-                                  size: 12,
-                                  color: accent,
-                                  weight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              SelectableText(
-                                actions.correctionAfter ?? '',
-                                style: yBody(size: 16, color: aiInk),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-    );
-  }
 }

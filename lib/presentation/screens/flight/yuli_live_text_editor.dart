@@ -31,6 +31,7 @@ import 'yuli_block_actions.dart';
 import 'fast_typing_panel.dart';
 import 'yuli_table_tools.dart';
 import 'yuli_image_resize_frame.dart';
+import 'yuli_editor_viewport.dart';
 
 typedef YuliEditorFocusChanged =
     void Function(EditorState? editorState, FocusNode? focusNode);
@@ -134,7 +135,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
   late final FocusNode _focusNode;
   late final NoteBlockRepository _repository;
   late final YuliBlockActions _blockActions;
-  final _actionsOverlay = OverlayPortalController();
+  bool _fastTypingOpen = false;
   Selection? _tableMenuSelection;
   StreamSubscription<EditorTransactionValue>? _transactionSubscription;
   Timer? _saveTimer;
@@ -165,8 +166,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
       ),
     );
     _applyInitialLiveStyles();
-    _blockActions = YuliBlockActions(_editorState)
-      ..addListener(_actionsChanged);
+    _blockActions = YuliBlockActions(_editorState);
     widget.controller?._openFastTyping = _openFastTyping;
     _scrollController = EditorScrollController(
       editorState: _editorState,
@@ -197,7 +197,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
   void didUpdateWidget(YuliLiveTextEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      oldWidget.controller?._openFastTyping = null;
+      if (oldWidget.controller?._openFastTyping == _openFastTyping) {
+        oldWidget.controller?._openFastTyping = null;
+      }
       widget.controller?._openFastTyping = _openFastTyping;
     }
     if (!oldWidget.autofocus && widget.autofocus) {
@@ -208,7 +210,9 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    widget.controller?._openFastTyping = null;
+    if (widget.controller?._openFastTyping == _openFastTyping) {
+      widget.controller?._openFastTyping = null;
+    }
     _saveTimer?.cancel();
     if (_pendingSave) {
       _persist();
@@ -222,7 +226,6 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
       ..removeListener(_onFocusChanged)
       ..dispose();
     _scrollController.dispose();
-    _blockActions.removeListener(_actionsChanged);
     _blockActions.dispose();
     _editorState.dispose();
     super.dispose();
@@ -258,26 +261,47 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
     if (mounted) setState(() {});
   }
 
-  void _actionsChanged() {
-    if (!mounted) return;
-    setState(() {});
-    if (_blockActions.selected.isNotEmpty ||
-        _blockActions.busy ||
-        _blockActions.notice != null) {
-      _actionsOverlay.show();
-    } else {
-      _actionsOverlay.hide();
-    }
-  }
-
-  void _openFastTyping() {
-    _focusNode.requestFocus();
+  Future<void> _openFastTyping() async {
+    if (!mounted || _fastTypingOpen) return;
+    _fastTypingOpen = true;
+    FocusManager.instance.primaryFocus?.unfocus();
     _blockActions.selectWholeBlock();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _blockActions.selected.isNotEmpty) {
-        _actionsOverlay.show();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder:
+            (dialogContext) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 620,
+                  maxHeight: (MediaQuery.sizeOf(dialogContext).height -
+                          MediaQuery.viewInsetsOf(dialogContext).bottom -
+                          48)
+                      .clamp(80, 560),
+                ),
+                child: SingleChildScrollView(
+                  child: AnimatedBuilder(
+                    animation: _blockActions,
+                    builder:
+                        (_, _) => FastTypingPanel(
+                          actions: _blockActions,
+                          accent: widget.accent,
+                          onCorrect: _correctSelected,
+                          onClose: () => Navigator.of(dialogContext).pop(),
+                        ),
+                  ),
+                ),
+              ),
+            ),
+      );
+    } finally {
+      if (mounted) {
+        _blockActions.clear();
+        _fastTypingOpen = false;
       }
-    });
+    }
   }
 
   Future<void> _correctSelected() {
@@ -396,6 +420,12 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
       accent: widget.accent,
       onMenuOpen: () => _tableMenuSelection = _editorState.selection,
       onMenuClose: () {
+        final selection = _tableMenuSelection;
+        if (_editorState.selection == null &&
+            selection != null &&
+            _editorState.getNodeAtPath(selection.start.path) != null) {
+          _editorState.selection = selection;
+        }
         _tableMenuSelection = null;
         _focusNode.requestFocus();
         _onSelectionChanged();
@@ -475,11 +505,6 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
           _openAtomicMenuKey = null;
         }
       });
-      if (_blockActions.selected.isEmpty &&
-          !_blockActions.busy &&
-          _blockActions.notice == null) {
-        _actionsOverlay.hide();
-      }
       if (_reportedActive != active) {
         _reportedActive = active;
         widget.onFocusChanged?.call(
@@ -1517,6 +1542,7 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
                     );
             return Align(
               key: ValueKey('yuli_atomic_image_${node.path.join('_')}'),
+              heightFactor: 1,
               alignment:
                   align == 'left'
                       ? Alignment.centerLeft
@@ -1647,57 +1673,23 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
         ),
       ),
     );
-    return OverlayPortal(
-      controller: _actionsOverlay,
-      overlayChildBuilder:
-          (context) => Positioned(
-            left: 12,
-            right: 12,
-            bottom:
-                MediaQueryData.fromView(View.of(context)).viewInsets.bottom +
-                MediaQuery.paddingOf(context).bottom +
-                12,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: 620,
-                  maxHeight: (MediaQuery.sizeOf(context).height -
-                          MediaQueryData.fromView(
-                            View.of(context),
-                          ).viewInsets.bottom -
-                          48)
-                      .clamp(80, 300),
-                ),
-                child: SingleChildScrollView(
-                  child: FastTypingPanel(
-                    actions: _blockActions,
-                    accent: widget.accent,
-                    onCorrect: _correctSelected,
-                    onClose: _blockActions.clear,
-                  ),
-                ),
+    return _wikiDraft == null
+        ? editor
+        : Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            editor,
+            if (_wikiMatches != null)
+              FlightWikiLinkSuggestions(
+                query: _wikiDraft!.query,
+                matches: _wikiMatches!,
+                accent: widget.accent,
+                onSelect: _commitWikiTarget,
+                onCreate: _createWikiTarget,
               ),
-            ),
-          ),
-      child:
-          _wikiDraft == null
-              ? editor
-              : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  editor,
-                  if (_wikiMatches != null)
-                    FlightWikiLinkSuggestions(
-                      query: _wikiDraft!.query,
-                      matches: _wikiMatches!,
-                      accent: widget.accent,
-                      onSelect: _commitWikiTarget,
-                      onCreate: _createWikiTarget,
-                    ),
-                ],
-              ),
-    );
+          ],
+        );
   }
 }
 
@@ -1753,10 +1745,7 @@ class _YuliFloatingAtomicControls extends StatefulWidget {
 class _YuliFloatingAtomicControlsState
     extends State<_YuliFloatingAtomicControls> {
   final _controller = OverlayPortalController();
-  final _link = LayerLink();
   final _targetKey = GlobalKey();
-  bool _showBelow = false;
-  double _expandedOffsetX = 0;
 
   @override
   void initState() {
@@ -1777,22 +1766,6 @@ class _YuliFloatingAtomicControlsState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (widget.visible) {
-        final target =
-            _targetKey.currentContext?.findRenderObject() as RenderBox?;
-        final showBelow =
-            target != null && target.localToGlobal(Offset.zero).dy < 80;
-        final expanded = widget.controls is! _YuliAtomicMenuButton;
-        final expandedOffsetX =
-            target == null || !expanded
-                ? 0.0
-                : MediaQuery.sizeOf(context).width / 2 -
-                    target.localToGlobal(Offset(target.size.width / 2, 0)).dx;
-        if (_showBelow != showBelow || _expandedOffsetX != expandedOffsetX) {
-          setState(() {
-            _showBelow = showBelow;
-            _expandedOffsetX = expandedOffsetX;
-          });
-        }
         _controller.show();
       } else {
         _controller.hide();
@@ -1802,59 +1775,106 @@ class _YuliFloatingAtomicControlsState
 
   @override
   Widget build(BuildContext context) {
+    YuliEditorViewport.boundsOf(context);
     final expanded = widget.controls is! _YuliAtomicMenuButton;
-    final overlayWidth = MediaQuery.sizeOf(context).width - 24;
-    final controls =
-        expanded
-            ? SizedBox(
-              width: overlayWidth,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minWidth: overlayWidth),
-                  child: Center(child: widget.controls),
-                ),
-              ),
-            )
-            : widget.controls;
     return OverlayPortal(
+      overlayLocation: OverlayChildLocation.rootOverlay,
       controller: _controller,
-      overlayChildBuilder:
-          (_) => UnconstrainedBox(
-            alignment: Alignment.topLeft,
-            child: CompositedTransformFollower(
-              link: _link,
-              showWhenUnlinked: false,
-              targetAnchor:
-                  expanded
-                      ? (_showBelow
-                          ? Alignment.bottomCenter
-                          : Alignment.topCenter)
-                      : (_showBelow
-                          ? Alignment.bottomRight
-                          : Alignment.topRight),
-              followerAnchor:
-                  expanded
-                      ? (_showBelow
-                          ? Alignment.topCenter
-                          : Alignment.bottomCenter)
-                      : (_showBelow
-                          ? Alignment.topRight
-                          : Alignment.bottomRight),
-              offset: Offset(
-                expanded ? _expandedOffsetX : 0,
-                _showBelow ? 8 : -8,
+      overlayChildBuilder: (overlayContext) {
+        final target = _targetKey.currentContext?.findRenderObject();
+        if (target is! RenderBox || !target.hasSize) {
+          return const SizedBox.shrink();
+        }
+        final media = MediaQuery.of(context);
+        final safeBounds = Rect.fromLTRB(
+          media.padding.left,
+          media.padding.top,
+          media.size.width - media.padding.right,
+          media.size.height - media.viewInsets.bottom - media.padding.bottom,
+        );
+        final viewport = (YuliEditorViewport.boundsOf(context) ?? safeBounds)
+            .intersect(safeBounds);
+        final targetBounds = target.localToGlobal(Offset.zero) & target.size;
+        if (!targetBounds.overlaps(viewport) ||
+            viewport.width < 48 ||
+            viewport.height < 48) {
+          return const SizedBox.shrink();
+        }
+        final overlayBox =
+            Overlay.of(
+                  overlayContext,
+                  rootOverlay: true,
+                ).context.findRenderObject()
+                as RenderBox;
+        final origin = overlayBox.localToGlobal(Offset.zero);
+        final overlayWidth = viewport.width - 16;
+        final controls =
+            expanded
+                ? SizedBox(
+                  width: overlayWidth,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minWidth: overlayWidth),
+                      child: Center(child: widget.controls),
+                    ),
+                  ),
+                )
+                : widget.controls;
+        return Positioned.fromRect(
+          rect: viewport.shift(-origin),
+          child: ClipRect(
+            child: CustomSingleChildLayout(
+              delegate: _AtomicControlsLayout(
+                target: targetBounds.shift(-viewport.topLeft),
+                expanded: expanded,
               ),
               child: Material(type: MaterialType.transparency, child: controls),
             ),
           ),
-      child: CompositedTransformTarget(
-        key: _targetKey,
-        link: _link,
-        child: widget.child,
+        );
+      },
+      child: SizedBox(key: _targetKey, child: widget.child),
+    );
+  }
+}
+
+class _AtomicControlsLayout extends SingleChildLayoutDelegate {
+  final Rect target;
+  final bool expanded;
+
+  const _AtomicControlsLayout({required this.target, required this.expanded});
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints(maxWidth: constraints.maxWidth);
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final x =
+        expanded
+            ? target.center.dx - childSize.width / 2
+            : target.right - childSize.width;
+    final above = target.top - childSize.height - 8;
+    final below = target.bottom + 8;
+    final y =
+        above >= 8
+            ? above
+            : below + childSize.height <= size.height - 8
+            ? below
+            : target.top + 8;
+    return Offset(
+      x.clamp(8, (size.width - childSize.width - 8).clamp(8, double.infinity)),
+      y.clamp(
+        8,
+        (size.height - childSize.height - 8).clamp(8, double.infinity),
       ),
     );
   }
+
+  @override
+  bool shouldRelayout(_AtomicControlsLayout oldDelegate) =>
+      target != oldDelegate.target || expanded != oldDelegate.expanded;
 }
 
 class _YuliTableGridFramePainter extends CustomPainter {
@@ -1920,6 +1940,7 @@ class _YuliAtomicToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
+    key: const ValueKey('yuli_atomic_toolbar'),
     padding: const EdgeInsets.all(4),
     decoration: BoxDecoration(
       color: yCream,
@@ -2643,32 +2664,87 @@ class _YuliImageBlockPreview extends StatelessWidget {
     };
     return Align(
       alignment: previewAlignment,
+      heightFactor: 1,
       child: SizedBox(
         key: previewKey,
         width: safeWidth,
-        child: _YuliImageBlockContent(url: url),
+        child: _YuliImageBlockContent(url: url, width: safeWidth),
       ),
     );
   }
 }
 
-class _YuliImageBlockContent extends StatelessWidget {
+class _YuliImageBlockContent extends StatefulWidget {
   final String url;
+  final double width;
 
-  const _YuliImageBlockContent({required this.url});
+  const _YuliImageBlockContent({required this.url, required this.width});
+
+  @override
+  State<_YuliImageBlockContent> createState() => _YuliImageBlockContentState();
+}
+
+class _YuliImageBlockContentState extends State<_YuliImageBlockContent> {
+  ImageProvider? _provider;
+  ImageStream? _stream;
+  double? _aspectRatio;
+  late final _listener = ImageStreamListener((info, _) {
+    if (!mounted) return;
+    final ratio = info.image.width / info.image.height;
+    info.dispose();
+    if (_aspectRatio != ratio) setState(() => _aspectRatio = ratio);
+  }, onError: (_, _) {});
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolveImage();
+  }
+
+  @override
+  void didUpdateWidget(_YuliImageBlockContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) _resolveImage();
+  }
+
+  void _resolveImage() {
+    final url = widget.url.trim();
+    final ImageProvider? next =
+        url.isEmpty
+            ? null
+            : url.startsWith('http://') || url.startsWith('https://')
+            ? NetworkImage(url)
+            : File(url).existsSync()
+            ? FileImage(File(url))
+            : null;
+    if (next == _provider) return;
+    _stream?.removeListener(_listener);
+    _provider = next;
+    _aspectRatio = null;
+    _stream = next?.resolve(createLocalImageConfiguration(context));
+    _stream?.addListener(_listener);
+  }
+
+  @override
+  void dispose() {
+    _stream?.removeListener(_listener);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final trimmedUrl = url.trim();
+    final trimmedUrl = widget.url.trim();
     if (trimmedUrl.isEmpty) {
       return const _YuliImageBlockPlaceholder(
         icon: YuLiIcons.image,
         label: 'SIN IMAGEN',
       );
     }
-    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
-      return Image.network(
-        trimmedUrl,
+    if (_provider != null) {
+      return Image(
+        image: _provider!,
+        width: widget.width,
+        height: _aspectRatio == null ? 120 : widget.width / _aspectRatio!,
         fit: BoxFit.contain,
         errorBuilder:
             (_, _, _) => const _YuliImageBlockPlaceholder(
@@ -2676,11 +2752,6 @@ class _YuliImageBlockContent extends StatelessWidget {
               label: 'IMAGEN NO DISPONIBLE',
             ),
       );
-    }
-
-    final file = File(trimmedUrl);
-    if (file.existsSync()) {
-      return Image.file(file, fit: BoxFit.contain);
     }
 
     return _YuliImageBlockPlaceholder(

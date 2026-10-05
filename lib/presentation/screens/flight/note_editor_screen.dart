@@ -31,6 +31,7 @@ import 'drawing_stroke_persistence.dart';
 import 'format_toolbar.dart';
 import 'flight_workspace_route.dart';
 import 'note_block_widgets.dart';
+import 'yuli_editor_viewport.dart';
 import 'note_cell_model.dart';
 import 'note_export_view.dart';
 import 'ai_chat_sheet.dart';
@@ -208,7 +209,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       final drawingStrokesByBlock = await _loadExportDrawingStrokes(blocks);
       if (!mounted) return;
       await exportNoteToPdf(
-        uploadToDrive: opts.toDrive ? (file) => uploadStudyExport(ref, context, file) : null,
+        uploadToDrive:
+            opts.toDrive
+                ? (file) => uploadStudyExport(ref, context, file)
+                : null,
         context: context,
         title:
             _titleCtrl.text.trim().isEmpty
@@ -438,84 +442,86 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                                 ? _EmptyState(onAdd: _addBlock, accent: _accent)
                                 : _isPreview
                                 ? _buildPreview(blocks)
-                                : ScrollConfiguration(
-                                  // Stylus draws on canvas blocks; only the finger
-                                  // scrolls the note (pen excluded from dragDevices),
-                                  // so a pen stroke never scrolls the list.
-                                  behavior: const _NoteScrollBehavior(),
-                                  child: ReorderableListView.builder(
-                                    physics:
-                                        _scrollLocked
-                                            ? const NeverScrollableScrollPhysics()
-                                            : null,
-                                    padding: const EdgeInsets.fromLTRB(
-                                      16,
-                                      16,
-                                      16,
-                                      16,
-                                    ),
-                                    buildDefaultDragHandles: false,
-                                    proxyDecorator:
-                                        (child, _, _) => Material(
-                                          color: Colors.transparent,
-                                          child: DecoratedBox(
-                                            decoration: BoxDecoration(
-                                              border: Border.all(
-                                                color: _accent,
-                                                width: yLineThin,
+                                : YuliEditorViewport(
+                                  child: ScrollConfiguration(
+                                    // Stylus draws on canvas blocks; only the finger
+                                    // scrolls the note (pen excluded from dragDevices),
+                                    // so a pen stroke never scrolls the list.
+                                    behavior: const _NoteScrollBehavior(),
+                                    child: ReorderableListView.builder(
+                                      physics:
+                                          _scrollLocked
+                                              ? const NeverScrollableScrollPhysics()
+                                              : null,
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        16,
+                                        16,
+                                        16,
+                                      ),
+                                      buildDefaultDragHandles: false,
+                                      proxyDecorator:
+                                          (child, _, _) => Material(
+                                            color: Colors.transparent,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: _accent,
+                                                  width: yLineThin,
+                                                ),
                                               ),
+                                              child: child,
                                             ),
-                                            child: child,
                                           ),
-                                        ),
-                                    itemBuilder:
-                                        (ctx, i) => Padding(
-                                          key: _blockKeys.putIfAbsent(
-                                            blocks[i].id,
-                                            GlobalKey.new,
-                                          ),
-                                          padding: const EdgeInsets.only(
-                                            bottom: 8,
-                                          ),
-                                          child: BlockRouter(
-                                            block: blocks[i],
-                                            note: widget.note,
-                                            folder: widget.folder,
-                                            index: i,
-                                            onOpenWorkspaceTarget:
-                                                (target) =>
-                                                    openFlightWorkspaceTarget(
-                                                      context,
-                                                      ref,
-                                                      target,
-                                                    ),
-                                            autofocus:
-                                                _pendingFocusBlockId ==
-                                                blocks[i].id,
-                                            onTextBlockFocusChanged: (
-                                              editorState,
-                                              focusNode,
-                                            ) {
-                                              if (editorState != null &&
+                                      itemBuilder:
+                                          (ctx, i) => Padding(
+                                            key: _blockKeys.putIfAbsent(
+                                              blocks[i].id,
+                                              GlobalKey.new,
+                                            ),
+                                            padding: const EdgeInsets.only(
+                                              bottom: 8,
+                                            ),
+                                            child: BlockRouter(
+                                              block: blocks[i],
+                                              note: widget.note,
+                                              folder: widget.folder,
+                                              index: i,
+                                              onOpenWorkspaceTarget:
+                                                  (target) =>
+                                                      openFlightWorkspaceTarget(
+                                                        context,
+                                                        ref,
+                                                        target,
+                                                      ),
+                                              autofocus:
                                                   _pendingFocusBlockId ==
-                                                      blocks[i].id) {
-                                                _pendingFocusBlockId = null;
-                                              }
-                                              _onTextBlockFocusChanged(
+                                                  blocks[i].id,
+                                              onTextBlockFocusChanged: (
                                                 editorState,
                                                 focusNode,
-                                              );
-                                            },
-                                            onScrollLockChanged: (locked) {
-                                              setState(
-                                                () => _scrollLocked = locked,
-                                              );
-                                            },
+                                              ) {
+                                                if (editorState != null &&
+                                                    _pendingFocusBlockId ==
+                                                        blocks[i].id) {
+                                                  _pendingFocusBlockId = null;
+                                                }
+                                                _onTextBlockFocusChanged(
+                                                  editorState,
+                                                  focusNode,
+                                                );
+                                              },
+                                              onScrollLockChanged: (locked) {
+                                                setState(
+                                                  () => _scrollLocked = locked,
+                                                );
+                                              },
+                                            ),
                                           ),
-                                        ),
-                                    itemCount: blocks.length,
-                                    onReorder:
-                                        (a, b) => _onReorder(blocks, a, b),
+                                      itemCount: blocks.length,
+                                      onReorder:
+                                          (a, b) => _onReorder(blocks, a, b),
+                                    ),
                                   ),
                                 ),
                       ),

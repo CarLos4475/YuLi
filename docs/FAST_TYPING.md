@@ -6,8 +6,9 @@ aparece permanentemente dentro del contenido. Los párrafos internos no se
 convierten en bloques independientes ni muestran tiradores adicionales.
 
 La interfaz de Fast Typing reutiliza las superficies y controles del panel de
-YuLi AI. La barra se coloca sobre el teclado; **Ver cambios** compara el original
-con el resultado y **Deshacer** recupera el texto que no has modificado después.
+YuLi AI. Abre un diálogo del bloque elegido que compara original y corregido.
+**Aceptar cambios** aplica la propuesta y cierra el diálogo; **Rechazar cambios**
+la descarta y también lo cierra. El texto no se modifica antes de aceptar.
 
 ## Corrección
 
@@ -30,7 +31,8 @@ con el resultado y **Deshacer** recupera el texto que no has modificado después
 El filtro es deliberadamente conservador: puede dejar errores sin corregir,
 incluidas palabras repetidas o abreviaturas ambiguas. Ni el prompt ni la distancia
 de edición garantizan que el modelo identifique siempre la palabra pretendida;
-por eso se conservan revisión y deshacer.
+por eso se revisa la propuesta antes de aplicarla. Después se puede deshacer desde
+el editor.
 
 ## Tablas, imágenes y código
 
@@ -46,7 +48,9 @@ por eso se conservan revisión y deshacer.
 - Imágenes y código usan el mismo flujo: tocar selecciona o edita el elemento y
   muestra **•••** arriba; ese botón abre reemplazo, alineación, lenguaje, selección
   o borrado en una capa flotante que no altera la altura de la nota. Al perder el
-  foco, los controles se ocultan. El código conserva saltos de línea con
+  foco, los controles se ocultan. Permanecen dentro del área de la nota, fuera del
+  encabezado, las pestañas y las herramientas; si el elemento sale de la vista,
+  su menú se oculta. El código conserva saltos de línea con
   indentación y Tab para espacios.
 - Una imagen o fórmula tocada queda seleccionada completa. En tablas y código se
   usa **Seleccionar**; después, Retroceso o Supr elimina el elemento. Retroceso
@@ -77,9 +81,10 @@ conservan los tamaños exclusivos de `document`.
 
 ## Verificación
 
-Las pruebas cubren validación de respuestas, cancelación, edición concurrente,
+Las pruebas cubren validación de respuestas, aceptación y rechazo, cancelación, edición concurrente,
 formato, deshacer, selección múltiple, teclado, movimiento, pegado de tablas,
-redimensionado, compatibilidad de payloads y guardado al salir.
+redimensionado, altura de imágenes decodificadas, menús durante el desplazamiento,
+compatibilidad de payloads y guardado al salir.
 
 Pendiente en Android/tablet: ergonomía con dedo y stylus, teclado del dispositivo,
 tablas anchas, cambio de orientación y una solicitud real al proveedor. Las

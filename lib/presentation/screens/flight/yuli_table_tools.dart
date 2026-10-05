@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/lab_icons.dart';
 import '../../widgets/yuli_design.dart';
+import 'yuli_editor_viewport.dart';
 
 Node yuliTableCell(Node table, int row, int col) => table.children.firstWhere(
   (n) =>
@@ -239,45 +240,46 @@ class YuliTableTools extends StatelessWidget {
     IconData icon,
     Map<String, String> entries, {
     bool destructive = false,
-  }) => PopupMenuButton<String>(
-    tooltip: label,
-    color: yCream,
-    shape: Border.all(color: yBorderStrong, width: yLineThin),
-    onOpened: onMenuOpen,
-    onCanceled: onMenuClose,
-    onSelected: (value) {
-      if (value == 'table:paste') {
-        paste();
-        onMenuClose();
-        return;
-      }
-      if (value == 'table:delete') {
-        deleteTable();
-        onMenuClose();
-        return;
-      }
-      final parts = value.split(':');
-      onAction(
-        parts.first == 'row' ? TableDirection.row : TableDirection.col,
-        parts.last,
-      );
-      onMenuClose();
-    },
-    itemBuilder:
-        (_) => [
-          for (final entry in entries.entries)
-            PopupMenuItem(
-              value: entry.key,
-              child: Text(
-                entry.value,
-                style: yBody(size: 13, color: destructive ? accent : yInk),
-              ),
-            ),
-        ],
-    child: SizedBox(
-      width: 44,
-      height: 44,
-      child: Icon(icon, size: 19, color: accent),
-    ),
+  }) => Builder(
+    builder:
+        (context) => _button(label, icon, () async {
+          onMenuOpen();
+          try {
+            final value = await showYuliEditorMenu<String>(
+              context: context,
+              color: yCream,
+              shape: Border.all(color: yBorderStrong, width: yLineThin),
+              items: [
+                for (final entry in entries.entries)
+                  PopupMenuItem(
+                    value: entry.key,
+                    child: Text(
+                      entry.value,
+                      style: yBody(
+                        size: 13,
+                        color: destructive ? accent : yInk,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+            if (!context.mounted || value == null) return;
+            if (value == 'table:paste') {
+              paste();
+              return;
+            }
+            if (value == 'table:delete') {
+              deleteTable();
+              return;
+            }
+            final parts = value.split(':');
+            onAction(
+              parts.first == 'row' ? TableDirection.row : TableDirection.col,
+              parts.last,
+            );
+          } finally {
+            onMenuClose();
+          }
+        }),
   );
 }

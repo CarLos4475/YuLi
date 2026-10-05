@@ -155,6 +155,9 @@ void main() {
       ]),
     );
     await actions.correct(ai, () async => true);
+    expect(paragraph.delta!.toPlainText(), 'rapdio');
+    expect(actions.correctionAfter, contains('rápido'));
+    await actions.acceptCorrection();
     expect(paragraph.delta!.toPlainText(), 'rápido');
     expect(paragraph.delta!.sliceAttributes(0)?['bold'], true);
     expect(ai.messages.last.content, contains('rapdio'));
@@ -182,6 +185,7 @@ void main() {
         ]),
       );
       await actions.correct(ai, () async => true);
+      await actions.acceptCorrection();
       final payload =
           jsonDecode(ai.messages.last.content) as Map<String, dynamic>;
       expect(payload['blocks'], hasLength(1));
@@ -209,6 +213,27 @@ void main() {
     );
     await future;
     expect(paragraph.delta!.toPlainText(), 'rapdio nuevo');
+    expect(actions.changes, isEmpty);
+    actions.dispose();
+    state.dispose();
+  });
+
+  test('accepting a proposal preserves edits made after the preview', () async {
+    final state = EditorState(document: YuliMarkdownDocument.decode('rapdio'));
+    final paragraph = state.document.root.children.single;
+    final actions = YuliBlockActions(state)..selectWholeBlock();
+    final ai = _FakeAi();
+    ai.reply.complete(
+      response([
+        {'before': 'rapdio', 'after': 'rápido'},
+      ]),
+    );
+    await actions.correct(ai, () async => true);
+    expect(actions.changes, hasLength(1));
+    await state.apply(state.transaction..insertText(paragraph, 6, ' nuevo'));
+    await actions.acceptCorrection();
+    expect(paragraph.delta!.toPlainText(), 'rapdio nuevo');
+    actions.clear();
     expect(actions.changes, isEmpty);
     actions.dispose();
     state.dispose();

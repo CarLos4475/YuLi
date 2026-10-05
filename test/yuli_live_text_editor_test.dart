@@ -21,6 +21,8 @@ import 'package:yuli/presentation/screens/flight/yuli_live_text_editor.dart';
 import 'package:yuli/presentation/screens/flight/yuli_markdown_commands.dart';
 import 'package:yuli/presentation/screens/flight/yuli_markdown_document.dart';
 import 'package:yuli/presentation/screens/flight/yuli_code_language_picker.dart';
+import 'package:yuli/presentation/screens/flight/yuli_editor_viewport.dart';
+import 'package:yuli/presentation/screens/flight/yuli_table_tools.dart';
 import 'package:yuli/presentation/theme/lab_icons.dart';
 import 'package:yuli/presentation/screens/flight/fast_typing_panel.dart';
 import 'package:yuli/presentation/screens/flight/ai_chat_visuals.dart';
@@ -45,129 +47,148 @@ void main() {
       )).load();
     }
   });
-  testWidgets('manual text-block correction uses AI panel and supports undo', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    final repository = _FakeNoteBlockRepository();
-    final assistant = _FastTypingTestAssistant();
-    final controller = YuliLiveTextEditorController();
-    final previewKey = GlobalKey();
-    tester.view.viewInsets = FakeViewPadding(
-      bottom: 220 * tester.view.devicePixelRatio,
-    );
-    addTearDown(tester.view.resetViewInsets);
-    EditorState? state;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          noteBlockRepositoryProvider.overrideWithValue(repository),
-          aiKeyStoreProvider.overrideWithValue(_FastTypingTestKeyStore()),
-          aiAssistantProvider.overrideWithValue(assistant),
-        ],
-        child: MaterialApp(
-          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
-          builder:
-              (context, child) =>
-                  RepaintBoundary(key: previewKey, child: child!),
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: YuliLiveTextEditor(
-                block: const TextBlock(
-                  id: 1,
-                  noteId: 1,
-                  position: 0,
-                  markdown: 'Texto rapdio\nOtro bloque',
+  testWidgets(
+    'manual correction previews, rejects and accepts without changing focus',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repository = _FakeNoteBlockRepository();
+      final assistant = _FastTypingTestAssistant();
+      final controller = YuliLiveTextEditorController();
+      final previewKey = GlobalKey();
+      tester.view.viewInsets = FakeViewPadding(
+        bottom: 220 * tester.view.devicePixelRatio,
+      );
+      addTearDown(tester.view.resetViewInsets);
+      EditorState? state;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noteBlockRepositoryProvider.overrideWithValue(repository),
+            aiKeyStoreProvider.overrideWithValue(_FastTypingTestKeyStore()),
+            aiAssistantProvider.overrideWithValue(assistant),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: const [
+              AppFlowyEditorLocalizations.delegate,
+            ],
+            builder:
+                (context, child) =>
+                    RepaintBoundary(key: previewKey, child: child!),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: YuliLiveTextEditor(
+                  block: const TextBlock(
+                    id: 1,
+                    noteId: 1,
+                    position: 0,
+                    markdown: 'Texto rapdio\nOtro bloque',
+                  ),
+                  accent: const Color(0xFF2D3F8C),
+                  controller: controller,
+                  onFocusChanged: (value, _) {
+                    if (value != null) state = value;
+                  },
                 ),
-                accent: const Color(0xFF2D3F8C),
-                controller: controller,
-                onFocusChanged: (value, _) {
-                  if (value != null) state = value;
-                },
               ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(FastTypingPanel), findsNothing);
-    await tester.tap(find.byType(ParagraphBlockComponentWidget).first);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('yuli_block_handle_0')), findsNothing);
-    expect(find.text('YuLi Fast Typing'), findsNothing);
-    controller.openFastTyping();
-    await tester.pumpAndSettle();
-    expect(find.byType(AiFrostedSurface), findsOneWidget);
-    expect(assistant.calls, 0);
-    expect(
-      tester.getBottomLeft(find.byType(FastTypingPanel)).dy,
-      lessThanOrEqualTo(380),
-    );
-    if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
-      await tester.runAsync(() async {
-        final boundary =
-            previewKey.currentContext!.findRenderObject()!
-                as RenderRepaintBoundary;
-        final image = await boundary.toImage(pixelRatio: 1.5);
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File(
-          'build/fast_typing_preview.png',
-        ).writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
-    }
-    await tester.tap(find.text('Corregir bloque'));
-    for (var i = 0; i < 20; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(
-      assistant.calls,
-      1,
-      reason:
-          tester
-              .widget<FastTypingPanel>(find.byType(FastTypingPanel))
-              .actions
-              .notice,
-    );
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
-    expect(assistant.calls, 1);
-    expect(
-      YuliMarkdownDocument.encode(state!.document),
-      'Texto rápido\nOtro bloque',
-      reason:
-          tester
-              .widget<FastTypingPanel>(find.byType(FastTypingPanel))
-              .actions
-              .notice,
-    );
-    expect(find.text('Original'), findsOneWidget);
-    if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
-      await tester.runAsync(() async {
-        final boundary =
-            previewKey.currentContext!.findRenderObject()!
-                as RenderRepaintBoundary;
-        final image = await boundary.toImage(pixelRatio: 1.5);
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File(
-          'build/fast_typing_changes_preview.png',
-        ).writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
-    }
-    await tester.tap(find.byTooltip('Cerrar'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Deshacer'));
-    await tester.pumpAndSettle();
-    expect(
-      YuliMarkdownDocument.encode(state!.document),
-      'Texto rapdio\nOtro bloque',
-    );
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(FastTypingPanel), findsNothing);
+      await tester.tap(find.byType(ParagraphBlockComponentWidget).first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('yuli_block_handle_0')), findsNothing);
+      expect(find.text('YuLi Fast Typing'), findsNothing);
+      controller.openFastTyping();
+      await tester.pumpAndSettle();
+      expect(find.byType(AiFrostedSurface), findsOneWidget);
+      expect(assistant.calls, 0);
+      expect(
+        tester.getBottomLeft(find.byType(FastTypingPanel)).dy,
+        lessThanOrEqualTo(380),
+      );
+      if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
+        await tester.runAsync(() async {
+          final boundary =
+              previewKey.currentContext!.findRenderObject()!
+                  as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: 1.5);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await File(
+            'build/fast_typing_preview.png',
+          ).writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      await tester.tap(find.text('Corregir bloque'));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        assistant.calls,
+        1,
+        reason:
+            tester
+                .widget<FastTypingPanel>(find.byType(FastTypingPanel))
+                .actions
+                .notice,
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+      expect(assistant.calls, 1);
+      expect(
+        YuliMarkdownDocument.encode(state!.document),
+        'Texto rapdio\nOtro bloque',
+        reason:
+            tester
+                .widget<FastTypingPanel>(find.byType(FastTypingPanel))
+                .actions
+                .notice,
+      );
+      expect(find.text('Original'), findsOneWidget);
+      if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
+        await tester.runAsync(() async {
+          final boundary =
+              previewKey.currentContext!.findRenderObject()!
+                  as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: 1.5);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await File(
+            'build/fast_typing_changes_preview.png',
+          ).writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      await tester.tap(find.text('Rechazar cambios'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FastTypingPanel), findsNothing);
+      expect(
+        YuliMarkdownDocument.encode(state!.document),
+        'Texto rapdio\nOtro bloque',
+      );
+      controller.openFastTyping();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Corregir bloque'));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Aceptar cambios'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FastTypingPanel), findsNothing);
+      expect(
+        YuliMarkdownDocument.encode(state!.document),
+        'Texto rápido\nOtro bloque',
+      );
+      controller.openFastTyping();
+      await tester.pumpAndSettle();
+      expect(find.text('Corregir bloque'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('long text wraps without a horizontal editor scroll', (
     tester,
   ) async {
@@ -433,6 +454,39 @@ void main() {
     await tester.tap(find.text('YuLi Fast Typing'));
     await tester.pumpAndSettle();
     expect(find.byType(FastTypingPanel), findsOneWidget);
+    expect(
+      YuliMarkdownDocument.encode(
+        tester
+            .widget<FastTypingPanel>(find.byType(FastTypingPanel))
+            .actions
+            .editor
+            .document,
+      ),
+      'Contenido editable',
+    );
+    await tester.tap(find.byTooltip('Cerrar selección'));
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: 180 * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.tap(find.byType(YuliLiveTextEditor).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Más opciones').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('YuLi Fast Typing'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FastTypingPanel), findsOneWidget);
+    expect(
+      YuliMarkdownDocument.encode(
+        tester
+            .widget<FastTypingPanel>(find.byType(FastTypingPanel))
+            .actions
+            .editor
+            .document,
+      ),
+      'Contenido inicial',
+    );
   });
 
   testWidgets('typing one markdown marker creates a visible pair', (
@@ -1235,8 +1289,7 @@ void main() {
     );
     await tester.tap(find.byType(ParagraphBlockComponentWidget).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('yuli_atomic_more')));
-    await tester.pumpAndSettle();
+    expect(find.byType(YuliTableTools), findsOneWidget);
     await tester.tap(find.byTooltip('Seleccionar tabla'));
     await tester.pumpAndSettle();
     expect(state!.selectionType, SelectionType.block);
@@ -1244,6 +1297,201 @@ void main() {
     await tester.pumpAndSettle();
     expect(state!.document.root.children.single.type, ParagraphBlockKeys.type);
     expect(tester.takeException(), isNull);
+  });
+
+  for (final (kind, markdown) in [
+    ('image', '![Imagen](C:/missing.png)'),
+    ('code', '```dart\nprint(1);\n```'),
+    ('table', '| A | B |\n| --- | --- |\n| Uno | Dos |'),
+  ]) {
+    testWidgets('$kind controls stay in the note viewport when scrolling', (
+      tester,
+    ) async {
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      final viewportKey = GlobalKey();
+      final captureKey = GlobalKey();
+      final imageFile = File('test/fixtures/editor_square.png').absolute;
+      if (kind == 'image') {
+        await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+        await tester.runAsync(
+          () => precacheImage(
+            FileImage(imageFile),
+            tester.element(find.byType(SizedBox).first),
+          ),
+        );
+      }
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noteBlockRepositoryProvider.overrideWithValue(
+              _FakeNoteBlockRepository(),
+            ),
+          ],
+          child: MaterialApp(
+            builder:
+                (_, child) => RepaintBoundary(key: captureKey, child: child!),
+            localizationsDelegates: const [
+              AppFlowyEditorLocalizations.delegate,
+            ],
+            home: Scaffold(
+              body: Column(
+                children: [
+                  const SizedBox(height: 100, child: Text('Encabezado')),
+                  const SizedBox(height: 40, child: Text('Pestañas')),
+                  Expanded(
+                    child: YuliEditorViewport(
+                      key: viewportKey,
+                      child: SingleChildScrollView(
+                        controller: scroll,
+                        child: Column(
+                          children: [
+                            YuliLiveTextEditor(
+                              block: TextBlock(
+                                id: 1,
+                                noteId: 1,
+                                position: 0,
+                                markdown:
+                                    kind == 'image'
+                                        ? '![Imagen](${imageFile.path})'
+                                        : markdown,
+                              ),
+                              accent: const Color(0xFF2D3F8C),
+                            ),
+                            const SizedBox(height: 1200),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 50, child: Text('Herramientas')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final atomic =
+          kind == 'table'
+              ? find.byType(ParagraphBlockComponentWidget).first
+              : find.byKey(ValueKey('yuli_atomic_${kind}_0'));
+      await tester.tap(atomic);
+      await tester.pumpAndSettle();
+      final viewport = tester.getRect(find.byKey(viewportKey));
+      expect(viewport.top, 140);
+      final button = tester.getRect(
+        find.byKey(const ValueKey('yuli_atomic_more')),
+      );
+      expect(button.top, greaterThanOrEqualTo(viewport.top));
+      expect(button.bottom, lessThanOrEqualTo(viewport.bottom));
+      await tester.tap(find.byKey(const ValueKey('yuli_atomic_more')));
+      await tester.pumpAndSettle();
+      final toolbar =
+          kind == 'table'
+              ? find.byType(YuliTableTools)
+              : find.byKey(const ValueKey('yuli_atomic_toolbar'));
+      final menu = tester.getRect(toolbar);
+      expect(menu.top, greaterThanOrEqualTo(viewport.top));
+      expect(menu.bottom, lessThanOrEqualTo(viewport.bottom));
+      if (kind == 'table') {
+        await tester.tap(find.byTooltip('Más opciones'));
+        await tester.pumpAndSettle();
+        final popup = tester.getRect(
+          find
+              .ancestor(
+                of: find.text('Pegar celdas'),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        expect(popup.top, greaterThanOrEqualTo(viewport.top));
+        expect(popup.bottom, lessThanOrEqualTo(viewport.bottom));
+        await tester.tapAt(const Offset(20, 20));
+        await tester.pumpAndSettle();
+      }
+      if (const bool.fromEnvironment('YULI_CAPTURE_EDITOR')) {
+        await tester.runAsync(() async {
+          final boundary =
+              captureKey.currentContext!.findRenderObject()
+                  as RenderRepaintBoundary;
+          final image = await boundary.toImage(pixelRatio: 1.5);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await File(
+            'build/${kind}_viewport_controls.png',
+          ).writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+      scroll.jumpTo(30);
+      await tester.pumpAndSettle();
+      expect(tester.getRect(toolbar).top, greaterThanOrEqualTo(viewport.top));
+      scroll.jumpTo(500);
+      await tester.pumpAndSettle();
+      expect(toolbar, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('decoded image reserves only its displayed height', (
+    tester,
+  ) async {
+    final file = File('test/fixtures/editor_square.png').absolute;
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.runAsync(
+      () => precacheImage(
+        FileImage(file),
+        tester.element(find.byType(SizedBox).first),
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          noteBlockRepositoryProvider.overrideWithValue(
+            _FakeNoteBlockRepository(),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: const [AppFlowyEditorLocalizations.delegate],
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: YuliLiveTextEditor(
+                block: TextBlock(
+                  id: 1,
+                  noteId: 1,
+                  position: 0,
+                  markdown: '![Imagen](${file.path})',
+                ),
+                accent: const Color(0xFF2D3F8C),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final preview = find.byKey(const ValueKey('yuli_image_preview_0'));
+    expect(tester.getSize(preview).height, closeTo(320, 1));
+    expect(
+      tester.getSize(find.byType(YuliLiveTextEditor)).height,
+      lessThan(370),
+    );
+    await tester.tap(preview);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(YuliLiveTextEditor)).height,
+      lessThan(430),
+    );
+    await tester.drag(
+      find.byKey(const ValueKey('yuli_image_resize')),
+      const Offset(-60, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(preview).height, closeTo(260, 1));
+    expect(
+      tester.getSize(find.byType(YuliLiveTextEditor)).height,
+      lessThan(370),
+    );
   });
 
   testWidgets('image replaces and resizes directly and preserves alignment', (

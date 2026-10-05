@@ -63,7 +63,7 @@ void main() {
     await tester.tap(find.byTooltip('Cambiar a ventana flotante'));
     await tester.pump();
     expect(controller.displayMode, AiChatDisplayMode.floating);
-    expect(find.text('MOVER CHAT'), findsOneWidget);
+    expect(find.byTooltip('Mover chat'), findsOneWidget);
     expect(
       tester.widget<TextField>(input).controller?.text,
       'Borrador sin enviar',
@@ -72,19 +72,24 @@ void main() {
     await tester.tapAt(const Offset(30, 200));
     expect(canvasTaps, 1);
 
-    final beforeDrag = tester.getTopLeft(find.text('MOVER CHAT'));
-    await tester.drag(find.text('MOVER CHAT'), const Offset(-90, 35));
+    final beforeDrag = tester.getTopLeft(find.byTooltip('Mover chat'));
+    await tester.drag(find.byTooltip('Mover chat'), const Offset(-90, 35));
     await tester.pump();
     expect(
-      tester.getTopLeft(find.text('MOVER CHAT')).dx,
+      tester.getTopLeft(find.byTooltip('Mover chat')).dx,
       lessThan(beforeDrag.dx),
     );
 
-    final beforeResize = tester.getTopLeft(find.text('REDIMENSIONAR'));
-    await tester.drag(find.text('REDIMENSIONAR'), const Offset(-70, -50));
+    final beforeResize = tester.getTopLeft(
+      find.byTooltip('Redimensionar chat'),
+    );
+    await tester.drag(
+      find.byTooltip('Redimensionar chat'),
+      const Offset(-70, -50),
+    );
     await tester.pump();
     expect(
-      tester.getTopLeft(find.text('REDIMENSIONAR')).dy,
+      tester.getTopLeft(find.byTooltip('Redimensionar chat')).dy,
       lessThan(beforeResize.dy),
     );
 
@@ -96,7 +101,7 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(
-      tester.getBottomRight(find.text('REDIMENSIONAR')).dy,
+      tester.getBottomRight(find.byTooltip('Redimensionar chat')).dy,
       lessThanOrEqualTo(440),
     );
     tester.view.resetViewInsets();
@@ -105,7 +110,7 @@ void main() {
     await tester.tap(find.byTooltip('Cambiar a panel lateral'));
     await tester.pump();
     expect(controller.displayMode, AiChatDisplayMode.lateral);
-    expect(find.text('MOVER CHAT'), findsNothing);
+    expect(find.byTooltip('Mover chat'), findsNothing);
     expect(
       tester.widget<TextField>(input).controller?.text,
       'Borrador sin enviar',

@@ -12,8 +12,15 @@ class YuliCorrectionChange {
   final String before;
   final String after;
   final List<dynamic> originalDelta;
+  final List<dynamic> correctedDelta;
 
-  YuliCorrectionChange(this.node, this.before, this.after, this.originalDelta);
+  YuliCorrectionChange(
+    this.node,
+    this.before,
+    this.after,
+    this.originalDelta,
+    this.correctedDelta,
+  );
 }
 
 class _FastTypingFragment {
@@ -48,6 +55,8 @@ class YuliBlockActions extends ChangeNotifier {
   }
 
   void clear() {
+    _generation++;
+    busy = false;
     selected.clear();
     moving = false;
     notice = null;
@@ -192,7 +201,6 @@ class YuliBlockActions extends ChangeNotifier {
                     _fingerprint(n) == fingerprints[n],
               )
               .toSet();
-      final transaction = editor.transaction;
       var skipped = result.rejected;
       final applied = <YuliCorrectionChange>[];
       final editsByNode = <Node, List<FastTypingEdit>>{};
@@ -231,6 +239,7 @@ class YuliBlockActions extends ChangeNotifier {
         var after = originals;
         var edited = false;
         final originalDelta = node.delta!.toJson();
+        var proposedDelta = Delta.fromJson(originalDelta);
         final nodeEdits = [...?editsByNode[node]];
         nodeEdits.sort((left, right) => right.start.compareTo(left.start));
         for (final edit in nodeEdits) {
@@ -249,12 +258,11 @@ class YuliBlockActions extends ChangeNotifier {
             skipped++;
             continue;
           }
-          transaction.deleteText(node, edit.start, edit.before.length);
-          transaction.insertText(
-            node,
-            edit.start,
-            edit.after,
-            attributes: attributes,
+          proposedDelta = proposedDelta.compose(
+            Delta()
+              ..retain(edit.start)
+              ..delete(edit.before.length)
+              ..insert(edit.after, attributes: attributes),
           );
           after = after.replaceRange(
             edit.start,
@@ -265,20 +273,28 @@ class YuliBlockActions extends ChangeNotifier {
         }
         if (edited) {
           applied.add(
-            YuliCorrectionChange(node, originals, after, originalDelta),
+            YuliCorrectionChange(
+              node,
+              originals,
+              after,
+              originalDelta,
+              proposedDelta.toJson(),
+            ),
           );
         }
       }
-      if (applied.isNotEmpty) {
-        transaction.afterSelection = editor.selection;
-        await applyIsolated(transaction);
-      }
       if (_disposed || generation != _generation) return;
       changes = applied;
-      correctionAfter = YuliMarkdownDocument.encode(editor.document);
+      final preview = Document(root: editor.document.root.deepCopy());
+      for (final change in applied) {
+        preview.nodeAtPath(change.node.path)?.updateAttributes({
+          'delta': change.correctedDelta,
+        });
+      }
+      correctionAfter = YuliMarkdownDocument.encode(preview);
       notice =
           applied.isNotEmpty
-              ? 'Texto corregido.'
+              ? 'Revisa la corrección antes de aceptarla.'
               : skipped > 0
               ? 'YuLi propuso cambios que no pasaron la revisión segura.'
               : 'YuLi no detectó errores de tecleo claros.';
@@ -293,6 +309,35 @@ class YuliBlockActions extends ChangeNotifier {
       }
     } finally {
       if (!_disposed && generation == _generation) {
+        busy = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> acceptCorrection() async {
+    if (busy || _disposed) return;
+    busy = true;
+    notifyListeners();
+    try {
+      final transaction = editor.transaction;
+      var applied = 0;
+      for (final change in changes) {
+        if (_attached(change.node) &&
+            jsonEncode(change.node.delta?.toJson()) ==
+                jsonEncode(change.originalDelta)) {
+          transaction.updateNode(change.node, {'delta': change.correctedDelta});
+          applied++;
+        }
+      }
+      transaction.afterSelection = editor.selection;
+      if (applied > 0) await applyIsolated(transaction);
+      notice =
+          applied == changes.length
+              ? 'Corrección aceptada.'
+              : 'Se omitió el texto que modificaste después de la propuesta.';
+    } finally {
+      if (!_disposed) {
         busy = false;
         notifyListeners();
       }

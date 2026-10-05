@@ -395,7 +395,6 @@ class _AiChatDockState extends State<AiChatDock>
   static const double _w = 450;
   static const double _handleW = 30;
   static const double _handleH = 56;
-  static const double _floatingStripHeight = 26;
 
   Rect? _floatingRect;
   Rect _floatingBounds = Rect.zero;
@@ -466,45 +465,6 @@ class _AiChatDockState extends State<AiChatDock>
     });
   }
 
-  Widget _floatingStrip({required bool resize}) {
-    return SizedBox(
-      height:
-          widget.controller.displayMode == AiChatDisplayMode.floating
-              ? _floatingStripHeight
-              : 0,
-      child:
-          widget.controller.displayMode == AiChatDisplayMode.floating
-              ? GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanStart: _startWindowGesture,
-                onPanUpdate: resize ? _resizeWindow : _moveWindow,
-                child: Container(
-                  color: widget.accent,
-                  padding: const EdgeInsets.symmetric(horizontal: 9),
-                  child: Row(
-                    children: [
-                      Icon(
-                        resize ? YuLiIcons.maximize : YuLiIcons.gripVertical,
-                        size: 14,
-                        color: yCream,
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        resize ? 'REDIMENSIONAR' : 'MOVER CHAT',
-                        style: yMono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          color: yCream,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-              : null,
-    );
-  }
-
   @override
   void dispose() {
     widget.controller.removeListener(_onToggle);
@@ -558,22 +518,17 @@ class _AiChatDockState extends State<AiChatDock>
                           opacity: floating ? t : 1,
                           child: Offstage(
                             offstage: t == 0,
-                            child: Column(
-                              children: [
-                                _floatingStrip(resize: false),
-                                Expanded(
-                                  child: _AiChatSheet(
-                                    session: widget.session,
-                                    accent: widget.accent,
-                                    dockController: widget.controller,
-                                    onSendToCanvas: widget.onSendToCanvas,
-                                    embedded: true,
-                                    floating: floating,
-                                    onClose: widget.controller.close,
-                                  ),
-                                ),
-                                _floatingStrip(resize: true),
-                              ],
+                            child: _AiChatSheet(
+                              session: widget.session,
+                              accent: widget.accent,
+                              dockController: widget.controller,
+                              onSendToCanvas: widget.onSendToCanvas,
+                              embedded: true,
+                              floating: floating,
+                              onClose: widget.controller.close,
+                              onWindowGestureStart: _startWindowGesture,
+                              onWindowMove: _moveWindow,
+                              onWindowResize: _resizeWindow,
                             ),
                           ),
                         ),
@@ -589,7 +544,13 @@ class _AiChatDockState extends State<AiChatDock>
                         child: Container(
                           width: _handleW,
                           height: _handleH,
-                          color: widget.accent,
+                          decoration: BoxDecoration(
+                            gradient: aiAccentMetalGradient(widget.accent),
+                            borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(14),
+                            ),
+                            boxShadow: aiAccentMetalShadow(widget.accent),
+                          ),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -638,6 +599,9 @@ class _AiChatSheet extends ConsumerStatefulWidget {
   final bool embedded;
   final bool floating;
   final VoidCallback? onClose;
+  final GestureDragStartCallback? onWindowGestureStart;
+  final GestureDragUpdateCallback? onWindowMove;
+  final GestureDragUpdateCallback? onWindowResize;
 
   const _AiChatSheet({
     required this.session,
@@ -650,6 +614,9 @@ class _AiChatSheet extends ConsumerStatefulWidget {
     this.embedded = false,
     this.floating = false,
     this.onClose,
+    this.onWindowGestureStart,
+    this.onWindowMove,
+    this.onWindowResize,
   });
 
   @override
@@ -1152,13 +1119,77 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           ),
           child: AiFrostedSurface(
             accent: widget.accent,
-            borderRadius: BorderRadius.zero,
             child: SafeArea(
               top: !widget.floating,
               bottom: !widget.floating,
               child: AnimatedBuilder(
                 animation: _s,
-                builder: (_, _) => _buildChat(),
+                builder:
+                    (_, _) => Column(
+                      children: [
+                        SizedBox(
+                          height: widget.floating ? 22 : 0,
+                          child:
+                              widget.floating
+                                  ? Tooltip(
+                                    message: 'Mover chat',
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPanStart: widget.onWindowGestureStart,
+                                      onPanUpdate: widget.onWindowMove,
+                                      child: Center(
+                                        child: Container(
+                                          width: 36,
+                                          height: 4,
+                                          decoration: BoxDecoration(
+                                            color: aiMuted.withValues(
+                                              alpha: 0.30,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              2,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  : null,
+                        ),
+                        Expanded(child: _buildChat()),
+                        SizedBox(
+                          height: widget.floating ? 22 : 0,
+                          child:
+                              widget.floating
+                                  ? Padding(
+                                    padding: const EdgeInsets.only(right: 12),
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Tooltip(
+                                        message: 'Redimensionar chat',
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onPanStart:
+                                              widget.onWindowGestureStart,
+                                          onPanUpdate: widget.onWindowResize,
+                                          child: SizedBox(
+                                            width: 32,
+                                            height: 22,
+                                            child: Icon(
+                                              YuLiIcons.maximize,
+                                              size: 14,
+                                              color: aiMuted.withValues(
+                                                alpha: 0.65,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  : null,
+                        ),
+                      ],
+                    ),
               ),
             ),
           ),
@@ -2093,29 +2124,13 @@ class _AiChatSheetState extends ConsumerState<_AiChatSheet> {
           ),
           const SizedBox(width: 6),
           if (widget.dockController != null) ...[
-            Tooltip(
-              message:
+            AiSoftIconButton(
+              icon: widget.floating ? YuLiIcons.kanban : YuLiIcons.maximize,
+              tooltip:
                   widget.floating
                       ? 'Cambiar a panel lateral'
                       : 'Cambiar a ventana flotante',
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: widget.dockController!.toggleDisplayMode,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: widget.accent,
-                    border: Border.all(color: yBorderStrong, width: yLineThin),
-                  ),
-                  child: Icon(
-                    widget.floating ? YuLiIcons.kanban : YuLiIcons.maximize,
-                    size: 16,
-                    color: yCream,
-                  ),
-                ),
-              ),
+              onTap: widget.dockController!.toggleDisplayMode,
             ),
             const SizedBox(width: 4),
           ],
