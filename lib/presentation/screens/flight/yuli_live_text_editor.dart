@@ -1549,32 +1549,35 @@ class _YuliLiveTextEditorState extends ConsumerState<YuliLiveTextEditor>
                       : align == 'right'
                       ? Alignment.centerRight
                       : Alignment.center,
-              child: _YuliFloatingAtomicControls(
-                visible: active,
-                controls: controls,
-                child: GestureDetector(
-                  onTap: () => _selectAtomicNode(node),
-                  child: YuliImageResizeFrame(
-                    width: imageWidth,
-                    maxWidth: MediaQuery.sizeOf(context).width - 112,
-                    selected: active,
-                    accent: widget.accent,
-                    onResize:
-                        (width) => _saveImage(
-                          node,
-                          url: imageUrl,
-                          width: width,
-                          align: align,
-                        ),
-                    builder:
-                        (width) => _YuliImageBlockPreview(
-                          previewKey: ValueKey(
-                            'yuli_image_preview_${node.path.join('_')}',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: _YuliFloatingAtomicControls(
+                  visible: active,
+                  controls: controls,
+                  child: GestureDetector(
+                    onTap: () => _selectAtomicNode(node),
+                    child: YuliImageResizeFrame(
+                      width: imageWidth,
+                      maxWidth: MediaQuery.sizeOf(context).width - 112,
+                      selected: active,
+                      accent: widget.accent,
+                      onResize:
+                          (width) => _saveImage(
+                            node,
+                            url: imageUrl,
+                            width: width,
+                            align: align,
                           ),
-                          url: imageUrl,
-                          width: width,
-                          align: align,
-                        ),
+                      builder:
+                          (width) => _YuliImageBlockPreview(
+                            previewKey: ValueKey(
+                              'yuli_image_preview_${node.path.join('_')}',
+                            ),
+                            url: imageUrl,
+                            width: width,
+                            align: align,
+                          ),
+                    ),
                   ),
                 ),
               ),
