@@ -250,7 +250,15 @@ void drawActiveStroke(
   Canvas canvas,
   DrawingStroke stroke, {
   double viewScale = 1.0,
+  Color? scribbleAccent,
+  StrokePoints? scribblePoints,
 }) {
+  if (scribbleAccent != null &&
+      !stroke.isShape &&
+      isScribble(scribblePoints ?? stroke.points, viewScale: viewScale)) {
+    _drawScribblePreview(canvas, stroke.points, scribbleAccent, viewScale);
+    return;
+  }
   if (stroke.isShape) {
     drawStroke(canvas, stroke, viewScale: viewScale);
     return;
@@ -274,6 +282,37 @@ void drawActiveStroke(
       points: extended,
     ),
     viewScale: viewScale,
+  );
+}
+
+void _drawScribblePreview(
+  Canvas canvas,
+  StrokePoints points,
+  Color accent,
+  double viewScale,
+) {
+  final scale = viewScale.isFinite && viewScale > 0 ? viewScale : 1.0;
+  final spacing = 7.0 / scale;
+  final dots = <Offset>[];
+  double distanceToNext = 0;
+  for (int i = 1; i < points.length; i++) {
+    final start = points.offset(i - 1);
+    final delta = points.offset(i) - start;
+    final length = delta.distance;
+    if (!length.isFinite || length == 0) continue;
+    while (distanceToNext <= length) {
+      dots.add(start + delta * (distanceToNext / length));
+      distanceToNext += spacing;
+    }
+    distanceToNext -= length;
+  }
+  canvas.drawPoints(
+    PointMode.points,
+    dots,
+    Paint()
+      ..color = accent
+      ..strokeWidth = 3.0 / scale
+      ..strokeCap = StrokeCap.round,
   );
 }
 

@@ -13,7 +13,7 @@ import '../../providers/flight_workspace_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../widgets/yuli_ai_fab.dart';
 import '../../widgets/status_bar_flood.dart';
-import '../../widgets/edit_item_dialog.dart';
+
 import '../../widgets/yuli_action_sheet.dart';
 import '../../theme/lab_icons.dart';
 import '../yuli_ai/yuli_ai_chat_sheet.dart';
@@ -855,6 +855,7 @@ void _showNoteActions(
   final meta = _kindMeta(note.kind);
   showModalBottomSheet(
     context: context,
+    isScrollControlled: true,
     backgroundColor: yCream,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
     builder:
@@ -883,15 +884,6 @@ void _showNoteActions(
               },
             ),
             YuLiActionTile(
-              icon: YuLiIcons.palette,
-              label: 'Cambiar color',
-              accent: accent,
-              onTap: () {
-                Navigator.pop(ctx);
-                _showNoteColorDialog(context, ref, note, folder);
-              },
-            ),
-            YuLiActionTile(
               icon: YuLiIcons.trash,
               label: 'Eliminar',
               accent: accent,
@@ -910,7 +902,7 @@ void _showNoteActions(
   );
 }
 
-void _showNoteColorDialog(
+void _showEditNoteDialog(
   BuildContext context,
   WidgetRef ref,
   Note note,
@@ -927,9 +919,8 @@ void _showNoteColorDialog(
           : rawExcerpt.length > 120
           ? '${rawExcerpt.substring(0, 120)}...'
           : rawExcerpt;
-  final selected = await showNoteColorDialog(
+  final selected = await showEditNoteDialog(
     context,
-    title: 'Cambiar color de nota',
     noteName: note.displayTitle.isEmpty ? 'Sin titulo' : note.displayTitle,
     kind: note.kind,
     excerpt: excerpt,
@@ -938,34 +929,8 @@ void _showNoteColorDialog(
   if (selected != null) {
     await ref
         .read(noteRepositoryProvider)
-        .update(note.copyWith(color: selected));
+        .update(note.copyWith(title: selected.name, color: selected.color));
   }
-}
-
-void _showEditNoteDialog(
-  BuildContext context,
-  WidgetRef ref,
-  Note note,
-  Folder folder,
-) {
-  showDialog(
-    context: context,
-    builder:
-        (ctx) => EditItemDialog(
-          title: 'Nota',
-          initialName: note.displayTitle,
-          initialColor: note.color ?? folder.color,
-          onSave: (name, color) async {
-            await ref
-                .read(noteRepositoryProvider)
-                .update(note.copyWith(title: name, color: color));
-          },
-          onDelete: () async {
-            Navigator.pop(ctx);
-            await _confirmDeleteNote(context, ref, note);
-          },
-        ),
-  );
 }
 
 Future<void> _confirmDeleteNote(

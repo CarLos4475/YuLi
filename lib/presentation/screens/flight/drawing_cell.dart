@@ -1006,6 +1006,10 @@ class _DrawingCellState extends State<DrawingCell>
                         painter: _ActiveStrokePainter(
                           active: _active,
                           tick: _activeTick.value,
+                          scribbleAccent:
+                              _tool == DrawTool.pen
+                                  ? widget.accent ?? yFlight
+                                  : null,
                         ),
                         size: Size.infinite,
                       ),
@@ -1639,18 +1643,25 @@ class _StrokePainter extends CustomPainter {
 class _ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? active;
   final int tick;
+  final Color? scribbleAccent;
 
-  _ActiveStrokePainter({required this.active, required this.tick});
+  _ActiveStrokePainter({
+    required this.active,
+    required this.tick,
+    this.scribbleAccent,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (active == null) return;
-    drawActiveStroke(canvas, active!);
+    drawActiveStroke(canvas, active!, scribbleAccent: scribbleAccent);
   }
 
   @override
   bool shouldRepaint(_ActiveStrokePainter old) =>
-      old.active != active || old.tick != tick;
+      old.active != active ||
+      old.tick != tick ||
+      old.scribbleAccent != scribbleAccent;
 }
 
 class DrawingPreviewPainter extends CustomPainter {

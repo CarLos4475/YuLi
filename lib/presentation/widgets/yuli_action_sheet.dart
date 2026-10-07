@@ -47,72 +47,74 @@ class YuLiActionSheet extends StatelessWidget {
             maxHeight: MediaQuery.sizeOf(context).height * 0.72,
           ),
           padding: const EdgeInsets.fromLTRB(28, 12, 28, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(child: Container(width: 56, height: 5, color: accent)),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ySans(
-                            size: 22,
-                            weight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            color: yInk,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 12,
-                          runSpacing: 6,
-                          children: [
-                            _SheetBadge(icon: badgeIcon, label: badge),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(width: 27, height: 27, color: accent),
-                                const SizedBox(width: 8),
-                                Text(
-                                  hex,
-                                  style: yMono(
-                                    size: 13,
-                                    weight: FontWeight.w700,
-                                    tracking: 1.4,
-                                    color: yMuted,
-                                  ),
-                                ),
-                              ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(child: Container(width: 56, height: 5, color: accent)),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ySans(
+                              size: 22,
+                              weight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                              color: yInk,
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 12,
+                            runSpacing: 6,
+                            children: [
+                              _SheetBadge(icon: badgeIcon, label: badge),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 27,
+                                    height: 27,
+                                    color: accent,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    hex,
+                                    style: yMono(
+                                      size: 13,
+                                      weight: FontWeight.w700,
+                                      tracking: 1.4,
+                                      color: yMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Container(height: 1, color: yBorderStrong.withValues(alpha: 0.5)),
-              const SizedBox(height: 12),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: children,
-                  ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Container(
+                  height: 1,
+                  color: yBorderStrong.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 12),
+                Column(mainAxisSize: MainAxisSize.min, children: children),
+              ],
+            ),
           ),
         ),
       ),

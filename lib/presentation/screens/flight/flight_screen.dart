@@ -22,7 +22,6 @@ import 'whiteboard_editor_screen.dart';
 import 'new_folder_dialog.dart';
 import 'knowledge_graph_screen.dart';
 import 'schedule_screen.dart';
-import '../../widgets/edit_item_dialog.dart';
 
 class FlightScreen extends ConsumerStatefulWidget {
   const FlightScreen({super.key});
@@ -1141,6 +1140,7 @@ void _showFolderContextMenu(
   final repo = ref.read(folderRepositoryProvider);
   showModalBottomSheet(
     context: context,
+    isScrollControlled: true,
     backgroundColor: yCream,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
     builder:
@@ -1154,45 +1154,18 @@ void _showFolderContextMenu(
               icon: YuLiIcons.pen,
               label: 'Editar',
               accent: folder.color,
-              onTap: () {
-                Navigator.pop(ctx);
-                showDialog(
-                  context: context,
-                  builder:
-                      (_) => EditItemDialog(
-                        title: 'Renombrar carpeta',
-                        initialName: folder.name,
-                        initialColor: folder.color,
-                        onSave: (name, color) async {
-                          await repo.update(
-                            folder.copyWith(name: name, color: color),
-                          );
-                        },
-                        onDelete: () async {
-                          await repo.softDelete(folder.id);
-                          ref
-                              .read(flightWorkspaceTabsProvider.notifier)
-                              .closeFolder(folder.id);
-                        },
-                      ),
-                );
-              },
-            ),
-            YuLiActionTile(
-              icon: YuLiIcons.palette,
-              label: 'Cambiar color',
-              accent: folder.color,
               onTap: () async {
                 Navigator.pop(ctx);
-                final selected = await showFolderColorDialog(
+                final details = await showEditFolderDialog(
                   context,
-                  title: 'Cambiar color de carpeta',
                   folderName: folder.name,
                   noteCount: noteCount,
                   initialColor: folder.color,
                 );
-                if (selected != null) {
-                  await repo.update(folder.copyWith(color: selected));
+                if (details != null) {
+                  await repo.update(
+                    folder.copyWith(name: details.name, color: details.color),
+                  );
                 }
               },
             ),

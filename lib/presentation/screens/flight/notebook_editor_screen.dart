@@ -8165,6 +8165,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
                                                                     _,
                                                                   ) => CustomPaint(
                                                                     painter: _ActiveStrokePainter(
+                                                                      scribbleAccent:
+                                                                          _tool ==
+                                                                                  DrawTool.pen
+                                                                              ? _accent
+                                                                              : null,
                                                                       active:
                                                                           _active,
                                                                       tick:
@@ -9594,12 +9599,14 @@ class _ActiveStrokePainter extends CustomPainter {
   final int tick;
   final double pageTop;
   final double viewScale;
+  final Color? scribbleAccent;
 
   _ActiveStrokePainter({
     required this.active,
     required this.tick,
     required this.pageTop,
     this.viewScale = 1.0,
+    this.scribbleAccent,
   });
 
   @override
@@ -9607,7 +9614,12 @@ class _ActiveStrokePainter extends CustomPainter {
     if (active == null) return;
     canvas.save();
     canvas.translate(0, pageTop);
-    drawActiveStroke(canvas, active!, viewScale: viewScale);
+    drawActiveStroke(
+      canvas,
+      active!,
+      viewScale: viewScale,
+      scribbleAccent: scribbleAccent,
+    );
     canvas.restore();
   }
 
@@ -9616,5 +9628,6 @@ class _ActiveStrokePainter extends CustomPainter {
       old.active != active ||
       old.tick != tick ||
       old.pageTop != pageTop ||
-      old.viewScale != viewScale;
+      old.viewScale != viewScale ||
+      old.scribbleAccent != scribbleAccent;
 }

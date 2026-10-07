@@ -7524,18 +7524,25 @@ class _WhiteboardCanvasEditorState
                                                     child: IgnorePointer(
                                                       child: RepaintBoundary(
                                                         child: CustomPaint(
-                                                          painter:
-                                                              _ActiveStrokePainter(
-                                                                active: _active,
-                                                                tick:
-                                                                    _activeTick
-                                                                        .value,
-                                                                viewScale:
-                                                                    _viewScale,
-                                                                origin:
-                                                                    activeRect
-                                                                        .topLeft,
-                                                              ),
+                                                          painter: _ActiveStrokePainter(
+                                                            active: _active,
+                                                            scribbleAccent:
+                                                                _tool ==
+                                                                        DrawTool
+                                                                            .pen
+                                                                    ? _accent
+                                                                    : null,
+                                                            scribblePoints:
+                                                                _rawPen,
+                                                            tick:
+                                                                _activeTick
+                                                                    .value,
+                                                            viewScale:
+                                                                _viewScale,
+                                                            origin:
+                                                                activeRect
+                                                                    .topLeft,
+                                                          ),
                                                           size: activeRect.size,
                                                         ),
                                                       ),
@@ -8807,19 +8814,29 @@ class _ActiveStrokePainter extends CustomPainter {
   final int tick;
   final double viewScale;
   final Offset origin;
+  final Color? scribbleAccent;
+  final StrokePoints? scribblePoints;
 
   _ActiveStrokePainter({
     required this.active,
     required this.tick,
     this.viewScale = 1.0,
     required this.origin,
+    this.scribbleAccent,
+    this.scribblePoints,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (active == null) return;
     canvas.translate(-origin.dx, -origin.dy);
-    drawActiveStroke(canvas, active!, viewScale: viewScale);
+    drawActiveStroke(
+      canvas,
+      active!,
+      viewScale: viewScale,
+      scribbleAccent: scribbleAccent,
+      scribblePoints: scribblePoints,
+    );
   }
 
   @override
@@ -8827,7 +8844,9 @@ class _ActiveStrokePainter extends CustomPainter {
       old.active != active ||
       old.tick != tick ||
       old.viewScale != viewScale ||
-      old.origin != origin;
+      old.origin != origin ||
+      old.scribbleAccent != scribbleAccent ||
+      old.scribblePoints != scribblePoints;
 }
 
 class _SpacePickerDialog extends StatelessWidget {
