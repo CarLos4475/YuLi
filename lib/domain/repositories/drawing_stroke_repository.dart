@@ -25,6 +25,14 @@ abstract class DrawingStrokeRepository {
   /// In-place update of many stroke rows in one DB batch.
   Future<void> updateMany(Map<int, DrawingStrokeWrite> strokesById);
 
+  Future<List<int>> applyBlockDelta(
+    int blockId, {
+    required List<DrawingStrokeWrite> inserts,
+    required Map<int, DrawingStrokeWrite> updates,
+    required Map<int, int> positions,
+    required List<int> deletes,
+  });
+
   Future<List<int>> replaceBlock(int blockId, List<DrawingStrokeWrite> strokes);
   Future<void> deleteByBlock(int blockId);
 

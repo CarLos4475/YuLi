@@ -15,6 +15,7 @@ import 'drawing_prefs.dart';
 import 'note_cell_model.dart';
 import 'popup_reveal.dart';
 import 'lasso_controller.dart';
+import 'canvas_selection_history.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
 import 'stroke_stabilizer.dart';
@@ -70,9 +71,10 @@ class _DrawingCellState extends State<DrawingCell>
   LiveStabilizer? _stab;
   final Map<DrawTool, Color> _toolColors = {...DrawingPrefs.defaultColors};
   final Map<DrawTool, double> _toolWidths = {...DrawingPrefs.defaultWidths};
-  final List<List<DrawingStroke>> _undoStack = [];
-  final List<List<DrawingStroke>> _redoStack = [];
+  final List<SelectionChange<DrawingStroke>> _undoStack = [];
+  final List<SelectionChange<DrawingStroke>> _redoStack = [];
   List<DrawingStroke>? _gestureBefore;
+  IndexedSelection<DrawingStroke>? _selectionBefore;
   bool _gestureChanged = false;
   DrawingStroke? _active;
   final ValueNotifier<int> _activeTick = ValueNotifier(0);
@@ -277,6 +279,14 @@ class _DrawingCellState extends State<DrawingCell>
         if (mounted) setState(() => _palette = _buildPalette());
       });
     }
+    if (identical(oldWidget.data, widget.data)) return;
+    _data = widget.data;
+    _undoStack.clear();
+    _redoStack.clear();
+    _gestureBefore = null;
+    _selectionBefore = null;
+    _active = null;
+    _lassoCtrl.deselect();
   }
 
   List<Color> _buildPalette() {
@@ -393,12 +403,12 @@ class _DrawingCellState extends State<DrawingCell>
       return;
     }
 
-    final before = _snapshot();
+    final added = _active!;
     setState(() {
-      _data.strokes.add(_active!);
+      _data.strokes.add(added);
       _active = null;
     });
-    _commit(before);
+    _commitAdded(added);
     widget.onChanged(_data);
   }
 
@@ -413,12 +423,11 @@ class _DrawingCellState extends State<DrawingCell>
     }
 
     final baked = FountainPenEngine.finishStroke(_active!);
-    final before = _snapshot();
     setState(() {
       _data.strokes.add(baked);
       _active = null;
     });
-    _commit(before);
+    _commitAdded(baked);
     widget.onChanged(_data);
   }
 
@@ -444,24 +453,24 @@ class _DrawingCellState extends State<DrawingCell>
     }
     if (_lassoCtrl.phase == LassoPhase.selected) {
       if (_lassoCtrl.hitTestRotationHandle(pos)) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelected();
         _lassoCtrl.startRotation(pos, _data.strokes);
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(pos);
       if (corner != null) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelected();
         _lassoCtrl.startResize(corner, pos, _data.strokes);
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(pos);
       if (side != null) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelected();
         _lassoCtrl.startSideResize(side, pos, _data.strokes);
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(pos)) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelected();
         _lassoCtrl.startMove(pos, _data.strokes);
         return;
       }
@@ -501,26 +510,43 @@ class _DrawingCellState extends State<DrawingCell>
     if (_lassoCtrl.phase == LassoPhase.tracing) {
       _lassoCtrl.finishTracing(_data.strokes);
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
+      _cloneSelection();
       _lassoCtrl.finishMove(_data.strokes);
       _commitGesture();
       widget.onChanged(_data);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
+      _cloneSelection();
       _lassoCtrl.isSideResize
           ? _lassoCtrl.finishSideResize(_data.strokes)
           : _lassoCtrl.finishResize(_data.strokes);
       _commitGesture();
       widget.onChanged(_data);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
+      _cloneSelection();
       _lassoCtrl.finishRotation(_data.strokes);
       _commitGesture();
       widget.onChanged(_data);
     }
   }
 
+  IndexedSelection<DrawingStroke> _captureSelected() =>
+      IndexedSelection.capture(
+        _data.strokes,
+        _lassoCtrl.selectedIndices,
+        (s) => s,
+      );
+
+  void _cloneSelection() {
+    for (final i in _lassoCtrl.selectedIndices) {
+      _data.strokes[i] = _data.strokes[i].clone();
+    }
+  }
+
   void _commitGesture() {
-    if (_gestureBefore != null) {
-      _commit(_gestureBefore!);
-      _gestureBefore = null;
+    final before = _selectionBefore;
+    if (before != null) {
+      _pushHistory(SelectionChange(before, _captureSelected()));
+      _selectionBefore = null;
     }
   }
 
@@ -533,9 +559,14 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _lassoMutate(VoidCallback op) {
-    final before = _snapshot();
+    final before = _captureSelected();
+    _cloneSelection();
     op();
-    _commit(before);
+    final after = IndexedSelection.capture(_data.strokes, {
+      if (_data.strokes.length >= before.length) ...before.values.keys,
+      ..._lassoCtrl.selectedIndices,
+    }, (s) => s);
+    _pushHistory(SelectionChange(before, after));
     widget.onChanged(_data);
   }
 
@@ -678,20 +709,48 @@ class _DrawingCellState extends State<DrawingCell>
 
   // ─── Undo / redo (snapshot history) ─────────────────────────────────────
 
-  List<DrawingStroke> _snapshot() =>
-      _data.strokes.map((s) => s.clone()).toList();
+  List<DrawingStroke> _snapshot() => List.of(_data.strokes);
 
-  void _commit(List<DrawingStroke> before) {
-    _undoStack.add(before);
+  void _pushHistory(SelectionChange<DrawingStroke> change) {
+    _undoStack.add(change);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
     _redoStack.clear();
   }
 
+  void _commit(List<DrawingStroke> before) {
+    _pushHistory(
+      SelectionChange(
+        IndexedSelection.capture(
+          before,
+          Iterable<int>.generate(before.length),
+          (s) => s,
+        ),
+        IndexedSelection.capture(
+          _data.strokes,
+          Iterable<int>.generate(_data.strokes.length),
+          (s) => s,
+        ),
+      ),
+    );
+  }
+
+  void _commitAdded(DrawingStroke stroke) {
+    _pushHistory(
+      SelectionChange(
+        IndexedSelection(_data.strokes.length - 1, {}),
+        IndexedSelection(_data.strokes.length, {
+          _data.strokes.length - 1: stroke,
+        }),
+      ),
+    );
+  }
+
   void _undo() {
     if (_undoStack.isEmpty) return;
-    _redoStack.add(_snapshot());
+    final change = _undoStack.removeLast();
     setState(() {
-      _data.strokes = _undoStack.removeLast();
+      change.apply(_data.strokes, undo: true, copy: (s) => s);
+      _redoStack.add(change);
       _lassoCtrl.deselect();
       _active = null;
     });
@@ -700,9 +759,10 @@ class _DrawingCellState extends State<DrawingCell>
 
   void _redo() {
     if (_redoStack.isEmpty) return;
-    _undoStack.add(_snapshot());
+    final change = _redoStack.removeLast();
     setState(() {
-      _data.strokes = _redoStack.removeLast();
+      change.apply(_data.strokes, undo: false, copy: (s) => s);
+      _undoStack.add(change);
       _lassoCtrl.deselect();
       _active = null;
     });

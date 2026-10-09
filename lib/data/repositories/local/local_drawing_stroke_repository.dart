@@ -150,6 +150,49 @@ class LocalDrawingStrokeRepository implements DrawingStrokeRepository {
   }
 
   @override
+  Future<List<int>> applyBlockDelta(
+    int blockId, {
+    required List<DrawingStrokeWrite> inserts,
+    required Map<int, DrawingStrokeWrite> updates,
+    required Map<int, int> positions,
+    required List<int> deletes,
+  }) {
+    if (inserts.isEmpty &&
+        updates.isEmpty &&
+        positions.isEmpty &&
+        deletes.isEmpty) {
+      return Future.value(const []);
+    }
+    return _change([blockId], () async {
+      if (deletes.isNotEmpty) {
+        await (_db.delete(_db.drawingStrokes)
+          ..where((s) => s.blockId.equals(blockId) & s.id.isIn(deletes))).go();
+      }
+      final now = DateTime.now();
+      await _db.batch((batch) {
+        for (final entry in updates.entries) {
+          batch.update(
+            _db.drawingStrokes,
+            _updateCompanion(entry.value, now),
+            where: (s) => s.blockId.equals(blockId) & s.id.equals(entry.key),
+          );
+        }
+        for (final entry in positions.entries) {
+          batch.update(
+            _db.drawingStrokes,
+            DrawingStrokesCompanion(position: Value(entry.value)),
+            where: (s) => s.blockId.equals(blockId) & s.id.equals(entry.key),
+          );
+        }
+      });
+      final rows = await _db.drawingStrokesDao.insertStrokes(blockId, [
+        for (final stroke in inserts) _toCompanion(blockId, stroke, now: now),
+      ]);
+      return rows.map((row) => row.id).toList();
+    });
+  }
+
+  @override
   Future<List<int>> replaceBlock(
     int blockId,
     List<DrawingStrokeWrite> strokes,

@@ -65,6 +65,7 @@ import 'popup_reveal.dart';
 import 'shape_recognizer.dart';
 import 'shape_picker_popup.dart';
 import 'lasso_controller.dart';
+import 'canvas_selection_history.dart';
 import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
 import 'ai_chat_sheet.dart';
@@ -121,6 +122,12 @@ class _WhiteboardSnapshotEntry extends _WhiteboardHistoryEntry {
   final Rect? region;
 
   const _WhiteboardSnapshotEntry(this.snapshot, [this.region]);
+}
+
+class _WhiteboardSelectionEntry extends _WhiteboardHistoryEntry {
+  final CanvasSelectionChange change;
+  final Rect? region;
+  const _WhiteboardSelectionEntry(this.change, this.region);
 }
 
 class _WhiteboardStrokeAddEntry extends _WhiteboardHistoryEntry {
@@ -1387,6 +1394,7 @@ class _WhiteboardCanvasEditorState
   final List<_WhiteboardHistoryEntry> _undoStack = [];
   final List<_WhiteboardHistoryEntry> _redoStack = [];
   _WhiteboardSnapshot? _gestureBefore;
+  CanvasSelectionSnapshot? _selectionBefore;
   // World-space bounding box of the selection at the moment a move/resize/rotate
   // grab started — unioned with the post-gesture box to invalidate only the
   // tiles the edit actually touched (vs. nuking the whole tile cache).
@@ -1543,6 +1551,8 @@ class _WhiteboardCanvasEditorState
     );
 
     _lassoCtrl.onChanged = _onLassoChanged;
+    _lassoCtrl.strokeCandidates =
+        (bounds) => _strokeTiles.strokeIndicesInRect(bounds, _data.strokes);
     _pinController.persistence = RepoFloatingPinPersistence(
       repo: ref.read(floatingPinRepositoryProvider),
       noteId: widget.note.id,
@@ -4170,6 +4180,7 @@ class _WhiteboardCanvasEditorState
       }
     }
     if (changed) {
+      _strokeTiles.invalidateListPositions();
       if (dirty != null) _markOverviewRegionDirty(dirty!.inflate(4));
       _gestureChanged = true;
       if (dirty != null) {
@@ -4200,7 +4211,7 @@ class _WhiteboardCanvasEditorState
       // drop (any of rotate/resize/move below).
       _gestureRegionBefore = _lassoCtrl.boundingBox;
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelection();
         _lassoCtrl.startRotation(
           worldPos,
           _data.strokes,
@@ -4211,7 +4222,7 @@ class _WhiteboardCanvasEditorState
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelection();
         _lassoCtrl.startResize(
           corner,
           worldPos,
@@ -4223,7 +4234,7 @@ class _WhiteboardCanvasEditorState
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelection();
         _lassoCtrl.startSideResize(
           side,
           worldPos,
@@ -4234,7 +4245,7 @@ class _WhiteboardCanvasEditorState
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureSelection();
         _lassoCtrl.startMove(
           worldPos,
           _data.strokes,
@@ -4314,6 +4325,7 @@ class _WhiteboardCanvasEditorState
           false; // a fresh selection starts with the toolbar hidden
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
+      if (!moved) _lassoCtrl.dragOffset = Offset.zero;
       // Clone the selection right before finishMove mutates points in place, so
       // the start-of-gesture snapshot keeps the originals. ONLY on a real move:
       // a tap (which toggles the action toolbar) must not swap object identity,
@@ -4330,13 +4342,17 @@ class _WhiteboardCanvasEditorState
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       final side = _lassoCtrl.isSideResize;
-      final cornerScale = _lassoCtrl.resizeScale;
+      var cornerScale = _lassoCtrl.resizeScale;
       final sideScaleX = _lassoCtrl.resizeScaleX;
       final sideScaleY = _lassoCtrl.resizeScaleY;
       final moved =
           side
               ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
               : (cornerScale - 1).abs() > 0.02;
+      if (!moved) {
+        cornerScale = _lassoCtrl.resizeScale = 1;
+        _lassoCtrl.resizeScaleX = _lassoCtrl.resizeScaleY = 1;
+      }
       if (moved) _cloneSelectedStrokesInPlace(); // only a real edit clones
       _deferLassoReleaseTick = true;
       side
@@ -4370,6 +4386,7 @@ class _WhiteboardCanvasEditorState
       _finishTransformOrTap(moved);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
+      if (!moved) _lassoCtrl.rotationAngle = 0;
       if (moved) _cloneSelectedStrokesInPlace(); // only a real edit clones
       _deferLassoReleaseTick = true;
       _lassoCtrl.finishRotation(
@@ -4407,13 +4424,15 @@ class _WhiteboardCanvasEditorState
         region = region == null ? after : region.expandToInclude(after);
       }
       _gestureRegionBefore = null;
-      _commitGesture(region: region?.inflate(48));
+      final before = _selectionBefore;
+      if (before != null) _commitSelection(before, region?.inflate(48));
+      _selectionBefore = null;
       // The moved/resized/rotated rows keep their dbId → UPDATE in place.
       _markSelectionDirty();
       _persist();
     } else {
       _gestureRegionBefore = null;
-      _gestureBefore = null;
+      _selectionBefore = null;
       setState(() => _toolbarVisible = !_toolbarVisible);
     }
     _completeDeferredLassoRelease();
@@ -5383,97 +5402,114 @@ class _WhiteboardCanvasEditorState
     return inflated;
   }
 
+  CanvasSelectionSnapshot _captureSelection() =>
+      CanvasSelectionSnapshot.capture(
+        _data,
+        strokes: _lassoCtrl.selectedIndices,
+        images: _lassoCtrl.selectedImageIndices,
+        tasks: _lassoCtrl.selectedBlockIndices,
+        texts: _lassoCtrl.selectedTextBlockIndices,
+      );
+
+  CanvasSelectionSnapshot _captureSelectionAfter(
+    CanvasSelectionSnapshot before,
+  ) => before.captureAfter(
+    _data,
+    strokes: _lassoCtrl.selectedIndices,
+    images: _lassoCtrl.selectedImageIndices,
+    tasks: _lassoCtrl.selectedBlockIndices,
+    texts: _lassoCtrl.selectedTextBlockIndices,
+  );
+
+  void _commitSelection(CanvasSelectionSnapshot before, Rect? region) {
+    _markCanvasDirty();
+    _pushHistory(
+      _WhiteboardSelectionEntry(
+        CanvasSelectionChange(before, _captureSelectionAfter(before)),
+        region,
+      ),
+    );
+  }
+
+  void _applySelection(_WhiteboardSelectionEntry entry, {required bool undo}) {
+    final change = entry.change.strokes;
+    final from = undo ? change.after : change.before;
+    final to = undo ? change.before : change.after;
+    final oldByIndex = {for (final i in from.values.keys) i: _data.strokes[i]};
+    final old = oldByIndex.values.toList();
+    entry.change.apply(_data, undo: undo);
+    if (change.structural) {
+      _strokeTiles.rebuild(_data.strokes);
+    } else {
+      for (final i in to.values.keys) {
+        _strokeTiles.inheritOrder(oldByIndex[i]!, _data.strokes[i]);
+      }
+      _strokeTiles.removeStrokes(old);
+      _strokeTiles.appendAll([
+        for (final i in to.values.keys) _data.strokes[i],
+      ]);
+    }
+    for (final stroke in to.values.values) {
+      if (stroke.dbId != null) _dirtyStrokeIds.add(stroke.dbId!);
+    }
+    _markCanvasDirty();
+    if (old.isNotEmpty || to.values.isNotEmpty) {
+      if (entry.region != null) {
+        _invalidateStrokeCaches(entry.region!);
+      } else {
+        _invalidateStrokesGlobal();
+      }
+    }
+  }
+
   void _lassoMutate(VoidCallback op) {
-    final sw = Stopwatch()..start();
-    final before = _snapshot();
-    final snapshotMs = sw.elapsedMilliseconds;
-    // Protect the snapshot's references from any in-place edit inside op (flip
-    // mutates points directly). Color/width/delete/duplicate don't mutate
-    // existing objects, so this is a cheap no-harm clone of the selection.
-    final selectedBefore = Set<int>.from(_lassoCtrl.selectedIndices);
+    final before = _captureSelection();
     final countBefore = _data.strokes.length;
-    final dirtyBefore = _dirtyStrokeIds.length;
-    final nullIdsBefore = _data.strokes.where((s) => s.dbId == null).length;
-    _cloneSelectedStrokesInPlace();
-    final preEdit =
-        _preEditStrokes; // originals (still in the index at OLD tiles)
-    // Clones that replaced the selection in-place (same geometry, kept dbId).
-    // After the op they're the "kept" strokes for color/width/flip/duplicate; for
-    // delete/cut the op drops them from _data.strokes (filtered out via liveSet).
-    final clones = <DrawingStroke>[
-      for (final i in _lassoCtrl.selectedIndices)
-        if (i < _data.strokes.length) _data.strokes[i],
-    ];
     final regionBefore = _lassoCtrl.boundingBox;
+    _cloneSelectedStrokesInPlace();
+    final old = _preEditStrokes;
     op();
-    final countAfterOp = _data.strokes.length;
-    // Incremental tile-index update — O(selection), NOT a full rebuild/region
-    // rescan O(all). Both old paths recomputed strokeBounds for every stroke
-    // (rebuild when selected>128, invalidateRegion(all) otherwise) → the 50-90ms
-    // lasso hitch on dense boards. Remove the pre-edit objects from their OLD
-    // tiles and re-file the post-edit objects in their NEW tiles.
-    Rect? region = regionBefore;
-    final after = _lassoCtrl.boundingBox;
-    if (after != null) {
-      region = region == null ? after : region.expandToInclude(after);
-    }
-    // Identity hash of the live list (cheap — no strokeBounds), so clones the op
-    // DELETED (delete/cut) are dropped from the re-index set instead of ghosting.
-    final liveSet = Set<DrawingStroke>.identity()..addAll(_data.strokes);
-    if (countAfterOp >= countBefore) {
-      for (final i in selectedBefore) {
-        if (i < countBefore) {
-          _strokeTiles.inheritOrder(before.$1[i], _data.strokes[i]);
-        }
+    final after = _captureSelectionAfter(before);
+    final change = CanvasSelectionChange(before, after);
+    final added = after.strokes.values.values.toList();
+    _strokeTiles.removeStrokes(old);
+    if (_data.strokes.length >= countBefore) {
+      for (final i in before.strokes.values.keys) {
+        _strokeTiles.inheritOrder(before.strokes.values[i]!, _data.strokes[i]);
       }
     }
-    final added = <DrawingStroke>[];
-    final seen = Set<DrawingStroke>.identity();
-    for (final s in clones) {
-      if (liveSet.contains(s) && seen.add(s)) added.add(s);
-    }
-    for (final i in _lassoCtrl.selectedIndices) {
-      if (i < _data.strokes.length) {
-        final s = _data.strokes[i];
-        if (seen.add(s)) added.add(s); // new copies (duplicate/paste)
-      }
-    }
-    _strokeTiles.removeStrokes(preEdit);
     if (added.isNotEmpty) _strokeTiles.appendAll(added);
+    if (_data.strokes.length != countBefore) {
+      _strokeTiles.invalidateListPositions();
+    }
     _preEditStrokes = const [];
+    Rect? region = regionBefore;
+    final boxAfter = _lassoCtrl.boundingBox;
+    if (boxAfter != null) {
+      region = region?.expandToInclude(boxAfter) ?? boxAfter;
+    }
     if (region != null) {
       double maxW = 24;
-      for (final s in added) {
-        if (s.strokeWidth > maxW) maxW = s.strokeWidth;
+      for (final stroke in [...old, ...added]) {
+        if (stroke.strokeWidth > maxW) maxW = stroke.strokeWidth;
       }
       region = region.inflate(maxW + 48);
-      _invalidateStrokeCaches(region);
-    } else {
-      _invalidateStrokesGlobal();
+      if (old.isNotEmpty || added.isNotEmpty) _invalidateStrokeCaches(region);
     }
-    _commitSnapshot(before, region: region);
-    // Post-op selection: edited rows (color/width/flip) → UPDATE; new copies
-    // (duplicate/paste, dbId == null) → insert pass; deleted → diff pass.
+    _markCanvasDirty();
+    _pushHistory(_WhiteboardSelectionEntry(change, region));
     _markSelectionDirty();
     _persist();
-    sw.stop();
-    final nullIdsAfter = _data.strokes.where((s) => s.dbId == null).length;
-    CrashLogger.instance.note(
-      'PERF lasso-mut-pizarra: selected ${selectedBefore.length}->${_lassoCtrl.selectedIndices.length}, '
-      'strokes $countBefore->$countAfterOp, '
-      'nullIds $nullIdsBefore->$nullIdsAfter, '
-      'dirtyIds $dirtyBefore->${_dirtyStrokeIds.length}, persisted ${_persistedStrokeIds.length}, '
-      'tileRev ${_strokeTiles.revision}, tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
-      'overviewDirty $_overviewDirty, snapshot ${snapshotMs}ms, '
-      'total ${sw.elapsedMilliseconds}ms',
-    );
   }
 
   void _undo() {
     if (_undoStack.isEmpty) return;
     final entry = _undoStack.removeLast();
     setState(() {
-      if (entry is _WhiteboardSnapshotEntry) {
+      if (entry is _WhiteboardSelectionEntry) {
+        _applySelection(entry, undo: true);
+        _redoStack.add(entry);
+      } else if (entry is _WhiteboardSnapshotEntry) {
         _redoStack.add(_WhiteboardSnapshotEntry(_snapshot(), entry.region));
         _restore(entry.snapshot, region: entry.region);
       } else if (entry is _WhiteboardStrokeAddEntry &&
@@ -5487,6 +5523,7 @@ class _WhiteboardCanvasEditorState
         // pen-stroke undo = the undo lag). `removed` is the same instance the index
         // holds, so identity removal lands cleanly.
         _strokeTiles.removeStrokes([removed]);
+        _strokeTiles.invalidateListPositions();
         _invalidateStrokeCaches(region);
         CrashLogger.instance.note(
           'PERF undo-pizarra: stroke-add undo, strokes ${_data.strokes.length}, '
@@ -5503,7 +5540,10 @@ class _WhiteboardCanvasEditorState
     if (_redoStack.isEmpty) return;
     final entry = _redoStack.removeLast();
     setState(() {
-      if (entry is _WhiteboardSnapshotEntry) {
+      if (entry is _WhiteboardSelectionEntry) {
+        _applySelection(entry, undo: false);
+        _undoStack.add(entry);
+      } else if (entry is _WhiteboardSnapshotEntry) {
         _undoStack.add(_WhiteboardSnapshotEntry(_snapshot(), entry.region));
         _restore(entry.snapshot, region: entry.region);
       } else if (entry is _WhiteboardStrokeAddEntry) {

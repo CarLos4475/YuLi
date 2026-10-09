@@ -31,6 +31,7 @@ import '../../../domain/models/task.dart';
 import '../../../data/services/ai_chat_image_storage.dart';
 import 'ai_chat_sheet.dart';
 import 'drawing_stroke_persistence.dart';
+import 'stroke_delta_persistence.dart';
 import 'drawing_cell.dart';
 import 'flight_wiki_links.dart';
 import 'note_block_actions.dart';
@@ -3624,7 +3625,9 @@ class _DrawingBlockBody extends ConsumerStatefulWidget {
 
 class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
   late DrawingData _data;
-  List<int?> _strokeIds = const [];
+  late StrokeDeltaPersistence _strokePersistence;
+  late Map<String, dynamic> _basePayload;
+  bool _loading = true;
   Future<void> _persistTail = Future.value();
 
   @override
@@ -3643,140 +3646,126 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
   }
 
   void _resetDataFromBlock() {
-    _data = _toDrawingData(widget.block);
-    _strokeIds = _data.strokes.map((s) => s.dbId).toList();
+    List<dynamic> decode(String source) {
+      try {
+        final value = jsonDecode(source);
+        return value is List ? value : const [];
+      } catch (_) {
+        return const [];
+      }
+    }
+
+    final block = widget.block;
+    final payload = <String, dynamic>{
+      'h': block.height,
+      's': decode(block.strokesJson),
+      'i': decode(block.imagesJson),
+      't': decode(block.taskBlocksJson),
+      'tx': decode(block.textBlocksJson),
+      if (block.background != null) 'bg': block.background,
+      if (block.bgColor != null) 'bgc': block.bgColor,
+      if (block.starred) 'starred': true,
+      if (block.name != null) 'name': block.name,
+    };
+    _data = DrawingData.fromJson(payload);
+    _basePayload = payload..remove('s');
+    _strokePersistence = StrokeDeltaPersistence();
+    _loading = true;
   }
 
   Future<void> _loadStoredStrokes() async {
+    final blockId = widget.block.id;
+    final persistence = _strokePersistence;
     final rows = await ref
         .read(drawingStrokeRepositoryProvider)
-        .getByBlock(widget.block.id);
-    if (!mounted || rows.isEmpty) return;
+        .getByBlock(blockId);
+    if (!mounted || !identical(persistence, _strokePersistence)) return;
     setState(() {
-      _data.strokes = rows.map(strokeFromRecord).toList();
-      _strokeIds = _data.strokes.map((s) => s.dbId).toList();
+      if (rows.isNotEmpty) _data.strokes = rows.map(strokeFromRecord).toList();
+      persistence.seed(rows, _data.strokes);
+      _loading = false;
     });
   }
 
-  DrawingData _toDrawingData(DrawingBlock b) {
-    List<dynamic> strokes = const [];
-    try {
-      final raw = b.strokesJson.isEmpty ? '[]' : b.strokesJson;
-      final decoded = jsonDecode(raw);
-      if (decoded is List) strokes = decoded;
-    } catch (_) {}
-    return DrawingData.fromJson({'h': b.height, 's': strokes});
-  }
-
-  Future<void> _persist(DrawingData data) async {
+  Future<void> _persist(DrawingData data) {
     _data = data;
-    final snapshot = DrawingData(
-      height: data.height,
-      strokes: data.strokes.map((s) => s.clone()).toList(),
-      images: data.images.map((im) => im.clone()).toList(),
-      taskBlocks: data.taskBlocks.map((b) => b.clone()).toList(),
-      textBlocks: data.textBlocks.map((b) => b.clone()).toList(),
-      background: data.background,
-      bgColorValue: data.bgColorValue,
-    );
-    _persistTail = _persistTail
-        .catchError((_) {})
-        .then((_) => _persistNow(snapshot));
-    await PendingSaves.track(_persistTail, owner: this);
-  }
-
-  Future<void> _persistNow(DrawingData data) async {
+    final blockId = widget.block.id;
+    final persistence = _strokePersistence;
     final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-    final appendOnly =
-        data.strokes.length > _strokeIds.length &&
-        _strokeIds.asMap().entries.every(
-          (e) => data.strokes[e.key].dbId == e.value,
-        ) &&
-        data.strokes.skip(_strokeIds.length).every((s) => s.dbId == null);
-    if (appendOnly) {
-      for (int i = _strokeIds.length; i < data.strokes.length; i++) {
-        final id = await strokeRepo.insert(
-          widget.block.id,
-          strokeWrite(i, data.strokes[i]),
-        );
-        data.strokes[i].dbId = id;
-        if (i < _data.strokes.length) {
-          _data.strokes[i].dbId = id;
-        }
-      }
-    } else {
-      final ids = await strokeRepo.replaceBlock(widget.block.id, [
-        for (int i = 0; i < data.strokes.length; i++)
-          strokeWrite(i, data.strokes[i]),
-      ]);
-      for (int i = 0; i < data.strokes.length && i < ids.length; i++) {
-        data.strokes[i].dbId = ids[i];
-        if (i < _data.strokes.length) {
-          _data.strokes[i].dbId = ids[i];
-        }
-      }
-    }
-    _strokeIds = data.strokes.map((s) => s.dbId).toList();
-    await ref.read(noteBlockRepositoryProvider).updatePayload(widget.block.id, {
+    final blockRepo = ref.read(noteBlockRepositoryProvider);
+    final strokes = List<DrawingStroke>.of(data.strokes);
+    final payload = <String, dynamic>{
+      ..._basePayload,
       'h': data.height,
       's': const [],
+      'i': data.images.map((v) => v.toJson()).toList(),
+      't': data.taskBlocks.map((v) => v.toJson()).toList(),
+      'tx': data.textBlocks.map((v) => v.toJson()).toList(),
+    };
+    _persistTail = _persistTail.catchError((_) {}).then((_) async {
+      await persistence.persist(strokeRepo, blockId, strokes);
+      await blockRepo.updatePayload(blockId, payload);
     });
+    return PendingSaves.track(_persistTail, owner: this);
   }
 
   @override
   Widget build(BuildContext context) {
-    return DrawingCell(
-      data: _data,
-      accent: widget.accent,
-      onChanged: _persist,
-      onDelete: () async {
-        await ref.read(noteBlockRepositoryProvider).delete(widget.block.id);
-      },
-      onDrawStart: () {},
-      onDrawEnd: () {},
-      onScrollLockChanged: (locked) {
-        widget.onScrollLockChanged?.call(locked);
-      },
-      onRecognizeText:
-          (strokes) => runOcrFlow(
-            context,
-            ref,
-            strokes,
-            accent: widget.accent,
-            folderId: widget.folderId,
-            noteId: widget.block.noteId,
-          ),
-      onSendImageToYuli: (bytes) async {
-        try {
-          final prepared = await prepareAiChatImageBytes(bytes);
-          if (!context.mounted) {
-            await deleteAiChatImage(prepared);
-            return;
+    return AbsorbPointer(
+      absorbing: _loading,
+      child: DrawingCell(
+        data: _data,
+        accent: widget.accent,
+        onChanged: _persist,
+        onDelete: () async {
+          await ref.read(noteBlockRepositoryProvider).delete(widget.block.id);
+        },
+        onDrawStart: () {},
+        onDrawEnd: () {},
+        onScrollLockChanged: (locked) {
+          widget.onScrollLockChanged?.call(locked);
+        },
+        onRecognizeText:
+            (strokes) => runOcrFlow(
+              context,
+              ref,
+              strokes,
+              accent: widget.accent,
+              folderId: widget.folderId,
+              noteId: widget.block.noteId,
+            ),
+        onSendImageToYuli: (bytes) async {
+          try {
+            final prepared = await prepareAiChatImageBytes(bytes);
+            if (!context.mounted) {
+              await deleteAiChatImage(prepared);
+              return;
+            }
+            await showAiChat(
+              context,
+              ref,
+              noteId: widget.block.noteId,
+              pendingImages: [prepared],
+              accent: widget.accent,
+            );
+          } catch (_) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No pude preparar esa selección.')),
+            );
           }
-          await showAiChat(
-            context,
-            ref,
-            noteId: widget.block.noteId,
-            pendingImages: [prepared],
-            accent: widget.accent,
-          );
-        } catch (_) {
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No pude preparar esa selección.')),
-          );
-        }
-      },
-      onSendMathToYuli:
-          kDebugMode
-              ? (strokes) => runMathToYuliFlow(
-                context,
-                ref,
-                strokes,
-                accent: widget.accent,
-                noteId: widget.block.noteId,
-              )
-              : null,
+        },
+        onSendMathToYuli:
+            kDebugMode
+                ? (strokes) => runMathToYuliFlow(
+                  context,
+                  ref,
+                  strokes,
+                  accent: widget.accent,
+                  noteId: widget.block.noteId,
+                )
+                : null,
+      ),
     );
   }
 }

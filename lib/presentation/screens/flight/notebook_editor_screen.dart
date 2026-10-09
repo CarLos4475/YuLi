@@ -54,6 +54,9 @@ import 'color_picker.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
 import 'drawing_stroke_persistence.dart';
+import 'stroke_delta_persistence.dart';
+import 'notebook_stroke_selection.dart';
+import 'notebook_selection_sync.dart';
 import 'eraser_mode_popup.dart';
 import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
@@ -61,6 +64,7 @@ import 'popup_reveal.dart';
 import 'image_crop_screen.dart';
 import 'image_insert_panel.dart';
 import 'lasso_controller.dart';
+import 'canvas_selection_history.dart';
 import 'lasso_mini_toolbar.dart';
 import 'ocr_flow.dart';
 import 'canvas_ocr_panel.dart';
@@ -227,6 +231,11 @@ class _NotebookSnapshotEntry extends _NotebookHistoryEntry {
   const _NotebookSnapshotEntry(this.snapshot);
 }
 
+class _NotebookSelectionEntry extends _NotebookHistoryEntry {
+  final Map<int, CanvasSelectionChange> pages;
+  const _NotebookSelectionEntry(this.pages);
+}
+
 class _NotebookStrokeAddEntry extends _NotebookHistoryEntry {
   final int blockId;
   final DrawingStroke stroke;
@@ -332,6 +341,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   final List<_NotebookHistoryEntry> _undoStack = [];
   final List<_NotebookHistoryEntry> _redoStack = [];
   _NotebookSnapshot? _gestureBefore;
+  Map<int, CanvasSelectionSnapshot>? _selectionBefore;
   // World-space selection box captured when a move/resize/rotate grab starts, so
   // the drop only re-buckets + persists the pages the edit actually spans
   // (vs. rewriting and DB-writing every page in the notebook).
@@ -374,10 +384,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
   Timer? _pasteTimer;
   Timer? _persistTimer;
   final Set<int> _dirtyPersistPages = {};
-  final Set<int> _fullStrokePersistBlocks = {};
-  final Map<int, Set<int>> _persistedStrokeIdsByBlock = {};
-  final Map<int, Set<int>> _dirtyStrokeIdsByBlock = {};
-  final Map<int, int> _nextStrokePosByBlock = {};
+  final Map<int, StrokeDeltaPersistence> _strokePersistence = {};
   bool _persisting = false;
   Offset? _pastePos;
   Offset? _showPasteAt;
@@ -634,6 +641,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       CurvedAnimation(parent: _drawerAnimCtrl, curve: Curves.easeOutCubic),
     );
     _lassoCtrl.onChanged = _onLassoChanged;
+    _lassoCtrl.strokeCandidates = _lassoStrokeCandidates;
     _pinController.persistence = RepoFloatingPinPersistence(
       repo: ref.read(floatingPinRepositoryProvider),
       noteId: widget.note.id,
@@ -829,9 +837,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _pageData.clear();
     _pageTiles.clear();
     _pageWorldStrokeCache.clear();
-    _persistedStrokeIdsByBlock.clear();
-    _dirtyStrokeIdsByBlock.clear();
-    _nextStrokePosByBlock.clear();
+    _strokePersistence.clear();
 
     for (final b in drawingBlocks) {
       _pageBlockIds.add(b.id);
@@ -1185,20 +1191,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       batches++;
       await SchedulerBinding.instance.endOfFrame;
     }
-    final persisted = _persistedStrokeIdsByBlock.putIfAbsent(b.id, () => {});
-    persisted.clear();
-    _dirtyStrokeIdsByBlock.putIfAbsent(b.id, () => {}).clear();
-    if (rows.isNotEmpty) {
-      data.strokes = rows.map(strokeFromRecord).toList();
-      var maxPos = -1;
-      for (final r in rows) {
-        persisted.add(r.id);
-        if (r.position > maxPos) maxPos = r.position;
-      }
-      _nextStrokePosByBlock[b.id] = maxPos + 1;
-    } else {
-      _nextStrokePosByBlock[b.id] = 0;
-    }
+    if (rows.isNotEmpty) data.strokes = rows.map(strokeFromRecord).toList();
+    (_strokePersistence[b.id] = StrokeDeltaPersistence()).seed(
+      rows,
+      data.strokes,
+    );
     final pts = _pointCount(data.strokes);
     final pageIndex = _pageBlockIds.indexOf(b.id);
     sw.stop();
@@ -1212,38 +1209,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   int _pointCount(Iterable<DrawingStroke> strokes) =>
       strokes.fold<int>(0, (total, s) => total + s.points.length);
-
-  Set<int> _persistedStrokeIds(int blockId) =>
-      _persistedStrokeIdsByBlock.putIfAbsent(blockId, () => {});
-
-  Set<int> _dirtyStrokeIds(int blockId) =>
-      _dirtyStrokeIdsByBlock.putIfAbsent(blockId, () => {});
-
-  int _nextStrokePos(int blockId) => _nextStrokePosByBlock[blockId] ?? 0;
-
-  void _markWorldStrokeDirty(DrawingStroke stroke) {
-    final id = stroke.dbId;
-    if (id == null || stroke.points.isEmpty) return;
-    var sumY = 0.0;
-    final sp = stroke.points;
-    for (int i = 0; i < sp.length; i++) {
-      sumY += sp.y(i);
-    }
-    final pageIndex = _nearestPageIndex(sumY / stroke.points.length);
-    if (pageIndex < 0 || pageIndex >= _pageBlockIds.length) return;
-    final blockId = _pageBlockIds[pageIndex];
-    if (_persistedStrokeIds(blockId).contains(id)) {
-      _dirtyStrokeIds(blockId).add(id);
-    }
-  }
-
-  void _markSelectedWorldStrokesDirty(List<DrawingStroke> worldStrokes) {
-    for (final i in _lassoCtrl.selectedIndices) {
-      if (i < worldStrokes.length) {
-        _markWorldStrokeDirty(worldStrokes[i]);
-      }
-    }
-  }
 
   void _beginInkPerf() {
     _inkPerfSw = Stopwatch()..start();
@@ -1411,9 +1376,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         background: _lastBg,
         bgColorValue: _lastBgColor,
       );
-      _persistedStrokeIdsByBlock[block.id] = {};
-      _dirtyStrokeIdsByBlock[block.id] = {};
-      _nextStrokePosByBlock[block.id] = 0;
+      _strokePersistence[block.id] = StrokeDeltaPersistence();
     }
     setState(() {});
   }
@@ -1441,11 +1404,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final NoteBlockRepository blocks =
         blockRepo ?? ref.read(noteBlockRepositoryProvider);
     _dirtyPersistPages.remove(blockId);
-    final fullPersist = _fullStrokePersistBlocks.remove(blockId);
-    final Set<int> dirtyBeforeFull =
-        fullPersist ? _dirtyStrokeIds(blockId).toSet() : <int>{};
-    if (fullPersist) _dirtyStrokeIds(blockId).clear();
-    final removedDirtyIds = <int>{};
     final strokesSnapshot = List<DrawingStroke>.of(data.strokes);
     final imagesPayload = data.images.map((im) => im.toJson()).toList();
     final taskBlocksPayload = data.taskBlocks.map((b) => b.toJson()).toList();
@@ -1456,85 +1414,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     final sw = Stopwatch()..start();
     int inserted = 0, updated = 0, deleted = 0;
     try {
-      if (fullPersist) {
-        final ids = await strokes.replaceBlock(blockId, [
-          for (int i = 0; i < strokesSnapshot.length; i++)
-            strokeWrite(i, strokesSnapshot[i]),
-        ]);
-        for (int i = 0; i < strokesSnapshot.length && i < ids.length; i++) {
-          strokesSnapshot[i].dbId = ids[i];
-          final liveIndex = data.strokes.indexOf(strokesSnapshot[i]);
-          if (liveIndex >= 0 && liveIndex < data.strokes.length) {
-            data.strokes[liveIndex].dbId = ids[i];
-          }
-          final cache = _pageWorldStrokeCache[blockId];
-          if (cache != null && liveIndex >= 0 && liveIndex < cache.length) {
-            cache[liveIndex].dbId = ids[i];
-          }
-        }
-        _rebuildWorldStrokeCache(blockId);
-        _persistedStrokeIds(blockId)
-          ..clear()
-          ..addAll(ids);
-        _nextStrokePosByBlock[blockId] = strokesSnapshot.length;
-        inserted = ids.length;
-      } else {
-        final persisted = _persistedStrokeIds(blockId);
-        var nextPos = _nextStrokePos(blockId);
-        final insertStrokes = <DrawingStroke>[];
-        final insertWrites = <DrawingStrokeWrite>[];
-        for (final stroke in strokesSnapshot) {
-          // A dbId not in `persisted` means the stroke was RESURRECTED by undo/redo
-          // (its row was deleted when the op was first applied) → re-insert with a
-          // fresh id. The board-doubling bug had a different cause (open wiping the
-          // tracking set) fixed at the source, so persisted is accurate here.
-          if (stroke.dbId != null && persisted.contains(stroke.dbId)) {
-            continue;
-          }
-          stroke.dbId = null;
-          insertStrokes.add(stroke);
-          insertWrites.add(strokeWrite(nextPos++, stroke));
-        }
-        final ids = await strokes.insertMany(blockId, insertWrites);
-        for (int i = 0; i < ids.length && i < insertStrokes.length; i++) {
-          final stroke = insertStrokes[i];
-          final id = ids[i];
-          stroke.dbId = id;
-          final cacheIndex = data.strokes.indexOf(stroke);
-          final cache = _pageWorldStrokeCache[blockId];
-          if (cache != null && cacheIndex >= 0 && cacheIndex < cache.length) {
-            cache[cacheIndex].dbId = id;
-          }
-          persisted.add(id);
-        }
-        inserted = ids.length;
-        _nextStrokePosByBlock[blockId] = nextPos;
-
-        final byId = <int, DrawingStroke>{
-          for (final s in strokesSnapshot)
-            if (s.dbId != null && persisted.contains(s.dbId)) s.dbId!: s,
-        };
-        final dirty = _dirtyStrokeIds(blockId);
-        if (dirty.isNotEmpty) {
-          final dirtyIds = dirty.toSet();
-          final updates = <int, DrawingStrokeWrite>{};
-          for (final id in dirtyIds) {
-            final stroke = byId[id];
-            if (stroke == null) continue;
-            updates[id] = strokeWrite(0, stroke);
-          }
-          removedDirtyIds.addAll(updates.keys);
-          dirty.removeAll(removedDirtyIds);
-          await strokes.updateMany(updates);
-          updated = updates.length;
-        }
-
-        final currentIds = byId.keys.toSet();
-        final toDelete = persisted.difference(currentIds);
-        if (toDelete.isNotEmpty) {
-          await strokes.deleteByIds(toDelete.toList());
-          persisted.removeAll(toDelete);
-          deleted = toDelete.length;
+      final result = await _strokePersistence
+          .putIfAbsent(blockId, StrokeDeltaPersistence.new)
+          .persist(strokes, blockId, strokesSnapshot);
+      inserted = result.inserted;
+      updated = result.updated;
+      deleted = result.deleted;
+      final cache = _pageWorldStrokeCache[blockId];
+      if (cache != null) {
+        for (var i = 0; i < data.strokes.length && i < cache.length; i++) {
+          cache[i].dbId = data.strokes[i].dbId;
         }
       }
       final strokeMs = sw.elapsedMilliseconds;
@@ -1588,11 +1477,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       }
     } catch (_) {
       _dirtyPersistPages.add(blockId);
-      if (fullPersist) {
-        _fullStrokePersistBlocks.add(blockId);
-        _dirtyStrokeIds(blockId).addAll(dirtyBeforeFull);
-      }
-      _dirtyStrokeIds(blockId).addAll(removedDirtyIds);
       rethrow;
     }
   }
@@ -3681,11 +3565,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     });
     _pageTiles.remove(blockId)?.dispose();
     _pageWorldStrokeCache.remove(blockId);
-    _persistedStrokeIdsByBlock.remove(blockId);
-    _dirtyStrokeIdsByBlock.remove(blockId);
-    _nextStrokePosByBlock.remove(blockId);
+    _strokePersistence.remove(blockId);
     _dirtyPersistPages.remove(blockId);
-    _fullStrokePersistBlocks.remove(blockId);
 
     await ref.read(drawingStrokeRepositoryProvider).deleteByBlock(blockId);
     await repo.delete(blockId);
@@ -4405,7 +4286,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     setState(() {
       if (_lassoCtrl.tapSelect(
         p,
-        _allVisibleStrokes,
+        _lassoStrokeView(),
         _allVisibleImages,
         blocks,
         textBlocks,
@@ -4856,6 +4737,57 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   double _pageOffsetY(int i) => i * (kNotebookPageHeight + kNotebookPageGap);
 
+  NotebookStrokeLayout _strokeLayout() => NotebookStrokeLayout(
+    _pageBlockIds.map((id) => _pageData[id]?.strokes.length ?? 0),
+  );
+
+  NotebookStrokeView _lassoStrokeView() => NotebookStrokeView([
+    for (var i = 0; i < _pageBlockIds.length; i++)
+      if (_pageData[_pageBlockIds[i]] != null)
+        _worldStrokeCacheForPage(i)
+      else
+        const <DrawingStroke>[],
+  ]);
+
+  Iterable<int> _lassoStrokeCandidates(Rect worldBounds) sync* {
+    var start = 0;
+    for (var page = 0; page < _pageBlockIds.length; page++) {
+      final blockId = _pageBlockIds[page];
+      final data = _pageData[blockId];
+      if (data == null) continue;
+      final localBounds = worldBounds.shift(Offset(0, -_pageOffsetY(page)));
+      for (final local in _pageTileIndex(
+        blockId,
+      ).strokeIndicesInRect(localBounds, data.strokes)) {
+        yield start + local;
+      }
+      start += data.strokes.length;
+    }
+  }
+
+  NotebookSelectionView<T> _selectionView<T>(
+    List<T> Function(DrawingData) items,
+    T Function(int, T) toWorld,
+  ) => NotebookSelectionView([
+    for (final id in _pageBlockIds)
+      if (_pageData[id] case final data?) items(data) else <T>[],
+  ], toWorld);
+
+  NotebookSelectionView<DrawingStroke> _selectionStrokes() =>
+      _selectionView((d) => d.strokes, _worldStrokeForPage);
+  NotebookSelectionView<CanvasImage> _selectionImages() => _selectionView(
+    (d) => d.images,
+    (p, v) => v.clone()..y += _pageOffsetY(p),
+  );
+  NotebookSelectionView<CanvasTaskBlock> _selectionTasks() => _selectionView(
+    (d) => d.taskBlocks,
+    (p, v) => v.clone()..y += _pageOffsetY(p),
+  );
+  NotebookSelectionView<CanvasTextBlock> _selectionTexts() => _selectionView(
+    (d) => d.textBlocks,
+    (p, v) => v.clone()..y += _pageOffsetY(p),
+  );
+
   List<DrawingStroke> get _allVisibleStrokes {
     final sw = Stopwatch()..start();
     final all = <DrawingStroke>[];
@@ -4963,34 +4895,34 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       setState(() => _showPasteAt = null);
       return;
     }
-    final strokes = _allVisibleStrokes;
-    final images = _allVisibleImages;
-    final blocks = _allVisibleTaskBlocks;
+    final strokes = _lassoStrokeView();
+    final images = _selectionImages();
+    final blocks = _selectionTasks();
     if (_lassoCtrl.phase == LassoPhase.selected) {
       // Pre-gesture selection box → affected-page set on drop.
       _gestureBoxBefore = _lassoCtrl.boundingBox;
       if (_lassoCtrl.hitTestRotationHandle(worldPos)) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureNotebookSelection();
         _lassoCtrl.startRotation(worldPos, strokes, images, blocks);
         _captureLassoSelection();
         return;
       }
       final corner = _lassoCtrl.hitTestCornerHandle(worldPos);
       if (corner != null) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureNotebookSelection();
         _lassoCtrl.startResize(corner, worldPos, strokes, images, blocks);
         _captureLassoSelection();
         return;
       }
       final side = _lassoCtrl.hitTestSideHandle(worldPos);
       if (side != null) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureNotebookSelection();
         _lassoCtrl.startSideResize(side, worldPos, strokes, images, blocks);
         _captureLassoSelection();
         return;
       }
       if (_lassoCtrl.isTapInsideBoundingBox(worldPos)) {
-        _gestureBefore = _snapshot();
+        _selectionBefore = _captureNotebookSelection();
         _lassoCtrl.startMove(worldPos, strokes, images, blocks);
         _captureLassoSelection();
         return;
@@ -5054,26 +4986,34 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       });
       return;
     }
-    final strokes = _allVisibleStrokes;
-    final images = _allVisibleImages;
-    final blocks = _allVisibleTaskBlocks;
-    final textBlocks = _allVisibleTextBlocks;
+    final strokes =
+        _lassoCtrl.phase == LassoPhase.tracing
+            ? _lassoStrokeView()
+            : _selectionStrokes();
+    final images = _selectionImages();
+    final blocks = _selectionTasks();
+    final textBlocks = _selectionTexts();
     if (_lassoCtrl.phase == LassoPhase.tracing) {
       _lassoCtrl.finishTracing(strokes, images, blocks, textBlocks);
       _toolbarVisible = false;
     } else if (_lassoCtrl.phase == LassoPhase.moving) {
       final moved = _lassoCtrl.dragOffset.distance * _viewScale > 6;
+      if (!moved) _lassoCtrl.dragOffset = Offset.zero;
       _lassoCtrl.finishMove(strokes, images, blocks, 0, textBlocks);
       _finishTransformOrTap(moved, strokes, images, blocks, textBlocks);
     } else if (_lassoCtrl.phase == LassoPhase.resizing) {
       final side = _lassoCtrl.isSideResize;
-      final cornerScale = _lassoCtrl.resizeScale;
+      var cornerScale = _lassoCtrl.resizeScale;
       final sideScaleX = _lassoCtrl.resizeScaleX;
       final sideScaleY = _lassoCtrl.resizeScaleY;
       final moved =
           side
               ? (sideScaleX - 1).abs() > 0.02 || (sideScaleY - 1).abs() > 0.02
               : (cornerScale - 1).abs() > 0.02;
+      if (!moved) {
+        cornerScale = _lassoCtrl.resizeScale = 1;
+        _lassoCtrl.resizeScaleX = _lassoCtrl.resizeScaleY = 1;
+      }
       side
           ? _lassoCtrl.finishSideResize(strokes, images, blocks, textBlocks)
           : _lassoCtrl.finishResize(strokes, images, blocks, textBlocks);
@@ -5095,6 +5035,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       _finishTransformOrTap(moved, strokes, images, blocks, textBlocks);
     } else if (_lassoCtrl.phase == LassoPhase.rotating) {
       final moved = _lassoCtrl.rotationAngle.abs() > 0.01;
+      if (!moved) _lassoCtrl.rotationAngle = 0;
       _lassoCtrl.finishRotation(strokes, images, blocks, textBlocks);
       _finishTransformOrTap(moved, strokes, images, blocks, textBlocks);
     }
@@ -5115,7 +5056,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _lassoCtrl.boundingBox,
       );
       _gestureBoxBefore = null;
-      _markSelectedWorldStrokesDirty(strokes);
       _syncLassoToPages(
         strokes,
         images,
@@ -5124,7 +5064,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         affected,
         lengthStable: true,
       );
-      _commitGesture();
+      final before = _selectionBefore;
+      if (before != null) _commitNotebookSelection(before);
+      _selectionBefore = null;
       CrashLogger.instance.note(
         'PERF lasso-transform-cuaderno: affected ${affected.toList()..sort()}, '
         'selected ${_lassoCtrl.selectedIndices.length}, world ${strokes.length}, '
@@ -5132,7 +5074,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       );
     } else {
       _gestureBoxBefore = null;
-      _gestureBefore = null;
+      _selectionBefore = null;
       setState(() => _toolbarVisible = !_toolbarVisible);
     }
   }
@@ -5213,6 +5155,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     List<DrawingStroke> worldStrokes,
     Set<int> affected,
   ) {
+    final layout = _strokeLayout();
     final dirtyByPage = <int, Rect>{};
     final removalsByPage = <int, List<int>>{};
     final appendsByPage = <int, List<DrawingStroke>>{};
@@ -5239,7 +5182,7 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     for (final worldIndex in _lassoCtrl.selectedIndices) {
       if (worldIndex < 0 || worldIndex >= worldStrokes.length) continue;
       selectedSeen++;
-      final source = _worldStrokePageLocalIndex(worldIndex);
+      final source = layout.locate(worldIndex);
       if (source == null) continue;
       final sourcePage = source.$1;
       final sourceLocal = source.$2;
@@ -5260,14 +5203,13 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       for (int i = 0; i < wp.length; i++) {
         sumY += wp.y(i);
       }
-      final targetPage = _nearestPageIndex(sumY / worldStroke.points.length);
+      var targetPage = _nearestPageIndex(sumY / worldStroke.points.length);
       if (targetPage < 0 || targetPage >= _pageBlockIds.length) continue;
-      final targetBlockId = _pageBlockIds[targetPage];
-      final targetData = _pageData[targetBlockId];
-      if (targetData == null) skippedTargetCold++;
-      if (!affected.contains(sourcePage) && !affected.contains(targetPage)) {
-        continue;
+      if (_pageData[_pageBlockIds[targetPage]] == null) {
+        skippedTargetCold++;
+        targetPage = sourcePage;
       }
+      affected.addAll([sourcePage, targetPage]);
 
       final oldLocal = sourceData.strokes[sourceLocal];
       final newLocal = _localStrokeFromWorld(targetPage, worldStroke);
@@ -5311,12 +5253,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final data = _pageData[blockId];
       if (data == null) continue;
       final cache = _pageWorldStrokeCache[blockId];
-      final locals = entry.value..sort((a, b) => b.compareTo(a));
-      for (final local in locals) {
-        if (local < 0 || local >= data.strokes.length) continue;
-        data.strokes.removeAt(local);
-        if (cache != null && local < cache.length) cache.removeAt(local);
-      }
+      final locals = entry.value.toSet();
+      var local = 0;
+      data.strokes.removeWhere((_) => locals.contains(local++));
+      local = 0;
+      cache?.removeWhere((_) => locals.contains(local++));
     }
 
     for (final entry in appendsByPage.entries) {
@@ -5345,6 +5286,9 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       final news = newByPage[pageIndex];
       if (olds != null && olds.isNotEmpty) index.removeStrokes(olds);
       if (news != null && news.isNotEmpty) index.appendAll(news);
+      if (structuralPages.contains(pageIndex)) {
+        index.syncListPositions(_pageData[blockId]!.strokes);
+      }
       _refreshLassoPageVisuals(
         pageIndex,
         entry.value,
@@ -5380,14 +5324,16 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     // identity, after removals/appends shifted local indices). No-op for a
     // same-page move (indices unchanged); fixes the cross-page desync.
     if (placed.isNotEmpty) {
+      final nextLayout = structuralPages.isEmpty ? layout : _strokeLayout();
       final newSel = <int>{};
       for (final (page, stroke) in placed) {
         if (page < 0 || page >= _pageBlockIds.length) continue;
         final data = _pageData[_pageBlockIds[page]];
         if (data == null) continue;
-        final local = data.strokes.indexWhere((s) => identical(s, stroke));
-        if (local < 0) continue;
-        newSel.add(_worldStrokeIndexFromPageLocal(page, local));
+        final local = _pageTileIndex(_pageBlockIds[page]).listPosition(stroke);
+        if (local == null) continue;
+        assert(identical(data.strokes[local], stroke));
+        newSel.add(nextLayout.globalIndex(page, local));
       }
       _lassoCtrl.selectedIndices = newSel;
     }
@@ -5556,6 +5502,26 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return (touched, points);
   }
 
+  Set<int> _syncSelectedObjects<T extends CanvasGeo>(
+    List<T> world,
+    Set<int> selected,
+    List<T> Function(DrawingData) items,
+    T Function(T) clone,
+    Set<int> touched,
+  ) => syncNotebookSelectedObjects(
+    world,
+    selected,
+    [
+      for (final id in _pageBlockIds)
+        if (_pageData[id] case final data?) items(data) else <T>[],
+    ],
+    _pageOffsetY,
+    _nearestPageIndex,
+    (page) => _pageData.containsKey(_pageBlockIds[page]),
+    clone,
+    touched,
+  );
+
   bool _syncLengthStableLassoObjects(
     List<CanvasImage> worldImages,
     List<CanvasTaskBlock> worldBlocks,
@@ -5569,6 +5535,35 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
         _lassoCtrl.selectedBlockIndices.isEmpty &&
         _lassoCtrl.selectedTextBlockIndices.isEmpty) {
       return false;
+    }
+
+    if (!force) {
+      final pages = <int>{};
+      _lassoCtrl.selectedImageIndices = _syncSelectedObjects(
+        worldImages,
+        _lassoCtrl.selectedImageIndices,
+        (d) => d.images,
+        (v) => v.clone(),
+        pages,
+      );
+      _lassoCtrl.selectedBlockIndices = _syncSelectedObjects(
+        worldBlocks,
+        _lassoCtrl.selectedBlockIndices,
+        (d) => d.taskBlocks,
+        (v) => v.clone(),
+        pages,
+      );
+      _lassoCtrl.selectedTextBlockIndices = _syncSelectedObjects(
+        worldTextBlocks,
+        _lassoCtrl.selectedTextBlockIndices,
+        (d) => d.textBlocks,
+        (v) => v.clone(),
+        pages,
+      );
+      for (final page in pages) {
+        _persistPage(page, dbOnly: true);
+      }
+      return pages.isNotEmpty;
     }
 
     final imagesByPage = <int, List<CanvasImage>>{};
@@ -5763,13 +5758,21 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     _LassoSyncMode syncMode = _LassoSyncMode.full,
   }) {
     final sw = Stopwatch()..start();
-    final before = _snapshot();
+    final selectionBefore =
+        syncMode == _LassoSyncMode.lengthStable
+            ? _captureNotebookSelection()
+            : null;
+    final before = selectionBefore == null ? _snapshot() : null;
     final snapMs = sw.elapsedMilliseconds;
-    final strokes = _allVisibleStrokes;
+    final strokes =
+        selectionBefore != null ? _selectionStrokes() : _allVisibleStrokes;
     final strokesMs = sw.elapsedMilliseconds - snapMs;
-    final images = _allVisibleImages;
-    final blocks = _allVisibleTaskBlocks;
-    final textBlocks = _allVisibleTextBlocks;
+    final images =
+        selectionBefore != null ? _selectionImages() : _allVisibleImages;
+    final blocks =
+        selectionBefore != null ? _selectionTasks() : _allVisibleTaskBlocks;
+    final textBlocks =
+        selectionBefore != null ? _selectionTexts() : _allVisibleTextBlocks;
     final boxBefore = _lassoCtrl.boundingBox;
     final selectedBefore = Set<int>.from(_lassoCtrl.selectedIndices);
     final objectSelectionBefore =
@@ -5788,7 +5791,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
           page,
     ];
     if (syncMode == _LassoSyncMode.lengthStable) {
-      _markSelectedWorldStrokesDirty(strokes);
       _syncLassoToPages(
         strokes,
         images,
@@ -5837,7 +5839,11 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     } else {
       _syncLassoToPages(strokes, images, blocks, textBlocks, affected);
     }
-    _commitSnapshot(before);
+    if (selectionBefore != null) {
+      _commitNotebookSelection(selectionBefore);
+    } else {
+      _commitSnapshot(before!);
+    }
     sw.stop();
     CrashLogger.instance.note(
       'PERF lasso-mut-cuaderno: mode $syncMode, '
@@ -6368,6 +6374,110 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
   // ─── Undo / redo (snapshot history, all pages) ──────────────────────────
 
+  Map<int, CanvasSelectionSnapshot> _captureNotebookSelection() {
+    Map<int, Set<int>> group(
+      List<Object> Function(DrawingData) items,
+      Set<int> indices,
+    ) {
+      final layout = NotebookStrokeLayout([
+        for (final id in _pageBlockIds)
+          _pageData[id] == null ? 0 : items(_pageData[id]!).length,
+      ]);
+      final result = <int, Set<int>>{};
+      for (final i in indices) {
+        final location = layout.locate(i);
+        if (location != null) {
+          (result[_pageBlockIds[location.$1]] ??= {}).add(location.$2);
+        }
+      }
+      return result;
+    }
+
+    final strokes = group((d) => d.strokes, _lassoCtrl.selectedIndices);
+    final images = group((d) => d.images, _lassoCtrl.selectedImageIndices);
+    final tasks = group((d) => d.taskBlocks, _lassoCtrl.selectedBlockIndices);
+    final texts = group(
+      (d) => d.textBlocks,
+      _lassoCtrl.selectedTextBlockIndices,
+    );
+    return {
+      for (final entry in _pageData.entries)
+        entry.key: CanvasSelectionSnapshot.capture(
+          entry.value,
+          strokes: strokes[entry.key] ?? const [],
+          images: images[entry.key] ?? const [],
+          tasks: tasks[entry.key] ?? const [],
+          texts: texts[entry.key] ?? const [],
+        ),
+    };
+  }
+
+  void _commitNotebookSelection(Map<int, CanvasSelectionSnapshot> before) {
+    final after = _captureNotebookSelection();
+    final changes = <int, CanvasSelectionChange>{};
+    for (final entry in before.entries) {
+      final next = after[entry.key];
+      if (next != null && (!entry.value.isEmpty || !next.isEmpty)) {
+        changes[entry.key] = CanvasSelectionChange(entry.value, next);
+      }
+    }
+    if (changes.isNotEmpty) _pushHistory(_NotebookSelectionEntry(changes));
+  }
+
+  void _applyNotebookSelection(
+    _NotebookSelectionEntry entry, {
+    required bool undo,
+  }) {
+    for (final page in entry.pages.entries) {
+      final data = _pageData[page.key];
+      final pageIndex = _pageBlockIds.indexOf(page.key);
+      if (data == null || pageIndex < 0) continue;
+      final strokes = page.value.strokes;
+      final from = undo ? strokes.after : strokes.before;
+      final to = undo ? strokes.before : strokes.after;
+      final oldByIndex = {for (final i in from.values.keys) i: data.strokes[i]};
+      final old = oldByIndex.values.toList();
+      page.value.apply(data, undo: undo);
+      final inkChanged = old.isNotEmpty || to.values.isNotEmpty;
+      Rect? region;
+      if (inkChanged) {
+        final index = _pageTileIndex(page.key);
+        final added = [for (final i in to.values.keys) data.strokes[i]];
+        if (strokes.structural) {
+          index.rebuild(data.strokes);
+          _rebuildWorldStrokeCache(page.key);
+        } else {
+          final cache = _pageWorldStrokeCache[page.key];
+          for (final i in to.values.keys) {
+            index.inheritOrder(oldByIndex[i]!, data.strokes[i]);
+            if (cache != null) {
+              cache[i] = _worldStrokeForPage(pageIndex, data.strokes[i]);
+            }
+          }
+          index.removeStrokes(old);
+          index.appendAll(added);
+        }
+        for (final stroke in [...old, ...added]) {
+          region = _joinRect(region, _strokeDirtyRect(stroke));
+        }
+        _refreshLassoPageVisuals(
+          pageIndex,
+          region,
+          touched: old.length + added.length,
+          structural: strokes.structural,
+          reason: undo ? 'undo-selection' : 'redo-selection',
+          skipIndex: true,
+        );
+      }
+      _persistPage(
+        pageIndex,
+        dbOnly: !inkChanged,
+        overviewRegion: strokes.structural ? null : region,
+      );
+    }
+    _inkTick.value++;
+  }
+
   _NotebookSnapshot _snapshot({Set<int>? blockIds}) {
     final sw = Stopwatch()..start();
     final m =
@@ -6489,23 +6599,6 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
     return out;
   }
 
-  void _markRestoreStrokeDirty(int blockId, List<DrawingStroke> target) {
-    final data = _pageData[blockId];
-    if (data == null) return;
-    final currentById = <int, DrawingStroke>{
-      for (final s in data.strokes)
-        if (s.dbId != null) s.dbId!: s,
-    };
-    final persisted = _persistedStrokeIds(blockId);
-    final dirty = _dirtyStrokeIds(blockId);
-    for (final stroke in target) {
-      final id = stroke.dbId;
-      if (id == null || !persisted.contains(id)) continue;
-      final current = currentById[id];
-      if (current != null && !identical(current, stroke)) dirty.add(id);
-    }
-  }
-
   void _pushHistory(_NotebookHistoryEntry entry) {
     _undoStack.add(entry);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
@@ -6567,12 +6660,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
       if (blockIds != null && !blockIds.contains(entry.key)) continue;
       final data = _pageData[entry.key];
       if (data != null) {
-        _markRestoreStrokeDirty(entry.key, entry.value.$1);
         data.strokes = entry.value.$1;
         data.images = entry.value.$2;
         data.taskBlocks = entry.value.$3;
         data.textBlocks = entry.value.$4;
-        _fullStrokePersistBlocks.add(entry.key);
       }
       _invalidateUndoRedoPageVisuals(entry.key, 'restore');
     }
@@ -6587,7 +6678,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             ? _changedSnapshotBlocks(entry.snapshot)
             : <int>{};
     setState(() {
-      if (entry is _NotebookSnapshotEntry) {
+      if (entry is _NotebookSelectionEntry) {
+        _applyNotebookSelection(entry, undo: true);
+        _redoStack.add(entry);
+      } else if (entry is _NotebookSnapshotEntry) {
         if (changed.isNotEmpty) {
           _redoStack.add(_NotebookSnapshotEntry(_snapshot(blockIds: changed)));
           _restore(entry.snapshot, blockIds: changed);
@@ -6638,7 +6732,10 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
             ? _changedSnapshotBlocks(entry.snapshot)
             : <int>{};
     setState(() {
-      if (entry is _NotebookSnapshotEntry) {
+      if (entry is _NotebookSelectionEntry) {
+        _applyNotebookSelection(entry, undo: false);
+        _undoStack.add(entry);
+      } else if (entry is _NotebookSnapshotEntry) {
         if (changed.isNotEmpty) {
           _undoStack.add(_NotebookSnapshotEntry(_snapshot(blockIds: changed)));
           _restore(entry.snapshot, blockIds: changed);
@@ -7524,8 +7621,8 @@ class _NotebookEditorScreenState extends ConsumerState<NotebookEditorScreen>
 
     if (selectedIndices.isEmpty && selectedImageIndices.isEmpty) return;
 
-    final strokes = _allVisibleStrokes;
-    final images = _allVisibleImages;
+    final strokes = _lassoStrokeView();
+    final images = _selectionImages();
     final imageCache = _imgCache;
     final double pixelRatio = MediaQuery.of(context).devicePixelRatio;
     // Cap the lifted texture's longest side: a large selection at high zoom would

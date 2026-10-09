@@ -22,11 +22,6 @@ class LassoDuplicateResult {
   LassoDuplicateResult(this.insertedCount);
 }
 
-class LassoMoveResult {
-  final Map<int, List<List<double>>> originalPoints;
-  LassoMoveResult(this.originalPoints);
-}
-
 class LassoController {
   LassoPhase phase = LassoPhase.idle;
 
@@ -53,9 +48,6 @@ class LassoController {
 
   Offset _dragStart = Offset.zero;
   Offset dragOffset = Offset.zero;
-  Map<int, List<List<double>>>? _snapshotBeforeMove;
-  Map<int, CanvasImage>? _imageSnapshot;
-  Map<int, CanvasTaskBlock>? _blockSnapshot;
 
   Offset? resizePivot;
   double resizeScale = 1.0;
@@ -73,6 +65,10 @@ class LassoController {
   List<CanvasTextBlock>? _textBlockClipboard;
 
   VoidCallback? onChanged;
+  Iterable<int> Function(Rect bounds)? strokeCandidates;
+
+  Iterable<int> _candidates(Rect bounds, int count) =>
+      strokeCandidates?.call(bounds) ?? Iterable<int>.generate(count);
 
   void _notify() => onChanged?.call();
 
@@ -114,13 +110,9 @@ class LassoController {
       return;
     }
 
-    // Fast reject: a stroke can only be "inside" if its bounds overlap the
-    // lasso polygon's bounds. The cheap rect test skips the per-point polygon
-    // scan for the (vast) majority on a dense board — the O(n) "finish
-    // selection" hitch. strokeBounds is Expando-cached so this is near-free.
     final lassoBounds = _polylineBounds(lassoPath);
     selectedIndices = {};
-    for (int i = 0; i < strokes.length; i++) {
+    for (final i in _candidates(lassoBounds, strokes.length)) {
       if (!strokeBounds(strokes[i]).overlaps(lassoBounds)) continue;
       if (_strokeTouchesLasso(strokes[i])) {
         selectedIndices.add(i);
@@ -170,9 +162,6 @@ class LassoController {
     disposeLiftedInk();
     _dragStart = worldPos;
     dragOffset = Offset.zero;
-    _snapshotStrokes(strokes);
-    _snapshotImages(images);
-    _snapshotBlocks(blocks);
     phase = LassoPhase.moving;
     _notify();
   }
@@ -187,15 +176,13 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishMove(
+  void finishMove(
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
     List<CanvasTaskBlock> blocks = const [],
     double snapStep = 0,
     List<CanvasTextBlock> textBlocks = const [],
   ]) {
-    final result = LassoMoveResult(_snapshotBeforeMove ?? {});
-
     // Snap the moved selection so its top-left lands on the grid.
     if (snapStep > 0 && boundingBox != null) {
       final tl = boundingBox!.topLeft;
@@ -219,36 +206,9 @@ class LassoController {
 
     boundingBox = _computeBoundingBox(strokes, images, blocks, textBlocks);
     dragOffset = Offset.zero;
-    _snapshotBeforeMove = null;
-    _imageSnapshot = null;
-    _blockSnapshot = null;
     disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
-    return result;
-  }
-
-  void _snapshotStrokes(List<DrawingStroke> strokes) {
-    _snapshotBeforeMove = {};
-    for (final i in selectedIndices) {
-      if (i < strokes.length) {
-        _snapshotBeforeMove![i] = strokes[i].points.toNested();
-      }
-    }
-  }
-
-  void _snapshotImages(List<CanvasImage> images) {
-    _imageSnapshot = {};
-    for (final i in selectedImageIndices) {
-      if (i < images.length) _imageSnapshot![i] = images[i].clone();
-    }
-  }
-
-  void _snapshotBlocks(List<CanvasTaskBlock> blocks) {
-    _blockSnapshot = {};
-    for (final i in selectedBlockIndices) {
-      if (i < blocks.length) _blockSnapshot![i] = blocks[i].clone();
-    }
   }
 
   // ─── Shared box geometry (images + task blocks) ──────────────────────────
@@ -359,9 +319,6 @@ class LassoController {
     _dragStart = worldPos;
     resizeScale = 1.0;
     _resizeOriginalBox = bb;
-    _snapshotStrokes(strokes);
-    _snapshotImages(images);
-    _snapshotBlocks(blocks);
     phase = LassoPhase.resizing;
     _notify();
   }
@@ -386,13 +343,12 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishResize(
+  void finishResize(
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
     List<CanvasTaskBlock> blocks = const [],
     List<CanvasTextBlock> textBlocks = const [],
   ]) {
-    final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final pivot = resizePivot!;
     final s = resizeScale;
 
@@ -415,13 +371,9 @@ class LassoController {
     resizePivot = null;
     resizeScale = 1.0;
     _resizeOriginalBox = null;
-    _snapshotBeforeMove = null;
-    _imageSnapshot = null;
-    _blockSnapshot = null;
     disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
-    return result;
   }
 
   // ─── Side resize (free, one axis) ───────────────────────────────────
@@ -475,9 +427,6 @@ class LassoController {
     resizeScaleX = 1.0;
     resizeScaleY = 1.0;
     _resizeOriginalBox = bb;
-    _snapshotStrokes(strokes);
-    _snapshotImages(images);
-    _snapshotBlocks(blocks);
     phase = LassoPhase.resizing;
     _notify();
   }
@@ -514,13 +463,12 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishSideResize(
+  void finishSideResize(
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
     List<CanvasTaskBlock> blocks = const [],
     List<CanvasTextBlock> textBlocks = const [],
   ]) {
-    final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final pivot = resizePivot!;
     final sx = resizeScaleX;
     final sy = resizeScaleY;
@@ -543,12 +491,9 @@ class LassoController {
 
     boundingBox = _computeBoundingBox(strokes, images, blocks, textBlocks);
     _resetResizeState();
-    _imageSnapshot = null;
-    _blockSnapshot = null;
     disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
-    return result;
   }
 
   // ─── Rotation ──────────────────────────────────────────────────────────
@@ -579,9 +524,6 @@ class LassoController {
     _rotationCenter = boundingBox!.center;
     _dragStart = worldPos;
     rotationAngle = 0.0;
-    _snapshotStrokes(strokes);
-    _snapshotImages(images);
-    _snapshotBlocks(blocks);
     phase = LassoPhase.rotating;
     _notify();
   }
@@ -600,13 +542,12 @@ class LassoController {
     _notify();
   }
 
-  LassoMoveResult finishRotation(
+  void finishRotation(
     List<DrawingStroke> strokes, [
     List<CanvasImage> images = const [],
     List<CanvasTaskBlock> blocks = const [],
     List<CanvasTextBlock> textBlocks = const [],
   ]) {
-    final result = LassoMoveResult(_snapshotBeforeMove ?? {});
     final center = _rotationCenter!;
     final cx = center.dx;
     final cy = center.dy;
@@ -638,13 +579,9 @@ class LassoController {
     boundingBox = _computeBoundingBox(strokes, images, blocks, textBlocks);
     rotationAngle = 0.0;
     _rotationCenter = null;
-    _snapshotBeforeMove = null;
-    _imageSnapshot = null;
-    _blockSnapshot = null;
     disposeLiftedInk();
     phase = LassoPhase.selected;
     _notify();
-    return result;
   }
 
   // ─── Flip ──────────────────────────────────────────────────────────────
@@ -855,7 +792,6 @@ class LassoController {
     resizeScaleY = 1.0;
     _sideResize = false;
     _resizeOriginalBox = null;
-    _snapshotBeforeMove = null;
   }
 
   bool get isSideResize => _sideResize;
@@ -988,9 +924,9 @@ class LassoController {
     final startIdx = strokes.length;
     strokes.addAll(copies);
     final imgStart = images.length;
-    images.addAll(imgCopies);
+    if (imgCopies.isNotEmpty) images.addAll(imgCopies);
     final textStart = textBlocks.length;
-    textBlocks.addAll(textCopies);
+    if (textCopies.isNotEmpty) textBlocks.addAll(textCopies);
 
     selectedIndices = Set.from(
       List.generate(copies.length, (i) => startIdx + i),
@@ -1052,7 +988,11 @@ class LassoController {
     int? closestIdx;
     double closestDist = double.infinity;
 
-    for (int i = 0; i < strokes.length; i++) {
+    final hitBounds = Rect.fromCircle(
+      center: worldPos,
+      radius: 20.0 / hitScale,
+    );
+    for (final i in _candidates(hitBounds, strokes.length)) {
       final pts = strokes[i].points;
       for (int j = 0; j < pts.length; j++) {
         final dx = pts.x(j) - worldPos.dx;
@@ -1135,8 +1075,6 @@ class LassoController {
     _resetResizeState();
     rotationAngle = 0.0;
     _rotationCenter = null;
-    _imageSnapshot = null;
-    _blockSnapshot = null;
     disposeLiftedInk();
     _notify();
   }

@@ -29,9 +29,44 @@ class StrokeTileIndex extends ChangeNotifier {
   final bool preserveOrder;
   Expando<int> _order = Expando<int>();
   int _nextOrder = 0;
+  Expando<int> _listPositions = Expando<int>();
+  int _nextListPosition = 0;
+  bool _listPositionsDirty = false;
 
   void inheritOrder(DrawingStroke original, DrawingStroke replacement) {
     if (preserveOrder) _order[replacement] = _order[original];
+    _listPositions[replacement] = _listPositions[original];
+  }
+
+  // Structural list edits shift positions without changing spatial membership.
+  void syncListPositions(List<DrawingStroke> strokes) {
+    _listPositions = Expando<int>();
+    for (var i = 0; i < strokes.length; i++) {
+      _listPositions[strokes[i]] = i;
+    }
+    _nextListPosition = strokes.length;
+    _listPositionsDirty = false;
+  }
+
+  void invalidateListPositions() => _listPositionsDirty = true;
+
+  int? listPosition(DrawingStroke stroke) => _listPositions[stroke];
+
+  List<int> strokeIndicesInRect(Rect rect, List<DrawingStroke> strokes) {
+    if (_listPositionsDirty) syncListPositions(strokes);
+    final result = <int>[];
+    for (final stroke in strokesInRect(rect)) {
+      final position = _listPositions[stroke];
+      if (position == null ||
+          position >= strokes.length ||
+          !identical(strokes[position], stroke)) {
+        // A wholesale list replacement must not turn a tap into a crash.
+        rebuild(strokes);
+        return strokeIndicesInRect(rect, strokes);
+      }
+      result.add(position);
+    }
+    return result..sort();
   }
 
   List<DrawingStroke> strokesInRect(Rect rect) {
@@ -62,6 +97,7 @@ class StrokeTileIndex extends ChangeNotifier {
     _tiles.clear();
     _order = Expando<int>();
     _nextOrder = 0;
+    syncListPositions(strokes);
     for (final s in strokes) {
       _index(s, touched);
     }
@@ -81,6 +117,7 @@ class StrokeTileIndex extends ChangeNotifier {
   /// list). Used after a geometry edit whose extent is known (move/resize/
   /// rotate/erase/delete). Tiles outside [region] keep their strokes + raster.
   void invalidateRegion(Rect region, List<DrawingStroke> all) {
+    syncListPositions(all);
     final grid = _gridAlign(region);
     final keys = _keysIn(grid).toSet();
     if (keys.isEmpty) return;
@@ -123,20 +160,22 @@ class StrokeTileIndex extends ChangeNotifier {
   /// Remove specific strokes (by identity) from the tiles their CURRENT bounds
   /// overlap. Used as the first half of an incremental move/resize/rotate commit:
   /// pass the PRE-edit stroke objects (untouched originals) so their cached
-  /// bounds still point at the OLD position. O(strokes × tiles each spans), not
-  /// O(all). Pair with [appendAll] of the post-edit objects.
+  /// bounds still point at the OLD position. Each touched bucket is filtered
+  /// once, even when many removed strokes share it.
   void removeStrokes(Iterable<DrawingStroke> strokes) {
+    final removed = Set<DrawingStroke>.identity()..addAll(strokes);
     final touched = <(int, int)>{};
-    for (final s in strokes) {
-      for (final k in _keysIn(strokeBounds(s))) {
-        final list = _tiles[k];
-        if (list == null) continue;
-        final before = list.length;
-        list.removeWhere((e) => identical(e, s));
-        if (list.length != before) {
-          touched.add(k);
-          if (list.isEmpty) _tiles.remove(k);
-        }
+    final keys = <(int, int)>{
+      for (final stroke in removed) ..._keysIn(strokeBounds(stroke)),
+    };
+    for (final k in keys) {
+      final list = _tiles[k];
+      if (list == null) continue;
+      final before = list.length;
+      list.removeWhere(removed.contains);
+      if (list.length != before) {
+        touched.add(k);
+        if (list.isEmpty) _tiles.remove(k);
       }
     }
     if (touched.isNotEmpty) {
@@ -162,6 +201,11 @@ class StrokeTileIndex extends ChangeNotifier {
   void clear() {
     final touched = <(int, int)>{..._tiles.keys};
     _tiles.clear();
+    _listPositions = Expando<int>();
+    _nextListPosition = 0;
+    _listPositionsDirty = false;
+    _order = Expando<int>();
+    _nextOrder = 0;
     _bump(touched);
     notifyListeners();
   }
@@ -190,6 +234,7 @@ class StrokeTileIndex extends ChangeNotifier {
   // ─── Internals ────────────────────────────────────────────────────────────
 
   void _index(DrawingStroke s, Set<(int, int)> touched) {
+    _listPositions[s] ??= _nextListPosition++;
     if (preserveOrder) _order[s] ??= _nextOrder++;
     final b = strokeBounds(s);
     for (final k in _keysIn(b)) {
