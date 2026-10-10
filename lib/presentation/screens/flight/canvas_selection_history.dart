@@ -1,6 +1,7 @@
 import 'note_cell_model.dart';
+import 'tracked_list.dart';
 
-class IndexedSelection<T> {
+class IndexedSelection<T extends Object> {
   IndexedSelection(this.length, this.values);
 
   factory IndexedSelection.capture(
@@ -16,7 +17,7 @@ class IndexedSelection<T> {
   final Map<int, T> values;
 }
 
-class SelectionChange<T> {
+class SelectionChange<T extends Object> {
   SelectionChange(this.before, this.after);
 
   final IndexedSelection<T> before;
@@ -69,9 +70,13 @@ class SelectionChange<T> {
         result.add(target[sourceIndex++]);
       }
     }
-    target
-      ..clear()
-      ..addAll(result);
+    if (target is TrackedList<T>) {
+      target.replaceAll(result);
+    } else {
+      target
+        ..clear()
+        ..addAll(result);
+    }
   }
 }
 
@@ -109,7 +114,7 @@ class CanvasSelectionSnapshot {
     required Iterable<int> tasks,
     required Iterable<int> texts,
   }) {
-    Iterable<int> retained<T>(
+    Iterable<int> retained<T extends Object>(
       IndexedSelection<T> old,
       List<T> list,
       Iterable<int> selected,

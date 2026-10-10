@@ -54,7 +54,7 @@ flutter test test/audit_test.dart
 
 ## YuLi AI — Powered by DeepSeek
 
-YuLi integra un asistente de inteligencia artificial basado en **DeepSeek V4** (modelos Flash y Pro), accesible desde cualquier nota, pizarra o cuaderno. El chat es contextual: toma el contenido de tu nota como punto de partida y mantiene el hilo de la conversacion por nota.
+YuLi integra un asistente de inteligencia artificial basado en **DeepSeek V4.1 Flash** (`deepseek-flash`) y **V4 Pro** (`deepseek-v4-pro`), accesible desde cualquier nota, pizarra o cuaderno. El chat es contextual: toma el contenido de tu nota como punto de partida y mantiene el hilo de la conversacion por nota. [Modelos disponibles en la API oficial](https://api-docs.deepseek.com/quick_start/pricing/).
 
 - **Modelo Flash**: rapido y economico para uso diario (resumir, limpiar, extraer tareas, traducir).
 - **Modelo Pro**: razonamiento profundo para explicaciones complejas, codigo, matematicas.

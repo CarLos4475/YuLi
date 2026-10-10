@@ -40,7 +40,7 @@ void main() {
         ]).join();
 
     expect(result, 'Listo');
-    expect(requestBody?['model'], 'deepseek-v4-flash-vision-exp');
+    expect(requestBody?['model'], 'deepseek-flash');
     expect(requestBody?['thinking'], {'type': 'disabled'});
     expect(requestBody?.containsKey('reasoning_effort'), isFalse);
     expect(requestBody?['stream_options'], {'include_usage': true});
@@ -58,6 +58,58 @@ void main() {
 
     await directory.delete(recursive: true);
   });
+
+  for (final model in AiModel.values) {
+    test('${model.name} supports tool calls with deep reasoning', () async {
+      Map<String, dynamic>? requestBody;
+      final client = MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+          '"id":"call_1","function":{"name":"search_notes",'
+          '"arguments":"{\\"query\\":\\"Clase\\"}"}}]},'
+          '"finish_reason":"tool_calls"}]}\n\n'
+          'data: [DONE]\n\n',
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      });
+      final assistant = DeepseekAssistant(_FakeAiKeyStore(), client: client);
+      final events =
+          await assistant
+              .streamReplyWithTools(
+                [const AiMessage(AiRole.user, 'Busca mis notas de clase')],
+                tools: const [
+                  AiToolDef(
+                    name: 'search_notes',
+                    description: 'Busca notas',
+                    parameters: {
+                      'type': 'object',
+                      'properties': {
+                        'query': {'type': 'string'},
+                      },
+                      'required': ['query'],
+                    },
+                  ),
+                ],
+                model: model,
+                deepReasoning: true,
+              )
+              .toList();
+
+      expect(
+        requestBody?['model'],
+        model == AiModel.flash ? 'deepseek-flash' : 'deepseek-v4-pro',
+      );
+      expect(requestBody?['thinking'], {'type': 'enabled'});
+      expect(requestBody?['reasoning_effort'], 'high');
+      expect(requestBody?['tool_choice'], 'auto');
+      final call = events.whereType<AiToolCallRequest>().single.calls.single;
+      expect(call.id, 'call_1');
+      expect(call.name, 'search_notes');
+      expect(jsonDecode(call.arguments), {'query': 'Clase'});
+    });
+  }
 
   test('stream reports when the provider stops because of length', () async {
     final client = MockClient((_) async {

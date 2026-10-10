@@ -3693,7 +3693,10 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
     final persistence = _strokePersistence;
     final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
     final blockRepo = ref.read(noteBlockRepositoryProvider);
-    final strokes = List<DrawingStroke>.of(data.strokes);
+    final strokeSave = persistence.persist(strokeRepo, blockId, data.strokes);
+    unawaited(
+      strokeSave.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
+    );
     final payload = <String, dynamic>{
       ..._basePayload,
       'h': data.height,
@@ -3703,7 +3706,7 @@ class _DrawingBlockBodyState extends ConsumerState<_DrawingBlockBody> {
       'tx': data.textBlocks.map((v) => v.toJson()).toList(),
     };
     _persistTail = _persistTail.catchError((_) {}).then((_) async {
-      await persistence.persist(strokeRepo, blockId, strokes);
+      await strokeSave;
       await blockRepo.updatePayload(blockId, payload);
     });
     return PendingSaves.track(_persistTail, owner: this);

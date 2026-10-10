@@ -97,6 +97,8 @@ Expiry runs in `runExpiryQueries()` at startup (8 pasos: archivar, vencidas, hu�
 
 **Cascadas a nivel app (FK OFF):** `hardDeleteNoteCascade`, `hardDeleteFolderCascade`, `hardDeleteSpaceCascade`, `softDeleteFolderCascade`, `restoreFolderCascade` en `AppDatabase`. Las imágenes en disco las limpia `cleanupOrphanedImages` al arranque (no la BD).
 
+**Trazos de canvas:** `DrawingData.strokes` conserva una `TrackedList` por lienzo; registra inserciones, reemplazos, borrados y cambios de posición. `StrokeDeltaPersistence` consume ese registro y conserva los cambios fallidos para reintentar, con transacciones por bloque. La geometría de un trazo ya agregado se modifica sobre una copia que reemplaza la entrada, nunca en sus puntos originales: el historial y el guardado usan su identidad. Borrar en medio aún desplaza las posiciones posteriores; el guardado no vuelve a comparar todo el lienzo.
+
 **Code generation:**
 ```bash
 dart run build_runner build --delete-conflicting-outputs

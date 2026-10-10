@@ -20,6 +20,8 @@ import 'lasso_painter.dart';
 import 'lasso_mini_toolbar.dart';
 import 'stroke_stabilizer.dart';
 import 'stroke_width_picker.dart';
+import 'stroke_erase_session.dart';
+import 'tracked_stroke_index.dart';
 
 class DrawingCell extends StatefulWidget {
   final DrawingData data;
@@ -73,9 +75,9 @@ class _DrawingCellState extends State<DrawingCell>
   final Map<DrawTool, double> _toolWidths = {...DrawingPrefs.defaultWidths};
   final List<SelectionChange<DrawingStroke>> _undoStack = [];
   final List<SelectionChange<DrawingStroke>> _redoStack = [];
-  List<DrawingStroke>? _gestureBefore;
+  late TrackedStrokeIndex _strokeIndex;
+  StrokeEraseSession? _eraseSession;
   IndexedSelection<DrawingStroke>? _selectionBefore;
-  bool _gestureChanged = false;
   DrawingStroke? _active;
   final ValueNotifier<int> _activeTick = ValueNotifier(0);
   final LassoController _lassoCtrl = LassoController();
@@ -117,6 +119,9 @@ class _DrawingCellState extends State<DrawingCell>
   void initState() {
     super.initState();
     _data = widget.data;
+    _strokeIndex = TrackedStrokeIndex(_data.strokes);
+    _lassoCtrl.strokeCandidates =
+        (bounds) => _strokeIndex.indicesInRect(bounds);
     _palette = _buildPalette();
     _lassoAnimCtrl = AnimationController(
       vsync: this,
@@ -152,6 +157,7 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _selectTool(DrawTool t) {
+    _commitEraseGesture();
     setState(() {
       if (DrawingPrefs.isColoredTool(_tool)) {
         _toolColors[_tool] = _color;
@@ -265,6 +271,7 @@ class _DrawingCellState extends State<DrawingCell>
 
   @override
   void dispose() {
+    _strokeIndex.dispose();
     _pasteTimer?.cancel();
     _lassoAnimCtrl.dispose();
     _activeTick.dispose();
@@ -280,10 +287,12 @@ class _DrawingCellState extends State<DrawingCell>
       });
     }
     if (identical(oldWidget.data, widget.data)) return;
+    _strokeIndex.dispose();
     _data = widget.data;
+    _strokeIndex = TrackedStrokeIndex(_data.strokes);
     _undoStack.clear();
     _redoStack.clear();
-    _gestureBefore = null;
+    _eraseSession = null;
     _selectionBefore = null;
     _active = null;
     _lassoCtrl.deselect();
@@ -321,8 +330,8 @@ class _DrawingCellState extends State<DrawingCell>
       return;
     }
     if (_tool == DrawTool.eraser) {
-      _gestureBefore = _snapshot();
-      _gestureChanged = false;
+      _commitEraseGesture();
+      _eraseSession = StrokeEraseSession(_data.strokes);
       _eraseNear(pos);
       return;
     }
@@ -386,18 +395,18 @@ class _DrawingCellState extends State<DrawingCell>
 
     if (_tool == DrawTool.pen && isScribble(_active!.points)) {
       final bounds = scribbleBounds(_active!.points);
-      final before = _snapshot();
-      final lenBefore = _data.strokes.length;
-      _data.strokes.removeWhere((s) {
+      final erased = StrokeEraseSession(_data.strokes);
+      erased.collect(_strokeIndex.indicesInRect(bounds), (s) {
         final sp = s.points;
         for (int i = 0; i < sp.length; i++) {
           if (bounds.contains(sp.offset(i))) return true;
         }
         return false;
       });
+      final change = erased.commit();
       setState(() => _active = null);
-      if (_data.strokes.length != lenBefore) {
-        _commit(before);
+      if (change != null) {
+        _pushHistory(change);
         widget.onChanged(_data);
       }
       return;
@@ -434,12 +443,16 @@ class _DrawingCellState extends State<DrawingCell>
   static const _eraserRadius = 7.0;
 
   void _eraseNear(Offset pos) {
-    final before = _data.strokes.length;
-    _data.strokes.removeWhere((s) => strokeHitByEraser(s, pos, _eraserRadius));
-    if (_data.strokes.length != before) {
-      _gestureChanged = true;
+    final changed =
+        _eraseSession?.collect(
+          _strokeIndex.indicesInRect(
+            Rect.fromCircle(center: pos, radius: _eraserRadius),
+          ),
+          (s) => strokeHitByEraser(s, pos, _eraserRadius),
+        ) ??
+        false;
+    if (changed) {
       setState(() {});
-      widget.onChanged(_data);
     }
   }
 
@@ -551,11 +564,12 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _commitEraseGesture() {
-    if (_gestureBefore != null && _gestureChanged) {
-      _commit(_gestureBefore!);
-    }
-    _gestureBefore = null;
-    _gestureChanged = false;
+    final change = _eraseSession?.commit();
+    _eraseSession = null;
+    if (change == null) return;
+    _pushHistory(change);
+    setState(() {});
+    widget.onChanged(_data);
   }
 
   void _lassoMutate(VoidCallback op) {
@@ -746,6 +760,7 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _undo() {
+    _commitEraseGesture();
     if (_undoStack.isEmpty) return;
     final change = _undoStack.removeLast();
     setState(() {
@@ -758,6 +773,7 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _redo() {
+    _commitEraseGesture();
     if (_redoStack.isEmpty) return;
     final change = _redoStack.removeLast();
     setState(() {
@@ -770,6 +786,7 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _clearAll() {
+    _commitEraseGesture();
     if (_data.strokes.isEmpty) return;
     final before = _snapshot();
     setState(() => _data.strokes = []);
@@ -1049,11 +1066,12 @@ class _DrawingCellState extends State<DrawingCell>
                 strokes: _data.strokes,
                 paintVersion: _paintVersion,
                 hiddenIndices:
-                    (_lassoCtrl.phase == LassoPhase.moving ||
+                    _eraseSession?.indices ??
+                    ((_lassoCtrl.phase == LassoPhase.moving ||
                             _lassoCtrl.phase == LassoPhase.resizing ||
                             _lassoCtrl.phase == LassoPhase.rotating)
                         ? _lassoCtrl.selectedIndices
-                        : null,
+                        : null),
               ),
               size: Size.infinite,
             ),
@@ -1501,6 +1519,7 @@ class _DrawingCellState extends State<DrawingCell>
   }
 
   void _resize(double delta) {
+    _commitEraseGesture();
     setState(() {
       final prev = _data.height;
       _data.height = (_data.height + delta).clamp(120.0, 1200.0);

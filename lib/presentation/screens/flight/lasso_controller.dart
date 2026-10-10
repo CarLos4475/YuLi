@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart' show Offset, Rect, VoidCallback, Matrix4;
 import 'note_cell_model.dart';
 import 'stroke_bounds.dart';
+import 'list_selection.dart';
 
 const double kLassoSnapStep = 25.0;
 
@@ -843,30 +844,12 @@ class LassoController {
     List<CanvasTaskBlock> blocks = const [],
     List<CanvasTextBlock> textBlocks = const [],
   ]) {
-    final sorted = selectedIndices.toList()..sort((a, b) => b.compareTo(a));
-    final removed = <(int, DrawingStroke)>[];
-    for (final i in sorted) {
-      if (i < strokes.length) {
-        removed.add((i, strokes.removeAt(i)));
-      }
-    }
-    final sortedImgs =
-        selectedImageIndices.toList()..sort((a, b) => b.compareTo(a));
-    for (final i in sortedImgs) {
-      if (i < images.length) images.removeAt(i);
-    }
-    final sortedBlocks =
-        selectedBlockIndices.toList()..sort((a, b) => b.compareTo(a));
-    for (final i in sortedBlocks) {
-      if (i < blocks.length) blocks.removeAt(i);
-    }
-    final sortedText =
-        selectedTextBlockIndices.toList()..sort((a, b) => b.compareTo(a));
-    for (final i in sortedText) {
-      if (i < textBlocks.length) textBlocks.removeAt(i);
-    }
+    final removed = removeListSelection(strokes, selectedIndices);
+    removeListSelection(images, selectedImageIndices);
+    removeListSelection(blocks, selectedBlockIndices);
+    removeListSelection(textBlocks, selectedTextBlockIndices);
     deselect();
-    return LassoDeleteResult(removed.reversed.toList());
+    return LassoDeleteResult(removed);
   }
 
   // ─── Duplicate ─────────────────────────────────────────────────────────

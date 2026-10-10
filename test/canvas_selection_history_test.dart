@@ -46,23 +46,22 @@ class CountingList<T> extends ListBase<T> {
 void main() {
   test('capture and transform undo touch only selection in 50000 strokes', () {
     final list = CountingList([for (var i = 0; i < 50000; i++) pen(i * 10)]);
-    final data = DrawingData(strokes: list);
     final selection = {10, 25000, 49999};
-    final before = CanvasSelectionSnapshot.capture(data, strokes: selection);
+    final before = IndexedSelection.capture(list, selection, (s) => s);
     expect(list.reads, 3);
     for (final i in selection) {
       list[i] = list[i].clone()..points.translate(50, 60);
     }
-    final after = CanvasSelectionSnapshot.capture(data, strokes: selection);
-    final change = CanvasSelectionChange(before, after);
+    final after = IndexedSelection.capture(list, selection, (s) => s);
+    final change = SelectionChange(before, after);
     list.reads = list.writes = 0;
     for (var i = 0; i < 5; i++) {
-      change.apply(data, undo: true);
-      change.apply(data, undo: false);
+      change.apply(list, undo: true, copy: (s) => s);
+      change.apply(list, undo: false, copy: (s) => s);
     }
     expect(list.reads, 0);
     expect(list.writes, 30);
-    expect(before.strokes.values[10]!.points.firstX, 100);
+    expect(before.values[10]!.points.firstX, 100);
     expect(list[10].points.firstX, 150);
   });
 

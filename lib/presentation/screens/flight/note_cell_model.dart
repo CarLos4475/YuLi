@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../domain/models/page_background.dart';
 import 'stroke_points.dart';
+import 'tracked_list.dart';
 
 export 'stroke_points.dart';
 
@@ -25,7 +26,9 @@ enum EraserMode { stroke, partial }
 
 class DrawingData {
   double height;
-  List<DrawingStroke> strokes;
+  final TrackedList<DrawingStroke> _strokes;
+  TrackedList<DrawingStroke> get strokes => _strokes;
+  set strokes(List<DrawingStroke> value) => _strokes.replaceAll(value);
   List<CanvasImage> images;
   List<CanvasTaskBlock> taskBlocks;
   List<CanvasTextBlock> textBlocks;
@@ -42,7 +45,7 @@ class DrawingData {
     List<CanvasTextBlock>? textBlocks,
     this.background = PageBackground.blank,
     this.bgColorValue,
-  }) : strokes = strokes ?? [],
+  }) : _strokes = TrackedList(strokes ?? [], keyOf: (s) => s.dbId),
        images = images ?? [],
        taskBlocks = taskBlocks ?? [],
        textBlocks = textBlocks ?? [];

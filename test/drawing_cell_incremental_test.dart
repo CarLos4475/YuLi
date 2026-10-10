@@ -14,6 +14,7 @@ import 'package:yuli/domain/repositories/note_block_repository.dart';
 import 'package:yuli/domain/services/pending_saves.dart';
 import 'package:yuli/presentation/providers/database_providers.dart';
 import 'package:yuli/presentation/screens/flight/drawing_cell.dart';
+import 'package:yuli/presentation/screens/flight/lasso_painter.dart';
 import 'package:yuli/presentation/screens/flight/drawing_stroke_persistence.dart';
 import 'package:yuli/presentation/screens/flight/note_block_widgets.dart';
 import 'package:yuli/presentation/screens/flight/note_cell_model.dart';
@@ -86,6 +87,107 @@ class BlockRepository implements NoteBlockRepository {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'eraser batches a gesture, handles cancel and keeps lasso index current',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 0.75;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final originals = [pen(100), pen(400), pen(800)];
+      final data = DrawingData(height: 400, strokes: originals);
+      var saves = 0;
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (_, setState) {
+                rebuild = setState;
+                return DrawingCell(
+                  data: data,
+                  onChanged: (_) => saves++,
+                  onDelete: () {},
+                  onDrawStart: () {},
+                  onDrawEnd: () {},
+                  onScrollLockChanged: (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(YuLiIcons.chevronDown));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(YuLiIcons.wandSparkles));
+      await tester.pump();
+      final canvas = find.byWidgetPredicate(
+        (w) =>
+            w is CustomPaint &&
+            w.painter.runtimeType.toString() == '_StrokePainter',
+      );
+      final origin = tester.getTopLeft(canvas);
+      final erase = await tester.startGesture(
+        origin + const Offset(100, 100),
+        kind: PointerDeviceKind.stylus,
+      );
+      await erase.moveTo(origin + const Offset(400, 100));
+      await tester.pump();
+      expect(data.strokes, hasLength(3));
+      expect(saves, 0);
+      await erase.up();
+      await tester.pump();
+      expect(data.strokes.single, same(originals[2]));
+      expect(saves, 1);
+      await tester.tap(find.byIcon(YuLiIcons.undo));
+      await tester.pump();
+      expect(data.strokes, originals);
+      await tester.tap(find.byIcon(YuLiIcons.redo));
+      await tester.pump();
+      expect(data.strokes.single, same(originals[2]));
+      final cancel = await tester.startGesture(
+        origin + const Offset(800, 100),
+        kind: PointerDeviceKind.stylus,
+      );
+      await cancel.cancel();
+      await tester.pump();
+      expect(data.strokes, isEmpty);
+      await tester.tap(find.byIcon(YuLiIcons.undo));
+      await tester.pump();
+      await tester.tap(find.text('LAZO'));
+      await tester.pump();
+      final select = await tester.startGesture(
+        origin + const Offset(800, 100),
+        kind: PointerDeviceKind.stylus,
+      );
+      await select.up();
+      await tester.pump();
+      LassoPainter painter() =>
+          tester
+              .widgetList<CustomPaint>(find.byType(CustomPaint))
+              .map((w) => w.painter)
+              .whereType<LassoPainter>()
+              .single;
+      expect(painter().ctrl.selectedIndices, {0});
+      painter().ctrl.deselect();
+      rebuild(() => data.strokes = [pen(500)]);
+      await tester.pump();
+      final loaded = await tester.startGesture(
+        origin + const Offset(500, 100),
+        kind: PointerDeviceKind.stylus,
+      );
+      await loaded.up();
+      await tester.pump();
+      expect(painter().ctrl.selectedIndices, {0});
+      expect(painter().ctrl.boundingBox!.left, lessThan(501));
+      expect(painter().ctrl.boundingBox!.right, lessThan(800));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('cell lasso move undo redo uses copy on write', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);

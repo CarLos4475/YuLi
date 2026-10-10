@@ -32,7 +32,6 @@ import '../../providers/database_providers.dart';
 import '../../providers/lab_space_providers.dart';
 import '../../widgets/yuli_design.dart';
 import '../../theme/lab_icons.dart';
-import '../../../domain/models/drawing_stroke_record.dart';
 import '../../../domain/models/folder.dart';
 import '../../../domain/models/lab_space.dart';
 import '../../../domain/models/note.dart';
@@ -47,6 +46,7 @@ import 'color_loupe.dart';
 import 'drawing_engine.dart';
 import 'drawing_prefs.dart';
 import 'drawing_stroke_persistence.dart';
+import 'stroke_delta_persistence.dart';
 import 'eraser_mode_popup.dart';
 import 'floating_palettes.dart';
 import 'fountain_pen_engine.dart';
@@ -1096,7 +1096,6 @@ class _WhiteboardCanvasEditorState
   late final NoteBlockRepository _blockRepo;
   int? _blockId;
   DrawingData _data = DrawingData();
-  final Map<int, int> _loadedStrokePositions = {};
   final TransformationController _viewCtrl = TransformationController();
   int _paintVersion = 0;
 
@@ -1438,24 +1437,7 @@ class _WhiteboardCanvasEditorState
   Timer? _persistTimer;
   bool _persistDirty = false;
   bool _persisting = false;
-  bool _strokesNeedFullPersist = false;
-
-  // ─── Incremental stroke persistence ───────────────────────────────────────
-  // The stroke list is mirrored into the drawing_strokes table one row per
-  // stroke, edited surgically: pen-up = 1 INSERT, geometry edit = UPDATE of the
-  // touched rows, erase/lasso-delete = DELETE of the gone rows. This replaces
-  // the old "rewrite the whole block" path (O(N) per edit) — see
-  // [[ink-persistence-refactor]].
-  //
-  //  • _persistedStrokeIds: dbIds currently materialized in the table for this
-  //    block. Diffed against the live strokes at persist time to find deletes.
-  //  • _dirtyStrokeIds: dbIds whose geometry changed in place (move/resize/
-  //    rotate/flip/color/width) and need an UPDATE.
-  //  • _nextStrokePos: monotonic z-order position for freshly inserted rows
-  //    (never reused after deletes, so order survives reload).
-  final Set<int> _persistedStrokeIds = {};
-  final Set<int> _dirtyStrokeIds = {};
-  int _nextStrokePos = 0;
+  final StrokeDeltaPersistence _strokePersistence = StrokeDeltaPersistence();
   Offset? _holdAnchor;
   static const _holdTolerance2 = 400.0; // 20px squared
   late final List<Color> _palette;
@@ -2305,12 +2287,6 @@ class _WhiteboardCanvasEditorState
       setState(() {
         _blockId = id;
         _data = data;
-        // NOTE: do NOT clear _persistedStrokeIds / _loadedStrokePositions here.
-        // _decodeData already populated them from the loaded rows. Clearing them
-        // made the next persist treat every already-saved stroke as new (dbId set
-        // but not in _persistedStrokeIds → re-inserted) → the DB DOUBLED on every
-        // open/close cycle until the board OOM'd. _dirtyStrokeIds is cleared by
-        // _decodeData too, so nothing to reset here.
       });
       _strokeTiles.rebuild(_data.strokes);
       // Reopen fast path: blit the saved overview instead of re-baking every
@@ -2322,110 +2298,6 @@ class _WhiteboardCanvasEditorState
       // corner view, and NO persistence. Surface it instead of losing data.
       CrashLogger.instance.record(e, st, context: 'ensureCanvasBlock pizarra');
     }
-  }
-
-  void _mergeLoadedStrokeRows(
-    List<DrawingStrokeRecord> rows,
-    Rect keepRegion, {
-    bool evict = true,
-  }) {
-    final byId = <int, DrawingStroke>{
-      for (final s in _data.strokes)
-        if (s.dbId != null) s.dbId!: s,
-    };
-    for (final r in rows) {
-      _loadedStrokePositions[r.id] = r.position;
-      _persistedStrokeIds.add(r.id);
-      if (_dirtyStrokeIds.contains(r.id)) continue;
-      final existing = byId[r.id];
-      if (existing != null) continue;
-      final stroke = strokeFromRecord(r);
-      _data.strokes.add(stroke);
-      byId[r.id] = stroke;
-    }
-    final canEvict =
-        _undoStack.isEmpty &&
-        _redoStack.isEmpty &&
-        _lassoCtrl.phase == LassoPhase.idle &&
-        !_isDrawing &&
-        !_persistDirty &&
-        !_persisting;
-    if (evict && canEvict) {
-      _data.strokes.removeWhere((stroke) {
-        final id = stroke.dbId;
-        if (id == null || _dirtyStrokeIds.contains(id)) return false;
-        if (strokeBounds(stroke).overlaps(keepRegion)) return false;
-        _persistedStrokeIds.remove(id);
-        _loadedStrokePositions.remove(id);
-        return true;
-      });
-    }
-    _data.strokes.sort((a, b) {
-      final ap =
-          a.dbId == null ? _nextStrokePos : _loadedStrokePositions[a.dbId] ?? 0;
-      final bp =
-          b.dbId == null ? _nextStrokePos : _loadedStrokePositions[b.dbId] ?? 0;
-      return ap.compareTo(bp);
-    });
-  }
-
-  Future<void> _ensureStrokesLoadedForRegion(Rect region) async {
-    final blockId = _blockId;
-    if (blockId == null) return;
-    final sw = Stopwatch()..start();
-    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-    final rows = await strokeRepo.getByBlockBounds(
-      blockId,
-      _boundsFromRect(region),
-    );
-    if (!mounted || _blockId != blockId) return;
-    _mergeLoadedStrokeRows(rows, region, evict: false);
-    _strokeTiles.rebuild(_data.strokes);
-    if (rows.isNotEmpty) _invalidateStrokeCaches(region);
-    setState(() => _paintVersion++);
-    sw.stop();
-    CrashLogger.instance.note(
-      'PERF hydrate-region-pizarra: ${rows.length} query, '
-      '${_data.strokes.length} live, ${sw.elapsedMilliseconds}ms',
-    );
-  }
-
-  Future<void> _ensureAllStrokesLoadedForGlobalOp() async {
-    final blockId = _blockId;
-    if (blockId == null) return;
-    final sw = Stopwatch()..start();
-    final strokeRepo = ref.read(drawingStrokeRepositoryProvider);
-    const batchSize = 600;
-    var afterPosition = -1;
-    var batches = 0;
-    var rowsRead = 0;
-    while (mounted && _blockId == blockId) {
-      final rows = await strokeRepo.getByBlockAfterPosition(
-        blockId,
-        afterPosition: afterPosition,
-        limit: batchSize,
-      );
-      if (rows.isEmpty) break;
-      _mergeLoadedStrokeRows(
-        rows,
-        const Rect.fromLTRB(-1e12, -1e12, 1e12, 1e12),
-        evict: false,
-      );
-      afterPosition = rows.last.position;
-      rowsRead += rows.length;
-      batches++;
-      await SchedulerBinding.instance.endOfFrame;
-    }
-    if (!mounted || _blockId != blockId) return;
-    _strokeTiles.rebuild(_data.strokes);
-    if (rowsRead > 0) _invalidateStrokesGlobal();
-    setState(() => _paintVersion++);
-    sw.stop();
-    CrashLogger.instance.note(
-      'PERF hydrate-all-pizarra: $rowsRead query, '
-      '${_data.strokes.length} live, $batches batches, '
-      '${sw.elapsedMilliseconds}ms',
-    );
   }
 
   // ignore: unused_element
@@ -2454,23 +2326,8 @@ class _WhiteboardCanvasEditorState
         strokeRepo == null
             ? await ref.read(drawingStrokeRepositoryProvider).getByBlock(b.id)
             : await strokeRepo.getByBlock(b.id);
-    _persistedStrokeIds.clear();
-    _dirtyStrokeIds.clear();
-    _loadedStrokePositions.clear();
-    if (rows.isNotEmpty) {
-      data.strokes = rows.map(strokeFromRecord).toList();
-      var maxPos = -1;
-      for (final r in rows) {
-        _persistedStrokeIds.add(r.id);
-        _loadedStrokePositions[r.id] = r.position;
-        if (r.position > maxPos) maxPos = r.position;
-      }
-      _nextStrokePos = maxPos + 1;
-    } else {
-      // Legacy payload strokes (not yet in the table) carry no dbId and get
-      // inserted on the first persist; positions start fresh.
-      _nextStrokePos = 0;
-    }
+    if (rows.isNotEmpty) data.strokes = rows.map(strokeFromRecord).toList();
+    _strokePersistence.seed(rows, data.strokes);
     sw.stop();
     final pts = data.strokes.fold<int>(0, (a, s) => a + s.points.length);
     CrashLogger.instance.note(
@@ -2515,13 +2372,10 @@ class _WhiteboardCanvasEditorState
     final blockRepo = ref.read(noteBlockRepositoryProvider);
     final sw = Stopwatch()..start();
     int inserted = 0, updated = 0, deleted = 0;
-    final fullPersist = _strokesNeedFullPersist;
-    if (fullPersist) _strokesNeedFullPersist = false;
-    final Set<int> dirtyBeforeFull =
-        fullPersist ? _dirtyStrokeIds.toSet() : <int>{};
-    if (fullPersist) _dirtyStrokeIds.clear();
-    final removedDirtyIds = <int>{};
-    final strokesSnapshot = List<DrawingStroke>.of(_data.strokes);
+    final strokesSnapshot =
+        CrashLogger.perfLogging
+            ? List<DrawingStroke>.of(_data.strokes)
+            : const <DrawingStroke>[];
     final imagesPayload = _data.images.map((im) => im.toJson()).toList();
     final taskBlocksPayload = _data.taskBlocks.map((b) => b.toJson()).toList();
     final textBlocksPayload = _data.textBlocks.map((b) => b.toJson()).toList();
@@ -2529,89 +2383,14 @@ class _WhiteboardCanvasEditorState
     final bgColorValue = _data.bgColorValue;
     var failed = false;
     try {
-      if (fullPersist) {
-        // Order changed wholesale (undo/redo/clear) — cheapest to rewrite and
-        // reseat ids/positions. Rare path.
-        final ids = await strokeRepo.replaceBlock(blockId, [
-          for (int i = 0; i < strokesSnapshot.length; i++)
-            strokeWrite(i, strokesSnapshot[i]),
-        ]);
-        for (int i = 0; i < strokesSnapshot.length && i < ids.length; i++) {
-          strokesSnapshot[i].dbId = ids[i];
-          final liveIndex = _data.strokes.indexOf(strokesSnapshot[i]);
-          if (liveIndex >= 0 && liveIndex < _data.strokes.length) {
-            _data.strokes[liveIndex].dbId = ids[i];
-          }
-          _loadedStrokePositions[ids[i]] = i;
-        }
-        _persistedStrokeIds
-          ..clear()
-          ..addAll(ids);
-        _nextStrokePos = strokesSnapshot.length;
-      } else {
-        // 1) Inserts: strokes with no dbId yet (pen-up, duplicate, paste, split).
-        final insertStrokes = <DrawingStroke>[];
-        final insertWrites = <DrawingStrokeWrite>[];
-        final insertPositions = <int>[];
-        for (final stroke in strokesSnapshot) {
-          // Skip strokes already materialized as a row. A dbId that is NOT in
-          // _persistedStrokeIds means the stroke was RESURRECTED by undo/redo (its
-          // row was deleted when the op was first applied) → it must be re-inserted
-          // with a fresh id. (The board-doubling bug was a different cause — open
-          // wiping _persistedStrokeIds — and is fixed at the source; persisted is
-          // now accurate, so this branch only fires for genuine resurrection.)
-          if (stroke.dbId != null &&
-              _persistedStrokeIds.contains(stroke.dbId)) {
-            continue;
-          }
-          stroke.dbId = null;
-          final pos = _nextStrokePos++;
-          insertStrokes.add(stroke);
-          insertWrites.add(strokeWrite(pos, stroke));
-          insertPositions.add(pos);
-        }
-        final ids = await strokeRepo.insertMany(blockId, insertWrites);
-        for (int i = 0; i < ids.length && i < insertStrokes.length; i++) {
-          final stroke = insertStrokes[i];
-          final id = ids[i];
-          stroke.dbId = id;
-          _persistedStrokeIds.add(id);
-          _loadedStrokePositions[id] = insertPositions[i];
-        }
-        inserted = ids.length;
-        // 2) Updates: in-place geometry edits flagged dirty.
-        if (_dirtyStrokeIds.isNotEmpty) {
-          final byId = <int, DrawingStroke>{
-            for (final s in strokesSnapshot)
-              if (s.dbId != null) s.dbId!: s,
-          };
-          final dirtyIds = _dirtyStrokeIds.toSet();
-          final updates = <int, DrawingStrokeWrite>{};
-          for (final id in dirtyIds) {
-            final s = byId[id];
-            if (s == null) continue;
-            updates[id] = strokeWrite(0, s);
-          }
-          removedDirtyIds.addAll(dirtyIds);
-          _dirtyStrokeIds.removeAll(dirtyIds);
-          await strokeRepo.updateMany(updates);
-          updated = updates.length;
-        }
-        // 3) Deletes: rows whose stroke is gone (erase, lasso-delete).
-        final currentIds = <int>{
-          for (final s in strokesSnapshot)
-            if (s.dbId != null) s.dbId!,
-        };
-        final toDelete = _persistedStrokeIds.difference(currentIds);
-        if (toDelete.isNotEmpty) {
-          await strokeRepo.deleteByIds(toDelete.toList());
-          _persistedStrokeIds.removeAll(toDelete);
-          for (final id in toDelete) {
-            _loadedStrokePositions.remove(id);
-          }
-          deleted = toDelete.length;
-        }
-      }
+      final result = await _strokePersistence.persist(
+        strokeRepo,
+        blockId,
+        _data.strokes,
+      );
+      inserted = result.inserted;
+      updated = result.updated;
+      deleted = result.deleted;
       final strokeMs = sw.elapsedMilliseconds;
       await blockRepo.updatePayload(blockId, {
         'h': _kCanvasH,
@@ -2654,11 +2433,6 @@ class _WhiteboardCanvasEditorState
       failed = true;
       PendingSaves.failed(this, e);
       _persistDirty = true;
-      if (fullPersist) {
-        _strokesNeedFullPersist = true;
-        _dirtyStrokeIds.addAll(dirtyBeforeFull);
-      }
-      _dirtyStrokeIds.addAll(removedDirtyIds);
       // unawaited() callers swallow errors → a failed save was invisible. Log it.
       CrashLogger.instance.record(e, st, context: 'persistNow pizarra');
     } finally {
@@ -3239,13 +3013,6 @@ class _WhiteboardCanvasEditorState
     _lassoCtrl.hitScale = _viewScale;
     return Rect.fromPoints(tl, br);
   }
-
-  DrawingStrokeBounds _boundsFromRect(Rect r) => DrawingStrokeBounds(
-    minX: r.left,
-    minY: r.top,
-    maxX: r.right,
-    maxY: r.bottom,
-  );
 
   /// Padded render rect with PREDICTIVE hysteresis. The stroke/background painters
   /// cull and cache against this rect, which only grows (→ a repaint) once the
@@ -4428,7 +4195,6 @@ class _WhiteboardCanvasEditorState
       if (before != null) _commitSelection(before, region?.inflate(48));
       _selectionBefore = null;
       // The moved/resized/rotated rows keep their dbId → UPDATE in place.
-      _markSelectionDirty();
       _persist();
     } else {
       _gestureRegionBefore = null;
@@ -4976,19 +4742,6 @@ class _WhiteboardCanvasEditorState
     _preEditStrokes = old;
   }
 
-  /// Flag the current selection's rows for an in-place UPDATE on the next
-  /// persist (their geometry/color/width changed but identity and order did
-  /// not). Freshly created strokes (duplicate/paste, dbId == null) are skipped —
-  /// the insert pass picks them up.
-  void _markSelectionDirty() {
-    for (final i in _lassoCtrl.selectedIndices) {
-      if (i < _data.strokes.length) {
-        final id = _data.strokes[i].dbId;
-        if (id != null) _dirtyStrokeIds.add(id);
-      }
-    }
-  }
-
   void _pushHistory(_WhiteboardHistoryEntry entry) {
     _undoStack.add(entry);
     if (_undoStack.length > 60) _undoStack.removeAt(0);
@@ -5007,18 +4760,11 @@ class _WhiteboardCanvasEditorState
 
   void _restore(_WhiteboardSnapshot snap, {Rect? region}) {
     final before = _data.strokes.length;
-    _markRestoreStrokeDirty(snap.$1);
     _data.strokes = snap.$1;
     _data.images = snap.$2;
     _data.taskBlocks = snap.$3;
     _data.textBlocks = snap.$4;
     _markCanvasDirty();
-    // NO full persist here. A full replaceBlock rewrites EVERY stroke row — on a
-    // 60k board that's a ~16s main-thread freeze + memory spike → the OS kills the
-    // app (signal 9) on undo/redo. The incremental diff is enough: changed rows are
-    // flagged dirty (_markRestoreStrokeDirty → UPDATE), strokes that came back are
-    // resurrected by the insert pass (dbId not in _persistedStrokeIds → re-insert),
-    // and strokes the restore dropped are removed by the delete diff.
     _disposeFocus();
     // The whole stroke list was swapped → the vector index must rebuild fully
     // (its entries point at the old list). But only [region] changed visually, so
@@ -5042,21 +4788,6 @@ class _WhiteboardCanvasEditorState
       'tiles ${_strokeTiles.debugTileCount}/${_strokeTiles.debugEntryCount}, '
       'overviewDirty $_overviewDirty, baked $_overviewBakedCount',
     );
-  }
-
-  void _markRestoreStrokeDirty(List<DrawingStroke> target) {
-    final currentById = <int, DrawingStroke>{
-      for (final s in _data.strokes)
-        if (s.dbId != null) s.dbId!: s,
-    };
-    for (final stroke in target) {
-      final id = stroke.dbId;
-      if (id == null || !_persistedStrokeIds.contains(id)) continue;
-      final current = currentById[id];
-      if (current != null && !identical(current, stroke)) {
-        _dirtyStrokeIds.add(id);
-      }
-    }
   }
 
   void _commitGesture({Rect? region}) {
@@ -5449,9 +5180,6 @@ class _WhiteboardCanvasEditorState
         for (final i in to.values.keys) _data.strokes[i],
       ]);
     }
-    for (final stroke in to.values.values) {
-      if (stroke.dbId != null) _dirtyStrokeIds.add(stroke.dbId!);
-    }
     _markCanvasDirty();
     if (old.isNotEmpty || to.values.isNotEmpty) {
       if (entry.region != null) {
@@ -5498,7 +5226,6 @@ class _WhiteboardCanvasEditorState
     }
     _markCanvasDirty();
     _pushHistory(_WhiteboardSelectionEntry(change, region));
-    _markSelectionDirty();
     _persist();
   }
 
@@ -5596,14 +5323,12 @@ class _WhiteboardCanvasEditorState
           ),
     );
     if (ok == true) {
-      await _ensureAllStrokesLoadedForGlobalOp();
       if (!mounted) return;
       final before = _snapshot();
       setState(() => _data.strokes = []);
       _strokeTiles.rebuild(_data.strokes);
       _invalidateStrokesGlobal();
       _commitSnapshot(before);
-      _strokesNeedFullPersist = true;
       _persist();
     }
   }
@@ -8063,7 +7788,6 @@ class _WhiteboardCanvasEditorState
     final blocks = <ExportBlockImage>[];
     ui.Image? rendered;
     try {
-      await _ensureStrokesLoadedForRegion(region);
       if (!mounted) return;
       final pr = exportPixelRatio(region);
       final specs = _exportBlockSpecs(opts.includeTasks);

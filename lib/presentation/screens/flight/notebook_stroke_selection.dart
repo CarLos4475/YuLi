@@ -1,6 +1,31 @@
 import 'dart:collection';
+import 'dart:ui';
 
 import 'note_cell_model.dart';
+
+bool selectionHasWriting(List<DrawingStroke> strokes, Iterable<int> selected) {
+  for (final i in selected) {
+    if (i < 0 || i >= strokes.length) continue;
+    final stroke = strokes[i];
+    if (!stroke.isHighlighter && !stroke.isShape) return true;
+  }
+  return false;
+}
+
+List<List<Offset>> selectedWritingPoints(
+  List<DrawingStroke> strokes,
+  Iterable<int> selected, {
+  bool includeShapes = false,
+}) {
+  final result = <List<Offset>>[];
+  for (final i in selected) {
+    if (i < 0 || i >= strokes.length) continue;
+    final stroke = strokes[i];
+    if (stroke.isHighlighter || (stroke.isShape && !includeShapes)) continue;
+    result.add(stroke.points.toOffsets());
+  }
+  return result;
+}
 
 class NotebookStrokeLayout {
   NotebookStrokeLayout(Iterable<int> counts) {
